@@ -22,6 +22,7 @@ from app.models import (
 from app.pipeline import classifier, context_builder
 from app.pipeline.committer import commit_suggestion
 from app.pipeline.ocr_correction import maybe_correct_ocr
+from app.telegram_handler import notify_suggestion
 
 log = structlog.get_logger(__name__)
 
@@ -246,8 +247,15 @@ async def _process_document(
         tags,
     )
 
+    # Notify via Telegram (only if not auto-committing)
+    will_auto_commit = (
+        settings.auto_commit_confidence > 0 and result.confidence >= settings.auto_commit_confidence
+    )
+    if not will_auto_commit:
+        await notify_suggestion(suggestion)
+
     # Auto-commit if confidence is high enough
-    if settings.auto_commit_confidence > 0 and result.confidence >= settings.auto_commit_confidence:
+    if will_auto_commit:
         log.info("auto-committing", doc_id=doc_id, confidence=result.confidence)
         tag_ids = [tid for t in result.tags if (tid := _resolve_entity(t.name, tags)) is not None]
         decision = ReviewDecision(

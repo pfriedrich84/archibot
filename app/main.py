@@ -18,8 +18,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
+from app.clients.telegram import TelegramClient
 from app.config import settings
 from app.db import init_db
+from app.telegram_handler import start_telegram, stop_telegram
 from app.worker import start_scheduler, stop_scheduler
 
 log = structlog.get_logger(__name__)
@@ -109,8 +111,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     paperless = PaperlessClient()
     ollama = OllamaClient()
+    telegram = TelegramClient()
     app.state.paperless = paperless
     app.state.ollama = ollama
+    app.state.telegram = telegram
     app.state.templates = templates
 
     # Healthchecks — warning only, don't fail startup
@@ -120,8 +124,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("ollama not reachable at startup")
 
     start_scheduler(app)
+    start_telegram(telegram, paperless)
     yield
+    stop_telegram()
     stop_scheduler(app)
+    await telegram.aclose()
     await paperless.aclose()
     await ollama.aclose()
     log.info("shutdown complete")
