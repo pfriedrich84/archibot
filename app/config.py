@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # --- GUI ---
     gui_port: int = 8088
+    gui_base_url: str = ""  # e.g. "https://classifier.local:8088" for Telegram links
     gui_username: str = ""
     gui_password: str = ""
 
@@ -45,6 +46,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_poll_interval: int = 5  # seconds between getUpdates calls
+
+    # --- Webhook ---
+    webhook_secret: str = ""  # if set, POST /webhook/paperless requires this token
 
     # --- State ---
     data_dir: str = "/data"

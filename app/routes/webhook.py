@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import secrets
+
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Header, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.config import settings
 from app.worker import _process_document
 
 log = structlog.get_logger(__name__)
@@ -17,8 +21,20 @@ class WebhookPayload(BaseModel):
 
 
 @router.post("/paperless")
-async def paperless_webhook(request: Request, payload: WebhookPayload):
+async def paperless_webhook(
+    request: Request,
+    payload: WebhookPayload,
+    x_webhook_secret: str | None = Header(default=None),
+):
     """Process a single document triggered by a Paperless post-consume hook."""
+    # Verify webhook secret if configured
+    if settings.webhook_secret and (
+        not x_webhook_secret
+        or not secrets.compare_digest(x_webhook_secret, settings.webhook_secret)
+    ):
+        log.warning("webhook auth failed", document_id=payload.document_id)
+        return JSONResponse(status_code=403, content={"detail": "Invalid webhook secret"})
+
     paperless = request.app.state.paperless
     ollama = request.app.state.ollama
     doc_id = payload.document_id

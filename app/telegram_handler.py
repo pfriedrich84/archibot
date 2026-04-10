@@ -47,7 +47,7 @@ def _build_suggestion_message(suggestion: SuggestionRow) -> tuple[str, dict]:
     text = "\n".join(lines)
 
     # Build the review URL for "Edit in GUI" button
-    gui_base = f"http://localhost:{settings.gui_port}"
+    gui_base = settings.gui_base_url or f"http://localhost:{settings.gui_port}"
     keyboard = {
         "inline_keyboard": [
             [
