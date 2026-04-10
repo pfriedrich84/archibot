@@ -98,6 +98,7 @@ async def accept_suggestion(
     )
 
     paperless = request.app.state.paperless
+    log.info("accepting suggestion", suggestion_id=suggestion_id, doc_id=suggestion.document_id)
     await commit_suggestion(suggestion, decision, paperless)
 
     # Return HTMX partial — empty row signals removal
@@ -110,6 +111,7 @@ async def accept_suggestion(
 
 @router.post("/{suggestion_id}/reject")
 async def reject_suggestion(request: Request, suggestion_id: int):
+    log.info("rejecting suggestion", suggestion_id=suggestion_id)
     with get_conn() as conn:
         conn.execute(
             "UPDATE suggestions SET status = 'rejected' WHERE id = ?",
@@ -143,6 +145,7 @@ async def edit_suggestion(
     tag_ids: list[str] = Form(default=[]),  # noqa: B008
 ):
     """Save edited fields without committing to Paperless."""
+    log.info("editing suggestion", suggestion_id=suggestion_id)
     tag_dicts = [{"id": int(t)} for t in tag_ids if t]
     with get_conn() as conn:
         conn.execute(

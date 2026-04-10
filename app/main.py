@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,7 +43,7 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
 def _configure_logging() -> None:
-    """Set up structlog with appropriate renderer."""
+    """Set up structlog with appropriate renderer and route third-party loggers."""
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
     structlog.configure(
@@ -63,6 +65,67 @@ def _configure_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
+    # Route third-party loggers through structlog at appropriate levels
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "httpx", "apscheduler"):
+        stdlib_logger = logging.getLogger(name)
+        stdlib_logger.handlers.clear()
+        stdlib_logger.propagate = False
+        stdlib_logger.addHandler(
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter(
+                logging.StreamHandler(),
+                formatter=structlog.stdlib.ProcessorFormatter(
+                    processor=structlog.dev.ConsoleRenderer()
+                    if settings.log_level.upper() == "DEBUG"
+                    else structlog.processors.JSONRenderer(),
+                ),
+            )
+        )
+        stdlib_logger.setLevel(log_level)
+
+
+# ---------------------------------------------------------------------------
+# Middleware: Request logging + request ID
+# ---------------------------------------------------------------------------
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log every HTTP request with method, path, status, and duration."""
+
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())[:8]
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+
+        # Skip noisy healthcheck and static logs
+        path = request.url.path
+        if path not in ("/healthz",) and not path.startswith("/static"):
+            log.info(
+                "request",
+                method=request.method,
+                path=path,
+                status=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+
+# ---------------------------------------------------------------------------
+# Middleware: Security headers
+# ---------------------------------------------------------------------------
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add basic security headers to every response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
 
 # ---------------------------------------------------------------------------
 # Optional Basic Auth
@@ -71,11 +134,15 @@ security = HTTPBasic(auto_error=False)
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
-    """Simple HTTP Basic Auth protecting all routes except /healthz and /webhook."""
+    """Simple HTTP Basic Auth protecting all routes except /healthz and /static."""
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in ("/healthz",) or path.startswith("/webhook") or path.startswith("/static"):
+        if path in ("/healthz",) or path.startswith("/static"):
+            return await call_next(request)
+
+        # Webhook has its own auth via WEBHOOK_SECRET
+        if path.startswith("/webhook"):
             return await call_next(request)
 
         auth = request.headers.get("Authorization")
@@ -89,8 +156,8 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
                 correct_pass = secrets.compare_digest(password, settings.gui_password)
                 if correct_user and correct_pass:
                     return await call_next(request)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("basic auth decode error", error=str(exc), path=path)
 
         return JSONResponse(
             status_code=401,
@@ -143,7 +210,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Optional auth middleware
+# Middleware (order matters: outermost first)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 if settings.gui_username and settings.gui_password:
     app.add_middleware(BasicAuthMiddleware)
 

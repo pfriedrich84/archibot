@@ -28,10 +28,13 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Ruff lint
-        run: ruff check app/
+        run: ruff check app/ tests/
 
       - name: Ruff format check
-        run: ruff format --check app/
+        run: ruff format --check app/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v
 
       - name: Import check
         run: python -c "import app.main"

@@ -28,11 +28,12 @@ def _build_suggestion_message(suggestion: SuggestionRow) -> tuple[str, dict]:
     """Build the Telegram message text and inline keyboard for a suggestion."""
     conf = suggestion.confidence or 0
     conf_emoji = "\U0001f7e2" if conf >= 80 else ("\U0001f7e1" if conf >= 50 else "\U0001f534")
+    display_title = suggestion.proposed_title or "\u2014"
 
     lines = [
         f"\U0001f4c4 <b>Document #{suggestion.document_id}</b>",
         "",
-        f"<b>Title:</b> {suggestion.proposed_title or '\u2014'}",
+        f"<b>Title:</b> {display_title}",
     ]
     if suggestion.proposed_correspondent_name:
         lines.append(f"<b>Correspondent:</b> {suggestion.proposed_correspondent_name}")
@@ -47,7 +48,7 @@ def _build_suggestion_message(suggestion: SuggestionRow) -> tuple[str, dict]:
     text = "\n".join(lines)
 
     # Build the review URL for "Edit in GUI" button
-    gui_base = f"http://localhost:{settings.gui_port}"
+    gui_base = settings.gui_base_url or f"http://localhost:{settings.gui_port}"
     keyboard = {
         "inline_keyboard": [
             [
