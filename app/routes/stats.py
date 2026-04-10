@@ -1,4 +1,5 @@
 """Statistics routes — counters and recent activity."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
@@ -30,17 +31,11 @@ async def stats_page(request: Request):
         ).fetchall()
         daily = [{"day": r["day"], "count": r["c"]} for r in daily_rows]
 
-        total_docs = conn.execute(
-            "SELECT COUNT(*) AS c FROM processed_documents"
-        ).fetchone()["c"]
+        total_docs = conn.execute("SELECT COUNT(*) AS c FROM processed_documents").fetchone()["c"]
 
-        total_errors = conn.execute(
-            "SELECT COUNT(*) AS c FROM errors"
-        ).fetchone()["c"]
+        total_errors = conn.execute("SELECT COUNT(*) AS c FROM errors").fetchone()["c"]
 
-        embedded = conn.execute(
-            "SELECT COUNT(*) AS c FROM doc_embedding_meta"
-        ).fetchone()["c"]
+        embedded = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
 
     return request.app.state.templates.TemplateResponse(
         "stats.html",

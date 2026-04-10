@@ -1,4 +1,5 @@
 """Initial and re-index jobs for the document embedding store."""
+
 from __future__ import annotations
 
 import structlog
@@ -29,7 +30,9 @@ async def initial_index(
     indexed_ids = {r["document_id"] for r in rows}
 
     new_docs = [d for d in docs if d.id not in indexed_ids]
-    log.info("documents to index", total=len(docs), already_indexed=len(indexed_ids), new=len(new_docs))
+    log.info(
+        "documents to index", total=len(docs), already_indexed=len(indexed_ids), new=len(new_docs)
+    )
 
     count = 0
     for i, doc in enumerate(new_docs, 1):

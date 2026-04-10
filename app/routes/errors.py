@@ -1,4 +1,5 @@
 """Error log routes with retry capability."""
+
 from __future__ import annotations
 
 import structlog
@@ -14,9 +15,7 @@ router = APIRouter(prefix="/errors")
 @router.get("")
 async def error_list(request: Request):
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM errors ORDER BY occurred_at DESC LIMIT 100"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM errors ORDER BY occurred_at DESC LIMIT 100").fetchall()
     errors = [dict(r) for r in rows]
     return request.app.state.templates.TemplateResponse(
         "errors.html",
@@ -27,9 +26,7 @@ async def error_list(request: Request):
 @router.post("/{error_id}/retry")
 async def retry_error(request: Request, error_id: int):
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT document_id FROM errors WHERE id = ?", (error_id,)
-        ).fetchone()
+        row = conn.execute("SELECT document_id FROM errors WHERE id = ?", (error_id,)).fetchone()
         if not row or not row["document_id"]:
             return HTMLResponse("Error not found or no document_id", status_code=404)
 

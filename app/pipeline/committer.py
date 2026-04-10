@@ -1,4 +1,5 @@
 """Write accepted suggestions back to Paperless-NGX via PATCH."""
+
 from __future__ import annotations
 
 import json

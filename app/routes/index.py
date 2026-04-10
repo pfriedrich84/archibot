@@ -1,4 +1,5 @@
 """Dashboard route — landing page with KPI counters."""
+
 from __future__ import annotations
 
 import structlog
