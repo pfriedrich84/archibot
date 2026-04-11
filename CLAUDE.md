@@ -87,7 +87,7 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 ## Ollama-Reference
 
 - `POST /api/chat` mit `format: "json"` → strukturierte JSON-Antwort
-- `POST /api/embeddings` → Vektor fuer Similarity-Suche
+- `POST /api/embeddings` → Vektor fuer Similarity-Suche (Default: `nomic-embed-text-v2-moe`, multilingual DE/EN)
 - `GET /api/tags` → Healthcheck + Modell-Liste
 
 ## Wichtige Invarianten
@@ -97,6 +97,8 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 3. **Confidence-Gate:** Nur wenn `AUTO_COMMIT_CONFIDENCE > 0` UND das LLM einen Score darueber meldet wird ohne Review committed.
 4. **Read-Only bei Fehler:** Wenn Paperless oder Ollama nicht erreichbar sind, wird ein Error-Record geschrieben und der Worker macht weiter. Keine Retries im selben Lauf.
 5. **Inbox-Tag bleibt:** Standardmaessig (`KEEP_INBOX_TAG=true`) wird der `Posteingang`-Tag nach Commit NICHT entfernt. Nur mit `KEEP_INBOX_TAG=false` wird er beim Commit entfernt.
+6. **Kontext-Qualitaet:** Nur Dokumente die NICHT mehr im Posteingang sind werden als Kontext fuer neue Klassifikationen genutzt. Inbox-Dokumente sind noch nicht reviewed/approved und wuerden unzuverlaessige Metadaten liefern.
+7. **Kontext-Anreicherung:** Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum). Regel 9 im System-Prompt weist das LLM an, diese Metadaten als starke Hinweise zu nutzen.
 
 ## Deployment (Dockhand)
 
@@ -134,12 +136,16 @@ Wenn `ENABLE_TELEGRAM=true` und `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` gesetz
 ## MCP Server (optional)
 
 Model Context Protocol Server fuer KI-Assistenten (Claude Code, etc.).
+Laeuft im selben Container wie die Haupt-App wenn `ENABLE_MCP=true` gesetzt ist.
 
 ```bash
-# stdio (fuer Claude Code / lokale Nutzung)
+# Docker: MCP laeuft im selben Container mit (ENABLE_MCP=true in .env)
+docker compose up -d
+
+# Lokal (stdio, fuer Claude Code CLI):
 python -m app.mcp_server
 
-# SSE (fuer HTTP-Clients)
+# Lokal (SSE):
 MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
 ```
 
