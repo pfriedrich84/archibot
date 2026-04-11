@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from app.config import settings
 from app.indexer import reindex_all
+from app.pipeline.classifier import _load_system_prompt
 from app.worker import poll_inbox
 
 log = structlog.get_logger(__name__)
@@ -29,9 +30,13 @@ def _masked_config() -> list[tuple[str, str]]:
 @router.get("")
 async def settings_page(request: Request):
     config_items = _masked_config()
+    try:
+        system_prompt = _load_system_prompt()
+    except Exception:
+        system_prompt = "(failed to load prompt)"
     return request.app.state.templates.TemplateResponse(
         "settings.html",
-        {"request": request, "config_items": config_items},
+        {"request": request, "config_items": config_items, "system_prompt": system_prompt},
     )
 
 
