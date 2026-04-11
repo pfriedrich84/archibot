@@ -41,6 +41,7 @@ async def test_commit_builds_correct_fields(mock_paperless, patch_db, monkeypatc
     """Verify the PATCH payload is assembled correctly."""
     monkeypatch.setattr("app.pipeline.committer.settings.paperless_inbox_tag_id", 99)
     monkeypatch.setattr("app.pipeline.committer.settings.paperless_processed_tag_id", None)
+    monkeypatch.setattr("app.pipeline.committer.settings.keep_inbox_tag", False)
 
     # Document currently has inbox tag (99) and another tag (5)
     mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="old", tags=[99, 5])
@@ -61,7 +62,7 @@ async def test_commit_builds_correct_fields(mock_paperless, patch_db, monkeypatc
     assert fields["created_date"] == "2024-03-15"
     assert fields["correspondent"] == 5
     assert fields["document_type"] == 3
-    # Tags: inbox (99) removed, existing (5) kept, new (20, 21) added
+    # Tags: inbox (99) removed (keep_inbox_tag=False), existing (5) kept, new (20, 21) added
     assert set(fields["tags"]) == {5, 20, 21}
 
 
@@ -70,6 +71,7 @@ async def test_commit_adds_processed_tag(mock_paperless, patch_db, monkeypatch):
     """When PAPERLESS_PROCESSED_TAG_ID is set, it should be added."""
     monkeypatch.setattr("app.pipeline.committer.settings.paperless_inbox_tag_id", 99)
     monkeypatch.setattr("app.pipeline.committer.settings.paperless_processed_tag_id", 77)
+    monkeypatch.setattr("app.pipeline.committer.settings.keep_inbox_tag", False)
 
     mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="old", tags=[99])
 
