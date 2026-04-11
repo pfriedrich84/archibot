@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config import settings
 from app.models import PaperlessDocument, PaperlessEntity
 from app.pipeline.context_builder import find_similar_documents
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-INBOX_TAG_ID = 99  # matches conftest env PAPERLESS_INBOX_TAG_ID
+INBOX_TAG_ID = settings.paperless_inbox_tag_id
 
 
 def _make_doc(doc_id: int, *, inbox: bool = False, **kwargs) -> PaperlessDocument:
@@ -211,17 +212,11 @@ class TestFullPromptWithContext:
         assert "Dokumenttyp:" not in target_section
         assert "Speicherpfad:" not in target_section
 
-    def test_empty_content_doc_skipped_by_find_similar(self, mock_ollama: AsyncMock):
+    @pytest.mark.asyncio
+    async def test_empty_content_doc_skipped_by_find_similar(self, mock_ollama: AsyncMock):
         """A target doc with empty content should return no context."""
-
-        async def run():
-            target = PaperlessDocument(id=1, title="", content="")
-            paperless = AsyncMock()
-            result = await find_similar_documents(target, paperless, mock_ollama, limit=5)
-            assert result == []
-            # embed should not have been called
-            mock_ollama.embed.assert_not_called()
-
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(run())
+        target = PaperlessDocument(id=1, title="", content="")
+        paperless = AsyncMock()
+        result = await find_similar_documents(target, paperless, mock_ollama, limit=5)
+        assert result == []
+        mock_ollama.embed.assert_not_called()
