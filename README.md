@@ -10,7 +10,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 
 - 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
 - 🧠 Klassifikation via Ollama (Default: `gemma3:4b`, konfigurierbar)
-- 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`sqlite-vec`)
+- 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`sqlite-vec`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - ✅ Review-GUI mit HTMX: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Optionaler OCR-Correction-Pass (nur wenn OCR erkennbar kaputt ist)
@@ -64,8 +64,9 @@ curl -LO https://raw.githubusercontent.com/pfriedrich84/paperless-ai-classifier/
 cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 
-# 2. Ollama-Modell ziehen (auf dem Ollama-Host)
+# 2. Ollama-Modelle ziehen (auf dem Ollama-Host)
 ollama pull gemma3:4b
+ollama pull nomic-embed-text-v2-moe
 
 # 3. Starten (zieht automatisch ghcr.io/pfriedrich84/paperless-ai-classifier:latest)
 docker compose up -d
@@ -90,8 +91,9 @@ cd paperless-ai-classifier
 cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 
-# 3. Ollama-Modell ziehen (auf dem Ollama-Host)
+# 3. Ollama-Modelle ziehen (auf dem Ollama-Host)
 ollama pull gemma3:4b
+ollama pull nomic-embed-text-v2-moe
 
 # 4. Bauen und starten
 docker compose up -d --build
@@ -123,7 +125,8 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 | `ENABLE_TELEGRAM` | `false` | Telegram-Bot aktivieren |
 | `TELEGRAM_BOT_TOKEN` | — | Bot-Token von @BotFather |
 | `TELEGRAM_CHAT_ID` | — | Chat-ID für Benachrichtigungen |
-| `MCP_TRANSPORT` | `stdio` | MCP-Transport: `stdio`, `sse`, `streamable-http` |
+| `ENABLE_MCP` | `false` | MCP-Server im selben Container mitlaufen lassen |
+| `MCP_TRANSPORT` | `sse` | MCP-Transport: `sse`, `streamable-http` (stdio nur lokal) |
 | `MCP_ENABLE_WRITE` | `false` | MCP-Write-Tools aktivieren |
 | `MCP_API_KEY` | — | MCP-Auth (empfohlen bei SSE) |
 
@@ -131,8 +134,8 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 
 1. Ein neues Dokument wird in Paperless hochgeladen, bekommt den Tag `Posteingang`.
 2. Worker erkennt es beim nächsten Poll, zieht Volltext + Metadaten.
-3. Context Builder sucht per Embedding-Similarity die ähnlichsten bereits klassifizierten Dokumente.
-4. Ollama bekommt System-Prompt, Kontext und den neuen Dokumenttext, liefert strukturiertes JSON.
+3. Context Builder sucht per Embedding-Similarity die ähnlichsten bereits klassifizierten Dokumente (Inbox-Dokumente werden ausgeschlossen — nur reviewte/bestätigte Docs dienen als Kontext).
+4. Ollama bekommt System-Prompt, Kontext-Dokumente **mit deren Klassifikation** (Korrespondent, Dokumenttyp, Speicherpfad, Tags) und den neuen Dokumenttext, liefert strukturiertes JSON.
 5. Eintrag landet in `suggestions` mit Status `pending`.
 6. In der GUI: durchklicken, editieren, freigeben. Tags, die noch nicht in der Whitelist sind, werden dabei **staged** und müssen separat unter `/tags` freigegeben werden, bevor sie in Paperless angelegt werden.
 7. Nach Commit: Felder werden via PATCH gegen Paperless geschrieben, optional `Processed` gesetzt. Der `Posteingang`-Tag bleibt standardmaessig erhalten (`KEEP_INBOX_TAG=true`); mit `KEEP_INBOX_TAG=false` wird er entfernt.
