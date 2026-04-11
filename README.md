@@ -140,14 +140,17 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 [Model Context Protocol](https://modelcontextprotocol.io/) Server, der Paperless-NGX und die KI-Klassifikation als Tools für KI-Assistenten (Claude Code, etc.) bereitstellt.
 
 ```bash
-# stdio (für Claude Code / lokale Nutzung)
+# Docker: MCP läuft im selben Container mit
+# In .env setzen:
+#   ENABLE_MCP=true
+#   MCP_API_KEY=ein-sicherer-key
+docker compose up -d
+
+# Lokal (stdio, für Claude Code CLI):
 python -m app.mcp_server
 
-# SSE (für HTTP-Clients)
+# Lokal (SSE):
 MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
-
-# Docker
-docker compose -f docker-compose.yml -f docker-compose.mcp.yml up
 ```
 
 ### Sicherheitskonzept
