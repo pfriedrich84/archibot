@@ -8,7 +8,51 @@
 </div>
 
 {% if tags %}
-<div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+<!-- Mobile: card layout -->
+<div class="md:hidden space-y-3">
+    {% for t in tags %}
+    <div id="tag-m-{{ t.name }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="font-medium text-sm text-gray-900">{{ t.name }}</span>
+            {% if t.approved %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                Approved
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                Pending
+            </span>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-4 text-xs text-gray-500">
+            <span>ID: {{ t.paperless_id or '—' }}</span>
+            <span>Seen {{ t.times_seen }}x</span>
+        </div>
+        {% if not t.approved %}
+        <div class="mt-3 flex gap-2">
+            <button hx-post="/tags/{{ t.name }}/approve"
+                    hx-target="#tag-m-{{ t.name }}"
+                    hx-swap="outerHTML"
+                    class="flex-1 inline-flex justify-center items-center px-3 py-2 text-sm font-medium rounded-lg
+                           bg-green-50 text-green-700 hover:bg-green-100 transition-colors">
+                Approve
+            </button>
+            <button hx-post="/tags/{{ t.name }}/reject"
+                    hx-target="#tag-m-{{ t.name }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Remove tag '{{ t.name }}' from whitelist?"
+                    class="flex-1 inline-flex justify-center items-center px-3 py-2 text-sm font-medium rounded-lg
+                           bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
+                Reject
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Desktop: table layout -->
+<div class="hidden md:block bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
     <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
             <tr>

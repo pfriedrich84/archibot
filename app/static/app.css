@@ -29,11 +29,18 @@ tr {
     position: fixed;
     top: 1rem;
     right: 1rem;
+    left: 1rem;
     z-index: 50;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     pointer-events: none;
+}
+@media (min-width: 640px) {
+    #toast-container {
+        left: auto;
+        max-width: 24rem;
+    }
 }
 .toast {
     pointer-events: auto;

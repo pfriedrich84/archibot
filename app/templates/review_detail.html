@@ -3,17 +3,17 @@
 
 {% block content %}
 <div class="mb-6">
-    <div class="flex items-center space-x-3">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
         <a href="/review" class="text-primary-600 hover:text-primary-800">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
         </a>
-        <h1 class="text-2xl font-bold text-gray-900">Review Document #{{ s.document_id }}</h1>
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Review #{{ s.document_id }}</h1>
         {% set conf = s.confidence or 0 %}
         <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
                      {{ 'bg-green-100 text-green-800' if conf >= 80 else ('bg-amber-100 text-amber-800' if conf >= 50 else 'bg-red-100 text-red-800') }}">
-            {{ conf }}% confidence
+            {{ conf }}%
         </span>
     </div>
     {% if s.reasoning %}
@@ -132,7 +132,7 @@
                 <!-- Tags -->
                 <div>
                     <label class="block text-xs font-medium text-gray-500 uppercase">Tags</label>
-                    <div class="mt-2 grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
+                    <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3">
                         {% for t in tags %}
                         {% set is_proposed = t.id in (proposed_tags | map(attribute='id') | select('defined') | list) %}
                         <label class="flex items-center space-x-2 text-sm">
@@ -152,7 +152,7 @@
             </div>
 
             <!-- Action buttons -->
-            <div class="mt-6 flex items-center space-x-3">
+            <div class="mt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button type="submit"
                         hx-post="/review/{{ s.id }}/accept"
                         hx-include="#review-form"
@@ -180,7 +180,7 @@
                         hx-target="#result-area"
                         hx-swap="innerHTML"
                         hx-confirm="Reject this suggestion?"
-                        class="inline-flex justify-center items-center px-4 py-2.5
+                        class="flex-1 sm:flex-none inline-flex justify-center items-center px-4 py-2.5
                                bg-red-600 text-white text-sm font-medium rounded-lg
                                hover:bg-red-700 focus:outline-none focus:ring-2
                                focus:ring-red-500 focus:ring-offset-2 transition-colors">
