@@ -38,13 +38,15 @@ async def inbox_list(request: Request):
     # Enrich with processing status
     items = []
     for doc in docs:
-        items.append({
-            "id": doc.id,
-            "title": doc.title,
-            "created_date": doc.created_date,
-            "added": doc.added.isoformat()[:16] if doc.added else None,
-            "status": _get_processing_status(doc.id),
-        })
+        items.append(
+            {
+                "id": doc.id,
+                "title": doc.title,
+                "created_date": doc.created_date,
+                "added": doc.added.isoformat()[:16] if doc.added else None,
+                "status": _get_processing_status(doc.id),
+            }
+        )
 
     return request.app.state.templates.TemplateResponse(
         request,
@@ -85,8 +87,13 @@ async def reprocess_document(request: Request, document_id: int):
         tags = await paperless.list_tags()
 
         await _process_document(
-            doc, paperless, ollama,
-            correspondents, doctypes, storage_paths, tags,
+            doc,
+            paperless,
+            ollama,
+            correspondents,
+            doctypes,
+            storage_paths,
+            tags,
         )
     except Exception as exc:
         log.error("reprocess failed", doc_id=document_id, error=str(exc))
@@ -96,9 +103,7 @@ async def reprocess_document(request: Request, document_id: int):
         )
 
     status = _get_processing_status(document_id)
-    return HTMLResponse(
-        _render_row(document_id, doc.title, doc.created_date, doc.added, status)
-    )
+    return HTMLResponse(_render_row(document_id, doc.title, doc.created_date, doc.added, status))
 
 
 def _status_badge(status: str) -> str:
@@ -124,7 +129,11 @@ def _render_row(
     added: object | None,
     status: str,
 ) -> str:
-    added_str = added.isoformat()[:16] if hasattr(added, "isoformat") else (str(added)[:16] if added else "—")
+    added_str = (
+        added.isoformat()[:16]
+        if hasattr(added, "isoformat")
+        else (str(added)[:16] if added else "—")
+    )
     badge = _status_badge(status)
     return (
         f'<tr id="doc-{doc_id}" class="hover:bg-gray-50 transition-colors">'
