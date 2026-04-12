@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Literal
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,6 +26,8 @@ from app.pipeline.ocr_correction import maybe_correct_ocr
 from app.telegram_handler import notify_suggestion
 
 log = structlog.get_logger(__name__)
+
+ProcessResult = Literal["skipped", "classified", "auto_committed"]
 
 # Module-level refs set by start_scheduler
 _paperless: PaperlessClient | None = None
@@ -194,7 +197,7 @@ async def _process_document(
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
-) -> None:
+) -> ProcessResult:
     """Run the full classification pipeline for a single document."""
     doc_id = doc.id
 
@@ -209,8 +212,8 @@ async def _process_document(
         stored_ts = row["last_updated_at"]
         doc_ts = (doc.modified or datetime.now(tz=UTC)).isoformat()
         if stored_ts == doc_ts and row["status"] != "error":
-            log.debug("document already processed", doc_id=doc_id)
-            return
+            log.debug("document already processed", doc_id=doc_id, status=row["status"])
+            return "skipped"
 
     log.info("processing document", doc_id=doc_id, title=doc.title[:80])
 
@@ -282,6 +285,8 @@ async def _process_document(
     # Index for future context
     await context_builder.index_document(doc, ollama)
 
+    return "auto_committed" if will_auto_commit else "classified"
+
 
 # ---------------------------------------------------------------------------
 # Main poll loop
@@ -315,9 +320,14 @@ async def poll_inbox() -> None:
         _write_error("poll", None, exc)
         return
 
+    skipped = 0
+    classified = 0
+    auto_committed = 0
+    errored = 0
+
     for doc in docs:
         try:
-            await _process_document(
+            result = await _process_document(
                 doc,
                 _paperless,
                 _ollama,
@@ -326,9 +336,25 @@ async def poll_inbox() -> None:
                 storage_paths,
                 tags,
             )
+            if result == "skipped":
+                skipped += 1
+            elif result == "auto_committed":
+                auto_committed += 1
+            else:
+                classified += 1
         except Exception as exc:
+            errored += 1
             log.error("pipeline failed for document", doc_id=doc.id, error=str(exc))
             _write_error("classify", doc.id, exc)
+
+    log.info(
+        "poll cycle complete",
+        total=len(docs),
+        skipped=skipped,
+        classified=classified,
+        auto_committed=auto_committed,
+        errored=errored,
+    )
 
 
 def _write_error(stage: str, doc_id: int | None, exc: Exception) -> None:
