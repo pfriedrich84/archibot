@@ -1,6 +1,15 @@
-"""Tests for worker entity resolution and tag handling."""
+"""Tests for worker entity resolution, tag handling, and poll cycle logging."""
 
-from app.worker import _resolve_entity, _resolve_tags
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+import structlog
+
+from app.models import PaperlessDocument
+from app.worker import _process_document, _resolve_entity, _resolve_tags, poll_inbox
 
 
 class TestResolveEntity:
@@ -77,3 +86,117 @@ class TestResolveTags:
         proposed = [{"name": "Finanzen"}]  # no confidence key
         _ids, dicts = _resolve_tags(proposed, sample_entities)
         assert dicts[0]["confidence"] == 50  # default
+
+
+class TestProcessDocumentReturn:
+    """Verify _process_document returns the correct ProcessResult."""
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_already_processed(self, patch_db, tmp_db):
+        """A document already in processed_documents (matching timestamp, non-error) returns 'skipped'."""
+        import sqlite3
+
+        doc = PaperlessDocument(
+            id=42,
+            title="Test Doc",
+            content="some text",
+            modified=datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC),
+            tags=[99],
+        )
+        # Pre-insert a matching processed_documents row
+        conn = sqlite3.connect(str(tmp_db))
+        conn.execute(
+            "INSERT INTO processed_documents (document_id, last_updated_at, last_processed, status) "
+            "VALUES (?, ?, datetime('now'), 'committed')",
+            (42, doc.modified.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        result = await _process_document(
+            doc,
+            AsyncMock(),  # paperless (unused for skip path)
+            AsyncMock(),  # ollama (unused for skip path)
+            [],
+            [],
+            [],
+            [],
+        )
+        assert result == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_skipped_includes_status_in_debug_log(self, patch_db, tmp_db):
+        """The debug log for skipped documents includes the stored status."""
+        import sqlite3
+
+        doc = PaperlessDocument(
+            id=42,
+            title="Test Doc",
+            content="some text",
+            modified=datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC),
+            tags=[99],
+        )
+        conn = sqlite3.connect(str(tmp_db))
+        conn.execute(
+            "INSERT INTO processed_documents (document_id, last_updated_at, last_processed, status) "
+            "VALUES (?, ?, datetime('now'), 'pending')",
+            (42, doc.modified.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        cap = structlog.testing.CapturingLogger()
+        with structlog.testing.capture_logs() as logs:
+            result = await _process_document(
+                doc, AsyncMock(), AsyncMock(), [], [], [], [],
+            )
+
+        assert result == "skipped"
+        skip_logs = [l for l in logs if l.get("event") == "document already processed"]
+        assert len(skip_logs) == 1
+        assert skip_logs[0]["status"] == "pending"
+        assert skip_logs[0]["doc_id"] == 42
+
+
+class TestPollCycleSummary:
+    """Verify poll_inbox logs a summary with correct counters."""
+
+    @pytest.mark.asyncio
+    async def test_all_skipped_summary(self, patch_db, tmp_db, sample_doc):
+        """When all docs are already processed, summary shows all skipped."""
+        import sqlite3
+
+        doc = sample_doc
+        doc.modified = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+
+        # Pre-insert as already processed
+        conn = sqlite3.connect(str(tmp_db))
+        conn.execute(
+            "INSERT INTO processed_documents (document_id, last_updated_at, last_processed, status) "
+            "VALUES (?, ?, datetime('now'), 'committed')",
+            (doc.id, doc.modified.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        mock_paperless = AsyncMock()
+        mock_paperless.list_inbox_documents = AsyncMock(return_value=[doc])
+        mock_paperless.list_correspondents = AsyncMock(return_value=[])
+        mock_paperless.list_document_types = AsyncMock(return_value=[])
+        mock_paperless.list_storage_paths = AsyncMock(return_value=[])
+        mock_paperless.list_tags = AsyncMock(return_value=[])
+
+        with (
+            patch("app.worker._paperless", mock_paperless),
+            patch("app.worker._ollama", AsyncMock()),
+            structlog.testing.capture_logs() as logs,
+        ):
+            await poll_inbox()
+
+        summary = [l for l in logs if l.get("event") == "poll cycle complete"]
+        assert len(summary) == 1
+        assert summary[0]["total"] == 1
+        assert summary[0]["skipped"] == 1
+        assert summary[0]["classified"] == 0
+        assert summary[0]["auto_committed"] == 0
+        assert summary[0]["errored"] == 0
