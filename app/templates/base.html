@@ -50,11 +50,23 @@
                     {% endfor %}
                 </div>
             </div>
+            <!-- Hamburger button (mobile only) -->
+            <button id="mobile-menu-btn" type="button"
+                    class="md:hidden inline-flex items-center justify-center p-2 rounded-md
+                           text-primary-100 hover:text-white hover:bg-primary-600 transition-colors"
+                    aria-expanded="false" aria-label="Toggle navigation">
+                <svg id="menu-icon-open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+                <svg id="menu-icon-close" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
     </div>
 
-    <!-- Mobile nav -->
-    <div class="md:hidden border-t border-primary-600 px-2 py-2 space-y-1">
+    <!-- Mobile nav (hidden by default, toggled by hamburger) -->
+    <div id="mobile-menu" class="md:hidden border-t border-primary-600 px-2 py-2 space-y-1 hidden">
         {% for href, label in nav.items() %}
         <a href="{{ href }}"
            class="block px-3 py-2 rounded-md text-sm font-medium
@@ -89,6 +101,23 @@
 <!-- Toast container -->
 <div id="toast-container"></div>
 <script>
+// Mobile hamburger menu toggle
+(function() {
+    var btn = document.getElementById("mobile-menu-btn");
+    var menu = document.getElementById("mobile-menu");
+    var iconOpen = document.getElementById("menu-icon-open");
+    var iconClose = document.getElementById("menu-icon-close");
+    if (btn && menu) {
+        btn.addEventListener("click", function() {
+            var expanded = menu.classList.toggle("hidden");
+            // expanded is true when we just added 'hidden' (menu closed)
+            btn.setAttribute("aria-expanded", !expanded);
+            iconOpen.classList.toggle("hidden");
+            iconClose.classList.toggle("hidden");
+        });
+    }
+})();
+
 document.body.addEventListener("showToast", function(evt) {
     var d = evt.detail;
     var msg = (typeof d === "string") ? d : (d.message || d.value || "");
