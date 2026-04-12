@@ -155,8 +155,6 @@ async def test_ollama(
             )
 
         # Fetch available models for selection
-        import httpx
-
         r = await client._client.get("/api/tags")
         r.raise_for_status()
         models = [m.get("name", "") for m in r.json().get("models", [])]
@@ -220,9 +218,6 @@ async def test_telegram(
     # Create a client with telegram enabled temporarily
     client = TelegramClient(token=telegram_bot_token, chat_id=telegram_chat_id)
     try:
-        # Temporarily force enabled
-        import httpx
-
         payload = {
             "chat_id": telegram_chat_id,
             "text": "Test from Paperless AI Classifier setup",
