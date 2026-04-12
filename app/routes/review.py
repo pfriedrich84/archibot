@@ -29,8 +29,9 @@ async def review_list(request: Request):
         ).fetchall()
     suggestions = [_row_to_suggestion(r) for r in rows]
     return request.app.state.templates.TemplateResponse(
+        request,
         "review.html",
-        {"request": request, "suggestions": suggestions},
+        {"suggestions": suggestions},
     )
 
 
@@ -74,9 +75,9 @@ async def review_detail(request: Request, suggestion_id: int):
     paperless_url = request.app.state.paperless.base_url
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "review_detail.html",
         {
-            "request": request,
             "s": suggestion,
             "correspondents": correspondents,
             "doctypes": doctypes,

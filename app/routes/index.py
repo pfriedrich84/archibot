@@ -37,9 +37,9 @@ async def dashboard(request: Request):
         ).fetchone()["c"]
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "pending": pending,
             "committed_today": committed_today,
             "error_count": error_count,

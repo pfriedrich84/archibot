@@ -63,9 +63,9 @@ async def stats_page(request: Request):
         ).fetchone()["c"]
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "stats.html",
         {
-            "request": request,
             "status_counts": status_counts,
             "daily": daily,
             "total_docs": total_docs,
