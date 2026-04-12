@@ -81,8 +81,7 @@ async def test_paperless(
 ):
     if not paperless_url or not paperless_token:
         return HTMLResponse(
-            '<div class="text-red-600 text-sm font-medium mt-2">'
-            "URL and Token are required.</div>"
+            '<div class="text-red-600 text-sm font-medium mt-2">URL and Token are required.</div>'
         )
 
     from app.clients.paperless import PaperlessClient
@@ -99,7 +98,8 @@ async def test_paperless(
         # Fetch tags for inbox tag selection
         tags = await client.list_tags()
         options = "".join(
-            f'<option value="{t.id}">{t.name} (ID: {t.id})</option>' for t in sorted(tags, key=lambda t: t.name)
+            f'<option value="{t.id}">{t.name} (ID: {t.id})</option>'
+            for t in sorted(tags, key=lambda t: t.name)
         )
 
         return HTMLResponse(
@@ -121,8 +121,7 @@ async def test_paperless(
     except Exception as exc:
         log.warning("paperless test failed", error=str(exc))
         return HTMLResponse(
-            f'<div class="text-red-600 text-sm font-medium mt-2">'
-            f"Error: {exc}</div>"
+            f'<div class="text-red-600 text-sm font-medium mt-2">Error: {exc}</div>'
         )
     finally:
         await client.aclose()
@@ -139,8 +138,7 @@ async def test_ollama(
 ):
     if not ollama_url:
         return HTMLResponse(
-            '<div class="text-red-600 text-sm font-medium mt-2">'
-            "URL is required.</div>"
+            '<div class="text-red-600 text-sm font-medium mt-2">URL is required.</div>'
         )
 
     from app.clients.ollama import OllamaClient
@@ -155,8 +153,6 @@ async def test_ollama(
             )
 
         # Fetch available models for selection
-        import httpx
-
         r = await client._client.get("/api/tags")
         r.raise_for_status()
         models = [m.get("name", "") for m in r.json().get("models", [])]
@@ -182,7 +178,7 @@ async def test_ollama(
             model_html = (
                 '<div class="mt-2 text-amber-600 text-sm">'
                 "No models found. Pull a model first: "
-                '<code>ollama pull gemma4:e2b</code></div>'
+                "<code>ollama pull gemma4:e2b</code></div>"
             )
 
         return HTMLResponse(
@@ -193,8 +189,7 @@ async def test_ollama(
     except Exception as exc:
         log.warning("ollama test failed", error=str(exc))
         return HTMLResponse(
-            f'<div class="text-red-600 text-sm font-medium mt-2">'
-            f"Error: {exc}</div>"
+            f'<div class="text-red-600 text-sm font-medium mt-2">Error: {exc}</div>'
         )
     finally:
         await client.aclose()
@@ -221,8 +216,6 @@ async def test_telegram(
     client = TelegramClient(token=telegram_bot_token, chat_id=telegram_chat_id)
     try:
         # Temporarily force enabled
-        import httpx
-
         payload = {
             "chat_id": telegram_chat_id,
             "text": "Test from Paperless AI Classifier setup",
@@ -240,8 +233,7 @@ async def test_telegram(
     except Exception as exc:
         log.warning("telegram test failed", error=str(exc))
         return HTMLResponse(
-            f'<div class="text-red-600 text-sm font-medium mt-2">'
-            f"Error: {exc}</div>"
+            f'<div class="text-red-600 text-sm font-medium mt-2">Error: {exc}</div>'
         )
     finally:
         await client.aclose()
@@ -281,8 +273,7 @@ async def complete_setup(request: Request):
     inbox_tag = config.get("paperless_inbox_tag_id")
     if not inbox_tag or str(inbox_tag) == "0":
         return HTMLResponse(
-            '<div class="text-red-600 text-sm font-medium mt-2">'
-            "Please select an inbox tag.</div>",
+            '<div class="text-red-600 text-sm font-medium mt-2">Please select an inbox tag.</div>',
             status_code=400,
         )
 

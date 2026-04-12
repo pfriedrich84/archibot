@@ -145,14 +145,19 @@ class TestProcessDocumentReturn:
         conn.commit()
         conn.close()
 
-        cap = structlog.testing.CapturingLogger()
         with structlog.testing.capture_logs() as logs:
             result = await _process_document(
-                doc, AsyncMock(), AsyncMock(), [], [], [], [],
+                doc,
+                AsyncMock(),
+                AsyncMock(),
+                [],
+                [],
+                [],
+                [],
             )
 
         assert result == "skipped"
-        skip_logs = [l for l in logs if l.get("event") == "document already processed"]
+        skip_logs = [entry for entry in logs if entry.get("event") == "document already processed"]
         assert len(skip_logs) == 1
         assert skip_logs[0]["status"] == "pending"
         assert skip_logs[0]["doc_id"] == 42
@@ -193,7 +198,7 @@ class TestPollCycleSummary:
         ):
             await poll_inbox()
 
-        summary = [l for l in logs if l.get("event") == "poll cycle complete"]
+        summary = [entry for entry in logs if entry.get("event") == "poll cycle complete"]
         assert len(summary) == 1
         assert summary[0]["total"] == 1
         assert summary[0]["skipped"] == 1
