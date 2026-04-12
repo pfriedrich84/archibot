@@ -10,7 +10,9 @@ import pytest
 from app.clients.ollama import OllamaClient
 
 
-def _make_response(status_code: int, json_body: dict | None = None, text: str = "") -> httpx.Response:
+def _make_response(
+    status_code: int, json_body: dict | None = None, text: str = ""
+) -> httpx.Response:
     """Build a minimal httpx.Response for testing."""
     r = httpx.Response(
         status_code=status_code,
@@ -36,9 +38,7 @@ def client() -> OllamaClient:
 async def test_embed_succeeds_without_retry(client: OllamaClient):
     """Successful embed on first attempt — no retries needed."""
     embedding = [0.1] * 768
-    client._client.post = AsyncMock(
-        return_value=_make_response(200, {"embedding": embedding})
-    )
+    client._client.post = AsyncMock(return_value=_make_response(200, {"embedding": embedding}))
 
     result = await client.embed("hello world")
 
