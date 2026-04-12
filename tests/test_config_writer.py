@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections import OrderedDict
 from pathlib import Path
 
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # read_env_file / write_env_file
