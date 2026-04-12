@@ -3,8 +3,12 @@ services:
     image: ghcr.io/pfriedrich84/paperless-ai-classifier:latest
     container_name: paperless-ai-classifier
     restart: unless-stopped
-    env_file:
-      - .env
+    # Environment variables can be set via:
+    #   - env_file: .env (uncomment below)
+    #   - Dockhand GUI environment editor
+    #   - docker compose --env-file .env up
+    # env_file:
+    #   - .env
     ports:
       - "${GUI_PORT:-8088}:8088"
       - "${MCP_PORT:-3001}:3001"   # MCP SSE (nur bei ENABLE_MCP=true)
