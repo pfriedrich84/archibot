@@ -20,8 +20,9 @@ async def tag_list(request: Request):
         ).fetchall()
     tags = [dict(r) for r in rows]
     return request.app.state.templates.TemplateResponse(
+        request,
         "tags.html",
-        {"request": request, "tags": tags},
+        {"tags": tags},
     )
 
 

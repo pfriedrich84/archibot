@@ -39,9 +39,9 @@ async def settings_page(request: Request):
         system_prompt = "(failed to load prompt)"
     is_custom = _prompt_override_path().is_file()
     return request.app.state.templates.TemplateResponse(
+        request,
         "settings.html",
         {
-            "request": request,
             "config_items": config_items,
             "system_prompt": system_prompt,
             "is_custom_prompt": is_custom,

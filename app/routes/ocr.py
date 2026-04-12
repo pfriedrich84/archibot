@@ -10,6 +10,6 @@ router = APIRouter(prefix="/ocr")
 @router.get("")
 async def ocr_list(request: Request):
     return request.app.state.templates.TemplateResponse(
+        request,
         "ocr.html",
-        {"request": request},
     )

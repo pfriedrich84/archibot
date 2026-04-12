@@ -18,8 +18,9 @@ async def error_list(request: Request):
         rows = conn.execute("SELECT * FROM errors ORDER BY occurred_at DESC LIMIT 100").fetchall()
     errors = [dict(r) for r in rows]
     return request.app.state.templates.TemplateResponse(
+        request,
         "errors.html",
-        {"request": request, "errors": errors},
+        {"errors": errors},
     )
 
 
