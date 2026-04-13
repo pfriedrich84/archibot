@@ -5,6 +5,8 @@
 # pip
 CVE-2025-8869
 CVE-2026-1703
+ECHO-ffe1-1d3c-d9bc
+ECHO-7db2-03aa-5591
 # setuptools (package_index path traversal — easy_install is deprecated)
 PYSEC-2025-49
 CVE-2024-6345
