@@ -9,15 +9,21 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 ## Features
 
 - 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
-- 🧠 Klassifikation via Ollama (Default: `gemma3:4b`, konfigurierbar)
+- 🧠 Klassifikation via Ollama (Default: `gemma4:e2b`, konfigurierbar)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`sqlite-vec`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - ✅ Review-GUI mit HTMX: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
-- 📝 Optionaler OCR-Correction-Pass (nur wenn OCR erkennbar kaputt ist)
+- 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`)
 - 🗄️ SQLite-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
 - 🤖 Telegram-Bot: Vorschläge direkt im Chat annehmen/ablehnen (optional)
 - 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
+- 🚀 Setup-Wizard: Geführtes Onboarding mit Verbindungstests beim ersten Start (`/setup`)
+- 📊 Embeddings-Dashboard: Vektor-DB-Inspektion und Similarity-Search (`/embeddings`)
+- 📥 Inbox-View: Posteingang mit Dokumenten-Karten und Bulk-Aktionen (`/inbox`)
+- 🏷️ Tag-Blacklist: Unerwünschte Tags dauerhaft unterdrücken (`/tags`)
+- 🔔 Webhook-Support: Sofortige Verarbeitung als Alternative/Ergänzung zum Polling
+- ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/settings`)
 - 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/paperless-ai-classifier)
 
 ## Architektur
@@ -44,8 +50,12 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
         │                     ┌──────────────────────┐
         └─────────────────────│  FastAPI + HTMX GUI  │
                               │   - /review          │
+                              │   - /inbox           │
                               │   - /tags            │
+                              │   - /embeddings      │
                               │   - /stats           │
+                              │   - /settings        │
+                              │   - /setup           │
                               │   - /errors          │
                               └──────────────────────┘
                                          ▲
@@ -65,7 +75,7 @@ cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 
 # 2. Ollama-Modelle ziehen (auf dem Ollama-Host)
-ollama pull gemma3:4b
+ollama pull gemma4:e2b
 ollama pull nomic-embed-text-v2-moe
 
 # 3. Starten (zieht automatisch ghcr.io/pfriedrich84/paperless-ai-classifier:latest)
@@ -92,7 +102,7 @@ cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 
 # 3. Ollama-Modelle ziehen (auf dem Ollama-Host)
-ollama pull gemma3:4b
+ollama pull gemma4:e2b
 ollama pull nomic-embed-text-v2-moe
 
 # 4. Bauen und starten
@@ -116,7 +126,7 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag, der nach Commit gesetzt wird |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama-Endpoint |
-| `OLLAMA_MODEL` | `gemma3:4b` | Klassifikations-Modell |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Klassifikations-Modell |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text-v2-moe` | Embedding-Modell für Kontext (multilingual) |
 | `OLLAMA_EMBED_RETRIES` | `3` | Anzahl Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
 | `OLLAMA_EMBED_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden für exponentiellen Backoff |
@@ -131,6 +141,12 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 | `MCP_TRANSPORT` | `sse` | MCP-Transport: `sse`, `streamable-http` (stdio nur lokal) |
 | `MCP_ENABLE_WRITE` | `false` | MCP-Write-Tools aktivieren |
 | `MCP_API_KEY` | — | MCP-Auth (empfohlen bei SSE) |
+| `OLLAMA_OCR_MODEL` | `gemma3:1b` | Kleineres Modell für Text-Only OCR-Korrektur |
+| `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
+| `OCR_VISION_MODEL` | *(= OLLAMA_MODEL)* | Vision-Modell für OCR (muss vision-fähig sein) |
+| `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten für Vision-OCR |
+| `OCR_VISION_DPI` | `150` | Render-Auflösung für PDF-Seiten |
+| `WEBHOOK_SECRET` | — | Shared Secret für `POST /webhook/paperless` |
 
 ## Review-Workflow
 
@@ -177,8 +193,8 @@ MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
 | KI | `classify_document` (rate-limited), `find_similar_documents` | read-only |
 | Suggestions | `list_suggestions`, `get_suggestion` | read-only |
 | Suggestions | `approve_suggestion`, `reject_suggestion` | write (opt-in) |
-| Tags | `list_tag_proposals` | read-only |
-| Tags | `approve_tag` | write (opt-in) |
+| Tags | `list_tag_proposals`, `list_blacklisted_tags` | read-only |
+| Tags | `approve_tag`, `unblacklist_tag` | write (opt-in) |
 | System | `get_status` | read-only |
 
 ### MCP-Konfiguration

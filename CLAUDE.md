@@ -38,7 +38,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
                "Diese 3 aehnlichen Dokumente wurden so klassifiziert: ..."
                + Zieldokument
                        |
-                  [Klassifikation]     ← gemma3:4b
+                  [Klassifikation]     ← gemma4:e2b
                        |
                 JSON-Vorschlag mit hoher Konfidenz
 ```
@@ -62,7 +62,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
    aus dem Kontext — ein generischer Prompt wuerde raten.
 
 4. **Kleine Modelle, grosse Ergebnisse:** Durch den reichen Kontext kann ein
-   kompaktes Modell wie `gemma3:4b` (4 Milliarden Parameter) Ergebnisse liefern,
+   kompaktes Modell wie `gemma4:e2b` Ergebnisse liefern,
    die ohne Kontext ein deutlich groesseres Modell erfordern wuerden. Der Kontext
    kompensiert fehlende Modellkapazitaet.
 
@@ -113,6 +113,7 @@ app/
   worker.py            APScheduler-Job: poll_inbox() mit Phasen-Pipeline
   indexer.py           Initialer + inkrementeller Reindex der Embeddings
   telegram_handler.py  Telegram-Benachrichtigungen + Inline-Keyboard-Callbacks
+  config_writer.py     Persistente Settings: config.env schreiben + hot-reload
   clients/
     paperless.py       Paperless-NGX API Client
     ollama.py          Ollama Chat + Embedding Client
@@ -141,16 +142,28 @@ app/
     ocr.py             OCR-Korrektur-Vorschlaege (optional)
     errors.py          Fehlerliste + Retry
     stats.py           Counters, Graphen
-    settings.py        Read-only View auf Config, Trigger fuer manuellen Run
+    settings.py        Config-Editor, Prompt-Editor, Trigger fuer manuellen Run
     webhook.py         Optional: Webhook-Endpoint fuer Paperless-Trigger
+    inbox.py           Inbox-Ansicht: Dokumenten-Karten + Bulk-Aktionen
+    embeddings.py      Vektor-DB Dashboard + Similarity-Search
+    setup.py           Onboarding-Wizard mit Verbindungstests
   templates/           Jinja2 + HTMX
-  static/              CSS
+  static/              CSS + lokal gebundelte htmx.min.js
 prompts/
   classify_system.txt          System-Prompt fuer Klassifikation (Deutsch)
   ocr_correction_system.txt    System-Prompt fuer Text-Only OCR-Correction
   ocr_vision_light_system.txt  System-Prompt fuer Vision-OCR (Bild + Text vergleichen)
   ocr_vision_full_system.txt   System-Prompt fuer Vision-OCR (Seite-fuer-Seite)
 entrypoint.sh            Startet Uvicorn + optional MCP-Server (ENABLE_MCP=true)
+docs/
+  architecture.md        Gesamtarchitektur + Datenfluss-Diagramme
+  webhooks.md            Webhook-Konfigurationsanleitung
+tests/                   pytest-Tests (conftest + 14 test_*.py)
+scripts/
+  check_dependency_age.py  CI-Check: 14-Tage-Mindestalter fuer Dependencies
+.github/workflows/
+  ci.yml                 Lint, Tests, Audit, Docker Build
+  docker-publish.yml     GHCR Image Publish bei Release/Push
 ```
 
 ## Paperless-API-Reference (nur was wir brauchen)
@@ -269,7 +282,7 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                   |         |
                +--+---------+----------------+
                | Phase 3: Klassifikation     |  OLLAMA_MODEL
-               | Fuer alle Docs:             |  (gemma3:4b)
+               | Fuer alle Docs:             |  (gemma4:e2b)
                |   classify() mit Kontext    |
                |   Suggestion speichern      |
                |   Telegram / Auto-Commit    |
@@ -557,4 +570,3 @@ Install (mit constraints.txt)
 - [ ] Re-Embedding-Job wenn das Embedding-Modell wechselt
 - [ ] Metrics-Endpoint (Prometheus)
 - [ ] Bulk-Approve in der Review-GUI
-- [ ] Webhook-Trigger von Paperless statt Polling (Paperless unterstuetzt das nicht nativ, braeuchte ein Custom-Consumer-Hook)
