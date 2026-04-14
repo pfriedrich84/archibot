@@ -155,16 +155,20 @@ Alle Einstellungen laufen über `.env`. Siehe `.env.example` für die vollständ
 
 ## CLI Commands
 
-Pipeline-Phasen können einzeln via CLI ausgelöst werden — nützlich zum Testen:
+Pipeline-Phasen können einzeln via CLI ausgelöst werden — nützlich zum Testen und für Wartung:
 
 ```bash
 paperless-classify reindex        # Voller Reindex (OCR + Embedding)
 paperless-classify reindex-ocr    # Nur OCR-Korrektur
 paperless-classify reindex-embed  # Nur Embeddings neu berechnen
 paperless-classify poll           # Inbox verarbeiten (OCR + Embed + Klassifikation)
+paperless-classify reset --yes    # DB löschen und leere DB erstellen
+paperless-classify reset --yes --include-config  # Zusätzlich config.env löschen
 ```
 
 Alternativ: `python -m app.cli <command>`
+
+Ausführliche Dokumentation aller Befehle: **[docs/cli.md](./docs/cli.md)**
 
 ## Review-Workflow
 

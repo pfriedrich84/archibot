@@ -163,6 +163,7 @@ entrypoint.sh            Startet Uvicorn + optional MCP-Server (ENABLE_MCP=true)
 docs/
   architecture.md        Gesamtarchitektur + Datenfluss-Diagramme
   webhooks.md            Webhook-Konfigurationsanleitung
+  cli.md                 CLI-Befehlsreferenz (alle Commands mit Flags)
 tests/                   pytest-Tests (conftest + 14 test_*.py)
 scripts/
   check_dependency_age.py  CI-Check: 3-Tage-Mindestalter fuer Dependencies
@@ -401,9 +402,17 @@ paperless-classify reindex-embed
 
 # Inbox verarbeiten: OCR + Embedding + Klassifikation
 paperless-classify poll
+
+# Container zuruecksetzen: DB loeschen + leere DB erstellen
+paperless-classify reset --yes
+
+# Container zuruecksetzen inkl. config.env (Werkseinstellungen)
+paperless-classify reset --yes --include-config
 ```
 
 Alternativ via `python -m app.cli <command>`.
+
+Ausfuehrliche Dokumentation: `docs/cli.md`
 
 ## Pre-Commit Checks (WICHTIG)
 
