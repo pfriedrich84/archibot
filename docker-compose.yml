@@ -1,8 +1,20 @@
 services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.13
+    container_name: meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_API_KEY:-changeme}
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilisearch_data:/meili_data
+
   paperless-ai-classifier:
     image: ghcr.io/pfriedrich84/paperless-ai-classifier:${IMAGE_TAG:-latest}
     container_name: paperless-ai-classifier
     restart: unless-stopped
+    depends_on:
+      - meilisearch
     environment:
       # --- Paperless-NGX (required) ---
       PAPERLESS_URL: ${PAPERLESS_URL}
@@ -56,6 +68,11 @@ services:
       MCP_API_KEY: ${MCP_API_KEY:-}
       MCP_CLASSIFY_RATE_LIMIT: ${MCP_CLASSIFY_RATE_LIMIT:-10}
 
+      # --- Meilisearch ---
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY:-changeme}
+      MEILISEARCH_HYBRID_RATIO: ${MEILISEARCH_HYBRID_RATIO:-0.5}
+
       # --- Storage / Logging ---
       DATA_DIR: ${DATA_DIR:-/data}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -72,6 +89,8 @@ services:
 
 volumes:
   paperless_ai_data:
+    driver: local
+  meilisearch_data:
     driver: local
 
 # networks:

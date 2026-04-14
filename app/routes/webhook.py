@@ -45,6 +45,7 @@ async def paperless_webhook(
 
     paperless = request.app.state.paperless
     ollama = request.app.state.ollama
+    meili = request.app.state.meili
     doc_id = payload.document_id
 
     log.info("webhook triggered", document_id=doc_id)
@@ -60,6 +61,7 @@ async def paperless_webhook(
             doc,
             paperless,
             ollama,
+            meili,
             correspondents,
             doctypes,
             storage_paths,
