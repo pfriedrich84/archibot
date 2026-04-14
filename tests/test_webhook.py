@@ -1,4 +1,4 @@
-"""Tests for webhook endpoints (full processing + embedding-only)."""
+"""Tests for webhook endpoints (/webhook/new + /webhook/edit)."""
 
 from __future__ import annotations
 
@@ -93,14 +93,14 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# POST /webhook/paperless — full processing
+# POST /webhook/new — full processing
 # ---------------------------------------------------------------------------
-class TestWebhookPaperless:
+class TestWebhookNew:
     """Full-processing webhook endpoint."""
 
     @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
     def test_legacy_format(self, mock_process, client):
-        r = client.post("/webhook/paperless", json={"document_id": 42})
+        r = client.post("/webhook/new", json={"document_id": 42})
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
         mock_process.assert_awaited_once()
@@ -108,19 +108,19 @@ class TestWebhookPaperless:
     @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
     def test_workflow_format(self, mock_process, client):
         payload = {"event": "document_created", "object": {"id": 42, "title": "Test"}}
-        r = client.post("/webhook/paperless", json=payload)
+        r = client.post("/webhook/new", json=payload)
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
         mock_process.assert_awaited_once()
 
     def test_missing_document_id(self, client):
-        r = client.post("/webhook/paperless", json={"foo": "bar"})
+        r = client.post("/webhook/new", json={"foo": "bar"})
         assert r.status_code == 422
 
     @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
     def test_auth_required(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
-        r = client.post("/webhook/paperless", json={"document_id": 42})
+        r = client.post("/webhook/new", json={"document_id": 42})
         assert r.status_code == 403
         mock_process.assert_not_awaited()
 
@@ -128,7 +128,7 @@ class TestWebhookPaperless:
     def test_auth_success(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
         r = client.post(
-            "/webhook/paperless",
+            "/webhook/new",
             json={"document_id": 42},
             headers={"X-Webhook-Secret": "my-secret"},
         )
@@ -137,88 +137,78 @@ class TestWebhookPaperless:
 
     @patch("app.routes.webhook.is_reindexing", return_value=True)
     def test_reindex_guard(self, _mock_reindex, client):
-        r = client.post("/webhook/paperless", json={"document_id": 42})
+        r = client.post("/webhook/new", json={"document_id": 42})
         assert r.status_code == 503
 
 
 # ---------------------------------------------------------------------------
-# POST /embeddings — embedding-only webhook
+# POST /webhook/edit — embedding-only
 # ---------------------------------------------------------------------------
-class TestEmbeddingsWebhook:
+class TestWebhookEdit:
     """Embedding-only webhook endpoint."""
 
-    @patch(
-        "app.routes.embeddings.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0)
-    )
-    @patch("app.routes.embeddings.context_builder")
+    @patch("app.routes.webhook.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0))
+    @patch("app.routes.webhook.context_builder")
     def test_workflow_format(self, mock_cb, _mock_ocr, client):
         mock_cb.document_summary.return_value = "Test summary"
         payload = {"event": "document_updated", "object": {"id": 42}}
-        r = client.post("/embeddings", json=payload)
+        r = client.post("/webhook/edit", json=payload)
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "ok"
         assert data["action"] == "reembedded"
         mock_cb.store_embedding.assert_called_once()
 
-    @patch(
-        "app.routes.embeddings.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0)
-    )
-    @patch("app.routes.embeddings.context_builder")
+    @patch("app.routes.webhook.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0))
+    @patch("app.routes.webhook.context_builder")
     def test_legacy_format(self, mock_cb, _mock_ocr, client):
         mock_cb.document_summary.return_value = "Test summary"
-        r = client.post("/embeddings", json={"document_id": 42})
+        r = client.post("/webhook/edit", json={"document_id": 42})
         assert r.status_code == 200
         assert r.json()["action"] == "reembedded"
         mock_cb.store_embedding.assert_called_once()
 
     def test_missing_document_id(self, client):
-        r = client.post("/embeddings", json={"foo": "bar"})
+        r = client.post("/webhook/edit", json={"foo": "bar"})
         assert r.status_code == 422
 
-    @patch(
-        "app.routes.embeddings.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0)
-    )
-    @patch("app.routes.embeddings.context_builder")
+    @patch("app.routes.webhook.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0))
+    @patch("app.routes.webhook.context_builder")
     def test_auth_required(self, mock_cb, _mock_ocr, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
-        r = client.post("/embeddings", json={"document_id": 42})
+        r = client.post("/webhook/edit", json={"document_id": 42})
         assert r.status_code == 403
         mock_cb.store_embedding.assert_not_called()
 
-    @patch(
-        "app.routes.embeddings.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0)
-    )
-    @patch("app.routes.embeddings.context_builder")
+    @patch("app.routes.webhook.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0))
+    @patch("app.routes.webhook.context_builder")
     def test_auth_success(self, mock_cb, _mock_ocr, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
         mock_cb.document_summary.return_value = "Test summary"
         r = client.post(
-            "/embeddings",
+            "/webhook/edit",
             json={"document_id": 42},
             headers={"X-Webhook-Secret": "my-secret"},
         )
         assert r.status_code == 200
         assert r.json()["action"] == "reembedded"
 
-    @patch("app.routes.embeddings.is_reindexing", return_value=True)
+    @patch("app.routes.webhook.is_reindexing", return_value=True)
     def test_reindex_guard(self, _mock_reindex, client):
-        r = client.post("/embeddings", json={"document_id": 42})
+        r = client.post("/webhook/edit", json={"document_id": 42})
         assert r.status_code == 503
 
-    @patch(
-        "app.routes.embeddings.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0)
-    )
-    @patch("app.routes.embeddings.context_builder")
+    @patch("app.routes.webhook.maybe_correct_ocr", new_callable=AsyncMock, return_value=("text", 0))
+    @patch("app.routes.webhook.context_builder")
     def test_empty_summary_skipped(self, mock_cb, _mock_ocr, client):
         mock_cb.document_summary.return_value = "   "
-        r = client.post("/embeddings", json={"document_id": 42})
+        r = client.post("/webhook/edit", json={"document_id": 42})
         assert r.status_code == 200
         assert r.json()["action"] == "skipped_empty"
         mock_cb.store_embedding.assert_not_called()
 
-    def test_get_still_serves_dashboard(self, client):
-        """GET /embeddings should still return the dashboard, not the webhook."""
+    def test_get_embeddings_still_serves_dashboard(self, client):
+        """GET /embeddings should still return the dashboard."""
         r = client.get("/embeddings")
         assert r.status_code == 200
         assert "Embeddings" in r.text
