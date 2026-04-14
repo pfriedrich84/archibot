@@ -44,16 +44,26 @@ Fuehrt OCR-Korrektur ueber alle Paperless-Dokumente aus, ohne Embeddings
 neu zu berechnen. Respektiert die `OCR_MODE`-Einstellung.
 
 ```bash
+# Nur neue Dokumente (Cache wird respektiert)
 paperless-classify reindex-ocr
+
+# Alle Dokumente neu korrigieren (Cache ignorieren)
+paperless-classify reindex-ocr --force
 ```
+
+**Flags:**
+| Flag | Beschreibung |
+|------|-------------|
+| `--force` | OCR-Cache ignorieren und alle Dokumente neu korrigieren. Ohne dieses Flag werden bereits gecachte Korrekturen uebersprungen. |
 
 **Was passiert:**
 - Alle Dokumente aus Paperless werden geholt
 - Fuer jedes Dokument wird `maybe_correct_ocr()` ausgefuehrt
 - Ergebnisse landen in `doc_ocr_cache` (nie in Paperless)
-- Bereits gecachte Korrekturen werden uebersprungen
+- Bereits gecachte Korrekturen werden uebersprungen (ausser mit `--force`)
 
 **Wann nutzen:** Nach Wechsel des OCR-Modells oder der OCR-Stufe.
+Mit `--force` wenn vorhandene Korrekturen unbrauchbar sind und neu erzeugt werden sollen.
 
 ---
 

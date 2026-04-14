@@ -3,7 +3,8 @@
 Usage::
 
     python -m app.cli reindex          # Full reindex (OCR + embedding)
-    python -m app.cli reindex-ocr      # OCR correction only
+    python -m app.cli reindex-ocr      # OCR correction only (skip cached)
+    python -m app.cli reindex-ocr --force  # OCR correction, ignore cache
     python -m app.cli reindex-embed    # Embedding only (skip OCR)
     python -m app.cli poll             # Process inbox (OCR + embed + classify)
     python -m app.cli reset --yes      # Delete DB and recreate clean schema
@@ -58,7 +59,7 @@ async def cmd_reindex() -> None:
         await ollama.aclose()
 
 
-async def cmd_reindex_ocr() -> None:
+async def cmd_reindex_ocr(*, force: bool = False) -> None:
     """Run OCR correction on all Paperless documents (respects OCR_MODE)."""
     from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
@@ -70,7 +71,7 @@ async def cmd_reindex_ocr() -> None:
     paperless = PaperlessClient()
     ollama = OllamaClient()
     try:
-        corrected = await batch_correct_documents(paperless, ollama)
+        corrected = await batch_correct_documents(paperless, ollama, force=force)
         print(f"OCR correction complete: {corrected} documents corrected (mode={mode}).")
     finally:
         await paperless.aclose()
@@ -157,7 +158,7 @@ def cmd_reset(include_config: bool = False) -> None:
 
 COMMANDS = {
     "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
-    "reindex-ocr": ("OCR correction only", cmd_reindex_ocr),
+    "reindex-ocr": ("OCR correction only (--force to ignore cache)", cmd_reindex_ocr),
     "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
     "poll": ("Process inbox (OCR + embed + classify)", cmd_poll),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
@@ -193,8 +194,14 @@ def main() -> None:
 
     init_db()
 
+    extra_args = sys.argv[2:]
+    force = "--force" in extra_args
+
     _, cmd_func = COMMANDS[cmd_name]
-    asyncio.run(cmd_func())
+    if cmd_name == "reindex-ocr":
+        asyncio.run(cmd_func(force=force))
+    else:
+        asyncio.run(cmd_func())
 
 
 if __name__ == "__main__":
