@@ -1,12 +1,19 @@
 # Webhook-Konfiguration
 
-Anleitung zur Einrichtung eines Webhooks, damit Paperless-NGX den Classifier sofort nach dem Einlesen eines Dokuments benachrichtigt — als Alternative oder Ergaenzung zum Polling.
+Anleitung zur Einrichtung von Webhooks, damit Paperless-NGX den Classifier sofort nach dem Einlesen oder Aendern eines Dokuments benachrichtigt — als Alternative oder Ergaenzung zum Polling.
 
 ## Ueberblick
 
-Standardmaessig pollt der Worker alle `POLL_INTERVAL_SECONDS` (Default: 300s = 5 Minuten) die Inbox. Mit einem Webhook wird die Verarbeitung **sofort** nach dem Consume ausgeloest, ohne auf den naechsten Poll zu warten.
+Standardmaessig pollt der Worker alle `POLL_INTERVAL_SECONDS` (Default: 300s = 5 Minuten) die Inbox. Mit Webhooks wird die Verarbeitung **sofort** ausgeloest, ohne auf den naechsten Poll zu warten.
 
-**Beide Methoden koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
+**Zwei Webhook-Endpoints:**
+
+| Endpoint | Zweck |
+|----------|-------|
+| `POST /webhook/new` | Volle Pipeline: OCR + Embedding + Klassifikation + Suggestion |
+| `POST /webhook/edit` | Nur Embedding-Update (keine Klassifikation) |
+
+**Polling und Webhooks koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
 
 ## Voraussetzungen
 
@@ -23,63 +30,49 @@ In der `.env` des Classifiers:
 WEBHOOK_SECRET=mein-geheimer-webhook-token
 ```
 
-Der Webhook-Endpoint ist sofort aktiv — es gibt keinen Feature-Toggle. Die Authentifizierung greift nur, wenn `WEBHOOK_SECRET` gesetzt ist.
+Die Webhook-Endpoints sind sofort aktiv — es gibt keinen Feature-Toggle. Die Authentifizierung greift nur, wenn `WEBHOOK_SECRET` gesetzt ist.
 
 ## 2. Paperless-NGX konfigurieren
 
-Paperless unterstuetzt nativ keine Webhooks als Konfigurationsoption in der GUI. Es gibt zwei Moeglichkeiten:
+Paperless-NGX unterstuetzt **Workflow-Webhooks** direkt in der GUI — kein Script
+und keine Datei-Mounts noetig.
 
-### Variante A: Post-Consume-Script
+**Zwei Workflows konfigurieren:**
 
-Paperless kann nach dem Einlesen eines Dokuments ein Shell-Script ausfuehren. Dieses Script sendet den Webhook per `curl`.
+| Workflow | Trigger | Webhook-URL | Zweck |
+|----------|---------|-------------|-------|
+| 1 | Dokument hinzugefuegt | `http://<host>:8088/webhook/new` | Volle Verarbeitung (OCR + Embedding + Klassifikation) |
+| 2 | Dokument geaendert | `http://<host>:8088/webhook/edit` | Nur Embedding-Update (keine Klassifikation) |
 
-**1. Script erstellen** (z.B. `/opt/paperless/scripts/notify-classifier.sh`):
+**Einstellungen pro Workflow:**
 
-```bash
-#!/bin/bash
-# Wird von Paperless nach dem Consume aufgerufen.
-# Umgebungsvariable DOCUMENT_ID wird von Paperless gesetzt.
+- **Aktionstyp:** Webhook
+- **Webhook-URL:** siehe Tabelle oben
+- **Webhook-Payload als JSON senden:** AN
+- **Dokument einbeziehen:** AN (optional — der Classifier holt das Dokument sowieso via API)
+- **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
 
-CLASSIFIER_URL="http://paperless-ai-classifier:8088"
-WEBHOOK_SECRET="mein-geheimer-webhook-token"
+**Payload-Format** (wird automatisch von Paperless gesendet):
 
-if [ -n "$DOCUMENT_ID" ]; then
-    curl -s -X POST \
-        -H "Content-Type: application/json" \
-        -H "X-Webhook-Secret: ${WEBHOOK_SECRET}" \
-        -d "{\"document_id\": ${DOCUMENT_ID}}" \
-        "${CLASSIFIER_URL}/webhook/paperless" \
-        --max-time 10 \
-        || true  # Fehler ignorieren, damit Paperless nicht blockiert
-fi
+```json
+{
+  "event": "document_created",
+  "object": {
+    "id": 123,
+    "correspondent": "Example Corp",
+    "document_type": "Invoice",
+    "storage_path": null,
+    "tags": [1, 5],
+    "created": "2026-04-14",
+    "content": "...raw text content...",
+    "mime_type": "application/pdf",
+    "filename": "2026-04-14_example_corp.pdf"
+  }
+}
 ```
 
-**2. Script ausfuehrbar machen:**
-
-```bash
-chmod +x /opt/paperless/scripts/notify-classifier.sh
-```
-
-**3. In Paperless konfigurieren** (`docker-compose.env` oder `.env`):
-
-```env
-PAPERLESS_POST_CONSUME_SCRIPT=/opt/paperless/scripts/notify-classifier.sh
-```
-
-**4. Script in den Paperless-Container mounten** (`docker-compose.yml`):
-
-```yaml
-services:
-  paperless:
-    volumes:
-      - ./scripts/notify-classifier.sh:/opt/paperless/scripts/notify-classifier.sh:ro
-```
-
-**5. Paperless neu starten.**
-
-### Variante B: Custom Consumer mit Python
-
-Fuer fortgeschrittene Setups kann ein Paperless Custom Consumer verwendet werden. Siehe [Paperless-NGX Doku: Post-Consume](https://docs.paperless-ngx.com/advanced_usage/#post-consume-script).
+Beide Endpoints akzeptieren sowohl dieses Workflow-Format als auch das Legacy-Format
+(`{"document_id": 123}`).
 
 ## 3. Netzwerk-Setup
 
@@ -90,7 +83,8 @@ Der Classifier muss fuer Paperless ueber das Netzwerk erreichbar sein.
 Wenn Paperless und der Classifier im selben `docker-compose.yml` laufen, koennen sie sich ueber den Service-Namen erreichen:
 
 ```
-http://paperless-ai-classifier:8088/webhook/paperless
+http://paperless-ai-classifier:8088/webhook/new
+http://paperless-ai-classifier:8088/webhook/edit
 ```
 
 ### Separate Docker-Compose-Stacks
@@ -111,31 +105,23 @@ networks:
     name: ix-paperless-ngx_default   # Name des Paperless-Netzwerks
 ```
 
-**Adresse im Script:**
-
-```
-http://paperless-ai-classifier:8088/webhook/paperless
-```
-
 ### Verschiedene Hosts
 
 Wenn Paperless und der Classifier auf verschiedenen Maschinen laufen, muss der Classifier-Port (default: 8088) erreichbar sein:
 
 ```
-http://classifier-host:8088/webhook/paperless
+http://classifier-host:8088/webhook/new
+http://classifier-host:8088/webhook/edit
 ```
 
-> **Hinweis:** Der Webhook-Endpoint ist nicht durch Basic-Auth geschuetzt (bewusst, damit Paperless ohne Credentials senden kann). Die Authentifizierung erfolgt ausschliesslich ueber den `X-Webhook-Secret` Header.
+> **Hinweis:** Die Webhook-Endpoints sind nicht durch Basic-Auth geschuetzt (bewusst, damit Paperless ohne Credentials senden kann). Die Authentifizierung erfolgt ausschliesslich ueber den `X-Webhook-Secret` Header.
 
 ## Webhook-Referenz
 
-### Endpoint
+### POST /webhook/new — Volle Verarbeitung
 
-```
-POST /webhook/paperless
-```
-
-### Request
+Verarbeitet ein Dokument mit der vollen Pipeline: OCR-Korrektur, Embedding,
+Klassifikation, Suggestion-Erstellung, optional Auto-Commit und Telegram.
 
 **Header:**
 
@@ -144,15 +130,17 @@ POST /webhook/paperless
 | `Content-Type` | `application/json` | Ja |
 | `X-Webhook-Secret` | Wert von `WEBHOOK_SECRET` | Nur wenn `WEBHOOK_SECRET` gesetzt |
 
-**Body:**
+**Body** (Workflow-Format oder Legacy-Format):
 
 ```json
-{
-  "document_id": 123
-}
+{"event": "document_created", "object": {"id": 123, ...}}
 ```
 
-### Responses
+```json
+{"document_id": 123}
+```
+
+**Responses:**
 
 | Status | Bedeutung |
 |---|---|
@@ -161,39 +149,24 @@ POST /webhook/paperless
 | `422` | Body ungueltig (fehlende/falsche `document_id`) |
 | `503` | Reindex laeuft gerade — spaeter erneut versuchen |
 
-**Erfolg:**
+### POST /webhook/edit — Nur Embedding-Update
 
-```json
-{
-  "status": "ok",
-  "document_id": 123
-}
-```
+Berechnet nur das Embedding eines Dokuments neu (mit optionaler OCR-Korrektur).
+Keine Klassifikation, keine Suggestion, kein Telegram. Nutzen: wenn ein Dokument
+in Paperless geaendert wurde und der Embedding-Index aktualisiert werden soll.
 
-**Verarbeitungsfehler (HTTP 200, aber Fehler im Body):**
+**Header und Body:** Identisch zu `/webhook/new`.
 
-```json
-{
-  "status": "error",
-  "document_id": 123,
-  "error": "Fehlermeldung"
-}
-```
+**Responses:**
 
-## Paperless-Umgebungsvariablen im Post-Consume-Script
-
-Paperless setzt folgende Umgebungsvariablen, die im Script verfuegbar sind:
-
-| Variable | Beschreibung |
+| Status | Bedeutung |
 |---|---|
-| `DOCUMENT_ID` | ID des verarbeiteten Dokuments |
-| `DOCUMENT_FILE_NAME` | Original-Dateiname |
-| `DOCUMENT_CREATED` | Erstellungsdatum |
-| `DOCUMENT_ADDED` | Hinzugefuegt-am-Datum |
-| `DOCUMENT_ARCHIVE_PATH` | Pfad zur archivierten Version |
-| `DOCUMENT_ORIGINAL_FILENAME` | Originaler Dateiname beim Upload |
-
-Fuer den Classifier ist nur `DOCUMENT_ID` relevant.
+| `200` | `{"status": "ok", "document_id": 123, "action": "reembedded"}` |
+| `200` | `{"status": "ok", "document_id": 123, "action": "skipped_empty"}` (leerer Content) |
+| `403` | Webhook-Secret ungueltig |
+| `422` | Body ungueltig |
+| `500` | Embedding-Fehler (z.B. Ollama nicht erreichbar) |
+| `503` | Reindex laeuft gerade |
 
 ## Fehlerbehebung
 
@@ -206,22 +179,16 @@ Fuer den Classifier ist nur `DOCUMENT_ID` relevant.
    # Erwartete Antwort: {"status":"ok"}
    ```
 
-2. **Script-Ausfuehrung pruefen:** Hat Paperless das Script ausgefuehrt?
+2. **Workflow-Logs pruefen:** Hat Paperless den Webhook gesendet?
    ```bash
-   # Paperless-Logs pruefen:
-   docker logs paperless 2>&1 | grep -i "post.consume"
-   ```
-
-3. **Script-Berechtigungen:** Ist das Script ausfuehrbar?
-   ```bash
-   docker exec paperless ls -la /opt/paperless/scripts/notify-classifier.sh
+   docker logs paperless 2>&1 | grep -i "webhook"
    ```
 
 ### 403 Forbidden
 
 Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 - `WEBHOOK_SECRET` in der Classifier `.env`
-- `X-Webhook-Secret` Header im Script
+- `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
 
 ### 503 Service Unavailable
@@ -240,7 +207,7 @@ Ein Reindex laeuft gerade. Das Dokument wird beim naechsten regulaeren Poll vera
 |---|---|---|
 | **Latenz** | Bis zu `POLL_INTERVAL_SECONDS` | Sofort nach Consume |
 | **Zuverlaessigkeit** | Sehr hoch (holt alles nach) | Abhaengig von Netzwerk |
-| **Setup** | Keine Konfiguration noetig | Script + Netzwerk noetig |
+| **Setup** | Keine Konfiguration noetig | Workflow in Paperless noetig |
 | **Empfehlung** | Immer aktiv als Fallback | Zusaetzlich fuer schnelle Reaktion |
 
 **Empfohlenes Setup:** Beides aktiviert. Der Webhook sorgt fuer sofortige Verarbeitung, der Poll dient als Sicherheitsnetz falls ein Webhook verloren geht.

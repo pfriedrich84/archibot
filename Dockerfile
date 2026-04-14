@@ -1,3 +1,7 @@
+# Stage 1: Grab the Meilisearch binary from the official image
+FROM getmeili/meilisearch:v1.13 AS meilisearch
+
+# Stage 2: Application
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -8,19 +12,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # System deps (sqlite-vec wheel ist prebuilt, wir brauchen nur tini für saubere Signale)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
         tini \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Meilisearch binary (hybrid search sidecar)
+COPY --from=meilisearch /bin/meilisearch /usr/local/bin/meilisearch
+
 # Dependencies (pinned with constraints for supply-chain protection)
 COPY pyproject.toml constraints.txt ./
-RUN pip install --upgrade pip \
+RUN pip install --upgrade pip setuptools wheel \
     && pip install -c constraints.txt \
         "fastapi>=0.115.0,<=0.135.2" \
         "uvicorn[standard]>=0.32.0,<=0.42.0" \
         "httpx>=0.27.0" \
-        "pydantic>=2.9.0" \
+        "pydantic>=2.9.0,<=2.12.5" \
         "pydantic-settings>=2.5.0" \
         "jinja2>=3.1.4" \
         "python-multipart>=0.0.12,<=0.0.22" \
