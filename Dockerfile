@@ -1,5 +1,5 @@
 # Stage 1: Grab the Meilisearch binary from the official image
-FROM getmeili/meilisearch:v1.13 AS meilisearch
+FROM getmeili/meilisearch:v1.40.0 AS meilisearch
 
 # Stage 2: Application
 FROM python:3.12-slim AS base
