@@ -6,6 +6,8 @@ Usage::
     python -m app.cli reindex-ocr      # OCR correction only
     python -m app.cli reindex-embed    # Embedding only (skip OCR)
     python -m app.cli poll             # Process inbox (OCR + embed + classify)
+    python -m app.cli reset --yes      # Delete DB and recreate clean schema
+    python -m app.cli reset --yes --include-config  # Also delete config.env
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 import structlog
 
@@ -116,11 +119,48 @@ async def cmd_poll() -> None:
         await ollama.aclose()
 
 
+def cmd_reset(include_config: bool = False) -> None:
+    """Delete all persistent state and recreate a clean database."""
+    log = structlog.get_logger("reset")
+    data_dir = Path(settings.data_dir)
+    db_path = settings.db_path
+
+    # Build file list
+    targets: list[Path] = [
+        db_path,
+        db_path.parent / f"{db_path.name}-wal",
+        db_path.parent / f"{db_path.name}-shm",
+    ]
+
+    if include_config:
+        targets.append(data_dir / "config.env")
+        targets.extend(data_dir.glob("config.bak.*"))
+
+    # Only existing files
+    existing = [p for p in targets if p.exists()]
+
+    if existing:
+        print("Deleting:")
+        for p in existing:
+            print(f"  {p}")
+    else:
+        print("No existing state files found.")
+
+    for p in existing:
+        p.unlink()
+        log.info("deleted", path=str(p))
+
+    # Recreate clean DB
+    init_db()
+    print(f"Reset complete. Clean database created at {db_path}")
+
+
 COMMANDS = {
     "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
     "reindex-ocr": ("OCR correction only", cmd_reindex_ocr),
     "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
     "poll": ("Process inbox (OCR + embed + classify)", cmd_poll),
+    "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
 
 
@@ -139,6 +179,18 @@ def main() -> None:
         sys.exit(1)
 
     _configure_logging()
+
+    # reset is synchronous and must NOT call init_db() before deletion
+    if cmd_name == "reset":
+        extra_args = sys.argv[2:]
+        if "--yes" not in extra_args:
+            print("Safety check: pass --yes to confirm reset.")
+            print("  paperless-classify reset --yes")
+            print("  paperless-classify reset --yes --include-config")
+            sys.exit(1)
+        cmd_reset(include_config="--include-config" in extra_args)
+        return
+
     init_db()
 
     _, cmd_func = COMMANDS[cmd_name]
