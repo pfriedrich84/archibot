@@ -20,7 +20,7 @@ async def dashboard(request: Request):
 
         committed_today = conn.execute(
             """
-            SELECT COUNT(*) AS c FROM audit_log
+            SELECT COUNT(DISTINCT document_id) AS c FROM audit_log
             WHERE action = 'commit' AND occurred_at >= date('now')
             """
         ).fetchone()["c"]
