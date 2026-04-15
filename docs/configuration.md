@@ -32,11 +32,11 @@ in `config.env` persistiert.
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
-| `OLLAMA_OCR_MODEL` | `gemma4:e2b` | Modell fuer Text-Only OCR-Korrektur |
+| `OLLAMA_OCR_MODEL` | `qwen3:0.6b` | Modell fuer Text-Only OCR-Korrektur |
 | `OCR_VISION_MODEL` | *(= OLLAMA_MODEL)* | Vision-Modell fuer OCR (muss vision-faehig sein) |
 | `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten fuer Vision-OCR |
 | `OCR_VISION_DPI` | `150` | Render-Aufloesung fuer PDF-Seiten (Pixel pro Zoll) |
-| `OLLAMA_OCR_NUM_CTX` | `131072` | Kontextfenster fuer OCR-Modelle (Tokens). Vision braucht ~1536 Tokens/Seite. |
+| `OLLAMA_OCR_NUM_CTX` | `16384` | Kontextfenster fuer OCR-Modelle (Tokens). Vision braucht ~1536 Tokens/Seite. |
 
 ### OCR-Modi im Vergleich
 
@@ -64,9 +64,9 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_MODEL` | `gemma4:e2b` | Klassifikations-Modell |
-| `OLLAMA_NUM_CTX` | `8192` | Kontextfenster fuer das Chat-Modell (Tokens) |
-| `MAX_DOC_CHARS` | `32000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
+| `OLLAMA_MODEL` | `gemma4:26b-a4b-it-q4_K_M` | Klassifikations-Modell |
+| `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer das Chat-Modell (Tokens) |
+| `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
 | `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem Score (1–100) automatisch committen. |
 
