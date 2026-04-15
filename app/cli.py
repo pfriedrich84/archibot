@@ -54,10 +54,10 @@ async def cmd_reindex() -> None:
     ollama = OllamaClient()
     meili = MeiliClient()
     try:
-        if not await meili.ping():
-            print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
-            sys.exit(1)
-        await meili.ensure_index(EMBED_DIM)
+        if await meili.ping():
+            await meili.ensure_index(EMBED_DIM)
+        else:
+            print("Warning: Meilisearch not reachable — continuing without hybrid search.")
         count = await reindex_all(paperless, ollama, meili)
         print(f"Reindex complete: {count} documents indexed.")
     finally:
@@ -91,12 +91,12 @@ async def cmd_reindex_embed() -> None:
     from app.indexer import initial_index
 
     meili = MeiliClient()
-    if not await meili.ping():
-        print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
-        await meili.aclose()
-        sys.exit(1)
-    await meili.ensure_index(EMBED_DIM)
-    await meili.delete_all_documents()
+    meili_ok = await meili.ping()
+    if meili_ok:
+        await meili.ensure_index(EMBED_DIM)
+        await meili.delete_all_documents()
+    else:
+        print("Warning: Meilisearch not reachable — continuing without hybrid search.")
 
     # Clear existing embeddings
     with get_conn() as conn:
@@ -131,10 +131,10 @@ async def cmd_poll() -> None:
     worker._meili = meili
 
     try:
-        if not await meili.ping():
-            print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
-            sys.exit(1)
-        await meili.ensure_index(EMBED_DIM)
+        if await meili.ping():
+            await meili.ensure_index(EMBED_DIM)
+        else:
+            print("Warning: Meilisearch not reachable — continuing without hybrid search.")
         await poll_inbox()
         print("Inbox processing complete.")
     finally:

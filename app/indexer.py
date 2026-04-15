@@ -151,7 +151,10 @@ async def reindex_all(
     """
     try:
         log.info("starting full reindex — clearing existing embeddings")
-        await meili.delete_all_documents()
+        try:
+            await meili.delete_all_documents()
+        except Exception as exc:
+            log.warning("meilisearch clear failed — continuing without", error=str(exc))
         with get_conn() as conn:
             conn.execute("DELETE FROM doc_embedding_meta")
             conn.execute("DELETE FROM doc_embeddings")

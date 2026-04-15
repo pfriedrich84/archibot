@@ -48,23 +48,12 @@ async def store_embedding(
 ) -> None:
     """Persist a pre-computed embedding for a document.
 
-    Writes to Meilisearch (vector + full text for hybrid search) and to
-    ``doc_embedding_meta`` (metadata cache for the embeddings dashboard).
+    Writes to ``doc_embedding_meta`` (metadata cache for the embeddings
+    dashboard) and to Meilisearch (vector + full text for hybrid search).
+    Meilisearch failures are logged but do not prevent metadata storage.
     Does **not** call Ollama.
     """
-    # Meilisearch: store document with embedding for hybrid search
-    await meili.upsert_document(
-        doc_id=doc.id,
-        title=doc.title or "",
-        content=(doc.content or "")[: settings.embed_max_chars],
-        correspondent=doc.correspondent,
-        document_type=doc.document_type,
-        storage_path=doc.storage_path,
-        tags=doc.tags,
-        embedding=embedding,
-    )
-
-    # Metadata cache for embeddings dashboard listing
+    # Metadata cache for embeddings dashboard listing (always written)
     with get_conn() as conn:
         conn.execute(
             """
@@ -74,6 +63,21 @@ async def store_embedding(
             """,
             (doc.id, doc.title, doc.correspondent, doc.document_type),
         )
+
+    # Meilisearch: store document with embedding for hybrid search
+    try:
+        await meili.upsert_document(
+            doc_id=doc.id,
+            title=doc.title or "",
+            content=(doc.content or "")[: settings.embed_max_chars],
+            correspondent=doc.correspondent,
+            document_type=doc.document_type,
+            storage_path=doc.storage_path,
+            tags=doc.tags,
+            embedding=embedding,
+        )
+    except Exception as exc:
+        log.warning("meilisearch upsert failed", doc_id=doc.id, error=str(exc))
 
 
 async def index_document(
