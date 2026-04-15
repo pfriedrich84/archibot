@@ -279,7 +279,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 2: Embedding",
         "Context Window (tokens)",
         "number",
-        help="num_ctx for the embedding model (nomic-embed-text-v2-moe supports up to 8192)",
+        help="num_ctx for the embedding model (Ollama may clamp to model's n_ctx_train — check Ollama logs)",
     ),
     "embed_max_chars": _fm(
         "Phase 2: Embedding",
