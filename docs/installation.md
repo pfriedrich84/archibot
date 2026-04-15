@@ -10,8 +10,10 @@ oder selbst gebaut.
 - Eine laufende [Ollama](https://ollama.com/) Instanz (GPU empfohlen)
 - Ollama-Modelle muessen vorab gezogen werden:
   ```bash
-  ollama pull gemma4:e2b               # Klassifikation + Vision-OCR
+  ollama pull gemma4:26b-a4b-it-q4_K_M  # Klassifikation
   ollama pull qwen3-embedding:0.6b      # Embedding (1024-dim, multilingual)
+  ollama pull qwen3:0.6b               # OCR-Korrektur (optional)
+  ollama pull qwen3-vl:2b              # Vision-OCR (optional)
   ```
 
 ## Option A: Fertiges Image von GHCR (empfohlen)

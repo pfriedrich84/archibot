@@ -26,15 +26,15 @@ class Settings(BaseSettings):
 
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
-    ollama_model: str = "gemma4:e2b"
+    ollama_model: str = "gemma4:26b-a4b-it-q4_K_M"
     ollama_embed_model: str = "qwen3-embedding:0.6b"
-    ollama_ocr_model: str = "gemma4:e2b"
+    ollama_ocr_model: str = "qwen3:0.6b"
     ollama_timeout_seconds: int = 300
     ollama_embed_retries: int = 3
     ollama_embed_retry_base_delay: float = 1.0
-    ollama_num_ctx: int = 8192
+    ollama_num_ctx: int = 16384
     ollama_embed_num_ctx: int = 8192
-    ollama_ocr_num_ctx: int = 131072
+    ollama_ocr_num_ctx: int = 16384
 
     # --- OCR ---
     ocr_mode: str = "off"  # off | text | vision_light | vision_full
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     context_max_docs: int = 5
     context_max_distance: float = 0.0  # 0 = no threshold; e.g. 1.5 filters irrelevant docs
     hybrid_search_weight: float = 0.7  # 0.0 = FTS only, 1.0 = vector only, 0.7 = default blend
-    max_doc_chars: int = 32000
+    max_doc_chars: int = 24000
     embed_max_chars: int = 6000
     auto_commit_confidence: int = 0  # 0 = immer manuell reviewen
     enable_ocr_correction: bool = False  # deprecated, use ocr_mode instead
@@ -262,7 +262,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 1: OCR",
         "OCR Context Window (tokens)",
         "number",
-        help="num_ctx for OCR models. Vision OCR needs more context (~1536 tokens/page image). Default: 131072 (128K).",
+        help="num_ctx for OCR models. Vision OCR needs more context (~1536 tokens/page image). Default: 16384.",
     ),
     "enable_ocr_correction": _fm(
         "Phase 1: OCR",
@@ -306,7 +306,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 3: Klassifikation",
         "Classification Model",
         restart="component",
-        help="Ollama model for classification (e.g. gemma4:e2b)",
+        help="Ollama model for classification (e.g. gemma4:26b-a4b-it-q4_K_M)",
     ),
     "ollama_num_ctx": _fm(
         "Phase 3: Klassifikation",

@@ -94,7 +94,7 @@ class TestSetupWizard:
                 "paperless_token": "tok",
                 "paperless_inbox_tag_id": "5",
                 "ollama_url": "http://o:11434",
-                "ollama_model": "gemma4:e2b",
+                "ollama_model": "gemma4:26b-a4b-it-q4_K_M",
             },
         )
         assert r.status_code == 200
@@ -167,7 +167,7 @@ class TestConnectionTests:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "models": [{"name": "gemma4:e2b"}, {"name": "llama3:8b"}]
+            "models": [{"name": "gemma4:26b-a4b-it-q4_K_M"}, {"name": "llama3:8b"}]
         }
         mock_response.raise_for_status = MagicMock()
         mock_http_client = AsyncMock()
@@ -178,11 +178,11 @@ class TestConnectionTests:
         with patch("app.clients.ollama.OllamaClient", return_value=mock_client):
             r = client.post(
                 "/setup/test-ollama",
-                data={"ollama_url": "http://o:11434", "ollama_model": "gemma4:e2b"},
+                data={"ollama_url": "http://o:11434", "ollama_model": "gemma4:26b-a4b-it-q4_K_M"},
             )
         assert r.status_code == 200
         assert "Connected" in r.text
-        assert "gemma4:e2b" in r.text
+        assert "gemma4:26b-a4b-it-q4_K_M" in r.text
 
     def test_telegram_test_missing_fields(self, client):
         r = client.post(
@@ -242,7 +242,7 @@ class TestCompleteSetup:
                     "paperless_token": "tok",
                     "paperless_inbox_tag_id": "5",
                     "ollama_url": "http://o:11434",
-                    "ollama_model": "gemma4:e2b",
+                    "ollama_model": "gemma4:26b-a4b-it-q4_K_M",
                 },
                 follow_redirects=False,
             )

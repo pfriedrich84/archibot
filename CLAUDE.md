@@ -38,7 +38,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
                "Diese 3 aehnlichen Dokumente wurden so klassifiziert: ..."
                + Zieldokument
                        |
-                  [Klassifikation]     ← gemma4:e2b
+                  [Klassifikation]     ← gemma4:26b-a4b-it-q4_K_M
                        |
                 JSON-Vorschlag mit hoher Konfidenz
 ```
@@ -62,7 +62,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
    aus dem Kontext — ein generischer Prompt wuerde raten.
 
 4. **Kleine Modelle, grosse Ergebnisse:** Durch den reichen Kontext kann ein
-   kompaktes Modell wie `gemma4:e2b` Ergebnisse liefern,
+   kompaktes Modell wie `gemma4:26b-a4b-it-q4_K_M` Ergebnisse liefern,
    die ohne Kontext ein deutlich groesseres Modell erfordern wuerden. Der Kontext
    kompensiert fehlende Modellkapazitaet.
 
@@ -82,7 +82,7 @@ Der Kontext allein genuegt nicht — zusaetzlich greifen mehrere Sicherheitsnetz
 - **Inbox-Exclusion:** Noch nicht reviewte Dokumente werden nie als Kontext genutzt,
   um fehlerhafte Klassifikationen nicht zu propagieren.
 - **Token-Budget-Management:** Der Prompt verteilt 60% des Kontextfensters auf das
-  Zieldokument (max `MAX_DOC_CHARS`, Default 32000) und 40% auf Kontext-Dokumente,
+  Zieldokument (max `MAX_DOC_CHARS`, Default 24000) und 40% auf Kontext-Dokumente,
   mit dynamischem Fallback wenn der Platz knapp wird. `EMBED_MAX_CHARS` (Default
   6000) begrenzt den Text fuer Embeddings (Titel + Content gesamt).
 
@@ -204,20 +204,21 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 - `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen)
 - `GET /api/tags` → Healthcheck + Modell-Liste
 
-**Drei Modelle im Einsatz:**
+**Vier Modelle im Einsatz:**
 
 | Modell | Zweck | Konfiguration | Context Window |
 |--------|-------|---------------|----------------|
 | `qwen3-embedding:0.6b` | Embedding-Similarity-Suche (1024-dim) | `OLLAMA_EMBED_MODEL` | 8192 Tokens (`OLLAMA_EMBED_NUM_CTX`, model supports 32K) |
-| `gemma4:e2b` | Klassifikation + Vision-OCR (Titel, Datum, etc.) | `OLLAMA_MODEL` | 8192 Tokens (`OLLAMA_NUM_CTX`) |
-| `gemma4:e2b` | Text-Only OCR-Korrektur (optional) | `OLLAMA_OCR_MODEL` | — |
+| `gemma4:26b-a4b-it-q4_K_M` | Klassifikation (Titel, Datum, etc.) | `OLLAMA_MODEL` | 16384 Tokens (`OLLAMA_NUM_CTX`) |
+| `qwen3:0.6b` | Text-Only OCR-Korrektur (optional) | `OLLAMA_OCR_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
+| `qwen3-vl:2b` | Vision-OCR (optional, seitenweise) | `OCR_VISION_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
 
 **Text-Limits pro Phase:**
 
 | Phase | Setting | Default | Beschreibung |
 |-------|---------|---------|-------------|
 | Embedding | `EMBED_MAX_CHARS` | 6000 | Max Zeichen fuer Embedding (Titel + Content, gesamt) |
-| Klassifikation | `MAX_DOC_CHARS` | 32000 | Max Zeichen fuer Zieldokument im LLM-Prompt |
+| Klassifikation | `MAX_DOC_CHARS` | 24000 | Max Zeichen fuer Zieldokument im LLM-Prompt |
 
 ## OCR-Korrektur (Vision-LLM)
 
@@ -234,7 +235,7 @@ Konfigurierbar via `OCR_MODE` mit vier Stufen:
 - `OCR_VISION_MODEL` — Vision-Modell (leer = `OLLAMA_MODEL`). Muss vision-faehig sein.
 - `OCR_VISION_MAX_PAGES` — Max Seiten fuer Vision (Default: 3). Gilt fuer `vision_light` und `vision_full`.
 - `OCR_VISION_DPI` — Render-Aufloesung fuer PDF-Seiten (Default: 150).
-- `OLLAMA_OCR_NUM_CTX` — Kontextfenster fuer OCR-Modelle (Default: 131072 = 128K). Vision-OCR benoetigt ~1536 Tokens pro Seite fuer Bilder, daher deutlich hoeher als `OLLAMA_NUM_CTX`.
+- `OLLAMA_OCR_NUM_CTX` — Kontextfenster fuer OCR-Modelle (Default: 16384). Vision-OCR benoetigt ~1536 Tokens pro Seite fuer Bilder, verarbeitet aber seitenweise.
 
 **Wichtig:** Korrigierter Text wird **nie** zurueck nach Paperless geschrieben. Er wird nur lokal in `doc_ocr_cache` gespeichert und fuer Klassifikation + Embedding-Kontext genutzt. `batch_correct_documents()` erlaubt OCR-Korrektur ueber alle Paperless-Dokumente.
 
@@ -308,9 +309,9 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                   |         |
                +--+---------+----------------+
                | Phase 3: Klassifikation     |  OLLAMA_MODEL
-               | Fuer alle Docs:             |  (gemma4:e2b)
+               | Fuer alle Docs:             |  (gemma4:26b-a4b-it-q4_K_M)
                |   Text: max MAX_DOC_CHARS   |  num_ctx: OLLAMA_NUM_CTX
-               |   classify() mit Kontext    |  (Default: 8192 Tokens)
+               |   classify() mit Kontext    |  (Default: 16384 Tokens)
                |   Suggestion speichern      |
                |   Telegram / Auto-Commit    |
                |   Embedding in DB schreiben |  (kein Ollama-Call!)
@@ -332,13 +333,12 @@ Vorher (pro Dokument):     Doc1: embed → classify → embed → Doc2: embed �
 Nachher (phasenweise):     [alle embed] → [alle classify]
                            = 1-2 Switches unabhaengig von N
 
-Ohne OCR:        qwen3-embed ─────────> gemma4:e2b                = 1 Switch
-Text-OCR:        gemma4:e2b ──> qwen3-embed ────> gemma4:e2b     = 1 Switch*
-Vision-OCR:      gemma4:e2b ──> qwen3-embed ────> gemma4:e2b     = 2 Switches*
+Ohne OCR:        qwen3-embed ─────────> gemma4:26b               = 1 Switch
+Text-OCR:        qwen3:0.6b ──> qwen3-embed ────> gemma4:26b    = 2 Switches
+Vision-OCR:      qwen3-vl:2b ─> qwen3-embed ────> gemma4:26b    = 2 Switches
 
-* Bei vision_light/vision_full ist das OCR-Modell = OLLAMA_MODEL (gemma4:e2b),
-  daher wird es nach Phase 1 entladen und fuer Phase 3 wieder geladen.
-  Alternativ via OCR_VISION_MODEL ein separates Vision-Modell konfigurieren.
+* OCR nutzt separate Modelle (qwen3:0.6b / qwen3-vl:2b), daher immer
+  2 Switches wenn OCR aktiv. Jedes Modell wird nach seiner Phase entladen.
 ```
 
 **Embedding-Optimierung:** Jedes Dokument wird nur **einmal** embedded (vorher zweimal:

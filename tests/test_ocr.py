@@ -132,7 +132,7 @@ class TestMaybeCorrectOcr:
         """Text mode should call chat_json with model=ollama.ocr_model."""
         doc = PaperlessDocument(id=1, title="Test", content="?" * 100, tags=[99])
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "fixed text", "num_corrections": 5}
         )
@@ -152,7 +152,7 @@ class TestMaybeCorrectOcr:
         assert num == 5
         mock_ollama.chat_json.assert_called_once()
         _, kwargs = mock_ollama.chat_json.call_args
-        assert kwargs["model"] == "gemma3:1b"
+        assert kwargs["model"] == "qwen3:0.6b"
 
     @pytest.mark.asyncio
     async def test_text_mode_skips_clean_text(self):
@@ -172,7 +172,7 @@ class TestMaybeCorrectOcr:
         """vision_light without paperless client should fall back to text mode."""
         doc = PaperlessDocument(id=1, title="Test", content="?" * 100, tags=[])
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "text fixed", "num_corrections": 3}
         )
@@ -198,7 +198,7 @@ class TestMaybeCorrectOcr:
         clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
         doc = PaperlessDocument(id=1, title="Test", content=clean, tags=[])
         mock_ollama = AsyncMock()
-        mock_ollama.model = "gemma4:e2b"
+        mock_ollama.model = "gemma4:26b-a4b-it-q4_K_M"
         mock_ollama.chat_vision_json = AsyncMock(
             return_value={"corrected_text": "improved text", "num_corrections": 1}
         )
@@ -232,7 +232,7 @@ class TestMaybeCorrectOcr:
         """Text mode should pass ollama_ocr_num_ctx to chat_json."""
         doc = PaperlessDocument(id=1, title="Test", content="?" * 100, tags=[99])
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "fixed", "num_corrections": 1}
         )
@@ -242,7 +242,7 @@ class TestMaybeCorrectOcr:
             patch("app.pipeline.ocr_correction.settings") as mock_settings,
         ):
             mock_settings.max_doc_chars = 8000
-            mock_settings.ollama_ocr_num_ctx = 131072
+            mock_settings.ollama_ocr_num_ctx = 16384
             mock_settings.prompts_dir.__truediv__ = lambda self, x: type(
                 "P", (), {"read_text": lambda self, **kw: "system prompt"}
             )()
@@ -250,7 +250,7 @@ class TestMaybeCorrectOcr:
             await maybe_correct_ocr(doc, mock_ollama)
 
         call_kwargs = mock_ollama.chat_json.call_args.kwargs
-        assert call_kwargs["num_ctx"] == 131072
+        assert call_kwargs["num_ctx"] == 16384
 
     @pytest.mark.asyncio
     async def test_vision_full_passes_ocr_num_ctx(self):
@@ -258,7 +258,7 @@ class TestMaybeCorrectOcr:
         clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
         doc = PaperlessDocument(id=1, title="Test", content=clean, tags=[])
         mock_ollama = AsyncMock()
-        mock_ollama.model = "gemma4:e2b"
+        mock_ollama.model = "gemma4:26b-a4b-it-q4_K_M"
         mock_ollama.chat_vision_json = AsyncMock(
             return_value={"corrected_text": "improved text", "num_corrections": 1}
         )
@@ -277,7 +277,7 @@ class TestMaybeCorrectOcr:
             mock_settings.ocr_vision_max_pages = 1
             mock_settings.ocr_vision_dpi = 150
             mock_settings.max_doc_chars = 8000
-            mock_settings.ollama_ocr_num_ctx = 131072
+            mock_settings.ollama_ocr_num_ctx = 16384
             mock_settings.prompts_dir.__truediv__ = lambda self, x: type(
                 "P", (), {"read_text": lambda self, **kw: "system prompt"}
             )()
@@ -285,7 +285,7 @@ class TestMaybeCorrectOcr:
             await maybe_correct_ocr(doc, mock_ollama, mock_paperless)
 
         call_kwargs = mock_ollama.chat_vision_json.call_args.kwargs
-        assert call_kwargs["num_ctx"] == 131072
+        assert call_kwargs["num_ctx"] == 16384
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +391,7 @@ class TestBatchCorrectDocuments:
         mock_paperless.list_all_documents = AsyncMock(return_value=[doc1, doc2])
 
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "fixed", "num_corrections": 3}
         )
@@ -438,7 +438,7 @@ class TestBatchCorrectDocuments:
         mock_paperless.list_all_documents = AsyncMock(return_value=[doc1, doc2])
 
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "fixed", "num_corrections": 3}
         )
@@ -484,7 +484,7 @@ class TestBatchCorrectDocuments:
         mock_paperless.list_all_documents = AsyncMock(return_value=[doc1])
 
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.chat_json = AsyncMock(
             return_value={"corrected_text": "re-fixed", "num_corrections": 2}
         )

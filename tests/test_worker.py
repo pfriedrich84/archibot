@@ -356,7 +356,7 @@ class TestPhaseOcr:
         """OCR phase should update document content when corrections are made."""
         doc = _make_doc(1, content="broken text")
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.unload_model = AsyncMock()
         mock_paperless = AsyncMock()
 
@@ -369,7 +369,7 @@ class TestPhaseOcr:
             result = await _phase_ocr([doc], mock_ollama, mock_paperless)
 
         assert result[0].content == "fixed text"
-        mock_ollama.unload_model.assert_called_once_with("gemma3:1b")
+        mock_ollama.unload_model.assert_called_once_with("qwen3:0.6b")
 
     @pytest.mark.asyncio
     async def test_ocr_skipped_when_disabled(self):
@@ -390,7 +390,7 @@ class TestPhaseOcr:
         """If OCR fails for a doc, original content should be preserved."""
         doc = _make_doc(1, content="original text")
         mock_ollama = AsyncMock()
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.unload_model = AsyncMock()
         mock_paperless = AsyncMock()
 
@@ -554,7 +554,7 @@ class TestPhasedPollInbox:
         mock_ollama.chat_json = AsyncMock(side_effect=track_chat_json)
         mock_ollama.model = "gemma3:4b"
         mock_ollama.embed_model = "nomic-embed-text-v2-moe"
-        mock_ollama.ocr_model = "gemma3:1b"
+        mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.unload_model = AsyncMock()
 
         mock_paperless = AsyncMock()
