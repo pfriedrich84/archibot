@@ -54,6 +54,9 @@ async def cmd_reindex() -> None:
     ollama = OllamaClient()
     meili = MeiliClient()
     try:
+        if not await meili.ping():
+            print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
+            sys.exit(1)
         await meili.ensure_index(EMBED_DIM)
         count = await reindex_all(paperless, ollama, meili)
         print(f"Reindex complete: {count} documents indexed.")
@@ -88,6 +91,10 @@ async def cmd_reindex_embed() -> None:
     from app.indexer import initial_index
 
     meili = MeiliClient()
+    if not await meili.ping():
+        print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
+        await meili.aclose()
+        sys.exit(1)
     await meili.ensure_index(EMBED_DIM)
     await meili.delete_all_documents()
 
@@ -124,6 +131,9 @@ async def cmd_poll() -> None:
     worker._meili = meili
 
     try:
+        if not await meili.ping():
+            print("Error: Meilisearch not reachable. Check MEILISEARCH_URL.")
+            sys.exit(1)
         await meili.ensure_index(EMBED_DIM)
         await poll_inbox()
         print("Inbox processing complete.")
