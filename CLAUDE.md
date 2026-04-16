@@ -201,7 +201,7 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 
 - `POST /api/chat` mit `format: "json"` → strukturierte JSON-Antwort. Unterstuetzt auch `images`-Feld fuer Vision-Modelle (base64-encoded, kein Data-URI-Prefix).
 - `POST /api/embeddings` → Vektor fuer Similarity-Suche (Default: `qwen3-embedding:0.6b`, 1024-dim, 32K context, multilingual DE/EN). Bei Context-Length-Fehlern (500) wird der Text progressiv um 50% gekuerzt und erneut gesendet. Transiente 5xx/429-Fehler werden mit exponentiellem Backoff wiederholt. Konfigurierbar via `OLLAMA_EMBED_RETRIES` (Default: 3) und `OLLAMA_EMBED_RETRY_BASE_DELAY` (Default: 1.0s).
-- `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen)
+- `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen). Nach dem Entladen wartet `unload_model(swap=True)` fuer `OLLAMA_MODEL_SWAP_DELAY` Sekunden (Default: 5), damit die GPU den Speicher freigeben kann bevor das naechste Modell geladen wird. Ohne diese Pause kann Ollamas GPU-Discovery timeouten und veraltete VRAM-Werte nutzen, was zu suboptimaler GPU-Auslastung fuehrt. Terminale Cleanups (letztes Entladen nach Phase 3) nutzen `swap=False` und warten nicht.
 - `GET /api/tags` → Healthcheck + Modell-Liste
 
 **Vier Modelle im Einsatz:**
@@ -295,7 +295,8 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                | korrigieren + cachen        |    (oder OLLAMA_MODEL)
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0, swap=True
+                  | delay   |  OLLAMA_MODEL_SWAP_DELAY (5s)
                   |         |
                +--+---------+----------------+
                | Phase 2: Embedding          |  OLLAMA_EMBED_MODEL
@@ -306,7 +307,8 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                |   Embedding merken          |
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0, swap=True
+                  | delay   |  OLLAMA_MODEL_SWAP_DELAY (5s)
                   |         |
                +--+---------+----------------+
                | Phase 3: Klassifikation     |  OLLAMA_MODEL
@@ -318,7 +320,8 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                |   Embedding in DB schreiben |  (kein Ollama-Call!)
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0 (kein Delay,
+                  |         |   letztes Modell → swap=False)
                   |         |
                     +-------+-------+
                     | Log-Summary   |
@@ -367,7 +370,7 @@ Embedding trotzdem indexiert (falls vorhanden).
 5. **Inbox-Tag bleibt:** Standardmaessig (`KEEP_INBOX_TAG=true`) wird der `Posteingang`-Tag nach Commit NICHT entfernt. Nur mit `KEEP_INBOX_TAG=false` wird er beim Commit entfernt.
 6. **Kontext-Qualitaet:** Nur Dokumente die NICHT mehr im Posteingang sind werden als Kontext fuer neue Klassifikationen genutzt. Inbox-Dokumente sind noch nicht reviewed/approved und wuerden unzuverlaessige Metadaten liefern.
 7. **Kontext-Anreicherung:** Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum). Regel 9 im System-Prompt weist das LLM an, diese Metadaten als starke Hinweise zu nutzen.
-8. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Das minimiert VRAM-Verbrauch und Modell-Swaps.
+8. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Bei Inter-Phase-Swaps (`swap=True`) wartet `unload_model()` fuer `OLLAMA_MODEL_SWAP_DELAY` (Default: 5s) nach dem Entladen, damit die GPU den Speicher freigeben kann und Ollama beim naechsten Laden korrekte VRAM-Werte erkennt. Das letzte Entladen nach Phase 3 nutzt `swap=False` (kein Delay).
 9. **Embedding-Deduplizierung:** Pro Dokument wird `ollama.embed()` genau einmal aufgerufen. Das Ergebnis wird sowohl fuer die KNN-Kontext-Suche als auch fuer die Indexierung wiederverwendet (`_EmbeddingResult`-Dataclass traegt den Vektor zwischen den Phasen).
 10. **OCR-Cache:** Korrigierter Text landet in `doc_ocr_cache`, nie in Paperless. Sowohl `poll_inbox()` als auch `reindex_all()` nutzen gecachte Korrekturen. Beim Reindex wird OCR vor dem Embedding als Phase 0 ausgefuehrt — gecachte Eintraege werden uebersprungen.
 11. **Embedding-Text-Limit:** `document_summary()` begrenzt den **Gesamttext** (Titel + Content) auf `EMBED_MAX_CHARS` (Default 6000). Die Truncation greift auf die kombinierte Laenge, nicht nur auf den Content-Teil — damit kann ein langer Titel das Limit nicht sprengen.
