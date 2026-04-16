@@ -16,17 +16,28 @@ from app.config import settings
 log = structlog.get_logger(__name__)
 
 _MD_JSON_RE = re.compile(r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL)
-_YAML_FENCE_RE = re.compile(r"^\s*---\s*\n", re.MULTILINE)
 
 
 def _strip_markdown_fences(text: str) -> str:
-    """Remove markdown code fences or YAML frontmatter delimiters wrapping JSON."""
-    m = _MD_JSON_RE.match(text)
-    if m:
-        return m.group(1).strip()
-    # Some models prepend "---" (YAML frontmatter) before JSON
-    stripped = _YAML_FENCE_RE.sub("", text).strip()
-    return stripped if stripped != text.strip() else text
+    """Extract raw JSON from Ollama responses.
+
+    Handles three cases:
+    1. JSON wrapped in markdown fences (``` or ```json).
+    2. Extra leading/trailing non-JSON markers such as "---".
+    3. Plain JSON without any fences.
+
+    The function first removes any markdown code fences, then locates the
+    outermost ``{`` and ``}`` characters to slice out a well-formed JSON object.
+    """
+    # Strip markdown fences if they exist
+    m = _MD_JSON_RE.search(text)
+    cleaned = m.group(1) if m else text
+    # Find the first opening brace and the last closing brace
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        cleaned = cleaned[start : end + 1]
+    return cleaned.strip()
 
 
 class OllamaClient:
