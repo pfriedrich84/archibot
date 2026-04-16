@@ -157,6 +157,11 @@ class PaperlessClient:
         r.raise_for_status()
         return PaperlessEntity.model_validate(r.json())
 
+    async def create_correspondent(self, name: str) -> PaperlessEntity:
+        r = await self._client.post("/correspondents/", json={"name": name})
+        r.raise_for_status()
+        return PaperlessEntity.model_validate(r.json())
+
     async def _list_entity(self, path: str) -> list[PaperlessEntity]:
         out: list[PaperlessEntity] = []
         url = f"{path}?page_size=100"

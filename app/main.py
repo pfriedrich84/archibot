@@ -263,6 +263,7 @@ async def healthz():
 # ---------------------------------------------------------------------------
 from app.routes import (  # noqa: E402
     chat,
+    correspondents,
     embeddings,
     errors,
     inbox,
@@ -282,6 +283,7 @@ app.include_router(chat.router)
 app.include_router(inbox.router)
 app.include_router(review.router)
 app.include_router(tags.router)
+app.include_router(correspondents.router)
 app.include_router(ocr.router)
 app.include_router(errors.router)
 app.include_router(embeddings.router)

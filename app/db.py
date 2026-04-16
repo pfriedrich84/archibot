@@ -88,6 +88,28 @@ CREATE TABLE IF NOT EXISTS tag_blacklist (
 );
 
 -- =========================================================================
+-- Correspondent whitelist - new correspondents staged until approved
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS correspondent_whitelist (
+    name        TEXT PRIMARY KEY,
+    paperless_id INTEGER,              -- set once created in Paperless
+    approved    INTEGER NOT NULL DEFAULT 0,
+    first_seen  TEXT NOT NULL DEFAULT (datetime('now')),
+    times_seen  INTEGER NOT NULL DEFAULT 1,
+    notes       TEXT
+);
+
+-- =========================================================================
+-- Correspondent blacklist - rejected correspondents to prevent re-proposal
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS correspondent_blacklist (
+    name         TEXT PRIMARY KEY,
+    rejected_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    times_seen   INTEGER NOT NULL DEFAULT 1,
+    notes        TEXT
+);
+
+-- =========================================================================
 -- Error log
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS errors (
