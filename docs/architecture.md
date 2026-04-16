@@ -138,7 +138,7 @@ Nur aktiv bei `ENABLE_OCR_CORRECTION=true`. Heuristik prueft ob der Text typisch
 
 Vom LLM vorgeschlagene Tags werden gegen die existierenden Paperless-Tags abgeglichen:
 - **Bekannte Tags:** Werden direkt mit ihrer ID gespeichert
-- **Unbekannte Tags:** Landen in `tag_whitelist` mit Status `pending`. Muessen unter `/tags` manuell freigegeben werden, bevor sie in Paperless angelegt werden
+- **Unbekannte Tags:** Landen in `tag_whitelist` mit Status `pending`. Muessen unter `/tags` manuell freigegeben werden. Bei Freigabe wird der Tag retroaktiv auf bereits committete Dokumente angewendet und in offenen Vorschlaegen voraufgeloest
 
 ### 6. Auto-Commit
 

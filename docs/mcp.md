@@ -52,7 +52,7 @@ MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
 |---|---|
 | Dokumente | `update_document` |
 | Suggestions | `approve_suggestion`, `reject_suggestion` |
-| Tags | `approve_tag`, `unblacklist_tag` |
+| Tags | `approve_tag` (retroaktiv auf committete Docs), `unblacklist_tag` |
 
 ## Resources
 
