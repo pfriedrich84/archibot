@@ -494,7 +494,7 @@ class TestPhaseClassify:
                 "test_cycle",
             )
 
-        mock_ollama.unload_model.assert_called_once_with("gemma3:4b")
+        mock_ollama.unload_model.assert_called_once_with("gemma3:4b", swap=True)
 
     @pytest.mark.asyncio
     async def test_embed_still_indexed_on_classify_failure(self):

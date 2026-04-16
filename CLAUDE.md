@@ -38,7 +38,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
                "Diese 3 aehnlichen Dokumente wurden so klassifiziert: ..."
                + Zieldokument
                        |
-                  [Klassifikation]     ← gemma4:26b-a4b-it-q4_K_M
+                  [Klassifikation]     ← gemma4:e4b
                        |
                 JSON-Vorschlag mit hoher Konfidenz
 ```
@@ -62,7 +62,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
    aus dem Kontext — ein generischer Prompt wuerde raten.
 
 4. **Kleine Modelle, grosse Ergebnisse:** Durch den reichen Kontext kann ein
-   kompaktes Modell wie `gemma4:26b-a4b-it-q4_K_M` Ergebnisse liefern,
+   kompaktes Modell wie `gemma4:e4b` Ergebnisse liefern,
    die ohne Kontext ein deutlich groesseres Modell erfordern wuerden. Der Kontext
    kompensiert fehlende Modellkapazitaet.
 
@@ -201,7 +201,7 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 
 - `POST /api/chat` mit `format: "json"` → strukturierte JSON-Antwort. Unterstuetzt auch `images`-Feld fuer Vision-Modelle (base64-encoded, kein Data-URI-Prefix).
 - `POST /api/embeddings` → Vektor fuer Similarity-Suche (Default: `qwen3-embedding:0.6b`, 1024-dim, 32K context, multilingual DE/EN). Bei Context-Length-Fehlern (500) wird der Text progressiv um 50% gekuerzt und erneut gesendet. Transiente 5xx/429-Fehler werden mit exponentiellem Backoff wiederholt. Konfigurierbar via `OLLAMA_EMBED_RETRIES` (Default: 3) und `OLLAMA_EMBED_RETRY_BASE_DELAY` (Default: 1.0s).
-- `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen)
+- `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen). Nach dem Entladen wartet `unload_model(swap=True)` fuer `OLLAMA_MODEL_SWAP_DELAY` Sekunden (Default: 5), damit die GPU den Speicher freigeben kann bevor das naechste Modell geladen wird. Ohne diese Pause kann Ollamas GPU-Discovery timeouten und veraltete VRAM-Werte nutzen, was zu suboptimaler GPU-Auslastung fuehrt.
 - `GET /api/tags` → Healthcheck + Modell-Liste
 
 **Vier Modelle im Einsatz:**
@@ -209,7 +209,7 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 | Modell | Zweck | Konfiguration | Context Window |
 |--------|-------|---------------|----------------|
 | `qwen3-embedding:0.6b` | Embedding-Similarity-Suche (1024-dim) | `OLLAMA_EMBED_MODEL` | 8192 Tokens (`OLLAMA_EMBED_NUM_CTX`, model supports 32K) |
-| `gemma4:26b-a4b-it-q4_K_M` | Klassifikation (Titel, Datum, etc.) | `OLLAMA_MODEL` | 16384 Tokens (`OLLAMA_NUM_CTX`) |
+| `gemma4:e4b` | Klassifikation (Titel, Datum, etc.) | `OLLAMA_MODEL` | 16384 Tokens (`OLLAMA_NUM_CTX`) |
 | `qwen3:0.6b` | Text-Only OCR-Korrektur (optional) | `OLLAMA_OCR_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
 | `qwen3-vl:2b` | Vision-OCR (optional, seitenweise) | `OCR_VISION_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
 
@@ -295,7 +295,8 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                | korrigieren + cachen        |    (oder OLLAMA_MODEL)
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0, swap=True
+                  | delay   |  OLLAMA_MODEL_SWAP_DELAY (5s)
                   |         |
                +--+---------+----------------+
                | Phase 2: Embedding          |  OLLAMA_EMBED_MODEL
@@ -306,11 +307,12 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                |   Embedding merken          |
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0, swap=True
+                  | delay   |  OLLAMA_MODEL_SWAP_DELAY (5s)
                   |         |
                +--+---------+----------------+
                | Phase 3: Klassifikation     |  OLLAMA_MODEL
-               | Fuer alle Docs:             |  (gemma4:26b-a4b-it-q4_K_M)
+               | Fuer alle Docs:             |  (gemma4:e4b)
                |   Text: max MAX_DOC_CHARS   |  num_ctx: OLLAMA_NUM_CTX
                |   classify() mit Kontext    |  (Default: 16384 Tokens)
                |   Suggestion speichern      |
@@ -318,7 +320,8 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                |   Embedding in DB schreiben |  (kein Ollama-Call!)
                +--+---------+----------------+
                   |         |
-                  | unload  |  keep_alive=0
+                  | unload  |  keep_alive=0, swap=True
+                  | delay   |  OLLAMA_MODEL_SWAP_DELAY (5s)
                   |         |
                     +-------+-------+
                     | Log-Summary   |
@@ -341,9 +344,9 @@ Vorher (pro Dokument):     Doc1: embed → classify → embed → Doc2: embed �
 Nachher (phasenweise):     [alle embed] → [alle classify]
                            = 1-2 Switches unabhaengig von N
 
-Ohne OCR:        qwen3-embed ─────────> gemma4:26b               = 1 Switch
-Text-OCR:        qwen3:0.6b ──> qwen3-embed ────> gemma4:26b    = 2 Switches
-Vision-OCR:      qwen3-vl:2b ─> qwen3-embed ────> gemma4:26b    = 2 Switches
+Ohne OCR:        qwen3-embed ─────────> gemma4:e4b               = 1 Switch
+Text-OCR:        qwen3:0.6b ──> qwen3-embed ────> gemma4:e4b    = 2 Switches
+Vision-OCR:      qwen3-vl:2b ─> qwen3-embed ────> gemma4:e4b    = 2 Switches
 
 * OCR nutzt separate Modelle (qwen3:0.6b / qwen3-vl:2b), daher immer
   2 Switches wenn OCR aktiv. Jedes Modell wird nach seiner Phase entladen.
@@ -367,7 +370,7 @@ Embedding trotzdem indexiert (falls vorhanden).
 5. **Inbox-Tag bleibt:** Standardmaessig (`KEEP_INBOX_TAG=true`) wird der `Posteingang`-Tag nach Commit NICHT entfernt. Nur mit `KEEP_INBOX_TAG=false` wird er beim Commit entfernt.
 6. **Kontext-Qualitaet:** Nur Dokumente die NICHT mehr im Posteingang sind werden als Kontext fuer neue Klassifikationen genutzt. Inbox-Dokumente sind noch nicht reviewed/approved und wuerden unzuverlaessige Metadaten liefern.
 7. **Kontext-Anreicherung:** Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum). Regel 9 im System-Prompt weist das LLM an, diese Metadaten als starke Hinweise zu nutzen.
-8. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Das minimiert VRAM-Verbrauch und Modell-Swaps.
+8. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Alle `unload_model()`-Aufrufe nutzen `swap=True` und warten `OLLAMA_MODEL_SWAP_DELAY` (Default: 5s) nach dem Entladen, damit die GPU den Speicher vollstaendig freigeben kann. Dies gilt auch fuer das finale Entladen nach Phase 3, da das Modell sonst beim naechsten Poll-Zyklus die VRAM-Erkennung stoert.
 9. **Embedding-Deduplizierung:** Pro Dokument wird `ollama.embed()` genau einmal aufgerufen. Das Ergebnis wird sowohl fuer die KNN-Kontext-Suche als auch fuer die Indexierung wiederverwendet (`_EmbeddingResult`-Dataclass traegt den Vektor zwischen den Phasen).
 10. **OCR-Cache:** Korrigierter Text landet in `doc_ocr_cache`, nie in Paperless. Sowohl `poll_inbox()` als auch `reindex_all()` nutzen gecachte Korrekturen. Beim Reindex wird OCR vor dem Embedding als Phase 0 ausgefuehrt — gecachte Eintraege werden uebersprungen.
 11. **Embedding-Text-Limit:** `document_summary()` begrenzt den **Gesamttext** (Titel + Content) auf `EMBED_MAX_CHARS` (Default 6000). Die Truncation greift auf die kombinierte Laenge, nicht nur auf den Content-Teil — damit kann ein langer Titel das Limit nicht sprengen.
