@@ -145,6 +145,25 @@ class TagBlacklistEntry(BaseModel):
 
 
 # =============================================================================
+# Correspondent whitelist
+# =============================================================================
+class CorrespondentWhitelistEntry(BaseModel):
+    name: str
+    paperless_id: int | None = None
+    approved: bool = False
+    first_seen: str
+    times_seen: int = 1
+    notes: str | None = None
+
+
+class CorrespondentBlacklistEntry(BaseModel):
+    name: str
+    rejected_at: str
+    times_seen: int = 1
+    notes: str | None = None
+
+
+# =============================================================================
 # Review form payload from the GUI
 # =============================================================================
 class ReviewDecision(BaseModel):

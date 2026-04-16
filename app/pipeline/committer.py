@@ -182,6 +182,87 @@ async def retroactive_tag_apply(
     return patched_docs, updated_pending
 
 
+async def retroactive_correspondent_apply(
+    corr_name: str,
+    paperless_id: int,
+    paperless: PaperlessClient,
+) -> tuple[int, int]:
+    """Retroactively apply a newly approved correspondent to affected suggestions.
+
+    Finds all suggestions that proposed *corr_name* with ``proposed_correspondent_id = NULL``,
+    resolves the ID, and — for already-committed documents — PATCHes
+    Paperless to set the correspondent.
+
+    Returns ``(patched_docs, updated_pending)`` counts.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id, document_id, status, proposed_correspondent_name
+               FROM suggestions
+               WHERE proposed_correspondent_name = ?
+                 AND proposed_correspondent_id IS NULL
+                 AND status IN ('committed', 'pending')""",
+            (corr_name,),
+        ).fetchall()
+
+    patched_docs = 0
+    updated_pending = 0
+
+    for row in rows:
+        # Update the suggestion record with the resolved ID
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE suggestions SET proposed_correspondent_id = ? WHERE id = ?",
+                (paperless_id, row["id"]),
+            )
+
+        if row["status"] == "pending":
+            updated_pending += 1
+            log.debug(
+                "correspondent resolved in pending suggestion",
+                suggestion_id=row["id"],
+                correspondent=corr_name,
+            )
+            continue
+
+        # For committed suggestions: PATCH Paperless to set the correspondent
+        doc_id = row["document_id"]
+        try:
+            doc = await paperless.get_document(doc_id)
+            if doc.correspondent == paperless_id:
+                continue  # already has this correspondent
+            await paperless.patch_document(doc_id, {"correspondent": paperless_id})
+            patched_docs += 1
+            log.info(
+                "correspondent applied retroactively",
+                doc_id=doc_id,
+                correspondent=corr_name,
+                paperless_id=paperless_id,
+            )
+
+            with get_conn() as conn:
+                conn.execute(
+                    """INSERT INTO audit_log (action, document_id, actor, details)
+                       VALUES ('retroactive_correspondent', ?, 'system', ?)""",
+                    (
+                        doc_id,
+                        json.dumps(
+                            {"correspondent_name": corr_name, "paperless_id": paperless_id},
+                            ensure_ascii=False,
+                        ),
+                    ),
+                )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                log.warning("document gone, skipping retroactive correspondent", doc_id=doc_id)
+            else:
+                log.warning("retroactive correspondent patch failed", doc_id=doc_id, error=str(exc))
+        except Exception as exc:
+            log.warning("retroactive correspondent patch failed", doc_id=doc_id, error=str(exc))
+
+    return patched_docs, updated_pending
+
+
 def _record_error(doc_id: int, suggestion_id: int, exc: Exception) -> None:
     """Persist commit failure to DB without raising."""
     try:

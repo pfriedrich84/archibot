@@ -202,6 +202,31 @@ def _upsert_tag_whitelist(name: str) -> None:
             )
 
 
+def _upsert_correspondent_whitelist(name: str) -> None:
+    """Insert a new correspondent proposal or bump its counter. Skips blacklisted."""
+    with get_conn() as conn:
+        bl = conn.execute(
+            "SELECT 1 FROM correspondent_blacklist WHERE name = ?", (name,)
+        ).fetchone()
+        if bl:
+            log.debug("correspondent blacklisted, skipping", correspondent=name)
+            return
+
+        row = conn.execute(
+            "SELECT times_seen FROM correspondent_whitelist WHERE name = ?", (name,)
+        ).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE correspondent_whitelist SET times_seen = times_seen + 1 WHERE name = ?",
+                (name,),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO correspondent_whitelist (name) VALUES (?)",
+                (name,),
+            )
+
+
 # ---------------------------------------------------------------------------
 # Suggestion storage
 # ---------------------------------------------------------------------------
@@ -217,6 +242,8 @@ def _store_suggestion(
 ) -> SuggestionRow:
     """Persist a classification result to the ``suggestions`` table."""
     corr_id = _resolve_entity(result.correspondent, correspondents)
+    if corr_id is None and result.correspondent:
+        _upsert_correspondent_whitelist(result.correspondent)
     dt_id = _resolve_entity(result.document_type, doctypes)
     sp_id = _resolve_entity(result.storage_path, storage_paths)
     _resolved_tag_ids, tag_dicts = _resolve_tags(
