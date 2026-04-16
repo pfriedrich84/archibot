@@ -12,6 +12,7 @@ from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key
 from app.mcp_tools._deps import get_deps
+from app.pipeline.committer import retroactive_tag_apply
 
 log = structlog.get_logger(__name__)
 
@@ -85,8 +86,9 @@ def register(mcp: FastMCP) -> None:
         @mcp.tool(
             name="approve_tag",
             description=(
-                "Approve a proposed tag: creates it in Paperless-NGX and marks it "
-                "as approved in the whitelist. Future classifications can then use it."
+                "Approve a proposed tag: creates it in Paperless-NGX, marks it "
+                "as approved in the whitelist, and retroactively applies it to "
+                "already-committed documents that had proposed this tag."
             ),
             annotations=ToolAnnotations(
                 readOnlyHint=False, destructiveHint=False, idempotentHint=False
@@ -130,7 +132,19 @@ def register(mcp: FastMCP) -> None:
                 )
 
             log.info("tag approved via MCP", tag_name=name, paperless_id=entity.id)
-            return json.dumps({"ok": True, "tag_name": name, "paperless_id": entity.id})
+
+            # Retroactively apply to committed docs + resolve in pending suggestions
+            patched, pending = await retroactive_tag_apply(name, entity.id, deps.paperless)
+
+            return json.dumps(
+                {
+                    "ok": True,
+                    "tag_name": name,
+                    "paperless_id": entity.id,
+                    "patched_docs": patched,
+                    "updated_pending": pending,
+                }
+            )
 
         @mcp.tool(
             name="unblacklist_tag",

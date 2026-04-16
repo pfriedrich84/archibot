@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import structlog
 
 from app.clients.paperless import PaperlessClient
@@ -80,6 +81,105 @@ async def commit_suggestion(
             error=str(exc),
         )
         _record_error(doc_id, suggestion.id, exc)
+
+
+async def retroactive_tag_apply(
+    tag_name: str,
+    paperless_id: int,
+    paperless: PaperlessClient,
+) -> tuple[int, int]:
+    """Retroactively apply a newly approved tag to affected suggestions.
+
+    Finds all suggestions that proposed *tag_name* with ``"id": null``,
+    resolves the ID, and — for already-committed documents — PATCHes
+    Paperless to add the tag.
+
+    Returns ``(patched_docs, updated_pending)`` counts.
+    """
+    # Find candidate suggestions (both committed and pending)
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id, document_id, status, proposed_tags_json
+               FROM suggestions
+               WHERE proposed_tags_json LIKE ?
+                 AND status IN ('committed', 'pending')""",
+            (f"%{tag_name}%",),
+        ).fetchall()
+
+    patched_docs = 0
+    updated_pending = 0
+
+    for row in rows:
+        try:
+            tags = json.loads(row["proposed_tags_json"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        # Find entries matching this tag name with unresolved id
+        changed = False
+        for entry in tags:
+            if entry.get("name", "").lower() == tag_name.lower() and entry.get("id") is None:
+                entry["id"] = paperless_id
+                changed = True
+
+        if not changed:
+            continue
+
+        updated_json = json.dumps(tags, ensure_ascii=False)
+
+        # Update the suggestion record
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE suggestions SET proposed_tags_json = ? WHERE id = ?",
+                (updated_json, row["id"]),
+            )
+
+        if row["status"] == "pending":
+            updated_pending += 1
+            log.debug(
+                "tag resolved in pending suggestion",
+                suggestion_id=row["id"],
+                tag=tag_name,
+            )
+            continue
+
+        # For committed suggestions: PATCH Paperless to add the tag
+        doc_id = row["document_id"]
+        try:
+            doc = await paperless.get_document(doc_id)
+            if paperless_id in doc.tags:
+                continue  # already has the tag
+            new_tags = sorted(set(doc.tags) | {paperless_id})
+            await paperless.patch_document(doc_id, {"tags": new_tags})
+            patched_docs += 1
+            log.info(
+                "tag applied retroactively",
+                doc_id=doc_id,
+                tag=tag_name,
+                paperless_id=paperless_id,
+            )
+
+            with get_conn() as conn:
+                conn.execute(
+                    """INSERT INTO audit_log (action, document_id, actor, details)
+                       VALUES ('retroactive_tag', ?, 'system', ?)""",
+                    (
+                        doc_id,
+                        json.dumps(
+                            {"tag_name": tag_name, "paperless_id": paperless_id},
+                            ensure_ascii=False,
+                        ),
+                    ),
+                )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                log.warning("document gone, skipping retroactive tag", doc_id=doc_id)
+            else:
+                log.warning("retroactive tag patch failed", doc_id=doc_id, error=str(exc))
+        except Exception as exc:
+            log.warning("retroactive tag patch failed", doc_id=doc_id, error=str(exc))
+
+    return patched_docs, updated_pending
 
 
 def _record_error(doc_id: int, suggestion_id: int, exc: Exception) -> None:

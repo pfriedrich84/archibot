@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from app.db import get_conn
+from app.pipeline.committer import retroactive_tag_apply
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/tags")
@@ -46,11 +47,24 @@ async def approve_tag(request: Request, name: str):
                 (f"Tag '{name}' approved and created with ID {entity.id}",),
             )
         log.info("tag approved", name=name, paperless_id=entity.id)
+
+        # Retroactively apply to committed docs + resolve in pending suggestions
+        patched, pending = await retroactive_tag_apply(name, entity.id, paperless)
+
+        retro_note = ""
+        parts: list[str] = []
+        if patched:
+            parts.append(f"{patched} doc(s) updated")
+        if pending:
+            parts.append(f"{pending} pending resolved")
+        if parts:
+            retro_note = f' <span class="text-xs text-gray-500">({", ".join(parts)})</span>'
+
         return HTMLResponse(
             f'<tr id="tag-{name}" class="bg-green-50">'
             f'<td class="px-4 py-3 font-medium">{name}</td>'
             f'<td class="px-4 py-3">{entity.id}</td>'
-            f'<td class="px-4 py-3"><span class="text-green-700">Approved</span></td>'
+            f'<td class="px-4 py-3"><span class="text-green-700">Approved</span>{retro_note}</td>'
             f'<td class="px-4 py-3">—</td></tr>'
         )
     except Exception as exc:
