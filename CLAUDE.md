@@ -361,7 +361,7 @@ Embedding trotzdem indexiert (falls vorhanden).
 ## Wichtige Invarianten
 
 1. **Idempotenz:** Ein Dokument wird pro `updated_at`-Timestamp nur einmal verarbeitet. `processed_documents`-Tabelle haelt State.
-2. **Tag-Whitelist-Gate:** `tags`-Updates in Paperless passieren NUR mit IDs, die in der Whitelist stehen. Neue vom LLM vorgeschlagene Tags landen in `tag_whitelist` mit Status `pending`. Abgelehnte Tags werden in `tag_blacklist` verschoben und bei zukuenftigen Vorschlaegen automatisch ignoriert.
+2. **Tag-Whitelist-Gate:** `tags`-Updates in Paperless passieren NUR mit IDs, die in der Whitelist stehen. Neue vom LLM vorgeschlagene Tags landen in `tag_whitelist` mit Status `pending`. Abgelehnte Tags werden in `tag_blacklist` verschoben und bei zukuenftigen Vorschlaegen automatisch ignoriert. Bei Freigabe eines pending Tags wird dieser **retroaktiv** auf bereits committete Dokumente angewendet (PATCH in Paperless) und in offenen Vorschlaegen voraufgeloest (`retroactive_tag_apply()` in `committer.py`).
 3. **Confidence-Gate:** Nur wenn `AUTO_COMMIT_CONFIDENCE > 0` UND das LLM einen Score darueber meldet wird ohne Review committed.
 4. **Read-Only bei Fehler:** Wenn Paperless oder Ollama nicht erreichbar sind, wird ein Error-Record geschrieben und der Worker macht weiter. Keine Pipeline-Level-Retries im selben Lauf. Ausnahme: `OllamaClient.embed()` hat HTTP-Level-Retries mit Truncation bei Context-Length-Fehlern und Backoff bei transienten 5xx (konfigurierbar via `OLLAMA_EMBED_RETRIES`).
 5. **Inbox-Tag bleibt:** Standardmaessig (`KEEP_INBOX_TAG=true`) wird der `Posteingang`-Tag nach Commit NICHT entfernt. Nur mit `KEEP_INBOX_TAG=false` wird er beim Commit entfernt.

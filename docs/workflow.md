@@ -97,7 +97,8 @@ Nach Freigabe werden die Metadaten via PATCH an Paperless geschrieben:
 Neue Tags, die das LLM vorschlaegt und die noch nicht in Paperless existieren,
 landen in der Tag-Whitelist mit Status `pending`. Auf der Seite `/tags` kannst du:
 
-- **Freigeben** — Tag wird in Paperless angelegt und bei zukuenftigen Commits genutzt
+- **Freigeben** — Tag wird in Paperless angelegt, retroaktiv auf bereits committete
+  Dokumente angewendet (PATCH), und in offenen Vorschlaegen voraufgeloest
 - **Ablehnen** — Tag wandert in die Blacklist
 
 ### Blacklist
