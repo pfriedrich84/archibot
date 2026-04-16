@@ -656,7 +656,7 @@ async def _phase_classify(
             except Exception as exc:
                 log.warning("indexing failed", doc_id=doc.id, error=str(exc))
 
-    await ollama.unload_model(ollama.model)
+    await ollama.unload_model(ollama.model, swap=True)
     return classified, auto_committed, errored
 
 
