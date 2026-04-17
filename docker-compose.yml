@@ -1,7 +1,7 @@
 services:
   paperless-ai-classifier:
-    image: ghcr.io/pfriedrich84/paperless-ai-classifier:${IMAGE_TAG:-latest}
-    container_name: paperless-ai-classifier
+    image: ghcr.io/pfriedrich84/archibot:${IMAGE_TAG:-latest}
+    container_name: archibot
     restart: unless-stopped
     environment:
       # --- Paperless-NGX (required) ---
@@ -64,7 +64,7 @@ services:
       - "${GUI_PORT:-8088}:8088"
       - "${MCP_PORT:-3001}:3001"   # MCP SSE (nur bei ENABLE_MCP=true)
     volumes:
-      - paperless_ai_data:/data
+      - archibot_data:/data
     # Falls Paperless/Ollama in anderen Compose-Stacks laufen,
     # entsprechendes externes Netzwerk einkommentieren:
     # networks:
@@ -72,7 +72,7 @@ services:
     #   - ollama
 
 volumes:
-  paperless_ai_data:
+  archibot_data:
     driver: local
 
 # networks:
