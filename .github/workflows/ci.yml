@@ -70,7 +70,7 @@ jobs:
           "
 
       - name: Console script check
-        run: paperless-classify --help
+        run: archibot --help
 
       - name: Import check
         run: python -c "import app.main"
@@ -120,4 +120,4 @@ jobs:
           sarif_file: ${{ steps.grype-sarif.outputs.sarif }}
 
       - name: Verify CLI in Docker image
-        run: docker run --rm test paperless-classify --help
+        run: docker run --rm test archibot --help
