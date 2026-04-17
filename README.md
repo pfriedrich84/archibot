@@ -18,6 +18,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - ✅ Review-GUI mit HTMX: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`)
+- ⏱️ Robuste Ollama-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ SQLite-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
 - 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — im Browser (`/chat`) oder direkt im Telegram-Chat

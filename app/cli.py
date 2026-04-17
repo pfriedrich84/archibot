@@ -7,6 +7,7 @@ Usage::
     python -m app.cli reindex-ocr --force  # OCR correction, ignore cache
     python -m app.cli reindex-embed    # Embedding only (skip OCR)
     python -m app.cli poll             # Process inbox (OCR + embed + classify)
+    python -m app.cli poll --force     # Reprocess inbox docs (ignore idempotency skip)
     python -m app.cli reset --yes      # Delete DB and recreate clean schema
     python -m app.cli reset --yes --include-config  # Also delete config.env
 """
@@ -107,8 +108,11 @@ async def cmd_reindex_embed() -> None:
         await ollama.aclose()
 
 
-async def cmd_poll() -> None:
-    """Process inbox: OCR + embed + classify (same as scheduled poll)."""
+async def cmd_poll(*, force: bool = False) -> None:
+    """Process inbox: OCR + embed + classify (same as scheduled poll).
+
+    With ``force=True`` the idempotency skip check is bypassed.
+    """
     from app.worker import poll_inbox
 
     paperless = PaperlessClient()
@@ -132,7 +136,7 @@ async def cmd_poll() -> None:
     )
 
     try:
-        await poll_inbox()
+        await poll_inbox(force=force)
         if worker._poll_progress.cancelled:
             print("Inbox processing cancelled.")
         else:
@@ -182,7 +186,7 @@ COMMANDS = {
     "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
     "reindex-ocr": ("OCR correction only (--force to ignore cache)", cmd_reindex_ocr),
     "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
-    "poll": ("Process inbox (OCR + embed + classify)", cmd_poll),
+    "poll": ("Process inbox (OCR + embed + classify, --force to reprocess)", cmd_poll),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
 
@@ -221,7 +225,7 @@ def main() -> None:
 
     _, cmd_func = COMMANDS[cmd_name]
     try:
-        if cmd_name == "reindex-ocr":
+        if cmd_name in {"reindex-ocr", "poll"}:
             asyncio.run(cmd_func(force=force))
         else:
             asyncio.run(cmd_func())

@@ -734,7 +734,7 @@ async def _phase_classify(
 # ---------------------------------------------------------------------------
 # Main poll loop
 # ---------------------------------------------------------------------------
-async def poll_inbox() -> None:
+async def poll_inbox(*, force: bool = False) -> None:
     """Fetch inbox documents and run the classification pipeline.
 
     Processing is split into phases to minimise Ollama model swaps:
@@ -744,6 +744,9 @@ async def poll_inbox() -> None:
     3. **Classification + post-processing** (chat model) — all docs
 
     Each phase unloads its model from VRAM before the next phase begins.
+
+    When ``force=True``, the idempotency skip check is bypassed and inbox
+    documents are reprocessed even if their ``modified`` timestamp did not change.
     """
     if _paperless is None or _ollama is None:
         log.error("worker not initialised — skipping poll")
@@ -784,7 +787,7 @@ async def poll_inbox() -> None:
     batch: list[PaperlessDocument] = []
     skipped = 0
     for doc in docs:
-        if _should_skip(doc):
+        if not force and _should_skip(doc):
             skipped += 1
             continue
         log.info("processing document", doc_id=doc.id, title=doc.title[:80])

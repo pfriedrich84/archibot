@@ -311,6 +311,54 @@ class TestPollCycleSummary:
         assert summary[0]["auto_committed"] == 0
         assert summary[0]["errored"] == 0
 
+    @pytest.mark.asyncio
+    async def test_force_reprocesses_even_if_already_processed(self, patch_db, tmp_db, sample_doc):
+        """poll_inbox(force=True) should bypass idempotency skip checks."""
+        import sqlite3
+
+        doc = sample_doc
+        doc.modified = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.execute(
+            "INSERT INTO processed_documents (document_id, last_updated_at, last_processed, status) "
+            "VALUES (?, ?, datetime('now'), 'committed')",
+            (doc.id, doc.modified.isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
+        mock_paperless = AsyncMock()
+        mock_paperless.list_inbox_documents = AsyncMock(return_value=[doc])
+        mock_paperless.list_correspondents = AsyncMock(return_value=[])
+        mock_paperless.list_document_types = AsyncMock(return_value=[])
+        mock_paperless.list_storage_paths = AsyncMock(return_value=[])
+        mock_paperless.list_tags = AsyncMock(return_value=[])
+
+        mock_phase_ocr = AsyncMock(return_value=[doc])
+        mock_phase_embed = AsyncMock(return_value=[])
+        mock_phase_classify = AsyncMock(return_value=(1, 0, 0))
+
+        with (
+            patch("app.worker._paperless", mock_paperless),
+            patch("app.worker._ollama", AsyncMock()),
+            patch("app.worker._has_embedding_index", return_value=True),
+            patch("app.worker._phase_ocr", mock_phase_ocr),
+            patch("app.worker._phase_embed", mock_phase_embed),
+            patch("app.worker._phase_classify", mock_phase_classify),
+            structlog.testing.capture_logs() as logs,
+        ):
+            await poll_inbox(force=True)
+
+        summary = [entry for entry in logs if entry.get("event") == "poll cycle complete"]
+        assert len(summary) == 1
+        assert summary[0]["total"] == 1
+        assert summary[0]["skipped"] == 0
+        assert summary[0]["classified"] == 1
+        assert summary[0]["auto_committed"] == 0
+        assert summary[0]["errored"] == 0
+        mock_phase_ocr.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # Phased pipeline tests

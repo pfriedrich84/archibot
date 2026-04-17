@@ -282,6 +282,44 @@ async def test_chat_json_raises_on_invalid_content(client: OllamaClient):
             await client.chat_json(system="sys", user="usr")
 
 
+async def test_chat_json_retries_once_on_invalid_json_then_succeeds(client: OllamaClient):
+    """A transient malformed JSON response should be retried once."""
+    payload = {"title": "Recovered", "confidence": 77}
+    client._client.post = AsyncMock(
+        side_effect=[
+            _make_chat_response("this is not json"),
+            _make_chat_response(json.dumps(payload)),
+        ]
+    )
+
+    with patch("app.clients.ollama.settings") as mock_settings:
+        mock_settings.ollama_num_ctx = 4096
+        result = await client.chat_json(system="sys", user="usr")
+
+    assert result == payload
+    assert client._client.post.call_count == 2
+
+
+async def test_chat_json_retries_on_read_timeout(client: OllamaClient):
+    """ReadTimeout should be retried once for chat JSON requests."""
+    payload = {"ok": True}
+    client._client.post = AsyncMock(
+        side_effect=[
+            httpx.ReadTimeout("", request=httpx.Request("POST", "http://test/api/chat")),
+            _make_chat_response(json.dumps(payload)),
+        ]
+    )
+
+    with patch("app.clients.ollama.settings") as mock_settings:
+        mock_settings.ollama_num_ctx = 4096
+        with patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await client.chat_json(system="sys", user="usr")
+
+    assert result == payload
+    assert client._client.post.call_count == 2
+    mock_sleep.assert_awaited_once()
+
+
 async def test_chat_json_passes_num_ctx(client: OllamaClient):
     """The payload sent to Ollama includes num_ctx in options."""
     payload = {"ok": True}

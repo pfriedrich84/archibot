@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:e4b"
     ollama_embed_model: str = "qwen3-embedding:0.6b"
     ollama_ocr_model: str = "qwen3:0.6b"
-    ollama_timeout_seconds: int = 300
+    ollama_timeout_seconds: int = 600
     ollama_embed_retries: int = 3
     ollama_embed_retry_base_delay: float = 1.0
     ollama_chat_retries: int = 1

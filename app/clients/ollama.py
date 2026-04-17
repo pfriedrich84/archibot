@@ -40,6 +40,12 @@ def _strip_markdown_fences(text: str) -> str:
     return cleaned.strip()
 
 
+def _exc_to_str(exc: Exception) -> str:
+    """Return a useful error string even when ``str(exc)`` is empty."""
+    text = str(exc).strip()
+    return text or exc.__class__.__name__
+
+
 class OllamaClient:
     def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
         self.base_url = (base_url or settings.ollama_url).rstrip("/")
@@ -101,6 +107,75 @@ class OllamaClient:
         except Exception:
             return False
 
+    @staticmethod
+    def _parse_chat_json_content(content: str, *, vision: bool = False) -> dict[str, Any]:
+        if not content:
+            raise ValueError("Ollama returned empty content")
+
+        parse_err: json.JSONDecodeError | None = None
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            parse_err = exc
+
+        # Some models wrap JSON in markdown fences despite format="json"
+        stripped = _strip_markdown_fences(content)
+        if stripped != content:
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                parse_err = exc
+
+        msg = "ollama vision returned invalid json" if vision else "ollama returned invalid json"
+        log.error(
+            msg,
+            content=content[:500],
+            content_len=len(content),
+            json_error=_exc_to_str(parse_err or ValueError("json decode failed")),
+        )
+        source = "Ollama vision" if vision else "Ollama"
+        raise ValueError(f"Invalid JSON from {source}: {content[:200]}") from None
+
+    async def _chat_json_with_retries(
+        self,
+        payload: dict[str, Any],
+        *,
+        vision: bool = False,
+    ) -> dict[str, Any]:
+        # Keep this bounded to avoid long stalls on OCR/classification workloads.
+        retries_raw = getattr(settings, "ollama_chat_retries", 1)
+        base_delay_raw = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
+        max_retries = retries_raw if isinstance(retries_raw, int) else 1
+        base_delay = float(base_delay_raw) if isinstance(base_delay_raw, int | float) else 1.0
+        last_exc: Exception | None = None
+
+        for attempt in range(1 + max_retries):
+            try:
+                r = await self._client.post("/api/chat", json=payload)
+                r.raise_for_status()
+                data = r.json()
+                content = data.get("message", {}).get("content", "")
+                return self._parse_chat_json_content(content, vision=vision)
+            except Exception as exc:
+                last_exc = exc
+                is_retryable = self._is_retryable(exc) or isinstance(exc, ValueError)
+                if attempt < max_retries and is_retryable:
+                    delay = 0.0
+                    if not isinstance(exc, ValueError):
+                        delay = self._backoff_delay(base_delay, attempt)
+                    log.warning(
+                        "ollama chat request failed, retrying",
+                        attempt=attempt + 1,
+                        delay_s=round(delay, 2),
+                        error=_exc_to_str(exc),
+                    )
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    continue
+                raise
+
+        raise last_exc  # type: ignore[misc]
+
     # ---------------------------------------------------------------
     # Chat (JSON mode)
     # ---------------------------------------------------------------
@@ -127,18 +202,7 @@ class OllamaClient:
                 {"role": "user", "content": user},
             ],
         }
-        retries = getattr(settings, "ollama_chat_retries", 1)
-        base_delay = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
-        data = await self._post_chat_with_retry(
-            payload,
-            retry_count=retries,
-            base_delay=base_delay,
-            log_label="ollama chat",
-        )
-        content = data.get("message", {}).get("content", "")
-        if not content:
-            raise ValueError("Ollama returned empty content")
-        return self._parse_json_content(content, source="Ollama")
+        return await self._chat_json_with_retries(payload, vision=False)
 
     # ---------------------------------------------------------------
     # Chat with vision (JSON mode)
@@ -170,18 +234,7 @@ class OllamaClient:
                 {"role": "user", "content": user, "images": images},
             ],
         }
-        retries = getattr(settings, "ollama_chat_retries", 1)
-        base_delay = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
-        data = await self._post_chat_with_retry(
-            payload,
-            retry_count=retries,
-            base_delay=base_delay,
-            log_label="ollama vision chat",
-        )
-        content = data.get("message", {}).get("content", "")
-        if not content:
-            raise ValueError("Ollama returned empty content")
-        return self._parse_json_content(content, source="Ollama vision")
+        return await self._chat_json_with_retries(payload, vision=True)
 
     # ---------------------------------------------------------------
     # Chat (plain text, for conversational RAG)
@@ -208,8 +261,10 @@ class OllamaClient:
             "options": {"temperature": temperature, "num_ctx": settings.ollama_num_ctx},
             "messages": messages,
         }
-        retries = getattr(settings, "ollama_chat_retries", 1)
-        base_delay = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
+        retries_raw = getattr(settings, "ollama_chat_retries", 1)
+        base_delay_raw = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
+        retries = retries_raw if isinstance(retries_raw, int) else 1
+        base_delay = float(base_delay_raw) if isinstance(base_delay_raw, int | float) else 1.0
         data = await self._post_chat_with_retry(
             payload,
             retry_count=retries,
@@ -249,6 +304,7 @@ class OllamaClient:
                 httpx.RemoteProtocolError,
                 httpx.ReadError,
                 httpx.WriteError,
+                httpx.TimeoutException,
             ),
         )
 
@@ -278,7 +334,7 @@ class OllamaClient:
                         f"{log_label} request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
-                        error=str(exc),
+                        error=_exc_to_str(exc),
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -359,7 +415,7 @@ class OllamaClient:
                         "embedding request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
-                        error=str(exc),
+                        error=_exc_to_str(exc),
                     )
                     await asyncio.sleep(delay)
                     continue

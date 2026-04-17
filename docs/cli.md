@@ -92,7 +92,15 @@ Scheduler-Job, aber manuell ausgeloest.
 
 ```bash
 archibot poll
+
+# Inbox-Dokumente erneut verarbeiten (Idempotency-Skip ignorieren)
+archibot poll --force
 ```
+
+**Flags:**
+| Flag | Beschreibung |
+|------|-------------|
+| `--force` | Ignoriert den Idempotency-Skip (`processed_documents`) und verarbeitet Inbox-Dokumente erneut, auch wenn sich `modified` nicht geaendert hat. |
 
 **Was passiert:**
 1. Dokumente mit Inbox-Tag aus Paperless holen
