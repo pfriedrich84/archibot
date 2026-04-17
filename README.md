@@ -1,6 +1,6 @@
 # ArchiBot
 
-[![AI Assisted](https://img.shields.io/badge/AI-Assisted-blueviolet)](https://github.com/pfriedrich84/paperless-ai-classifier)
+[![AI Assisted](https://img.shields.io/badge/AI-Assisted-blueviolet)](https://github.com/pfriedrich84/archibot)
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
@@ -29,7 +29,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - 🏷️ Tag-Blacklist: Unerwünschte Tags dauerhaft unterdrücken (`/tags`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
 - ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/settings`)
-- 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/paperless-ai-classifier)
+- 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot)
 
 ## Architektur
 
@@ -73,8 +73,8 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 
 ```bash
 # 1. docker-compose.yml und .env herunterladen
-curl -LO https://raw.githubusercontent.com/pfriedrich84/paperless-ai-classifier/main/docker-compose.yml
-curl -LO https://raw.githubusercontent.com/pfriedrich84/paperless-ai-classifier/main/.env.example
+curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 

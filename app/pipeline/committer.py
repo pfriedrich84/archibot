@@ -199,7 +199,7 @@ async def retroactive_correspondent_apply(
         rows = conn.execute(
             """SELECT id, document_id, status, proposed_correspondent_name
                FROM suggestions
-               WHERE proposed_correspondent_name = ?
+               WHERE LOWER(proposed_correspondent_name) = LOWER(?)
                  AND proposed_correspondent_id IS NULL
                  AND status IN ('committed', 'pending')""",
             (corr_name,),
@@ -280,7 +280,7 @@ async def retroactive_doctype_apply(
         rows = conn.execute(
             """SELECT id, document_id, status, proposed_doctype_name
                FROM suggestions
-               WHERE proposed_doctype_name = ?
+               WHERE LOWER(proposed_doctype_name) = LOWER(?)
                  AND proposed_doctype_id IS NULL
                  AND status IN ('committed', 'pending')""",
             (doctype_name,),

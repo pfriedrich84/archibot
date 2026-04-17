@@ -85,7 +85,7 @@ Below are example configurations to connect the MCP server with client tools.
     "paperless": {
       "command": "python",
       "args": ["-m", "app.mcp_server"],
-      "cwd": "/path/to/paperless-ai-classifier",
+      "cwd": "/path/to/archibot",
       "env": {
         "PAPERLESS_URL": "http://localhost:8000",
         "PAPERLESS_TOKEN": "your-token",

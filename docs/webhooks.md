@@ -83,8 +83,8 @@ Der Classifier muss fuer Paperless ueber das Netzwerk erreichbar sein.
 Wenn Paperless und der Classifier im selben `docker-compose.yml` laufen, koennen sie sich ueber den Service-Namen erreichen:
 
 ```
-http://paperless-ai-classifier:8088/webhook/new
-http://paperless-ai-classifier:8088/webhook/edit
+http://archibot:8088/webhook/new
+http://archibot:8088/webhook/edit
 ```
 
 ### Separate Docker-Compose-Stacks
@@ -95,7 +95,7 @@ Wenn Paperless und der Classifier in unterschiedlichen Stacks laufen, muessen si
 
 ```yaml
 services:
-  paperless-ai-classifier:
+  archibot:
     networks:
       - paperless
 
@@ -175,7 +175,7 @@ in Paperless geaendert wurde und der Embedding-Index aktualisiert werden soll.
 1. **Netzwerk pruefen:** Kann Paperless den Classifier erreichen?
    ```bash
    # Aus dem Paperless-Container heraus testen:
-   docker exec paperless curl -s http://paperless-ai-classifier:8088/healthz
+   docker exec paperless curl -s http://archibot:8088/healthz
    # Erwartete Antwort: {"status":"ok"}
    ```
 

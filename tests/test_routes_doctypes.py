@@ -219,3 +219,28 @@ class TestDoctypeWhitelistUpsert:
         conn.close()
 
         assert row is None
+
+    def test_upsert_case_insensitive(self, db_path, monkeypatch):
+        """Upsert should treat differing capitalization as the same doctype."""
+        from tests.conftest import _mock_get_conn
+
+        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("INSERT INTO doctype_whitelist (name, times_seen) VALUES ('Rechnung', 1)")
+        conn.commit()
+        conn.close()
+
+        from app.worker import _upsert_doctype_whitelist
+
+        _upsert_doctype_whitelist("rechnung")
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT name, times_seen FROM doctype_whitelist").fetchall()
+        conn.close()
+
+        assert len(rows) == 1
+        assert rows[0]["name"] == "Rechnung"
+        assert rows[0]["times_seen"] == 2

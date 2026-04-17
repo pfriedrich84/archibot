@@ -93,7 +93,7 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 | **Webhook** | POST von Paperless nach Consume | `routes/webhook.py` | Ja, antwortet 503 |
 | **Inbox-GUI** | Button "Reprocess" in `/inbox` | `routes/inbox.py` | Nein (manuell) |
 | **Manueller Poll** | Button "Trigger Poll" in `/settings` | `routes/settings.py → poll_inbox()` | Ja (via poll_inbox Guard) |
-| **CLI** | `paperless-classify <cmd>` | `app/cli.py` | Nein (manuell, blockiert bis fertig) |
+| **CLI** | `archibot <cmd>` | `app/cli.py` | Nein (manuell, blockiert bis fertig) |
 
 ## Inbox-Seite (`/inbox`)
 

@@ -171,6 +171,25 @@ class TestBlacklistFiltering:
         assert wl_row is None
         assert bl_row is not None  # still in blacklist
 
+    def test_upsert_tag_case_insensitive(self, patch_db, tmp_db):
+        """Tag whitelist/blacklist checks should be case-insensitive."""
+        import sqlite3
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.execute("INSERT INTO tag_whitelist (name, times_seen) VALUES ('Steuer', 1)")
+        conn.commit()
+        conn.close()
+
+        _upsert_tag_whitelist("steuer")
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT name, times_seen FROM tag_whitelist").fetchall()
+        conn.close()
+
+        assert len(rows) == 1
+        assert rows[0]["name"] == "Steuer"
+        assert rows[0]["times_seen"] == 2
 
 class TestProcessDocumentReturn:
     """Verify _process_document returns the correct ProcessResult."""

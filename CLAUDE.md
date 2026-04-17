@@ -386,12 +386,12 @@ Embedding trotzdem indexiert (falls vorhanden).
 
 Identisch zum `thermomix-bot`-Workflow:
 
-1. Privates GitHub-Repo `pfriedrich84/paperless-ai-classifier`
+1. Privates GitHub-Repo `pfriedrich84/archibot`
 2. SSH Deploy Key in GitHub hinterlegen (read-only)
 3. Dockhand → Settings → Git → Repo hinzufuegen
-4. `/opt/stacks/paperless-ai-classifier/.env` manuell auf dem Host anlegen
+4. `/opt/stacks/archibot/.env` manuell auf dem Host anlegen
 5. Dockhand → Stacks → Create from Git → Compose Path `docker-compose.yml`
-6. External env file: `/opt/stacks/paperless-ai-classifier/.env`
+6. External env file: `/opt/stacks/archibot/.env`
 7. Auto-Sync oder Webhook aktivieren
 
 Reverse Proxy: Zoraxy (kein Traefik). Keine Ports gegen Internet.
@@ -414,22 +414,22 @@ zu den GUI-Buttons in `/settings`.
 
 ```bash
 # Voller Reindex: OCR-Korrektur (wenn aktiviert) + Embedding
-paperless-classify reindex
+archibot reindex
 
 # Nur OCR-Korrektur auf alle indexierten Dokumente (respektiert OCR_MODE)
-paperless-classify reindex-ocr
+archibot reindex-ocr
 
 # Nur Embeddings neu berechnen (nutzt gecachte OCR-Texte)
-paperless-classify reindex-embed
+archibot reindex-embed
 
 # Inbox verarbeiten: OCR + Embedding + Klassifikation
-paperless-classify poll
+archibot poll
 
 # Container zuruecksetzen: DB loeschen + leere DB erstellen
-paperless-classify reset --yes
+archibot reset --yes
 
 # Container zuruecksetzen inkl. config.env (Werkseinstellungen)
-paperless-classify reset --yes --include-config
+archibot reset --yes --include-config
 ```
 
 Alternativ via `python -m app.cli <command>`.

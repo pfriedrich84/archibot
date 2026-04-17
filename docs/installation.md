@@ -20,12 +20,12 @@ oder selbst gebaut.
 
 ```bash
 # 1. docker-compose.yml und .env herunterladen
-curl -LO https://raw.githubusercontent.com/pfriedrich84/paperless-ai-classifier/main/docker-compose.yml
-curl -LO https://raw.githubusercontent.com/pfriedrich84/paperless-ai-classifier/main/.env.example
+curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
 # → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
 
-# 2. Starten (zieht automatisch ghcr.io/pfriedrich84/paperless-ai-classifier:latest)
+# 2. Starten (zieht automatisch ghcr.io/pfriedrich84/archibot:latest)
 docker compose up -d
 
 # 3. GUI oeffnen
@@ -41,8 +41,8 @@ open http://localhost:8088
 
 ```bash
 # 1. Repo klonen
-git clone git@github.com:pfriedrich84/paperless-ai-classifier.git
-cd paperless-ai-classifier
+git clone git@github.com:pfriedrich84/archibot.git
+cd archibot
 
 # 2. .env anlegen
 cp .env.example .env

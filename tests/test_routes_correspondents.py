@@ -241,3 +241,30 @@ class TestCorrespondentWhitelistUpsert:
         conn.close()
 
         assert row is None
+
+    def test_upsert_case_insensitive(self, db_path, monkeypatch):
+        """Upsert should treat differing capitalization as the same correspondent."""
+        from tests.conftest import _mock_get_conn
+
+        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "INSERT INTO correspondent_whitelist (name, times_seen) VALUES ('TK', 1)"
+        )
+        conn.commit()
+        conn.close()
+
+        from app.worker import _upsert_correspondent_whitelist
+
+        _upsert_correspondent_whitelist("tk")
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT name, times_seen FROM correspondent_whitelist").fetchall()
+        conn.close()
+
+        assert len(rows) == 1
+        assert rows[0]["name"] == "TK"
+        assert rows[0]["times_seen"] == 2

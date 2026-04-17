@@ -9,7 +9,7 @@ Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung.
 Das Image wird automatisch ueber GitHub Container Registry bereitgestellt:
 
 ```
-ghcr.io/pfriedrich84/paperless-ai-classifier:latest
+ghcr.io/pfriedrich84/archibot:latest
 ```
 
 ### Verfuegbare Tags
@@ -24,18 +24,18 @@ ghcr.io/pfriedrich84/paperless-ai-classifier:latest
 
 Fuer Dockhand-basierte Setups (z.B. Homelab mit zentraler Stack-Verwaltung):
 
-1. **Repo vorbereiten** — Privates GitHub-Repo `pfriedrich84/paperless-ai-classifier`
+1. **Repo vorbereiten** — Privates GitHub-Repo `pfriedrich84/archibot`
 2. **Deploy Key** — SSH Deploy Key in GitHub hinterlegen (read-only)
 3. **Dockhand konfigurieren:**
    - Settings → Git → Repo hinzufuegen
    - Stacks → Create from Git → Compose Path: `docker-compose.yml`
 4. **Env-Datei bereitstellen** — Auf dem Docker-Host anlegen:
    ```bash
-   mkdir -p /opt/stacks/paperless-ai-classifier
+   mkdir -p /opt/stacks/archibot
    # .env mit allen Variablen anlegen:
-   nano /opt/stacks/paperless-ai-classifier/.env
+   nano /opt/stacks/archibot/.env
    ```
-   In Dockhand: External Env File → `/opt/stacks/paperless-ai-classifier/.env`
+   In Dockhand: External Env File → `/opt/stacks/archibot/.env`
 5. **Auto-Sync** — Aktivieren oder Webhook fuer automatische Updates einrichten
 
 ### Reverse Proxy
@@ -80,10 +80,10 @@ Container-State zuruecksetzen: siehe [CLI-Dokumentation](./cli.md#reset).
 
 ```bash
 # Nur DB zuruecksetzen
-docker exec paperless-ai-classifier paperless-classify reset --yes
+docker exec archibot archibot reset --yes
 
 # Voller Factory-Reset (inkl. Config)
-docker exec paperless-ai-classifier paperless-classify reset --yes --include-config
+docker exec archibot archibot reset --yes --include-config
 ```
 
 ## Netzwerk-Anforderungen

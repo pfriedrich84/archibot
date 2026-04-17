@@ -180,20 +180,27 @@ def _resolve_tags(
 
 
 def _upsert_tag_whitelist(name: str) -> None:
-    """Insert a new tag proposal or bump its counter. Skips blacklisted tags."""
+    """Insert a new tag proposal or bump its counter. Skips blacklisted tags.
+
+    Matching is case-insensitive to avoid duplicate rows that only differ in
+    capitalization (e.g. "steuer" vs "Steuer").
+    """
     with get_conn() as conn:
-        bl = conn.execute("SELECT 1 FROM tag_blacklist WHERE name = ?", (name,)).fetchone()
+        bl = conn.execute(
+            "SELECT 1 FROM tag_blacklist WHERE LOWER(name) = LOWER(?)", (name,)
+        ).fetchone()
         if bl:
             log.debug("tag blacklisted, skipping", tag=name)
             return
 
         row = conn.execute(
-            "SELECT times_seen FROM tag_whitelist WHERE name = ?", (name,)
+            "SELECT name, times_seen FROM tag_whitelist WHERE LOWER(name) = LOWER(?)",
+            (name,),
         ).fetchone()
         if row:
             conn.execute(
                 "UPDATE tag_whitelist SET times_seen = times_seen + 1 WHERE name = ?",
-                (name,),
+                (row["name"],),
             )
         else:
             conn.execute(
@@ -203,22 +210,27 @@ def _upsert_tag_whitelist(name: str) -> None:
 
 
 def _upsert_correspondent_whitelist(name: str) -> None:
-    """Insert a new correspondent proposal or bump its counter. Skips blacklisted."""
+    """Insert a new correspondent proposal or bump its counter. Skips blacklisted.
+
+    Matching is case-insensitive to avoid duplicate rows that only differ in
+    capitalization.
+    """
     with get_conn() as conn:
         bl = conn.execute(
-            "SELECT 1 FROM correspondent_blacklist WHERE name = ?", (name,)
+            "SELECT 1 FROM correspondent_blacklist WHERE LOWER(name) = LOWER(?)", (name,)
         ).fetchone()
         if bl:
             log.debug("correspondent blacklisted, skipping", correspondent=name)
             return
 
         row = conn.execute(
-            "SELECT times_seen FROM correspondent_whitelist WHERE name = ?", (name,)
+            "SELECT name, times_seen FROM correspondent_whitelist WHERE LOWER(name) = LOWER(?)",
+            (name,),
         ).fetchone()
         if row:
             conn.execute(
                 "UPDATE correspondent_whitelist SET times_seen = times_seen + 1 WHERE name = ?",
-                (name,),
+                (row["name"],),
             )
         else:
             conn.execute(
@@ -228,20 +240,27 @@ def _upsert_correspondent_whitelist(name: str) -> None:
 
 
 def _upsert_doctype_whitelist(name: str) -> None:
-    """Insert a new document type proposal or bump its counter. Skips blacklisted."""
+    """Insert a new document type proposal or bump its counter. Skips blacklisted.
+
+    Matching is case-insensitive to avoid duplicate rows that only differ in
+    capitalization.
+    """
     with get_conn() as conn:
-        bl = conn.execute("SELECT 1 FROM doctype_blacklist WHERE name = ?", (name,)).fetchone()
+        bl = conn.execute(
+            "SELECT 1 FROM doctype_blacklist WHERE LOWER(name) = LOWER(?)", (name,)
+        ).fetchone()
         if bl:
             log.debug("doctype blacklisted, skipping", doctype=name)
             return
 
         row = conn.execute(
-            "SELECT times_seen FROM doctype_whitelist WHERE name = ?", (name,)
+            "SELECT name, times_seen FROM doctype_whitelist WHERE LOWER(name) = LOWER(?)",
+            (name,),
         ).fetchone()
         if row:
             conn.execute(
                 "UPDATE doctype_whitelist SET times_seen = times_seen + 1 WHERE name = ?",
-                (name,),
+                (row["name"],),
             )
         else:
             conn.execute(

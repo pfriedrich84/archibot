@@ -208,8 +208,8 @@ def main() -> None:
         extra_args = sys.argv[2:]
         if "--yes" not in extra_args:
             print("Safety check: pass --yes to confirm reset.")
-            print("  paperless-classify reset --yes")
-            print("  paperless-classify reset --yes --include-config")
+            print("  archibot reset --yes")
+            print("  archibot reset --yes --include-config")
             sys.exit(1)
         cmd_reset(include_config="--include-config" in extra_args)
         return

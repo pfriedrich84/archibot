@@ -1,5 +1,5 @@
 services:
-  paperless-ai-classifier:
+  archibot:
     image: ghcr.io/pfriedrich84/archibot:${IMAGE_TAG:-latest}
     container_name: archibot
     restart: unless-stopped

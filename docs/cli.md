@@ -8,13 +8,13 @@ manuelles Ausloesen der Pipeline-Phasen.
 
 ```bash
 # Installiert (Docker / pip install -e .)
-paperless-classify <command> [flags]
+archibot <command> [flags]
 
 # Alternativ als Python-Modul
 python -m app.cli <command> [flags]
 
 # Im Docker-Container
-docker exec -it paperless-ai-classifier paperless-classify <command> [flags]
+docker exec -it archibot archibot <command> [flags]
 ```
 
 ## Befehle
@@ -25,7 +25,7 @@ Loescht alle Embeddings und baut den gesamten Index neu auf.
 Fuehrt optional OCR-Korrektur durch (wenn `OCR_MODE != off`).
 
 ```bash
-paperless-classify reindex
+archibot reindex
 ```
 
 **Was passiert:**
@@ -45,10 +45,10 @@ neu zu berechnen. Respektiert die `OCR_MODE`-Einstellung.
 
 ```bash
 # Nur neue Dokumente (Cache wird respektiert)
-paperless-classify reindex-ocr
+archibot reindex-ocr
 
 # Alle Dokumente neu korrigieren (Cache ignorieren)
-paperless-classify reindex-ocr --force
+archibot reindex-ocr --force
 ```
 
 **Flags:**
@@ -73,7 +73,7 @@ Loescht alle Embeddings und berechnet sie neu. Nutzt gecachte OCR-Texte
 aus `doc_ocr_cache` (falls vorhanden), fuehrt aber keine neue OCR-Korrektur durch.
 
 ```bash
-paperless-classify reindex-embed
+archibot reindex-embed
 ```
 
 **Was passiert:**
@@ -91,7 +91,7 @@ Fuehrt einen einzelnen Poll-Durchlauf aus — identisch zum automatischen
 Scheduler-Job, aber manuell ausgeloest.
 
 ```bash
-paperless-classify poll
+archibot poll
 ```
 
 **Was passiert:**
@@ -112,10 +112,10 @@ Audit-Log, Tag-Whitelist/Blacklist) und erstellt eine leere DB neu.
 
 ```bash
 # Nur Datenbank zuruecksetzen (Config behalten)
-paperless-classify reset --yes
+archibot reset --yes
 
 # Datenbank + Config-Overrides zuruecksetzen (Werkseinstellungen)
-paperless-classify reset --yes --include-config
+archibot reset --yes --include-config
 ```
 
 **Flags:**
@@ -140,7 +140,7 @@ Datenbank-Problemen, oder beim Wechsel der gesamten Klassifikationsstrategie.
 ## Hilfe
 
 ```bash
-paperless-classify --help
+archibot --help
 ```
 
 Zeigt alle verfuegbaren Befehle mit Kurzbeschreibung an.

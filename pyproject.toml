@@ -1,5 +1,5 @@
 [project]
-name = "paperless-ai-classifier"
+name = "archibot"
 version = "0.1.0"
 description = "AI-based classifier for Paperless-NGX inbox documents using Ollama"
 readme = "README.md"
@@ -28,7 +28,7 @@ dev = [
 ]
 
 [project.scripts]
-paperless-classify = "app.cli:main"
+archibot = "app.cli:main"
 
 [tool.ruff]
 line-length = 100

@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 # Packages we don't publish to PyPI (local editable installs, etc.)
 SKIP_PACKAGES = frozenset(
     {
-        "paperless-ai-classifier",
+        "archibot",
         "pip",
         "setuptools",
         "wheel",
