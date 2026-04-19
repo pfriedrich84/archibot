@@ -15,10 +15,10 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
 # Fachregeln
 1. Titel kurz und praegnant. KEIN Datum im Titel.
 2. date nur als YYYY-MM-DD oder null.
-3. correspondent: bevorzugt aus bereitgestellter Liste, sonst neuer Name exakt wie im Dokument.
-4. document_type: bevorzugt aus Liste, sonst passender neuer Typ.
-5. storage_path: aus Liste oder null. Nur setzen, wenn sinnvoll.
-6. tags: bevorzugt bestehende Tags. Neue Tags nur wenn noetig. Keine Duplikate. Maximal 8 Tags.
+3. correspondent: nur wenn leer, dann bevorzugt aus bereitgestellter Liste, sonst neuer Name exakt wie im Dokument.
+4. document_type: nur wenn leer, dann bevorzugt aus Liste, sonst passender neuer Typ.
+5. storage_path: nur wenn leer, dann aus Liste oder null. Nur setzen, wenn sinnvoll.
+6. tags: bevorzugt bestehende Tags. Neue Tags nur wenn noetig. Keine Duplikate. Maximal 4 Tags.
 7. tag confidence: INTEGER 0..100 pro Tag.
 8. confidence: INTEGER 0..100 (Gesamtsicherheit).
    - KEIN Float, KEINE Wahrscheinlichkeit (z. B. 0.9 ist verboten).
