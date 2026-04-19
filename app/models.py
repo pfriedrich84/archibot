@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # =============================================================================
@@ -48,6 +48,23 @@ class ProposedTag(BaseModel):
     name: str
     confidence: int = 50  # 0-100
 
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, value: object) -> int:
+        # Accept common LLM outputs like 0.9 (probability) and map to 0-100.
+        if isinstance(value, str):
+            try:
+                value = float(value.strip())
+            except ValueError:
+                return 50
+        if isinstance(value, int):
+            return max(0, min(100, value))
+        if isinstance(value, float):
+            if 0.0 <= value <= 1.0:
+                return max(0, min(100, int(round(value * 100))))
+            return max(0, min(100, int(round(value))))
+        return 50
+
 
 class ClassificationResult(BaseModel):
     """Strict schema returned by the LLM."""
@@ -60,6 +77,23 @@ class ClassificationResult(BaseModel):
     tags: list[ProposedTag] = Field(default_factory=list)
     confidence: int = 50
     reasoning: str = ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, value: object) -> int:
+        # Accept common LLM outputs like 0.9 (probability) and map to 0-100.
+        if isinstance(value, str):
+            try:
+                value = float(value.strip())
+            except ValueError:
+                return 50
+        if isinstance(value, int):
+            return max(0, min(100, value))
+        if isinstance(value, float):
+            if 0.0 <= value <= 1.0:
+                return max(0, min(100, int(round(value * 100))))
+            return max(0, min(100, int(round(value))))
+        return 50
 
 
 # =============================================================================

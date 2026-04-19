@@ -26,7 +26,7 @@ in `config.env` persistiert.
 |---|---|---|
 | `OLLAMA_URL` | `http://ollama:11434` | Ollama-Endpoint |
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer Ollama-Requests (Sekunden) |
-| `OLLAMA_CHAT_RETRIES` | `1` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
+| `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
 
 ## Phase 1: OCR-Korrektur
@@ -66,7 +66,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_MODEL` | `gemma4:26b-a4b-it-q4_K_M` | Klassifikations-Modell |
+| `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell |
 | `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer das Chat-Modell (Tokens) |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
