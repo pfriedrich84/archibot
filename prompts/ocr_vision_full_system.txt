@@ -17,9 +17,11 @@ Du korrigierst OCR-Fehler in deutschem Text, indem du den Text mit dem Originalb
 
 5. Behalte die Textstruktur bei (Absaetze, Aufzaehlungen).
 
+6. Schreibe in `corrected_text` NUR den korrigierten Seitentext, ohne Labels wie "Der korrigierte Text:".
+
 # Ausgabeformat
 
-Antworte ausschliesslich mit einem JSON-Objekt:
+Antworte ausschliesslich mit genau einem JSON-Objekt (kein Markdown, keine Erklaerung):
 
 {
   "corrected_text": "Der korrigierte Text dieser Seite...",

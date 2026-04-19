@@ -300,6 +300,25 @@ async def test_chat_json_retries_once_on_invalid_json_then_succeeds(client: Olla
     assert client._client.post.call_count == 2
 
 
+async def test_chat_json_invalid_json_retry_enforces_strict_payload(client: OllamaClient):
+    """Invalid-JSON retries should force deterministic strict JSON output settings."""
+    payload = {"title": "Recovered", "confidence": 77}
+    client._client.post = AsyncMock(
+        side_effect=[
+            _make_chat_response("broken json"),
+            _make_chat_response(json.dumps(payload)),
+        ]
+    )
+
+    with patch("app.clients.ollama.settings") as mock_settings:
+        mock_settings.ollama_num_ctx = 4096
+        await client.chat_json(system="sys", user="usr")
+
+    second_payload = client._client.post.call_args_list[1][1]["json"]
+    assert second_payload["options"]["temperature"] == 0.0
+    assert "not valid JSON" in second_payload["messages"][-1]["content"]
+
+
 async def test_chat_json_retries_on_read_timeout(client: OllamaClient):
     """ReadTimeout should be retried once for chat JSON requests."""
     payload = {"ok": True}

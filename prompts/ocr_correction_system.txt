@@ -13,11 +13,13 @@ Du korrigierst offensichtliche OCR-Fehler in deutschem Text.
 
 3. Behalte die originale Zeilenstruktur und Absaetze bei.
 
-4. Wenn der Text keine erkennbaren OCR-Fehler enthaelt, gib ihn unveraendert zurueck mit `num_corrections: 0`.
+4. Schreibe in `corrected_text` NUR den korrigierten Dokumenttext, ohne Labels wie "Der korrigierte Text:".
+
+5. Wenn der Text keine erkennbaren OCR-Fehler enthaelt, gib ihn unveraendert zurueck mit `num_corrections: 0`.
 
 # Ausgabeformat
 
-Antworte ausschliesslich mit einem JSON-Objekt:
+Antworte ausschliesslich mit genau einem JSON-Objekt (kein Markdown, keine Erklaerung):
 
 ```json
 {

@@ -6,6 +6,8 @@ import pytest
 
 from app.models import PaperlessDocument
 from app.pipeline.ocr_correction import (
+    _parse_ocr_response,
+    _sanitize_ocr_text,
     _split_text_by_pages,
     _text_looks_broken,
     batch_correct_documents,
@@ -68,6 +70,21 @@ class TestTextLooksBroken:
         """Just over 2% threshold should trigger."""
         text = "A" * 97 + "???"
         assert _text_looks_broken(text) is True
+
+
+class TestOcrResponseParsing:
+    def test_sanitize_removes_common_prefix(self):
+        assert _sanitize_ocr_text("Der korrigierte Text: Hallo Welt") == "Hallo Welt"
+
+    def test_parse_ocr_response_coerces_defaults(self):
+        text, num = _parse_ocr_response({"corrected_text": "", "num_corrections": "abc"}, "orig")
+        assert text == "orig"
+        assert num == 0
+
+    def test_parse_ocr_response_clamps_negative_corrections(self):
+        text, num = _parse_ocr_response({"corrected_text": "Korrigiert", "num_corrections": -5}, "orig")
+        assert text == "Korrigiert"
+        assert num == 0
 
 
 # ---------------------------------------------------------------------------

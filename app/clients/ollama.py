@@ -136,6 +136,28 @@ class OllamaClient:
         source = "Ollama vision" if vision else "Ollama"
         raise ValueError(f"Invalid JSON from {source}: {content[:200]}") from None
 
+    @staticmethod
+    def _make_strict_json_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        """Harden a chat payload for JSON-recovery retries.
+
+        Used after malformed JSON responses to increase deterministic output.
+        """
+        retry_payload = dict(payload)
+
+        options = dict(retry_payload.get("options") or {})
+        options["temperature"] = 0.0
+        retry_payload["options"] = options
+
+        messages = list(retry_payload.get("messages") or [])
+        reminder = (
+            "Your previous response was not valid JSON. "
+            "Return ONLY one valid JSON object. "
+            "No markdown fences, no prose, no prefix/suffix text."
+        )
+        messages.append({"role": "user", "content": reminder})
+        retry_payload["messages"] = messages
+        return retry_payload
+
     async def _chat_json_with_retries(
         self,
         payload: dict[str, Any],
@@ -148,10 +170,11 @@ class OllamaClient:
         max_retries = retries_raw if isinstance(retries_raw, int) else 1
         base_delay = float(base_delay_raw) if isinstance(base_delay_raw, int | float) else 1.0
         last_exc: Exception | None = None
+        current_payload = payload
 
         for attempt in range(1 + max_retries):
             try:
-                r = await self._client.post("/api/chat", json=payload)
+                r = await self._client.post("/api/chat", json=current_payload)
                 r.raise_for_status()
                 data = r.json()
                 content = data.get("message", {}).get("content", "")
@@ -161,7 +184,9 @@ class OllamaClient:
                 is_retryable = self._is_retryable(exc) or isinstance(exc, ValueError)
                 if attempt < max_retries and is_retryable:
                     delay = 0.0
-                    if not isinstance(exc, ValueError):
+                    if isinstance(exc, ValueError):
+                        current_payload = self._make_strict_json_retry_payload(current_payload)
+                    else:
                         delay = self._backoff_delay(base_delay, attempt)
                     log.warning(
                         "ollama chat request failed, retrying",

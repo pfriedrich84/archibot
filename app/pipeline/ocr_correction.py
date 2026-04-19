@@ -23,6 +23,33 @@ log = structlog.get_logger(__name__)
 _NORMAL_RE = re.compile(r"[a-zA-ZäöüÄÖÜß0-9\s.,;:!?\-/()\[\]{}\"'@#€$%&+=\n\r\t]")
 
 _VALID_OCR_MODES = {"off", "text", "vision_light", "vision_full"}
+_OCR_TEXT_PREFIX_RE = re.compile(r"^\s*(?:der\s+)?korrigierte(?:r)?\s+text\s*:\s*", re.IGNORECASE)
+
+
+def _sanitize_ocr_text(text: str) -> str:
+    """Remove common model-added labels from OCR output text."""
+    return _OCR_TEXT_PREFIX_RE.sub("", text).strip()
+
+
+def _parse_ocr_response(raw: dict[str, object], fallback_text: str) -> tuple[str, int]:
+    """Validate OCR JSON payload from Ollama and coerce safe defaults."""
+    corrected_raw = raw.get("corrected_text")
+    corrected = corrected_raw if isinstance(corrected_raw, str) else fallback_text
+    corrected = _sanitize_ocr_text(corrected)
+    if not corrected:
+        corrected = fallback_text
+
+    try:
+        num = int(raw.get("num_corrections", 0))
+    except (TypeError, ValueError):
+        num = 0
+    num = max(0, num)
+
+    if corrected == fallback_text and num > 0:
+        # Avoid counting phantom corrections when text is effectively unchanged.
+        num = 0
+
+    return corrected, num
 
 
 # ---------------------------------------------------------------------------
@@ -191,8 +218,7 @@ async def _correct_text_only(
             num_ctx=settings.ollama_ocr_num_ctx,
         )
 
-        corrected = raw.get("corrected_text", text)
-        num = int(raw.get("num_corrections", 0))
+        corrected, num = _parse_ocr_response(raw, text)
         log.info("ocr text corrections applied", doc_id=doc.id, num_corrections=num)
         return corrected, num
     except Exception as exc:
@@ -242,8 +268,7 @@ async def _correct_vision_light(
             num_ctx=settings.ollama_ocr_num_ctx,
         )
 
-        corrected = raw.get("corrected_text", text)
-        num = int(raw.get("num_corrections", 0))
+        corrected, num = _parse_ocr_response(raw, text)
         log.info("ocr vision_light corrections applied", doc_id=doc.id, num_corrections=num)
         return corrected, num
     except Exception as exc:
@@ -298,8 +323,7 @@ async def _correct_vision_full(
                     model=vision_model,
                     num_ctx=settings.ollama_ocr_num_ctx,
                 )
-                corrected = raw.get("corrected_text", page_text)
-                num = int(raw.get("num_corrections", 0))
+                corrected, num = _parse_ocr_response(raw, page_text)
                 corrected_pages.append(corrected)
                 total_corrections += num
                 log.debug("vision_full page done", doc_id=doc.id, page=i + 1, corrections=num)

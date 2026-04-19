@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from app.models import PaperlessDocument, PaperlessEntity
+from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import (
+    _clamp_confidence,
     _estimate_tokens,
     _format_context_block,
     _format_document_block,
+    _normalize_classification_result,
+    _normalize_date,
     _resolve_entity_name,
     build_user_prompt,
 )
@@ -199,6 +202,47 @@ class TestBuildUserPrompt:
 # ---------------------------------------------------------------------------
 # Token budget — build_user_prompt respects num_ctx
 # ---------------------------------------------------------------------------
+class TestNormalizationHelpers:
+    def test_normalize_date_accepts_iso(self):
+        assert _normalize_date("2026-04-17") == "2026-04-17"
+
+    def test_normalize_date_rejects_non_iso(self):
+        assert _normalize_date("17.04.2026") is None
+
+    def test_clamp_confidence_bounds(self):
+        assert _clamp_confidence(120) == 100
+        assert _clamp_confidence(-3) == 0
+
+    def test_normalize_classification_result(self):
+        target = PaperlessDocument(id=1, title="Fallback Title", content="x")
+        raw = ClassificationResult(
+            title="   ",
+            date="17.04.2026",
+            correspondent=" ",
+            document_type="Rechnung",
+            storage_path="",
+            tags=[
+                {"name": " Strom ", "confidence": 130},
+                {"name": "strom", "confidence": 5},
+                {"name": "", "confidence": 50},
+            ],
+            confidence=-2,
+            reasoning="x" * 600,
+        )
+
+        norm = _normalize_classification_result(raw, target=target)
+        assert norm.title == "Fallback Title"
+        assert norm.date is None
+        assert norm.correspondent is None
+        assert norm.document_type == "Rechnung"
+        assert norm.storage_path is None
+        assert len(norm.tags) == 1
+        assert norm.tags[0].name == "Strom"
+        assert norm.tags[0].confidence == 100
+        assert norm.confidence == 0
+        assert len(norm.reasoning) == 500
+
+
 class TestPromptBudget:
     def _make_long_doc(self, doc_id: int = 1, content_len: int = 20000) -> PaperlessDocument:
         return PaperlessDocument(

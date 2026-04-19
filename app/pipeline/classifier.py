@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import structlog
@@ -12,6 +13,8 @@ from app.config import settings
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 
 log = structlog.get_logger(__name__)
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _prompt_override_path() -> Path:
@@ -101,6 +104,64 @@ def _format_entity_list(label: str, entities: list[PaperlessEntity]) -> str:
         return f"{label}: (keine)"
     names = ", ".join(e.name for e in entities[:100])
     return f"{label}: {names}"
+
+
+def _normalize_date(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned or cleaned.lower() == "null":
+        return None
+    return cleaned if _DATE_RE.match(cleaned) else None
+
+
+def _clamp_confidence(value: int, *, default: int = 50) -> int:
+    try:
+        return max(0, min(100, int(value)))
+    except Exception:
+        return default
+
+
+def _normalize_classification_result(
+    result: ClassificationResult,
+    *,
+    target: PaperlessDocument,
+) -> ClassificationResult:
+    """Sanitize model output without altering classification intent."""
+    title = result.title.strip()
+    if not title:
+        title = (target.title or "Unbenanntes Dokument").strip() or "Unbenanntes Dokument"
+
+    correspondent = (result.correspondent or "").strip() or None
+    document_type = (result.document_type or "").strip() or None
+    storage_path = (result.storage_path or "").strip() or None
+
+    seen: set[str] = set()
+    norm_tags = []
+    for tag in result.tags:
+        name = tag.name.strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        norm_tags.append({"name": name, "confidence": _clamp_confidence(tag.confidence)})
+
+    reasoning = (result.reasoning or "").strip()
+    if len(reasoning) > 500:
+        reasoning = reasoning[:500].rstrip()
+
+    return ClassificationResult(
+        title=title,
+        date=_normalize_date(result.date),
+        correspondent=correspondent,
+        document_type=document_type,
+        storage_path=storage_path,
+        tags=norm_tags,
+        confidence=_clamp_confidence(result.confidence),
+        reasoning=reasoning,
+    )
 
 
 def build_user_prompt(
@@ -236,4 +297,5 @@ async def classify(
         log.error("failed to validate classification", error=str(exc), raw=raw_str[:500])
         raise
 
+    result = _normalize_classification_result(result, target=target)
     return result, raw_str
