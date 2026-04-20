@@ -565,6 +565,64 @@ class TestPhaseClassify:
         mock_ollama.unload_model.assert_called_once_with("gemma3:4b", swap=True)
 
     @pytest.mark.asyncio
+    async def test_post_classify_failure_does_not_emit_failed_classify_timing(
+        self, patch_db, tmp_db
+    ):
+        """If classify() succeeds but a later step raises, we must not record
+        another phase_timing row with phase='classify' and success=0 — that would
+        double-count (one success row and one failure row for the same doc) and
+        inflate the classify error rate on /stats."""
+        import sqlite3
+
+        from app.models import ClassificationResult
+        from app.worker import _EmbeddingResult
+
+        doc = _make_doc(1)
+        embed_results = {1: _EmbeddingResult(embedding=[0.1] * EMBED_DIM, similar_results=[])}
+
+        mock_ollama = AsyncMock()
+        mock_ollama.model = "gemma3:4b"
+        mock_ollama.unload_model = AsyncMock()
+
+        with (
+            patch("app.worker.classifier.classify") as mock_classify,
+            patch("app.worker._store_suggestion", side_effect=RuntimeError("DB exploded")),
+            patch("app.worker._write_error"),
+            patch("app.worker.context_builder.store_embedding"),
+            patch("app.worker.settings") as mock_settings,
+        ):
+            mock_settings.auto_commit_confidence = 0
+            mock_settings.enable_judge_verification = False
+            mock_classify.return_value = (
+                ClassificationResult(title="T", confidence=80, reasoning="ok", tags=[]),
+                "{}",
+            )
+            _c, _a, errored = await _phase_classify(
+                [doc],
+                embed_results,
+                AsyncMock(),
+                mock_ollama,
+                [],
+                [],
+                [],
+                [],
+                "test_cycle",
+            )
+
+        assert errored == 1
+
+        conn = sqlite3.connect(str(tmp_db))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT phase, success FROM phase_timing WHERE document_id = 1 AND phase = 'classify'"
+        ).fetchall()
+        conn.close()
+        # Exactly one classify timing row — the success from classify() itself.
+        # The _store_suggestion failure must NOT have added a second row.
+        assert len(rows) == 1
+        assert rows[0]["success"] == 1
+
+    @pytest.mark.asyncio
     async def test_embed_still_indexed_on_classify_failure(self):
         """Even if classification fails, a pre-computed embedding should be stored."""
         from app.worker import _EmbeddingResult

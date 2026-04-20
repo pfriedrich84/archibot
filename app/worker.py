@@ -760,6 +760,7 @@ async def _phase_classify(
         context_docs = [r.document for r in er.similar_results]
 
         t0 = time.monotonic()
+        classify_recorded = False
         try:
             initial_result, raw_response = await classifier.classify(
                 doc,
@@ -771,6 +772,7 @@ async def _phase_classify(
                 ollama,
             )
             _record_timing(cycle_id, doc.id, "classify", t0, success=True)
+            classify_recorded = True
 
             judge = await _maybe_run_judge(
                 doc,
@@ -836,7 +838,11 @@ async def _phase_classify(
             _poll_progress.failed += 1
             log.error("classification failed", doc_id=doc.id, error=repr(exc))
             _write_error("classify", doc.id, exc)
-            _record_timing(cycle_id, doc.id, "classify", t0, success=False)
+            # Only emit a 'classify' failure row if classify() itself failed.
+            # Errors in judge/store/notify/commit must not masquerade as classify
+            # failures (would inflate phase_timing error-rate for classify).
+            if not classify_recorded:
+                _record_timing(cycle_id, doc.id, "classify", t0, success=False)
         finally:
             _poll_progress.done += 1
 
