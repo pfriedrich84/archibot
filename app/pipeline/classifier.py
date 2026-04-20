@@ -10,7 +10,7 @@ import structlog
 
 from app.clients.ollama import OllamaClient
 from app.config import settings
-from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
+from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
 
 log = structlog.get_logger(__name__)
 
@@ -22,12 +22,25 @@ def _prompt_override_path() -> Path:
     return Path(settings.data_dir) / "classify_system.txt"
 
 
+def _judge_prompt_override_path() -> Path:
+    """Path for user-edited judge prompt override in the persistent data dir."""
+    return Path(settings.data_dir) / "classify_judge_system.txt"
+
+
 def _load_system_prompt() -> str:
     """Load system prompt — user override in /data takes precedence over built-in default."""
     override = _prompt_override_path()
     if override.is_file():
         return override.read_text(encoding="utf-8")
     return (settings.prompts_dir / "classify_system.txt").read_text(encoding="utf-8")
+
+
+def _load_judge_system_prompt() -> str:
+    """Load judge system prompt — user override in /data takes precedence over default."""
+    override = _judge_prompt_override_path()
+    if override.is_file():
+        return override.read_text(encoding="utf-8")
+    return (settings.prompts_dir / "classify_judge_system.txt").read_text(encoding="utf-8")
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -299,3 +312,125 @@ async def classify(
 
     result = _normalize_classification_result(result, target=target)
     return result, raw_str
+
+
+def _classification_to_prompt_json(result: ClassificationResult) -> str:
+    """Serialize a ClassificationResult as a compact JSON string for the judge prompt."""
+    payload = {
+        "title": result.title,
+        "date": result.date,
+        "correspondent": result.correspondent,
+        "document_type": result.document_type,
+        "storage_path": result.storage_path,
+        "tags": [{"name": t.name, "confidence": t.confidence} for t in result.tags],
+        "confidence": result.confidence,
+        "reasoning": result.reasoning,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def build_judge_user_prompt(
+    target: PaperlessDocument,
+    context_docs: list[PaperlessDocument],
+    initial: ClassificationResult,
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    *,
+    num_ctx: int = 8192,
+    system_prompt_chars: int = 0,
+) -> str:
+    """Build a user prompt for the judge pass (base prompt + proposal appendix)."""
+    proposal_json = _classification_to_prompt_json(initial)
+    # Reserve tokens for the proposal appendix so the base prompt can shrink the
+    # document/context sections accordingly.
+    proposal_tokens = _estimate_tokens(proposal_json) + 30
+    base_budget_ctx = max(1024, num_ctx - proposal_tokens)
+
+    base = build_user_prompt(
+        target,
+        context_docs,
+        correspondents,
+        doctypes,
+        storage_paths,
+        tags,
+        num_ctx=base_budget_ctx,
+        system_prompt_chars=system_prompt_chars,
+    )
+    return f"{base}\n# Bestehender Klassifikations-Vorschlag (vom ersten Pass)\n{proposal_json}\n"
+
+
+def _parse_judge_verdict(raw: dict, *, target: PaperlessDocument) -> JudgeVerdict:
+    """Parse the raw judge JSON into a validated JudgeVerdict."""
+    verdict_raw = str(raw.get("verdict", "")).strip().lower()
+    reasoning = (str(raw.get("reasoning") or "")).strip()
+    if len(reasoning) > 300:
+        reasoning = reasoning[:300].rstrip()
+
+    if verdict_raw == "agree":
+        return JudgeVerdict(verdict="agree", reasoning=reasoning)
+
+    if verdict_raw != "corrected":
+        # Unknown verdict string — treat as error so the caller can fall back.
+        return JudgeVerdict(verdict="error", reasoning=reasoning or "unknown verdict")
+
+    # Corrected — validate the embedded classification payload.
+    try:
+        corrected = ClassificationResult.model_validate(
+            {k: v for k, v in raw.items() if k not in ("verdict",)}
+        )
+    except Exception as exc:
+        log.warning("judge returned invalid corrected payload", error=str(exc))
+        return JudgeVerdict(verdict="error", reasoning=reasoning or "invalid corrected payload")
+
+    corrected = _normalize_classification_result(corrected, target=target)
+    return JudgeVerdict(verdict="corrected", reasoning=reasoning, corrected=corrected)
+
+
+async def verify(
+    target: PaperlessDocument,
+    context_docs: list[PaperlessDocument],
+    initial: ClassificationResult,
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    ollama: OllamaClient,
+) -> JudgeVerdict:
+    """Run a second LLM pass that verifies and optionally corrects *initial*.
+
+    Returns a :class:`JudgeVerdict`. The caller decides what to do with it
+    (e.g. replace ``initial`` with ``verdict.corrected`` when verdict is
+    ``"corrected"``). Transport or parse errors map to ``verdict="error"``
+    so the pipeline can keep the original result.
+    """
+    system = _load_judge_system_prompt()
+    user = build_judge_user_prompt(
+        target,
+        context_docs,
+        initial,
+        correspondents,
+        doctypes,
+        storage_paths,
+        tags,
+        num_ctx=settings.ollama_num_ctx,
+        system_prompt_chars=len(system),
+    )
+
+    model = settings.ollama_judge_model.strip() or None
+    log.info(
+        "calling ollama (judge)",
+        doc_id=target.id,
+        context_docs=len(context_docs),
+        model=model or ollama.model,
+        prompt_chars=len(user),
+    )
+
+    try:
+        raw = await ollama.chat_json(system=system, user=user, model=model)
+    except Exception as exc:
+        log.warning("judge call failed", doc_id=target.id, error=str(exc))
+        return JudgeVerdict(verdict="error", reasoning=str(exc)[:300])
+
+    return _parse_judge_verdict(raw, target=target)

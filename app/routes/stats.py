@@ -146,6 +146,18 @@ async def stats_page(request: Request):
         auto_commits = auto_row["auto_count"] or 0 if auto_row else 0
         total_commits = auto_row["total_count"] or 0 if auto_row else 0
 
+        # --- Judge verdict breakdown (suggestions with a judge verdict) ---
+        judge_counts: dict[str, int] = {}
+        for row in conn.execute(
+            """
+            SELECT judge_verdict AS v, COUNT(*) AS c
+            FROM suggestions
+            WHERE judge_verdict IS NOT NULL
+            GROUP BY judge_verdict
+            """
+        ).fetchall():
+            judge_counts[row["v"]] = row["c"]
+
     return request.app.state.templates.TemplateResponse(
         request,
         "stats.html",
@@ -164,5 +176,6 @@ async def stats_page(request: Request):
             "phase_errors": phase_errors,
             "auto_commits": auto_commits,
             "total_commits": total_commits,
+            "judge_counts": judge_counts,
         },
     )

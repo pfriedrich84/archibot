@@ -42,7 +42,7 @@ class TestRouteSmoke:
     def test_dashboard(self, client):
         r = client.get("/")
         assert r.status_code == 200
-        assert "Dashboard" in r.text
+        assert "Übersicht" in r.text
 
     def test_review_list(self, client):
         r = client.get("/review")

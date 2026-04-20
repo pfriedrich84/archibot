@@ -60,7 +60,11 @@ CREATE TABLE IF NOT EXISTS suggestions (
     proposed_tags_json          TEXT,  -- list of {{name, id_if_known}}
     -- Raw
     raw_response            TEXT,
-    context_docs_json       TEXT   -- JSON list of context docs used for classification
+    context_docs_json       TEXT,  -- JSON list of context docs used for classification
+    -- Optional LLM-as-judge verification of the initial classification
+    judge_verdict           TEXT,  -- 'agree' | 'corrected' | 'skipped' | 'error'
+    judge_reasoning         TEXT,
+    original_proposed_json  TEXT   -- JSON snapshot of first-pass proposal (when judge corrected)
 );
 CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
 CREATE INDEX IF NOT EXISTS idx_suggestions_doc    ON suggestions(document_id);
@@ -255,6 +259,21 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
         "doc_embedding_meta",
         "created_date",
         "ALTER TABLE doc_embedding_meta ADD COLUMN created_date TEXT",
+    ),
+    (
+        "suggestions",
+        "judge_verdict",
+        "ALTER TABLE suggestions ADD COLUMN judge_verdict TEXT",
+    ),
+    (
+        "suggestions",
+        "judge_reasoning",
+        "ALTER TABLE suggestions ADD COLUMN judge_reasoning TEXT",
+    ),
+    (
+        "suggestions",
+        "original_proposed_json",
+        "ALTER TABLE suggestions ADD COLUMN original_proposed_json TEXT",
     ),
 ]
 

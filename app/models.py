@@ -61,8 +61,8 @@ class ProposedTag(BaseModel):
             return max(0, min(100, value))
         if isinstance(value, float):
             if 0.0 <= value <= 1.0:
-                return max(0, min(100, int(round(value * 100))))
-            return max(0, min(100, int(round(value))))
+                return max(0, min(100, round(value * 100)))
+            return max(0, min(100, round(value)))
         return 50
 
 
@@ -91,9 +91,21 @@ class ClassificationResult(BaseModel):
             return max(0, min(100, value))
         if isinstance(value, float):
             if 0.0 <= value <= 1.0:
-                return max(0, min(100, int(round(value * 100))))
-            return max(0, min(100, int(round(value))))
+                return max(0, min(100, round(value * 100)))
+            return max(0, min(100, round(value)))
         return 50
+
+
+JudgeVerdictType = Literal["agree", "corrected", "skipped", "error"]
+
+
+class JudgeVerdict(BaseModel):
+    """Outcome of an LLM-as-judge verification pass over a ClassificationResult."""
+
+    verdict: JudgeVerdictType
+    reasoning: str = ""
+    # Populated only when verdict == "corrected"
+    corrected: ClassificationResult | None = None
 
 
 # =============================================================================
@@ -129,6 +141,11 @@ class SuggestionRow(BaseModel):
 
     raw_response: str | None = None
     context_docs_json: str | None = None
+
+    # LLM-as-judge verification
+    judge_verdict: str | None = None  # 'agree' | 'corrected' | 'skipped' | 'error'
+    judge_reasoning: str | None = None
+    original_proposed_json: str | None = None  # snapshot of first-pass when corrected
 
     @property
     def effective_date(self) -> str | None:
