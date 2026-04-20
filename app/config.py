@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     auto_commit_confidence: int = 0  # 0 = immer manuell reviewen
     enable_ocr_correction: bool = False  # deprecated, use ocr_mode instead
 
+    # --- LLM-as-Judge verification (optional second pass) ---
+    enable_judge_verification: bool = False
+    judge_confidence_threshold: int = 85  # skip judge if initial confidence >= threshold
+    ollama_judge_model: str = ""  # empty = reuse ollama_model (no extra GPU swap)
+
     # --- GUI ---
     gui_port: int = 8088
     gui_base_url: str = ""  # e.g. "https://classifier.local:8088" for Telegram links
@@ -366,6 +371,26 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Auto-Commit Confidence",
         "number",
         help="0 = always review. Set to e.g. 85 to auto-commit high-confidence results",
+    ),
+    "enable_judge_verification": _fm(
+        "Phase 3: Klassifikation",
+        "Enable Judge Verification",
+        "bool",
+        help="Run a second LLM pass that verifies and optionally corrects each classification. "
+        "Only applied when the initial confidence is below Judge Confidence Threshold.",
+    ),
+    "judge_confidence_threshold": _fm(
+        "Phase 3: Klassifikation",
+        "Judge Confidence Threshold",
+        "number",
+        help="Skip judge pass when initial confidence is >= this value (0-100). "
+        "Lower = verify more often (higher cost).",
+    ),
+    "ollama_judge_model": _fm(
+        "Phase 3: Klassifikation",
+        "Judge Model (optional)",
+        restart="component",
+        help="Ollama model used for judge pass. Empty = reuse Classification Model (no GPU swap).",
     ),
     # --- Worker ---
     "poll_interval_seconds": _fm(

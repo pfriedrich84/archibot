@@ -20,6 +20,7 @@ from app.db import get_conn
 from app.indexer import is_reindexing
 from app.models import (
     ClassificationResult,
+    JudgeVerdict,
     PaperlessDocument,
     PaperlessEntity,
     ReviewDecision,
@@ -281,6 +282,9 @@ def _store_suggestion(
     storage_paths: list[PaperlessEntity],
     existing_tags: list[PaperlessEntity],
     similar_results: list[SimilarDocument] | None = None,
+    judge_verdict: str | None = None,
+    judge_reasoning: str | None = None,
+    original_proposed_json: str | None = None,
 ) -> SuggestionRow:
     """Persist a classification result to the ``suggestions`` table."""
     corr_id = _resolve_entity(result.correspondent, correspondents)
@@ -314,8 +318,9 @@ def _store_suggestion(
                 proposed_correspondent_name, proposed_correspondent_id,
                 proposed_doctype_name, proposed_doctype_id,
                 proposed_storage_path_name, proposed_storage_path_id,
-                proposed_tags_json, raw_response, context_docs_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                proposed_tags_json, raw_response, context_docs_json,
+                judge_verdict, judge_reasoning, original_proposed_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 doc.id,
@@ -338,6 +343,9 @@ def _store_suggestion(
                 json.dumps(tag_dicts, ensure_ascii=False),
                 raw_response,
                 context_json,
+                judge_verdict,
+                judge_reasoning,
+                original_proposed_json,
             ),
         )
         suggestion_id = cur.lastrowid
@@ -373,6 +381,9 @@ def _store_suggestion(
         proposed_storage_path_name=result.storage_path,
         proposed_storage_path_id=sp_id,
         proposed_tags_json=json.dumps(tag_dicts, ensure_ascii=False),
+        judge_verdict=judge_verdict,
+        judge_reasoning=judge_reasoning,
+        original_proposed_json=original_proposed_json,
     )
 
 
@@ -465,7 +476,7 @@ async def _process_document(
     context_docs = [r.document for r in embed_result.similar_results]
 
     # Classify
-    result, raw_response = await classifier.classify(
+    initial_result, raw_response = await classifier.classify(
         doc,
         context_docs,
         correspondents,
@@ -474,6 +485,21 @@ async def _process_document(
         tags,
         ollama,
     )
+
+    # Optional LLM-as-judge verification (may correct the initial result)
+    judge = await _maybe_run_judge(
+        doc,
+        initial_result,
+        raw_response,
+        context_docs,
+        correspondents,
+        doctypes,
+        storage_paths,
+        tags,
+        ollama,
+        cycle_id=None,
+    )
+    result = judge.result
 
     # Store suggestion
     suggestion = _store_suggestion(
@@ -485,6 +511,9 @@ async def _process_document(
         storage_paths,
         tags,
         similar_results=embed_result.similar_results,
+        judge_verdict=judge.verdict,
+        judge_reasoning=judge.reasoning,
+        original_proposed_json=judge.original_proposed_json,
     )
 
     # Notify via Telegram (only if not auto-committing)
@@ -523,6 +552,80 @@ async def _process_document(
 # ---------------------------------------------------------------------------
 # Phase timing
 # ---------------------------------------------------------------------------
+@dataclass
+class _JudgeOutcome:
+    """State produced by the optional judge pass, ready for ``_store_suggestion``."""
+
+    result: ClassificationResult
+    verdict: str | None = None  # None = judge was not run (disabled or skipped)
+    reasoning: str | None = None
+    original_proposed_json: str | None = None  # snapshot of first-pass when corrected
+
+
+async def _maybe_run_judge(
+    doc: PaperlessDocument,
+    initial: ClassificationResult,
+    raw_response: str,
+    context_docs: list[PaperlessDocument],
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    ollama: OllamaClient,
+    *,
+    cycle_id: str | None,
+) -> _JudgeOutcome:
+    """Gate + run judge verification. Returns the (possibly corrected) result.
+
+    Skipped silently (verdict=None) when the feature is disabled, when the
+    initial confidence is already at/above the threshold, or when no context
+    documents are available (judge has no grounding beyond the first pass).
+    """
+    if not settings.enable_judge_verification:
+        return _JudgeOutcome(result=initial)
+    if initial.confidence >= settings.judge_confidence_threshold:
+        return _JudgeOutcome(result=initial, verdict="skipped")
+    if not context_docs:
+        return _JudgeOutcome(result=initial, verdict="skipped")
+
+    t0 = time.monotonic()
+    try:
+        verdict: JudgeVerdict = await classifier.verify(
+            doc,
+            context_docs,
+            initial,
+            correspondents,
+            doctypes,
+            storage_paths,
+            tags,
+            ollama,
+        )
+    except Exception as exc:
+        log.warning("judge verification raised", doc_id=doc.id, error=str(exc))
+        if cycle_id is not None:
+            _record_timing(cycle_id, doc.id, "judge", t0, success=False)
+        return _JudgeOutcome(result=initial, verdict="error", reasoning=str(exc)[:300])
+
+    success = verdict.verdict in ("agree", "corrected")
+    if cycle_id is not None:
+        _record_timing(cycle_id, doc.id, "judge", t0, success=success)
+
+    if verdict.verdict == "corrected" and verdict.corrected is not None:
+        log.info("judge corrected classification", doc_id=doc.id)
+        return _JudgeOutcome(
+            result=verdict.corrected,
+            verdict="corrected",
+            reasoning=verdict.reasoning or None,
+            original_proposed_json=raw_response,
+        )
+
+    return _JudgeOutcome(
+        result=initial,
+        verdict=verdict.verdict,
+        reasoning=verdict.reasoning or None,
+    )
+
+
 def _record_timing(
     cycle_id: str,
     doc_id: int,
@@ -658,7 +761,7 @@ async def _phase_classify(
 
         t0 = time.monotonic()
         try:
-            result, raw_response = await classifier.classify(
+            initial_result, raw_response = await classifier.classify(
                 doc,
                 context_docs,
                 correspondents,
@@ -667,6 +770,21 @@ async def _phase_classify(
                 tags,
                 ollama,
             )
+            _record_timing(cycle_id, doc.id, "classify", t0, success=True)
+
+            judge = await _maybe_run_judge(
+                doc,
+                initial_result,
+                raw_response,
+                context_docs,
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+                ollama,
+                cycle_id=cycle_id,
+            )
+            result = judge.result
 
             suggestion = _store_suggestion(
                 doc,
@@ -677,6 +795,9 @@ async def _phase_classify(
                 storage_paths,
                 tags,
                 similar_results=er.similar_results,
+                judge_verdict=judge.verdict,
+                judge_reasoning=judge.reasoning,
+                original_proposed_json=judge.original_proposed_json,
             )
 
             # Notify via Telegram (only if not auto-committing)
@@ -710,7 +831,6 @@ async def _phase_classify(
             else:
                 classified += 1
             _poll_progress.succeeded += 1
-            _record_timing(cycle_id, doc.id, "classify", t0, success=True)
         except Exception as exc:
             errored += 1
             _poll_progress.failed += 1

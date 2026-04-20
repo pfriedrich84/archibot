@@ -25,8 +25,8 @@
 
 <!-- Processing Duration (per phase) -->
 <h2 class="text-lg font-semibold text-gray-700 mb-4">Processing Duration (30-day avg per document)</h2>
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-    {% for phase_key, phase_label in [('ocr', 'OCR Correction'), ('embed', 'Embedding'), ('classify', 'Classification')] %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+    {% for phase_key, phase_label in [('ocr', 'OCR Correction'), ('embed', 'Embedding'), ('classify', 'Classification'), ('judge', 'Judge Verification')] %}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <p class="text-sm font-medium text-gray-500">{{ phase_label }}</p>
         {% if phase_key in phase_avgs %}
@@ -238,7 +238,7 @@
         <h2 class="text-lg font-semibold text-gray-700 mb-4">Error Rate by Phase (30 days)</h2>
         {% if phase_errors %}
         <div class="space-y-3">
-            {% for phase_key, phase_label in [('ocr', 'OCR Correction'), ('embed', 'Embedding'), ('classify', 'Classification')] %}
+            {% for phase_key, phase_label in [('ocr', 'OCR Correction'), ('embed', 'Embedding'), ('classify', 'Classification'), ('judge', 'Judge Verification')] %}
             {% if phase_key in phase_errors %}
             {% set pe = phase_errors[phase_key] %}
             <div>
@@ -256,6 +256,41 @@
         </div>
         {% else %}
         <p class="text-sm text-gray-400">No data yet</p>
+        {% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">Judge Verdicts</h2>
+        {% set judge_total = judge_counts.values() | sum %}
+        {% if judge_total > 0 %}
+        {% set corrected_pct = ((judge_counts.get('corrected', 0) / judge_total * 100) | round(1)) %}
+        <div class="flex items-baseline gap-2 mb-3">
+            <span class="text-3xl font-bold text-gray-900">{{ corrected_pct }}%</span>
+            <span class="text-sm text-gray-500">corrected by judge</span>
+        </div>
+        <div class="space-y-2 text-sm">
+            {% for label, key, bar in [
+                ('Agree', 'agree', 'bg-emerald-500'),
+                ('Corrected', 'corrected', 'bg-blue-500'),
+                ('Skipped', 'skipped', 'bg-gray-400'),
+                ('Error', 'error', 'bg-red-500')
+            ] %}
+            {% set cnt = judge_counts.get(key, 0) %}
+            {% set pct = (cnt / judge_total * 100) if judge_total > 0 else 0 %}
+            <div>
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-700">{{ label }}</span>
+                    <span class="text-gray-500">{{ cnt }}</span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-2">
+                    <div class="h-2 rounded-full {{ bar }}" style="width: {{ pct }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="mt-3 text-xs text-gray-400">{{ judge_total }} suggestions with a judge verdict</p>
+        {% else %}
+        <p class="text-sm text-gray-400">Judge verification disabled or no data yet</p>
         {% endif %}
     </div>
 

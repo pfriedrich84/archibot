@@ -101,6 +101,12 @@ async def review_detail(request: Request, suggestion_id: int):
         with contextlib.suppress(json.JSONDecodeError):
             context_docs = json.loads(suggestion.context_docs_json)
 
+    # Parse the judge's "original proposal" snapshot (only set when judge corrected)
+    original_proposal = None
+    if suggestion.original_proposed_json:
+        with contextlib.suppress(json.JSONDecodeError):
+            original_proposal = json.loads(suggestion.original_proposed_json)
+
     paperless_url = request.app.state.paperless.base_url
 
     # Build {id: name} lookups for resolving original IDs to display names
@@ -139,6 +145,7 @@ async def review_detail(request: Request, suggestion_id: int):
             "original_doctype_name": original_doctype_name,
             "original_storage_path_name": original_storage_path_name,
             "original_tag_names": original_tag_names,
+            "original_proposal": original_proposal,
         },
     )
 

@@ -25,11 +25,56 @@
                      {{ 'bg-green-100 text-green-800' if conf >= 80 else ('bg-amber-100 text-amber-800' if conf >= 50 else 'bg-red-100 text-red-800') }}">
             {{ conf }}%
         </span>
+        {% if s.judge_verdict %}
+        {% set jbadge = {
+            'agree': ('bg-emerald-100 text-emerald-800', 'Judge: agree'),
+            'corrected': ('bg-blue-100 text-blue-800', 'Judge: corrected'),
+            'skipped': ('bg-gray-100 text-gray-700', 'Judge: skipped'),
+            'error': ('bg-red-100 text-red-800', 'Judge: error')
+        }.get(s.judge_verdict, ('bg-gray-100 text-gray-700', 'Judge: ' ~ s.judge_verdict)) %}
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {{ jbadge[0] }}"
+              title="{{ s.judge_reasoning or '' }}">
+            {{ jbadge[1] }}
+        </span>
+        {% endif %}
     </div>
     {% if s.reasoning %}
     <p class="mt-2 text-sm text-gray-600 italic">"{{ s.reasoning }}"</p>
     {% endif %}
+    {% if s.judge_verdict == 'corrected' and s.judge_reasoning %}
+    <p class="mt-1 text-sm text-blue-700 italic">Judge: "{{ s.judge_reasoning }}"</p>
+    {% endif %}
 </div>
+
+{% if original_proposal %}
+<div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+    <details>
+        <summary class="cursor-pointer text-sm font-semibold text-blue-800">
+            First-pass proposal (overridden by judge)
+        </summary>
+        <dl class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div><dt class="text-xs uppercase text-blue-600">Title</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('title') or '—' }}</dd></div>
+            <div><dt class="text-xs uppercase text-blue-600">Date</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('date') or '—' }}</dd></div>
+            <div><dt class="text-xs uppercase text-blue-600">Correspondent</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('correspondent') or '—' }}</dd></div>
+            <div><dt class="text-xs uppercase text-blue-600">Document Type</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('document_type') or '—' }}</dd></div>
+            <div><dt class="text-xs uppercase text-blue-600">Storage Path</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('storage_path') or '—' }}</dd></div>
+            <div><dt class="text-xs uppercase text-blue-600">Confidence</dt>
+                 <dd class="text-gray-900">{{ original_proposal.get('confidence') }}%</dd></div>
+            {% if original_proposal.get('tags') %}
+            <div class="sm:col-span-2"><dt class="text-xs uppercase text-blue-600">Tags</dt>
+                 <dd class="text-gray-900">
+                    {{ original_proposal.get('tags') | map(attribute='name') | join(', ') }}
+                 </dd></div>
+            {% endif %}
+        </dl>
+    </details>
+</div>
+{% endif %}
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
