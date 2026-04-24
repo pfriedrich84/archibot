@@ -127,7 +127,9 @@ class TestTagApproveSecurity:
             ("Topic#Inbox", "Topic%23Inbox"),
         ],
     )
-    def test_reject_handles_reserved_characters_in_name(self, client, db_path, tag_name, encoded_name):
+    def test_reject_handles_reserved_characters_in_name(
+        self, client, db_path, tag_name, encoded_name
+    ):
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         conn.execute(
