@@ -200,6 +200,14 @@ async def reject_suggestion(request: Request, suggestion_id: int):
         )
         conn.execute(
             """
+            UPDATE processed_documents
+            SET status = 'rejected'
+            WHERE document_id = (SELECT document_id FROM suggestions WHERE id = ?)
+            """,
+            (suggestion_id,),
+        )
+        conn.execute(
+            """
             INSERT INTO audit_log (action, document_id, actor, details)
             SELECT 'reject', document_id, 'user', NULL
             FROM suggestions WHERE id = ?
@@ -351,6 +359,14 @@ async def bulk_reject(request: Request):
         log.info("bulk-rejecting suggestion", suggestion_id=sid)
         with get_conn() as conn:
             conn.execute("UPDATE suggestions SET status = 'rejected' WHERE id = ?", (sid,))
+            conn.execute(
+                """
+                UPDATE processed_documents
+                SET status = 'rejected'
+                WHERE document_id = (SELECT document_id FROM suggestions WHERE id = ?)
+                """,
+                (sid,),
+            )
             conn.execute(
                 """INSERT INTO audit_log (action, document_id, actor, details)
                    SELECT 'reject', document_id, 'user', NULL
