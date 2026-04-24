@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     ocr_vision_dpi: int = 150
 
     # --- Worker ---
-    poll_interval_seconds: int = 0
+    poll_interval_seconds: int = 300
     context_max_docs: int = 5
     context_max_distance: float = 0.0  # 0 = no threshold; e.g. 1.5 filters irrelevant docs
     hybrid_search_weight: float = 0.7  # 0.0 = FTS only, 1.0 = vector only, 0.7 = default blend
@@ -297,7 +297,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 1: OCR",
         "OCR Context Window (tokens)",
         "number",
-        help="num_ctx for OCR models. Vision OCR needs more context (~1536 tokens/page image). Default: 16384.",
+        help="num_ctx for OCR models. Vision OCR needs more context (~1536 tokens/page image). Default: 12288.",
     ),
     "enable_ocr_correction": _fm(
         "Phase 1: OCR",
