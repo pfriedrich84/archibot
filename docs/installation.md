@@ -11,9 +11,9 @@ oder selbst gebaut.
 - Ollama-Modelle muessen vorab gezogen werden:
   ```bash
   ollama pull gemma4:e4b                # Klassifikation
-  ollama pull qwen3-embedding:0.6b      # Embedding (1024-dim, multilingual)
-  ollama pull qwen3:0.6b               # OCR-Korrektur (optional)
-  ollama pull qwen3-vl:2b              # Vision-OCR (optional)
+  ollama pull qwen3-embedding:4b        # Embedding (mehr Qualitaet, mehr VRAM)
+  ollama pull qwen3:4b                  # OCR-Korrektur (optional)
+  ollama pull qwen3-vl:4b               # Vision-OCR (optional)
   ```
 
 ## Option A: Fertiges Image von GHCR (empfohlen)

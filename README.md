@@ -82,9 +82,9 @@ cp .env.example .env
 
 # 2. Ollama-Modelle ziehen (auf dem Ollama-Host)
 ollama pull gemma4:e4b
-ollama pull qwen3-embedding:0.6b
-ollama pull qwen3:0.6b            # OCR-Korrektur (optional)
-ollama pull qwen3-vl:2b           # Vision-OCR (optional)
+ollama pull qwen3-embedding:4b
+ollama pull qwen3:4b              # OCR-Korrektur (optional)
+ollama pull qwen3-vl:4b           # Vision-OCR (optional)
 
 # 3. Starten
 docker compose up -d
@@ -94,6 +94,22 @@ open http://localhost:8088
 ```
 
 Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/installation.md](./docs/installation.md)**
+
+## Modell-Empfehlungen (6GB VRAM)
+
+**Empfohlen (Balanced/Qualitaet):**
+- Klassifikation: `gemma4:e4b` (Default)
+- Embeddings: `qwen3-embedding:4b`
+- OCR text-only: `qwen3:4b`
+- OCR vision: `qwen3-vl:4b` mit `OCR_MODE=vision_light`
+
+**Alternative Klassifikationsmodelle (testen):**
+- `qwen3:4b` (oft gut bei strukturierter Extraktion)
+- `llama3.1:8b` (nur sinnvoll, wenn dein Host/Ollama-Offloading stabil laeuft)
+
+> Wichtig: Wenn du `OLLAMA_EMBED_MODEL` oder `OLLAMA_EMBED_DIM` aenderst,
+> fuehre danach einen **Full Reindex** aus, damit sqlite-vec mit der neuen
+> Embedding-Dimension neu aufgebaut wird.
 
 ## Dokumentation
 

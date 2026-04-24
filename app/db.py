@@ -14,8 +14,8 @@ from app.config import settings
 
 log = structlog.get_logger(__name__)
 
-# Embedding dimension for qwen3-embedding:0.6b = 1024. Change if you switch models.
-EMBED_DIM = 1024
+# Embedding dimension for sqlite-vec. Resolved from model defaults or explicit config.
+EMBED_DIM = settings.ollama_embed_dim_resolved
 
 
 SCHEMA = f"""

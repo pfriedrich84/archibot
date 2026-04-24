@@ -27,8 +27,9 @@ class Settings(BaseSettings):
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "gemma4:e4b"
-    ollama_embed_model: str = "qwen3-embedding:0.6b"
-    ollama_ocr_model: str = "qwen3:0.6b"
+    ollama_embed_model: str = "qwen3-embedding:4b"
+    ollama_embed_dim: int = 0  # 0 = auto-detect from known model defaults
+    ollama_ocr_model: str = "qwen3:4b"
     ollama_timeout_seconds: int = 600
     ollama_embed_retries: int = 3
     ollama_embed_retry_base_delay: float = 1.0
@@ -36,12 +37,12 @@ class Settings(BaseSettings):
     ollama_chat_retry_base_delay: float = 1.0
     ollama_num_ctx: int = 16384
     ollama_embed_num_ctx: int = 8192
-    ollama_ocr_num_ctx: int = 16384
-    ollama_model_swap_delay: float = 5.0  # seconds to wait after unloading a model
+    ollama_ocr_num_ctx: int = 12288
+    ollama_model_swap_delay: float = 8.0  # seconds to wait after unloading a model
 
     # --- OCR ---
     ocr_mode: str = "off"  # off | text | vision_light | vision_full
-    ocr_vision_model: str = ""  # empty = use ollama_model (must be vision-capable)
+    ocr_vision_model: str = "qwen3-vl:4b"
     ocr_vision_max_pages: int = 3
     ocr_vision_dpi: int = 150
 
@@ -99,6 +100,24 @@ class Settings(BaseSettings):
             return p
         # Installed package: fall back to working directory (Docker WORKDIR)
         return Path.cwd() / "prompts"
+
+    @property
+    def ollama_embed_dim_resolved(self) -> int:
+        """Embedding dimension used by sqlite-vec.
+
+        `ollama_embed_dim=0` enables auto mode for known defaults.
+        """
+        if self.ollama_embed_dim > 0:
+            return self.ollama_embed_dim
+
+        model = (self.ollama_embed_model or "").lower()
+        if model.startswith("qwen3-embedding:4b"):
+            return 2560
+        if model.startswith("qwen3-embedding:0.6b"):
+            return 1024
+
+        # Safe fallback for unknown models in auto mode.
+        return 1024
 
 
 # Singleton
@@ -254,7 +273,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 1: OCR",
         "OCR Text Model",
         restart="component",
-        help="Smaller model for text-only OCR correction (ocr_mode=text)",
+        help="Model for text-only OCR correction (ocr_mode=text). 4b is a good 6GB preset.",
     ),
     "ocr_vision_model": _fm(
         "Phase 1: OCR",
@@ -291,7 +310,14 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 2: Embedding",
         "Embedding Model",
         restart="component",
-        help="Ollama model for embeddings (e.g. qwen3-embedding:0.6b)",
+        help="Ollama model for embeddings (e.g. qwen3-embedding:4b)",
+    ),
+    "ollama_embed_dim": _fm(
+        "Phase 2: Embedding",
+        "Embedding Dimension",
+        "number",
+        restart="app",
+        help="Expected embedding vector dimension for sqlite-vec. 0 = auto (qwen3-embedding:0.6b -> 1024, qwen3-embedding:4b -> 2560).",
     ),
     "ollama_embed_num_ctx": _fm(
         "Phase 2: Embedding",

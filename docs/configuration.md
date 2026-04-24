@@ -4,6 +4,10 @@ Alle Einstellungen werden ueber Umgebungsvariablen gesteuert. Primaer ueber
 `.env` (Docker Compose) oder die Settings-UI (`/settings`), die Aenderungen
 in `config.env` persistiert.
 
+> Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
+> (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
+> internen App-Defaults.
+
 **Prioritaet (hoechste zuerst):**
 1. `{DATA_DIR}/config.env` — geschrieben von der Settings-UI
 2. OS-Umgebungsvariablen — gesetzt von Docker Compose aus `.env`
@@ -28,17 +32,18 @@ in `config.env` persistiert.
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer Ollama-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
+| `OLLAMA_MODEL_SWAP_DELAY` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt |
 
 ## Phase 1: OCR-Korrektur
 
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
-| `OLLAMA_OCR_MODEL` | `qwen3:0.6b` | Modell fuer Text-Only OCR-Korrektur |
-| `OCR_VISION_MODEL` | *(= OLLAMA_MODEL)* | Vision-Modell fuer OCR (muss vision-faehig sein) |
+| `OLLAMA_OCR_MODEL` | `qwen3:4b` | Modell fuer Text-Only OCR-Korrektur |
+| `OCR_VISION_MODEL` | `qwen3-vl:4b` | Vision-Modell fuer OCR (muss vision-faehig sein) |
 | `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten fuer Vision-OCR |
 | `OCR_VISION_DPI` | `150` | Render-Aufloesung fuer PDF-Seiten (Pixel pro Zoll) |
-| `OLLAMA_OCR_NUM_CTX` | `16384` | Kontextfenster fuer OCR-Modelle (Tokens). Vision braucht ~1536 Tokens/Seite. |
+| `OLLAMA_OCR_NUM_CTX` | `12288` | Kontextfenster fuer OCR-Modelle (Tokens). Vision braucht ~1536 Tokens/Seite. |
 
 ### OCR-Modi im Vergleich
 
@@ -56,8 +61,9 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_EMBED_MODEL` | `qwen3-embedding:0.6b` | Embedding-Modell (1024-dim, multilingual DE/EN) |
-| `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens, Modell unterstuetzt 32K) |
+| `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell (hoehere Retrieval-Qualitaet) |
+| `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer sqlite-vec. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
+| `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens) |
 | `EMBED_MAX_CHARS` | `6000` | Max. Zeichen des Dokumenttexts fuer Embedding |
 | `OLLAMA_EMBED_RETRIES` | `3` | Max. Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
 | `OLLAMA_EMBED_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Backoff |
@@ -66,7 +72,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell |
+| `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`) |
 | `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer das Chat-Modell (Tokens) |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |

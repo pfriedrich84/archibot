@@ -143,7 +143,19 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         actions.append("Paperless client recreated")
 
     # --- Ollama client ---
-    ollama_fields = {"ollama_url", "ollama_model", "ollama_embed_model", "ollama_timeout_seconds"}
+    ollama_fields = {
+        "ollama_url",
+        "ollama_model",
+        "ollama_embed_model",
+        "ollama_embed_dim",
+        "ollama_ocr_model",
+        "ocr_vision_model",
+        "ollama_timeout_seconds",
+        "ollama_num_ctx",
+        "ollama_embed_num_ctx",
+        "ollama_ocr_num_ctx",
+        "ollama_model_swap_delay",
+    }
     if changed_keys & ollama_fields:
         from app.clients.ollama import OllamaClient
 

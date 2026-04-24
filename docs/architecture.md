@@ -123,7 +123,7 @@ Nur aktiv bei `ENABLE_OCR_CORRECTION=true`. Heuristik prueft ob der Text typisch
 
 ### 3. Kontext-Suche
 
-- Berechnet Embedding des Zieldokuments via Ollama (`qwen3-embedding:0.6b`, 1024-dim)
+- Berechnet Embedding des Zieldokuments via Ollama (`qwen3-embedding:4b`, Dim via `OLLAMA_EMBED_DIM`/Auto)
 - KNN-Suche in `doc_embeddings` (sqlite-vec) findet die aehnlichsten Dokumente
 - **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — nur reviewte/bestaetigte Dokumente mit zuverlaessigen Metadaten dienen als Referenz
 - Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Tags, Speicherpfad)
