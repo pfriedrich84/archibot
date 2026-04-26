@@ -1,3 +1,12 @@
+FROM node:20-slim AS frontend-build
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
+
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -39,6 +48,7 @@ RUN pip install --upgrade pip setuptools wheel \
 COPY app ./app
 COPY prompts ./prompts
 COPY entrypoint.sh ./
+COPY --from=frontend-build /frontend/build ./frontend/build
 
 # Register console script entry point (deps already installed above)
 RUN pip install --no-deps .
