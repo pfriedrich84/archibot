@@ -12,6 +12,18 @@ from app.indexer import get_reindex_progress
 from app.worker import _has_embedding_index, get_poll_progress
 
 
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return when.astimezone(UTC)
+
+
 def _next_poll_run(app: Any) -> str | None:
     scheduler = getattr(app.state, "scheduler", None)
     if not scheduler:
@@ -305,11 +317,8 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
     next_run = _next_poll_run(app)
 
     def _relative_time(value: str | None) -> str | None:
-        if not value:
-            return None
-        try:
-            when = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
+        when = _parse_datetime(value)
+        if when is None:
             return None
         delta = max(int((now - when).total_seconds()), 0)
         if delta < 60:

@@ -59,6 +59,10 @@ def _setup_app(tmp_path, monkeypatch):
             "INSERT INTO phase_timing (poll_cycle_id, document_id, phase, started_at, finished_at, duration_ms, success) VALUES (?,?,?,?,?,?,?)",
             ("cycle-1", 1, "classify", "2026-04-20T00:00:00", "2026-04-20T00:00:04", 4000, 1),
         )
+        conn.execute(
+            "INSERT INTO poll_cycles (id, started_at, finished_at, total_docs, succeeded, failed, skipped) VALUES (?,?,?,?,?,?,?)",
+            ("cycle-1", "2026-04-20 00:00:00", "2026-04-20 00:00:04", 1, 1, 0, 0),
+        )
 
 
 @pytest.fixture()
@@ -79,6 +83,7 @@ def test_dashboard_api_returns_expected_sections(client):
     assert isinstance(payload["recent_errors"], list)
     assert "pipeline" in payload
     assert "reindex" in payload
+    assert payload["pipeline"]["last_poll"]["relative_finished"] is not None
 
 
 def test_system_status_api_reports_legacy_ui_migration_state(client):

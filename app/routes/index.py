@@ -16,6 +16,18 @@ log = structlog.get_logger(__name__)
 router = APIRouter()
 
 
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return when.astimezone(UTC)
+
+
 def _last_poll(conn) -> dict | None:
     """Return the most recent completed poll cycle, or None."""
     row = conn.execute(
@@ -52,13 +64,10 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
         label = phase_labels.get(poll.phase, poll.phase or "Starting...")
         pct = int(poll.done / poll.total * 100) if poll.total > 0 else 0
         elapsed = ""
-        if poll.started_at:
-            try:
-                started = datetime.fromisoformat(poll.started_at)
-                secs = int((now - started).total_seconds())
-                elapsed = f' <span class="text-gray-400">({secs}s elapsed)</span>'
-            except (ValueError, TypeError):
-                pass
+        started = _parse_datetime(poll.started_at)
+        if started is not None:
+            secs = int((now - started).total_seconds())
+            elapsed = f' <span class="text-gray-400">({secs}s elapsed)</span>'
 
         return (
             f'<div id="pipeline-status" hx-get="/pipeline-status"'
@@ -86,8 +95,8 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
     # --- Idle state ---
     last_info = ""
     if last_poll:
-        try:
-            finished = datetime.fromisoformat(last_poll["finished_at"] + "+00:00")
+        finished = _parse_datetime(last_poll["finished_at"])
+        if finished is not None:
             ago_secs = int((now - finished).total_seconds())
             if ago_secs < 60:
                 ago = f"{ago_secs}s ago"
@@ -103,21 +112,17 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
                 f'<span class="text-sm text-gray-500">Last poll: {ago}'
                 f" &mdash; {total} docs ({ok} succeeded{fail_txt})</span>"
             )
-        except (ValueError, TypeError):
-            pass
 
     next_info = ""
     if next_run:
-        try:
-            next_dt = datetime.fromisoformat(next_run)
+        next_dt = _parse_datetime(next_run)
+        if next_dt is not None:
             remaining = int((next_dt - now).total_seconds())
             if remaining > 0:
                 mins, secs = divmod(remaining, 60)
                 next_info = (
                     f'<span class="text-sm text-gray-400">Next poll in {mins}m {secs}s</span>'
                 )
-        except (ValueError, TypeError):
-            pass
 
     if not next_info:
         interval = settings.poll_interval_seconds
