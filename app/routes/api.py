@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
@@ -74,7 +74,10 @@ async def settings_schema_api() -> dict[str, Any]:
 
 
 @router.post("/settings")
-async def save_settings_api(request: Request, payload: dict[str, Any] = Body(default_factory=dict)):
+async def save_settings_api(
+    request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
+):
+    payload = payload or {}
     updates = payload.get("updates")
     if not isinstance(updates, dict) or not updates:
         raise HTTPException(status_code=400, detail="Missing updates payload")

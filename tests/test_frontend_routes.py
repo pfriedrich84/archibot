@@ -11,15 +11,15 @@ from tests.conftest import bootstrap_csrf_client
 
 @pytest.fixture(autouse=True)
 def _setup_app(tmp_path, monkeypatch):
-    build_dir = tmp_path / 'frontend-build'
+    build_dir = tmp_path / "frontend-build"
     build_dir.mkdir()
-    (build_dir / 'index.html').write_text('<!doctype html><html><body>frontend index</body></html>')
-    (build_dir / 'asset.js').write_text('console.log("asset")')
+    (build_dir / "index.html").write_text("<!doctype html><html><body>frontend index</body></html>")
+    (build_dir / "asset.js").write_text('console.log("asset")')
 
-    monkeypatch.setattr('app.routes.frontend.FRONTEND_BUILD_DIR', build_dir)
+    monkeypatch.setattr("app.routes.frontend.FRONTEND_BUILD_DIR", build_dir)
 
     mock_paperless = AsyncMock()
-    mock_paperless.base_url = 'http://test:8000'
+    mock_paperless.base_url = "http://test:8000"
     app.state.paperless = mock_paperless
     app.state.ollama = AsyncMock()
     app.state.templates = templates
@@ -33,25 +33,27 @@ def client():
 
 
 def test_app_route_serves_frontend_index(client):
-    response = client.get('/app')
+    response = client.get("/app")
     assert response.status_code == 200
-    assert 'frontend index' in response.text
+    assert "frontend index" in response.text
 
 
 def test_nested_frontend_route_falls_back_to_index(client):
-    response = client.get('/app/review')
+    response = client.get("/app/review")
     assert response.status_code == 200
-    assert 'frontend index' in response.text
+    assert "frontend index" in response.text
 
 
 def test_frontend_static_asset_is_served(client):
-    response = client.get('/app/asset.js')
+    response = client.get("/app/asset.js")
     assert response.status_code == 200
-    assert 'console.log' in response.text
+    assert "console.log" in response.text
 
 
 def test_missing_build_returns_helpful_status(monkeypatch, client):
-    monkeypatch.setattr('app.routes.frontend.FRONTEND_BUILD_DIR', Path('/tmp/does-not-exist-archibot'))
-    response = client.get('/app')
+    monkeypatch.setattr(
+        "app.routes.frontend.FRONTEND_BUILD_DIR", Path("/tmp/does-not-exist-archibot")
+    )
+    response = client.get("/app")
     assert response.status_code == 503
-    assert 'SvelteKit-Build fehlt' in response.text
+    assert "SvelteKit-Build fehlt" in response.text

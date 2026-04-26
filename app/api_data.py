@@ -347,7 +347,9 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "started_at": poll.started_at,
             "last_poll": {
                 **last_poll,
-                "relative_finished": _relative_time(last_poll.get("finished_at")) if last_poll else None,
+                "relative_finished": _relative_time(last_poll.get("finished_at"))
+                if last_poll
+                else None,
             }
             if last_poll
             else None,
