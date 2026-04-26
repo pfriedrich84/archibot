@@ -4,6 +4,8 @@ import type {
   EmbeddingsPayload,
   ErrorsPayload,
   InboxPayload,
+  ReviewDetailPayload,
+  ReviewMutationResponse,
   ReviewQueuePayload,
   SettingsSchemaPayload,
   StatsPayload,
@@ -21,10 +23,50 @@ async function apiFetch<T>(path: string, fetcher: typeof fetch): Promise<T> {
   return (await response.json()) as T;
 }
 
+function getCsrfToken(): string {
+  if (typeof document === 'undefined') {
+    return '';
+  }
+
+  const token = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith('csrf_token='))
+    ?.split('=')[1];
+
+  return token ? decodeURIComponent(token) : '';
+}
+
+async function apiMutation<T>(path: string, body: object): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      'X-CSRF-Token': getCsrfToken()
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `API mutation failed for ${path}: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
 export const loadDashboard = (fetcher: typeof fetch) => apiFetch<DashboardPayload>('/api/v1/dashboard', fetcher);
 export const loadStatus = (fetcher: typeof fetch) => apiFetch<StatusPayload>('/api/v1/system/status', fetcher);
 export const loadErrors = (fetcher: typeof fetch) => apiFetch<ErrorsPayload>('/api/v1/errors/recent', fetcher);
 export const loadReviewQueue = (fetcher: typeof fetch) => apiFetch<ReviewQueuePayload>('/api/v1/review/queue', fetcher);
+export const loadReviewDetail = (suggestionId: number, fetcher: typeof fetch) =>
+  apiFetch<ReviewDetailPayload>(`/api/v1/review/${suggestionId}`, fetcher);
+export const saveReviewSuggestion = (suggestionId: number, payload: object) =>
+  apiMutation<ReviewMutationResponse>(`/api/v1/review/${suggestionId}/save`, payload);
+export const acceptReviewSuggestion = (suggestionId: number, payload: object) =>
+  apiMutation<ReviewMutationResponse>(`/api/v1/review/${suggestionId}/accept`, payload);
+export const rejectReviewSuggestion = (suggestionId: number) =>
+  apiMutation<ReviewMutationResponse>(`/api/v1/review/${suggestionId}/reject`, {});
 export const loadInbox = (fetcher: typeof fetch) => apiFetch<InboxPayload>('/api/v1/inbox', fetcher);
 export const loadTags = (fetcher: typeof fetch) => apiFetch<TagsPayload>('/api/v1/tags', fetcher);
 export const loadStats = (fetcher: typeof fetch) => apiFetch<StatsPayload>('/api/v1/stats', fetcher);

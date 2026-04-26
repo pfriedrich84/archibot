@@ -92,21 +92,86 @@ export type SettingsSchemaPayload = {
   setup_complete: boolean;
 };
 
+export type ReviewQueueItem = {
+  id: number;
+  document_id: number;
+  created_at: string;
+  status: string;
+  confidence: number | null;
+  proposed_title: string | null;
+  proposed_correspondent_name: string | null;
+  proposed_doctype_name: string | null;
+  proposed_storage_path_name: string | null;
+  judge_verdict: string | null;
+  document_status: string | null;
+};
+
 export type ReviewQueuePayload = {
   total: number;
-  items: Array<{
+  items: ReviewQueueItem[];
+};
+
+export type ReviewEntityOption = {
+  id: number;
+  name: string;
+};
+
+export type ReviewTagValue = {
+  id: number | null;
+  name: string;
+  confidence?: number | null;
+};
+
+export type ReviewDetailPayload = {
+  suggestion: {
     id: number;
     document_id: number;
     created_at: string;
     status: string;
     confidence: number | null;
-    proposed_title: string | null;
-    proposed_correspondent_name: string | null;
-    proposed_doctype_name: string | null;
-    proposed_storage_path_name: string | null;
+    reasoning: string | null;
     judge_verdict: string | null;
-    document_status: string | null;
-  }>;
+    judge_reasoning: string | null;
+  };
+  original: {
+    title: string | null;
+    date: string | null;
+    correspondent_id: number | null;
+    correspondent_name: string | null;
+    doctype_id: number | null;
+    doctype_name: string | null;
+    storage_path_id: number | null;
+    storage_path_name: string | null;
+    tags: ReviewTagValue[];
+  };
+  proposed: {
+    title: string;
+    date: string | null;
+    correspondent_id: number | null;
+    correspondent_name: string | null;
+    suggested_correspondent_name: string | null;
+    doctype_id: number | null;
+    doctype_name: string | null;
+    suggested_doctype_name: string | null;
+    storage_path_id: number | null;
+    storage_path_name: string | null;
+    suggested_storage_path_name: string | null;
+    tags: ReviewTagValue[];
+  };
+  options: {
+    correspondents: ReviewEntityOption[];
+    doctypes: ReviewEntityOption[];
+    storage_paths: ReviewEntityOption[];
+    tags: ReviewEntityOption[];
+  };
+  context_docs: Array<Record<string, unknown>>;
+  original_proposal: Record<string, unknown> | null;
+};
+
+export type ReviewMutationResponse = {
+  ok: boolean;
+  status: string;
+  message: string;
 };
 
 export type InboxPayload = {

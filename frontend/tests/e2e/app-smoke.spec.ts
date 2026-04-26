@@ -113,6 +113,52 @@ const reviewPayload = {
   ]
 };
 
+const reviewDetailPayload = {
+  suggestion: {
+    id: 11,
+    document_id: 77,
+    created_at: '2026-04-26T09:00:00Z',
+    status: 'pending',
+    confidence: 92,
+    reasoning: 'Invoice layout matched a known utility bill pattern.',
+    judge_verdict: 'agree',
+    judge_reasoning: null
+  },
+  original: {
+    title: 'scan_2026_04.pdf',
+    date: '2026-04-01',
+    correspondent_id: null,
+    correspondent_name: null,
+    doctype_id: null,
+    doctype_name: null,
+    storage_path_id: null,
+    storage_path_name: null,
+    tags: []
+  },
+  proposed: {
+    title: 'Stromrechnung April',
+    date: '2026-04-01',
+    correspondent_id: 1,
+    correspondent_name: 'Stadtwerke',
+    suggested_correspondent_name: null,
+    doctype_id: 2,
+    doctype_name: 'Rechnung',
+    suggested_doctype_name: null,
+    storage_path_id: 3,
+    storage_path_name: 'Finanzen/Strom',
+    suggested_storage_path_name: null,
+    tags: [{ id: 5, name: 'Rechnung', confidence: 88 }]
+  },
+  options: {
+    correspondents: [{ id: 1, name: 'Stadtwerke' }],
+    doctypes: [{ id: 2, name: 'Rechnung' }],
+    storage_paths: [{ id: 3, name: 'Finanzen/Strom' }],
+    tags: [{ id: 5, name: 'Rechnung' }]
+  },
+  context_docs: [],
+  original_proposal: null
+};
+
 const inboxPayload = {
   total: 2,
   counts: { pending: 1, committed: 1 },
@@ -193,6 +239,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/review/queue', async (route) => {
     await route.fulfill({ json: reviewPayload });
   });
+  await page.route('**/api/v1/review/11', async (route) => {
+    await route.fulfill({ json: reviewDetailPayload });
+  });
   await page.route('**/api/v1/inbox', async (route) => {
     await route.fulfill({ json: inboxPayload });
   });
@@ -219,16 +268,17 @@ test('dashboard renders hero metrics', async ({ page }) => {
 
 test('settings route renders schema-driven category card', async ({ page }) => {
   await page.goto('/app/settings');
-  await expect(page.getByText('Einstellungen')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Paperless' })).toBeVisible();
   await expect(page.getByText('Paperless URL')).toBeVisible();
 });
 
-test('review route renders live queue table', async ({ page }) => {
+test('review route renders native inspector workflow', async ({ page }) => {
   await page.goto('/app/review');
-  await expect(page.getByText('offene Vorschläge')).toBeVisible();
+  await expect(page.getByText('aktive Vorschläge')).toBeVisible();
   await expect(page.getByText('Stromrechnung April')).toBeVisible();
-  await expect(page.getByText('Legacy-Review öffnen')).toBeVisible();
+  await expect(page.getByText('Review Inspector')).toBeVisible();
+  await expect(page.getByText('Accept & commit')).toBeVisible();
 });
 
 test('stats route renders phase health card', async ({ page }) => {

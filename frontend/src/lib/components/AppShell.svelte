@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Sidebar, SidebarBrand, SidebarDropdownItem, SidebarDropdownWrapper, SidebarItem, Navbar, NavBrand, Badge } from 'flowbite-svelte';
+  import { Sidebar, SidebarBrand, SidebarDropdownItem, SidebarDropdownWrapper, Navbar, NavBrand, Badge } from 'flowbite-svelte';
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { navItems } from '$lib/nav';
@@ -39,14 +39,23 @@
           </div>
         </SidebarBrand>
 
-        <div class="mt-8 space-y-2">
+        <nav class="mt-8 space-y-2">
           {#each navItems as item}
-            <SidebarItem href={navHref(item.href)} active={isActive(item.href)} class="rounded-xl text-slate-200 hover:bg-slate-800/80">
-              <span class="mr-3 text-base">{item.emoji}</span>
-              <span>{item.label}</span>
-            </SidebarItem>
+            <a
+              href={navHref(item.href)}
+              data-sveltekit-preload-data="hover"
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              class={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
+                isActive(item.href)
+                  ? 'bg-slate-800 text-white shadow-inner shadow-slate-950/40'
+                  : 'text-slate-200 hover:bg-slate-800/80 hover:text-white'
+              }`}
+            >
+              <span class="text-base leading-none">{item.emoji}</span>
+              <span class="truncate text-slate-100">{item.label}</span>
+            </a>
           {/each}
-        </div>
+        </nav>
 
         <SidebarDropdownWrapper class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <div class="mb-2 flex items-center justify-between">
@@ -78,7 +87,7 @@
         <div class="ms-auto flex items-center gap-3">
           <div class="hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2 md:block">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Admin Shell</p>
-            <p class="text-sm text-slate-200">Flowbite Svelte · Dark default · Responsive</p>
+            <p class="text-sm text-slate-200">Svelte 5 · SvelteKit SPA · Responsive</p>
           </div>
           <button
             type="button"
@@ -90,6 +99,28 @@
         </div>
       </Navbar>
 
+      <div class="border-b border-slate-800 bg-slate-950/70 xl:hidden">
+        <div class="overflow-x-auto px-4 py-3">
+          <nav class="flex min-w-max items-center gap-2">
+            {#each navItems as item}
+              <a
+                href={navHref(item.href)}
+                data-sveltekit-preload-data="hover"
+                aria-current={isActive(item.href) ? 'page' : undefined}
+                class={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive(item.href)
+                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100'
+                    : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700 hover:text-white'
+                }`}
+              >
+                <span>{item.emoji}</span>
+                <span>{item.label}</span>
+              </a>
+            {/each}
+          </nav>
+        </div>
+      </div>
+
       <main class="flex-1 px-4 py-6 md:px-8 xl:px-10">
         <section class="surface-gradient rounded-3xl border border-slate-800 px-6 py-8 shadow-2xl shadow-slate-950/30">
           <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -100,9 +131,10 @@
                 <p class="mt-2 max-w-3xl text-sm text-slate-300">{subtitle}</p>
               {/if}
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
               <Badge large color="green">Flowbite Svelte</Badge>
               <Badge large color="purple">SvelteKit</Badge>
+              <Badge large color="blue">Svelte 5</Badge>
             </div>
           </div>
         </section>
