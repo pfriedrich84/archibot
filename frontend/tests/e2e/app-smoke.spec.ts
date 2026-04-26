@@ -242,6 +242,12 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/review/11', async (route) => {
     await route.fulfill({ json: reviewDetailPayload });
   });
+  await page.route('**/api/v1/review/bulk/accept', async (route) => {
+    await route.fulfill({ json: { ok: true, status: 'committed', message: '1 übernommen', succeeded: 1, failed: 0, skipped: 0, statuses: { '11': 'committed' } } });
+  });
+  await page.route('**/api/v1/review/bulk/reject', async (route) => {
+    await route.fulfill({ json: { ok: true, status: 'rejected', message: '1 verworfen', succeeded: 1, failed: 0, skipped: 0, statuses: { '11': 'rejected' } } });
+  });
   await page.route('**/api/v1/inbox', async (route) => {
     await route.fulfill({ json: inboxPayload });
   });
@@ -277,8 +283,8 @@ test('review route renders native inspector workflow', async ({ page }) => {
   await page.goto('/app/review');
   await expect(page.getByText('aktive Vorschläge')).toBeVisible();
   await expect(page.getByText('Stromrechnung April')).toBeVisible();
-  await expect(page.getByText('Review Inspector')).toBeVisible();
-  await expect(page.getByText('Accept & commit')).toBeVisible();
+  await expect(page.getByText('Bulk accept filtered')).toBeVisible();
+  await expect(page.getByText('Bulk reject filtered')).toBeVisible();
 });
 
 test('stats route renders phase health card', async ({ page }) => {

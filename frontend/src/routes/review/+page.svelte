@@ -3,6 +3,8 @@
   import AppShell from '$lib/components/AppShell.svelte';
   import {
     acceptReviewSuggestion,
+    bulkAcceptReviewSuggestions,
+    bulkRejectReviewSuggestions,
     loadReviewDetail,
     loadReviewQueue,
     rejectReviewSuggestion,
@@ -20,7 +22,7 @@
   let detail = $state<ReviewDetailPayload | null>(null);
   let loadingDetail = $state(false);
   let detailError = $state('');
-  let mutationState = $state<'save' | 'accept' | 'reject' | null>(null);
+  let mutationState = $state<'save' | 'accept' | 'reject' | 'bulk-accept' | 'bulk-reject' | null>(null);
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   let search = $state('');
@@ -194,6 +196,39 @@
     }
   });
 
+  async function runFilteredBulkAction(action: 'bulk-accept' | 'bulk-reject') {
+    const suggestionIds = filteredItems.map((item) => item.id);
+    if (suggestionIds.length === 0) {
+      feedback = { type: 'info', message: 'Keine Vorschläge im aktuellen Filter.' };
+      return;
+    }
+
+    mutationState = action;
+    feedback = null;
+
+    try {
+      const response =
+        action === 'bulk-accept'
+          ? await bulkAcceptReviewSuggestions(suggestionIds)
+          : await bulkRejectReviewSuggestions(suggestionIds);
+
+      feedback = { type: response.ok ? 'success' : 'error', message: response.message };
+      const nextPreferred = selectedId !== null && !suggestionIds.includes(selectedId) ? selectedId : null;
+      await refreshQueue(nextPreferred);
+      if (nextPreferred === null) {
+        detail = null;
+        loadedDetailId = null;
+      }
+    } catch (error) {
+      feedback = {
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Bulk-Aktion fehlgeschlagen.'
+      };
+    } finally {
+      mutationState = null;
+    }
+  }
+
   $effect(() => {
     const id = selectedId;
     if (id !== null && loadedDetailId !== id) {
@@ -260,6 +295,31 @@
                 <option value="low">0–49</option>
               </select>
             </label>
+          </div>
+
+          <div class="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bulk actions</p>
+              <p class="mt-1 text-sm text-slate-300">Wirken auf alle {filteredItems.length} Vorschläge im aktuellen Filter.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onclick={() => void runFilteredBulkAction('bulk-accept')}
+                disabled={mutationState !== null || filteredItems.length === 0}
+                class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mutationState === 'bulk-accept' ? 'Übernimmt …' : 'Bulk accept filtered'}
+              </button>
+              <button
+                type="button"
+                onclick={() => void runFilteredBulkAction('bulk-reject')}
+                disabled={mutationState !== null || filteredItems.length === 0}
+                class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {mutationState === 'bulk-reject' ? 'Verwirft …' : 'Bulk reject filtered'}
+              </button>
+            </div>
           </div>
         </Card>
 

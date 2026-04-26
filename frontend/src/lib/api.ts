@@ -4,6 +4,7 @@ import type {
   EmbeddingsPayload,
   ErrorsPayload,
   InboxPayload,
+  ReviewBulkMutationResponse,
   ReviewDetailPayload,
   ReviewMutationResponse,
   ReviewQueuePayload,
@@ -67,6 +68,10 @@ export const acceptReviewSuggestion = (suggestionId: number, payload: object) =>
   apiMutation<ReviewMutationResponse>(`/api/v1/review/${suggestionId}/accept`, payload);
 export const rejectReviewSuggestion = (suggestionId: number) =>
   apiMutation<ReviewMutationResponse>(`/api/v1/review/${suggestionId}/reject`, {});
+export const bulkAcceptReviewSuggestions = (suggestionIds: number[]) =>
+  apiMutation<ReviewBulkMutationResponse>('/api/v1/review/bulk/accept', { suggestion_ids: suggestionIds });
+export const bulkRejectReviewSuggestions = (suggestionIds: number[]) =>
+  apiMutation<ReviewBulkMutationResponse>('/api/v1/review/bulk/reject', { suggestion_ids: suggestionIds });
 export const loadInbox = (fetcher: typeof fetch) => apiFetch<InboxPayload>('/api/v1/inbox', fetcher);
 export const loadTags = (fetcher: typeof fetch) => apiFetch<TagsPayload>('/api/v1/tags', fetcher);
 export const loadStats = (fetcher: typeof fetch) => apiFetch<StatsPayload>('/api/v1/stats', fetcher);

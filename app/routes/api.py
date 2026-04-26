@@ -94,7 +94,9 @@ async def _save_review_payload(
     storage_lookup = {item["id"]: item["name"] for item in lookups["storage_paths"]}
     tag_lookup = {item["id"]: item["name"] for item in lookups["tags"]}
 
-    title = str(payload.get("title") or suggestion.proposed_title or suggestion.original_title or "")
+    title = str(
+        payload.get("title") or suggestion.proposed_title or suggestion.original_title or ""
+    )
     date = str(payload.get("date") or "").strip() or suggestion.effective_date
     correspondent_id = _coerce_optional_int(payload.get("correspondent_id"))
     doctype_id = _coerce_optional_int(payload.get("doctype_id"))
@@ -107,8 +109,7 @@ async def _save_review_payload(
         if isinstance(tag, dict) and tag.get("id") is None and tag.get("name")
     ]
     tag_dicts = [
-        {"id": tag_id, "name": tag_lookup.get(tag_id, f"Tag #{tag_id}")}
-        for tag_id in tag_ids
+        {"id": tag_id, "name": tag_lookup.get(tag_id, f"Tag #{tag_id}")} for tag_id in tag_ids
     ] + unresolved_tags
 
     correspondent_name = correspondent_lookup.get(correspondent_id)
@@ -158,6 +159,45 @@ async def _save_review_payload(
     return _row_to_suggestion(row)
 
 
+async def _commit_review_suggestion(request: Request, suggestion: SuggestionRow) -> dict[str, Any]:
+    decision = ReviewDecision(
+        suggestion_id=suggestion.id,
+        title=suggestion.proposed_title or suggestion.original_title or "",
+        date=suggestion.effective_date,
+        correspondent_id=suggestion.effective_correspondent_id,
+        doctype_id=suggestion.effective_doctype_id,
+        storage_path_id=suggestion.effective_storage_path_id,
+        tag_ids=[
+            tag_id
+            for tag_id in _coerce_tag_ids(
+                [
+                    tag.get("id")
+                    for tag in _json_list(suggestion.proposed_tags_json)
+                    if isinstance(tag, dict)
+                ]
+            )
+            if tag_id
+        ],
+        action="accept",
+    )
+
+    await commit_suggestion(suggestion, decision, request.app.state.paperless)
+    with get_conn() as conn:
+        updated = conn.execute(
+            "SELECT status FROM suggestions WHERE id = ?", (suggestion.id,)
+        ).fetchone()
+    final_status = updated["status"] if updated else "error"
+    return {
+        "ok": final_status == "committed",
+        "status": final_status,
+        "message": (
+            "Vorschlag erfolgreich übernommen."
+            if final_status == "committed"
+            else "Commit fehlgeschlagen. Vorschlag bleibt zur Prüfung offen."
+        ),
+    }
+
+
 @router.get("/dashboard")
 async def dashboard_api(request: Request) -> dict[str, Any]:
     return get_dashboard_snapshot(request.app)
@@ -202,10 +242,12 @@ async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, A
         if not isinstance(tag, dict):
             continue
         tag_id = tag.get("id")
-        tag_name = tag.get("name") or (tag_lookup.get(tag_id) if isinstance(tag_id, int) else None) or "Unbekannt"
-        proposed_tags.append(
-            {"id": tag_id, "name": tag_name, "confidence": tag.get("confidence")}
+        tag_name = (
+            tag.get("name")
+            or (tag_lookup.get(tag_id) if isinstance(tag_id, int) else None)
+            or "Unbekannt"
         )
+        proposed_tags.append({"id": tag_id, "name": tag_name, "confidence": tag.get("confidence")})
 
     return {
         "suggestion": {
@@ -286,25 +328,7 @@ async def review_accept_api(
 
     suggestion = _row_to_suggestion(row)
     suggestion = await _save_review_payload(request, suggestion, payload)
-    decision = ReviewDecision(
-        suggestion_id=suggestion.id,
-        title=suggestion.proposed_title or suggestion.original_title or "",
-        date=suggestion.effective_date,
-        correspondent_id=suggestion.effective_correspondent_id,
-        doctype_id=suggestion.effective_doctype_id,
-        storage_path_id=suggestion.effective_storage_path_id,
-        tag_ids=[tag_id for tag_id in _coerce_tag_ids([tag.get("id") for tag in _json_list(suggestion.proposed_tags_json) if isinstance(tag, dict)]) if tag_id],
-        action="accept",
-    )
-
-    await commit_suggestion(suggestion, decision, request.app.state.paperless)
-    with get_conn() as conn:
-        updated = conn.execute("SELECT status FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-    final_status = updated["status"] if updated else "error"
-    if final_status != "committed":
-        return {"ok": False, "status": final_status, "message": "Commit fehlgeschlagen. Vorschlag bleibt zur Prüfung offen."}
-
-    return {"ok": True, "status": final_status, "message": "Vorschlag erfolgreich übernommen."}
+    return await _commit_review_suggestion(request, suggestion)
 
 
 @router.post("/review/{suggestion_id}/reject")
@@ -313,7 +337,9 @@ async def review_reject_api(
 ) -> dict[str, Any]:
     del payload
     with get_conn() as conn:
-        row = conn.execute("SELECT document_id, status FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+        row = conn.execute(
+            "SELECT document_id, status FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Suggestion not found")
         conn.execute("UPDATE suggestions SET status = 'rejected' WHERE id = ?", (suggestion_id,))
@@ -334,6 +360,120 @@ async def review_reject_api(
         )
 
     return {"ok": True, "status": "rejected", "message": "Vorschlag verworfen."}
+
+
+@router.post("/review/bulk/accept")
+async def review_bulk_accept_api(
+    request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    suggestion_ids = list(dict.fromkeys(_coerce_tag_ids(payload.get("suggestion_ids"))))
+    if not suggestion_ids:
+        raise HTTPException(status_code=400, detail="Missing suggestion_ids")
+
+    succeeded = 0
+    failed = 0
+    skipped = 0
+    statuses: dict[str, str] = {}
+
+    for suggestion_id in suggestion_ids:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)
+            ).fetchone()
+        if not row or row["status"] != "pending":
+            skipped += 1
+            statuses[str(suggestion_id)] = "skipped"
+            continue
+
+        suggestion = _row_to_suggestion(row)
+        result = await _commit_review_suggestion(request, suggestion)
+        statuses[str(suggestion_id)] = result["status"]
+        if result["ok"]:
+            succeeded += 1
+        else:
+            failed += 1
+
+    ok = failed == 0 and succeeded > 0
+    parts: list[str] = []
+    if succeeded:
+        parts.append(f"{succeeded} übernommen")
+    if failed:
+        parts.append(f"{failed} fehlgeschlagen")
+    if skipped:
+        parts.append(f"{skipped} übersprungen")
+
+    return {
+        "ok": ok,
+        "status": "committed" if ok else ("partial" if succeeded else "error"),
+        "message": ", ".join(parts) or "Keine Änderungen",
+        "succeeded": succeeded,
+        "failed": failed,
+        "skipped": skipped,
+        "statuses": statuses,
+    }
+
+
+@router.post("/review/bulk/reject")
+async def review_bulk_reject_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    suggestion_ids = list(dict.fromkeys(_coerce_tag_ids(payload.get("suggestion_ids"))))
+    if not suggestion_ids:
+        raise HTTPException(status_code=400, detail="Missing suggestion_ids")
+
+    rejected = 0
+    skipped = 0
+    statuses: dict[str, str] = {}
+
+    for suggestion_id in suggestion_ids:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT document_id, status FROM suggestions WHERE id = ?", (suggestion_id,)
+            ).fetchone()
+            if not row or row["status"] != "pending":
+                skipped += 1
+                statuses[str(suggestion_id)] = "skipped"
+                continue
+            conn.execute(
+                "UPDATE suggestions SET status = 'rejected' WHERE id = ?", (suggestion_id,)
+            )
+            conn.execute(
+                """
+                UPDATE processed_documents
+                SET status = 'rejected'
+                WHERE document_id = ?
+                """,
+                (row["document_id"],),
+            )
+            conn.execute(
+                """
+                INSERT INTO audit_log (action, document_id, actor, details)
+                VALUES ('reject', ?, 'user', NULL)
+                """,
+                (row["document_id"],),
+            )
+        rejected += 1
+        statuses[str(suggestion_id)] = "rejected"
+
+    return {
+        "ok": rejected > 0,
+        "status": "rejected" if rejected > 0 else "skipped",
+        "message": ", ".join(
+            part
+            for part in [
+                f"{rejected} verworfen" if rejected else "",
+                f"{skipped} übersprungen" if skipped else "",
+            ]
+            if part
+        )
+        or "Keine Änderungen",
+        "succeeded": rejected,
+        "failed": 0,
+        "skipped": skipped,
+        "statuses": statuses,
+    }
 
 
 @router.get("/inbox")

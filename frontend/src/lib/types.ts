@@ -174,6 +174,16 @@ export type ReviewMutationResponse = {
   message: string;
 };
 
+export type ReviewBulkMutationResponse = {
+  ok: boolean;
+  status: string;
+  message: string;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  statuses: Record<string, string>;
+};
+
 export type InboxPayload = {
   total: number;
   counts: Record<string, number>;
