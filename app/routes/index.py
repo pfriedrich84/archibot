@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import settings
 from app.db import get_conn
@@ -198,36 +198,4 @@ async def cancel_poll_dashboard(request: Request):
 
 @router.get("/")
 async def dashboard(request: Request):
-    with get_conn() as conn:
-        pending = conn.execute(
-            "SELECT COUNT(DISTINCT document_id) AS c FROM suggestions WHERE status = 'pending'"
-        ).fetchone()["c"]
-
-        committed_today = conn.execute(
-            """
-            SELECT COUNT(DISTINCT document_id) AS c FROM audit_log
-            WHERE action = 'commit' AND occurred_at >= date('now')
-            """
-        ).fetchone()["c"]
-
-        error_count = conn.execute(
-            """
-            SELECT COUNT(*) AS c FROM errors
-            WHERE occurred_at >= datetime('now', '-24 hours')
-            """
-        ).fetchone()["c"]
-
-        pending_tags = conn.execute(
-            "SELECT COUNT(*) AS c FROM tag_whitelist WHERE approved = 0"
-        ).fetchone()["c"]
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "pending": pending,
-            "committed_today": committed_today,
-            "error_count": error_count,
-            "pending_tags": pending_tags,
-        },
-    )
+    return RedirectResponse(url="/app/", status_code=302)

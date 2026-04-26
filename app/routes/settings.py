@@ -7,12 +7,12 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.config import FIELD_META, needs_setup, settings
+from app.config import FIELD_META, settings
 from app.db import get_conn
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
-from app.pipeline.classifier import _load_system_prompt, _prompt_override_path
+from app.pipeline.classifier import _prompt_override_path
 from app.ui_safety import escape_html
 from app.worker import _has_embedding_index, cancel_poll, get_poll_progress, start_poll_task
 
@@ -35,27 +35,8 @@ def _build_config_groups() -> OrderedDict[str, list[tuple[str, dict[str, Any], A
 
 
 @router.get("")
-async def settings_page(request: Request):
-    config_groups = _build_config_groups()
-    try:
-        system_prompt = _load_system_prompt()
-    except Exception:
-        system_prompt = "(failed to load prompt)"
-    is_custom = _prompt_override_path().is_file()
-    reindex_progress = get_reindex_progress()
-    poll_progress = get_poll_progress()
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "config_groups": config_groups,
-            "system_prompt": system_prompt,
-            "is_custom_prompt": is_custom,
-            "reindex": reindex_progress,
-            "poll": poll_progress,
-            "needs_setup": needs_setup(),
-        },
-    )
+async def settings_page(_request: Request):
+    return RedirectResponse(url="/app/settings", status_code=302)
 
 
 @router.post("/save-config")

@@ -224,33 +224,17 @@ class TestBulkReject:
 
 
 class TestReviewListTemplate:
-    def test_renders_checkboxes(self, client, patch_db, db_conn):
+    def test_review_get_redirects_to_admin_app(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
 
-        r = client.get("/review")
-        assert r.status_code == 200
-        assert 'class="bulk-check' in r.text
-        assert 'id="select-all-desktop"' in r.text
-        assert 'id="bulk-actions"' in r.text
+        r = client.get("/review", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/review"
 
-    def test_high_confidence_pre_checked(self, client, patch_db, db_conn):
+    def test_review_get_redirects_even_with_multiple_suggestions(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100, confidence=90)
         _insert_suggestion(db_conn, 2, 200, confidence=50)
 
-        r = client.get("/review")
-        assert r.status_code == 200
-
-        # Find the checkbox for suggestion 1 (90%) — should be checked
-        # Find the checkbox for suggestion 2 (50%) — should not be checked
-        # We check by looking at checkbox value + checked attribute proximity
-        text = r.text
-        idx_s1 = text.find('value="1"')
-        idx_s2 = text.find('value="2"')
-        assert idx_s1 != -1
-        assert idx_s2 != -1
-
-        # Look at a window around each checkbox for the "checked" attribute
-        s1_context = text[max(0, idx_s1 - 50) : idx_s1 + 200]
-        s2_context = text[max(0, idx_s2 - 50) : idx_s2 + 200]
-        assert "checked" in s1_context
-        assert "checked" not in s2_context
+        r = client.get("/review", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/review"

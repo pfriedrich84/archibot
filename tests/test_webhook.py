@@ -230,11 +230,11 @@ class TestWebhookEdit:
         assert r.json()["action"] == "skipped_empty"
         mock_cb.store_embedding.assert_not_called()
 
-    def test_get_embeddings_still_serves_dashboard(self, client):
-        """GET /embeddings should still return the dashboard."""
-        r = client.get("/embeddings")
-        assert r.status_code == 200
-        assert "Embeddings" in r.text
+    def test_get_embeddings_redirects_to_admin_app(self, client):
+        """GET /embeddings should redirect to the Svelte admin app."""
+        r = client.get("/embeddings", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/embeddings"
 
 
 # ---------------------------------------------------------------------------

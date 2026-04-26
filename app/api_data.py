@@ -385,9 +385,9 @@ def get_system_status(app: Any) -> dict[str, Any]:
             "version": getattr(app, "version", "0.1.0"),
             "setup_complete": not needs_setup(),
             "legacy_ui": {
-                "active": True,
+                "active": False,
                 "deprecated": True,
-                "cutover_ready": False,
+                "cutover_ready": True,
             },
             "frontend": {
                 "new_app_path": "/app",

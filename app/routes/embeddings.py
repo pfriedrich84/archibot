@@ -6,7 +6,7 @@ import math
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import get_conn
 from app.pipeline.context_builder import find_similar_by_id
@@ -67,38 +67,7 @@ def _query_embeddings(conn, *, query: str = "", page: int = 1):
 # ---------------------------------------------------------------------------
 @router.get("")
 async def embeddings_page(request: Request, q: str = "", page: int = 1):
-    paperless = request.app.state.paperless
-    corr_lookup, dt_lookup = await _entity_lookups(paperless)
-
-    with get_conn() as conn:
-        rows, total = _query_embeddings(conn, query=q, page=page)
-
-    total_pages = max(1, math.ceil(total / _PER_PAGE))
-    documents = [
-        {
-            "document_id": r["document_id"],
-            "title": r["title"] or f"Document #{r['document_id']}",
-            "correspondent_name": corr_lookup.get(r["correspondent"]),
-            "doctype_name": dt_lookup.get(r["doctype"]),
-            "indexed_at": r["indexed_at"],
-        }
-        for r in rows
-    ]
-
-    paperless_url = paperless.base_url if paperless else ""
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "embeddings.html",
-        {
-            "total_embedded": total,
-            "documents": documents,
-            "page": page,
-            "total_pages": total_pages,
-            "query": q,
-            "paperless_url": paperless_url,
-        },
-    )
+    return RedirectResponse(url="/app/embeddings", status_code=302)
 
 
 @router.get("/search")

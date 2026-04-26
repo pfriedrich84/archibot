@@ -6,7 +6,7 @@ import json
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import get_conn
 
@@ -16,14 +16,7 @@ router = APIRouter(prefix="/errors")
 
 @router.get("")
 async def error_list(request: Request):
-    with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM errors ORDER BY occurred_at DESC LIMIT 100").fetchall()
-    errors = [dict(r) for r in rows]
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "errors.html",
-        {"errors": errors},
-    )
+    return RedirectResponse(url="/app/errors", status_code=302)
 
 
 @router.post("/{error_id}/retry")

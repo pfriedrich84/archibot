@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import get_conn
 from app.pipeline.committer import retroactive_tag_apply
@@ -16,18 +16,7 @@ router = APIRouter(prefix="/tags")
 
 @router.get("")
 async def tag_list(request: Request):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM tag_whitelist ORDER BY approved ASC, times_seen DESC"
-        ).fetchall()
-        bl_rows = conn.execute("SELECT * FROM tag_blacklist ORDER BY rejected_at DESC").fetchall()
-    tags = [dict(r) for r in rows]
-    blacklist = [dict(r) for r in bl_rows]
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "tags.html",
-        {"tags": tags, "blacklist": blacklist},
-    )
+    return RedirectResponse(url="/app/tags", status_code=302)
 
 
 @router.post("/approve")

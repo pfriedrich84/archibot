@@ -1,4 +1,4 @@
-"""Smoke tests for all GUI routes — ensures templates render without errors."""
+"""Smoke tests for admin and legacy-cutover routes."""
 
 from __future__ import annotations
 
@@ -38,16 +38,17 @@ def client():
 
 
 class TestRouteSmoke:
-    """Every GET route should return 200 (or 404 for missing), never 500."""
+    """Legacy GET routes should redirect to the new admin frontend or return safe responses."""
 
-    def test_dashboard(self, client):
-        r = client.get("/")
-        assert r.status_code == 200
-        assert "Übersicht" in r.text
+    def test_dashboard_redirects_to_admin_app(self, client):
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/"
 
-    def test_review_list(self, client):
-        r = client.get("/review")
-        assert r.status_code == 200
+    def test_review_list_redirects(self, client):
+        r = client.get("/review", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/review"
 
     def test_review_detail_not_found(self, client):
         r = client.get("/review/99999")
@@ -56,36 +57,37 @@ class TestRouteSmoke:
     def test_approvals_entry_redirects(self, client):
         r = client.get("/approvals", follow_redirects=False)
         assert r.status_code == 302
-        assert r.headers["location"] == "/tags"
+        assert r.headers["location"] == "/app/tags"
 
-    def test_tags(self, client):
-        r = client.get("/tags")
-        assert r.status_code == 200
-        assert "Freigaben" in r.text
-        assert "Korrespondenten" in r.text
-        assert "Dokumenttypen" in r.text
+    def test_tags_redirect(self, client):
+        r = client.get("/tags", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/tags"
 
-    def test_errors(self, client):
-        r = client.get("/errors")
-        assert r.status_code == 200
+    def test_errors_redirect(self, client):
+        r = client.get("/errors", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/errors"
 
-    def test_stats(self, client):
-        r = client.get("/stats")
-        assert r.status_code == 200
+    def test_stats_redirect(self, client):
+        r = client.get("/stats", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/stats"
 
-    def test_settings(self, client):
-        r = client.get("/settings")
-        assert r.status_code == 200
+    def test_settings_redirect(self, client):
+        r = client.get("/settings", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/settings"
 
-    def test_chat(self, client):
-        r = client.get("/chat")
-        assert r.status_code == 200
-        assert "Chat" in r.text
+    def test_chat_redirect(self, client):
+        r = client.get("/chat", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/chat"
 
-    def test_embeddings(self, client):
-        r = client.get("/embeddings")
-        assert r.status_code == 200
-        assert "Embeddings" in r.text
+    def test_embeddings_redirect(self, client):
+        r = client.get("/embeddings", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/embeddings"
 
     def test_embeddings_search(self, client):
         r = client.get("/embeddings/search")

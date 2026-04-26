@@ -18,7 +18,7 @@ router = APIRouter(prefix="/setup")
 def _setup_locked_response(request: Request):
     """Reject setup access once onboarding is complete."""
     if request.method == "GET":
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url="/app/setup", status_code=303)
     return HTMLResponse(
         '<div class="text-red-600 text-sm font-medium mt-2">Setup is already complete.</div>',
         status_code=403,

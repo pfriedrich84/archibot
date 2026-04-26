@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Cookie, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.chat import ask, get_or_create_session
 from app.request_security import is_https_request
@@ -16,21 +16,8 @@ router = APIRouter(prefix="/chat")
 
 @router.get("")
 async def chat_page(request: Request, chat_session: str | None = Cookie(default=None)):
-    """Render the chat page with conversation history."""
-    session_id, session = get_or_create_session(chat_session)
-    response = request.app.state.templates.TemplateResponse(
-        request,
-        "chat.html",
-        {"messages": session.messages},
-    )
-    response.set_cookie(
-        "chat_session",
-        session_id,
-        httponly=True,
-        samesite="lax",
-        secure=is_https_request(request),
-    )
-    return response
+    """Redirect chat page traffic to the Svelte admin frontend."""
+    return RedirectResponse(url="/app/chat", status_code=302)
 
 
 @router.post("/send")

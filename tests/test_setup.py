@@ -117,7 +117,7 @@ class TestSetupWizard:
         monkeypatch.setattr("app.routes.setup.needs_setup", lambda: False)
         r = client.get("/setup", follow_redirects=False)
         assert r.status_code == 303
-        assert r.headers["location"] == "/"
+        assert r.headers["location"] == "/app/setup"
 
 
 # ---------------------------------------------------------------------------
@@ -351,12 +351,10 @@ class TestCompleteSetup:
 # Settings save-config
 # ---------------------------------------------------------------------------
 class TestSettingsSave:
-    def test_settings_page_renders_grouped(self, client):
-        r = client.get("/settings")
-        assert r.status_code == 200
-        assert "Save Configuration" in r.text
-        assert "Paperless" in r.text
-        assert "Ollama" in r.text
+    def test_settings_page_redirects_to_admin_app(self, client):
+        r = client.get("/settings", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/settings"
 
     def test_save_config_no_changes(self, client):
         from app.config import settings
@@ -433,8 +431,9 @@ class TestSetupRedirect:
 
     def test_no_redirect_when_configured(self, client, monkeypatch):
         monkeypatch.setattr("app.main.needs_setup", lambda: False)
-        r = client.get("/")
-        assert r.status_code == 200
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/"
 
     def test_setup_not_redirected(self, client, monkeypatch):
         monkeypatch.setattr("app.main.needs_setup", lambda: True)

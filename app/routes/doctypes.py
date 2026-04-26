@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import get_conn
 from app.pipeline.committer import retroactive_doctype_apply
@@ -16,20 +16,7 @@ router = APIRouter(prefix="/doctypes")
 
 @router.get("")
 async def doctype_list(request: Request):
-    with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM doctype_whitelist ORDER BY approved ASC, times_seen DESC"
-        ).fetchall()
-        bl_rows = conn.execute(
-            "SELECT * FROM doctype_blacklist ORDER BY rejected_at DESC"
-        ).fetchall()
-    doctypes = [dict(r) for r in rows]
-    blacklist = [dict(r) for r in bl_rows]
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "doctypes.html",
-        {"doctypes": doctypes, "blacklist": blacklist},
-    )
+    return RedirectResponse(url="/app/settings", status_code=302)
 
 
 @router.post("/{name:path}/approve")

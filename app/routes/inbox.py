@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections import Counter
 from dataclasses import dataclass
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import settings
 from app.datefmt import format_date
@@ -147,52 +146,8 @@ async def _fetch_entity_lookups(paperless):
 # Routes
 # ---------------------------------------------------------------------------
 @router.get("")
-async def inbox_list(request: Request):
-    paperless = request.app.state.paperless
-    paperless_url = settings.paperless_url.rstrip("/")
-
-    try:
-        docs = await paperless.list_inbox_documents(settings.paperless_inbox_tag_id)
-    except Exception as exc:
-        log.error("failed to fetch inbox", error=str(exc))
-        docs = []
-
-    # Fetch entity lookups for name resolution
-    try:
-        _, _, _, corr_lookup, dt_lookup, tag_lookup = await _fetch_entity_lookups(paperless)
-    except Exception as exc:
-        log.error("failed to fetch entity lists", error=str(exc))
-        corr_lookup, dt_lookup, tag_lookup = {}, {}, {}
-
-    # Enrich with processing status + suggestion data
-    items = []
-    for doc in docs:
-        status = _get_processing_status(doc.id)
-        suggestion = _get_suggestion_for_doc(doc.id)
-        items.append(
-            _build_item(
-                doc,
-                status,
-                suggestion,
-                corr_lookup,
-                dt_lookup,
-                tag_lookup,
-                paperless_url,
-            )
-        )
-
-    # Status counts
-    counts = Counter(item["status"] for item in items)
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "inbox.html",
-        {
-            "items": items,
-            "counts": counts,
-            "bulk_progress": _bulk_progress,
-        },
-    )
+async def inbox_list(_request: Request):
+    return RedirectResponse(url="/app/inbox", status_code=302)
 
 
 @router.get("/{document_id}/status")

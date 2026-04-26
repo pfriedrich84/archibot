@@ -47,7 +47,7 @@ def _frontend_missing_response() -> HTMLResponse:
                   Baue das Frontend mit <code>cd frontend && npm install && npm run build</code> und lade dann <code>/app</code> neu.
                 </p>
                 <p>
-                  Die Legacy-Oberfläche bleibt bis zur Funktionsparität unter <a href="/">/</a> verfügbar.
+                  Die servergerenderte Legacy-Oberfläche wurde entfernt; die Admin-UI läuft jetzt ausschließlich unter <a href="/app">/app</a>.
                 </p>
               </div>
             </main>

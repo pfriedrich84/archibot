@@ -11,4 +11,4 @@ router = APIRouter(prefix="/approvals")
 @router.get("")
 async def approvals_home():
     """Redirect to the default approvals sub-page."""
-    return RedirectResponse(url="/tags", status_code=302)
+    return RedirectResponse(url="/app/tags", status_code=302)

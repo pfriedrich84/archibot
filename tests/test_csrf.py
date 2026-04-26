@@ -71,15 +71,7 @@ def test_webhook_is_exempt_from_csrf(mock_process, client):
     mock_process.assert_awaited_once()
 
 
-def test_chat_session_cookie_uses_secure_over_https_proxy(client):
-    r = client.get("/chat", headers={"x-forwarded-proto": "https"})
-    set_cookie = ", ".join(r.headers.get_list("set-cookie"))
-    assert "chat_session=" in set_cookie
-    assert "Secure" in set_cookie
-
-
-def test_chat_session_cookie_not_secure_on_plain_http(client):
-    r = client.get("/chat")
-    set_cookie = ", ".join(r.headers.get_list("set-cookie"))
-    chat_cookie = next(part for part in set_cookie.split(", ") if part.startswith("chat_session="))
-    assert "Secure" not in chat_cookie
+def test_chat_page_redirects_to_admin_app(client):
+    r = client.get("/chat", follow_redirects=False, headers={"x-forwarded-proto": "https"})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/app/chat"
