@@ -17,7 +17,7 @@
   };
 </script>
 
-<Card class={`h-full rounded-3xl border bg-gradient-to-br ${accentClasses[accent as keyof typeof accentClasses]} bg-slate-900/70 shadow-lg shadow-slate-950/20`}>
+<Card size="xl" class={`h-full rounded-3xl border bg-gradient-to-br ${accentClasses[accent as keyof typeof accentClasses]} bg-slate-900/70 shadow-lg shadow-slate-950/20`}>
   <div class="flex items-start justify-between gap-3">
     <div>
       <p class="text-sm text-slate-400">{title}</p>

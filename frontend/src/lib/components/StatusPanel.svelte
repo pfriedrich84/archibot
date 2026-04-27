@@ -11,7 +11,7 @@
 </script>
 
 <div class="grid gap-6 xl:grid-cols-[1.3fr,0.9fr]">
-  <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
     <div class="flex items-center justify-between gap-4">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline Status</p>
@@ -55,7 +55,7 @@
     </div>
   </Card>
 
-  <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
     <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime / Logs</p>
     <h2 class="mt-2 text-2xl font-semibold text-white">Status & Operability</h2>
 

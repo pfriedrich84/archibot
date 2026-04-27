@@ -6,7 +6,7 @@
 <AppShell title="Anmeldung" subtitle="Platzhalter für die spätere Session-/Auth-UX. Der aktuelle Betrieb nutzt weiterhin HTTP Basic Auth vor der App.">
   {#snippet children()}
     <div class="mx-auto max-w-xl">
-      <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Auth Architecture</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">Sign in</h2>
         <p class="mt-3 text-sm text-slate-400">

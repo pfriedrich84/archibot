@@ -244,7 +244,7 @@
   {#snippet children()}
     <div class="grid gap-6 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.3fr)]">
       <div class="space-y-6">
-        <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+        <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Moderation Queue</p>
@@ -372,7 +372,7 @@
               </div>
             </button>
           {:else}
-            <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+            <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
               <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-sm text-emerald-100">
                 Keine Vorschläge im aktuellen Filter.
               </div>
@@ -389,7 +389,7 @@
         {/if}
 
         {#if loadingDetail}
-          <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
             <div class="space-y-3">
               <div class="h-5 w-40 animate-pulse rounded bg-slate-800"></div>
               <div class="h-12 animate-pulse rounded-2xl bg-slate-800"></div>
@@ -398,11 +398,11 @@
             </div>
           </Card>
         {:else if detailError}
-          <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
             <div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div>
           </Card>
         {:else if detail}
-          <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -618,7 +618,7 @@
             </div>
           </Card>
         {:else}
-          <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
             <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">
               Wähle links einen Vorschlag aus, um ihn nativ in der Svelte-Oberfläche zu bearbeiten.
             </div>

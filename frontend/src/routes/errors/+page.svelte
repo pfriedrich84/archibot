@@ -8,7 +8,7 @@
 
 <AppShell title="Fehler" subtitle="Recent-Errors werden über den neuen JSON-Endpunkt mit operativer Sichtbarkeit dargestellt.">
   {#snippet children()}
-    <Card class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Operational Errors</p>

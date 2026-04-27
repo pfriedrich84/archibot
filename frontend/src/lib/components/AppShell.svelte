@@ -123,19 +123,12 @@
 
       <main class="flex-1 px-4 py-6 md:px-8 xl:px-10">
         <section class="surface-gradient rounded-3xl border border-slate-800 px-6 py-8 shadow-2xl shadow-slate-950/30">
-          <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p class="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">Migration Preview</p>
-              <h1 class="mt-2 text-3xl font-semibold text-white">{title}</h1>
-              {#if subtitle}
-                <p class="mt-2 max-w-3xl text-sm text-slate-300">{subtitle}</p>
-              {/if}
-            </div>
-            <div class="flex flex-wrap items-center gap-3">
-              <Badge large color="green">Flowbite Svelte</Badge>
-              <Badge large color="purple">SvelteKit</Badge>
-              <Badge large color="blue">Svelte 5</Badge>
-            </div>
+          <div>
+            <p class="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">Migration Preview</p>
+            <h1 class="mt-2 text-3xl font-semibold text-white">{title}</h1>
+            {#if subtitle}
+              <p class="mt-2 max-w-5xl text-sm text-slate-300">{subtitle}</p>
+            {/if}
           </div>
         </section>
 

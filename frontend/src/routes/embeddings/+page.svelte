@@ -15,7 +15,7 @@
       <StatCard title="Search UX" value="Nächster Schritt" hint="Similarity und Filter folgen" accent="purple" />
     </div>
 
-    <Card class="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Embedding Index</p>

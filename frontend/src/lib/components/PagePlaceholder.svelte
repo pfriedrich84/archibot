@@ -4,7 +4,7 @@
   let { title, description, apiPath } = $props<{ title: string; description: string; apiPath?: string }>();
 </script>
 
-<Card class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 shadow-lg shadow-slate-950/20">
+<Card size="xl" class="rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 shadow-lg shadow-slate-950/20">
   <div class="space-y-4">
     <div>
       <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Migration Workbench</p>
