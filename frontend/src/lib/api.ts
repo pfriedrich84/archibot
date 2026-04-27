@@ -59,7 +59,8 @@ async function apiMutation<T>(path: string, body: object): Promise<T> {
 export const loadDashboard = (fetcher: typeof fetch) => apiFetch<DashboardPayload>('/api/v1/dashboard', fetcher);
 export const loadStatus = (fetcher: typeof fetch) => apiFetch<StatusPayload>('/api/v1/system/status', fetcher);
 export const loadErrors = (fetcher: typeof fetch) => apiFetch<ErrorsPayload>('/api/v1/errors/recent', fetcher);
-export const loadReviewQueue = (fetcher: typeof fetch) => apiFetch<ReviewQueuePayload>('/api/v1/review/queue', fetcher);
+export const loadReviewQueue = (fetcher: typeof fetch, params?: URLSearchParams) =>
+  apiFetch<ReviewQueuePayload>(`/api/v1/review/queue${params && params.toString() ? `?${params.toString()}` : ''}`, fetcher);
 export const loadReviewDetail = (suggestionId: number, fetcher: typeof fetch) =>
   apiFetch<ReviewDetailPayload>(`/api/v1/review/${suggestionId}`, fetcher);
 export const saveReviewSuggestion = (suggestionId: number, payload: object) =>

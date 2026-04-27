@@ -15,7 +15,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
@@ -24,7 +23,6 @@ from app.clients.paperless import PaperlessClient
 from app.clients.telegram import TelegramClient
 from app.config import needs_setup, settings
 from app.csrf import CSRFMiddleware
-from app.datefmt import format_date
 from app.db import init_db
 from app.telegram_handler import start_telegram, stop_telegram
 from app.worker import start_scheduler, stop_scheduler
@@ -35,11 +33,7 @@ log = structlog.get_logger(__name__)
 # Directories
 # ---------------------------------------------------------------------------
 _BASE_DIR = Path(__file__).parent
-_TEMPLATES_DIR = _BASE_DIR / "templates"
 _STATIC_DIR = _BASE_DIR / "static"
-
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-templates.env.filters["datefmt"] = format_date
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -195,7 +189,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("starting archibot")
 
     init_db()
-    app.state.templates = templates
 
     if needs_setup():
         log.info("essential config missing — entering setup mode")

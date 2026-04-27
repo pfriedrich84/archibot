@@ -8,6 +8,7 @@ import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
 from app.api_data import (
     get_chat_snapshot,
@@ -223,8 +224,29 @@ async def recent_errors_api(limit: int = Query(default=20, ge=1, le=100)) -> dic
 
 
 @router.get("/review/queue")
-async def review_queue_api(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
-    return get_review_queue(limit=limit)
+async def review_queue_api(
+    request: Request,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=25, ge=1, le=100),
+    min_conf: int | None = Query(default=None, ge=0, le=100),
+    max_conf: int | None = Query(default=None, ge=0, le=100),
+    correspondent_id: int | None = Query(default=None, ge=1),
+    judge_verdict: str | None = Query(default=None),
+    sort: str = Query(default="created_desc"),
+) -> dict[str, Any]:
+    payload = get_review_queue(
+        page=page,
+        per_page=per_page,
+        min_conf=min_conf,
+        max_conf=max_conf,
+        correspondent_id=correspondent_id,
+        judge_verdict=judge_verdict,
+        sort=sort,
+    )
+    payload["filters"] = {
+        "correspondents": (await _load_review_lookups(request))["correspondents"],
+    }
+    return payload
 
 
 @router.get("/review/{suggestion_id}")
@@ -258,6 +280,40 @@ async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, A
         )
         proposed_tags.append({"id": tag_id, "name": tag_name, "confidence": tag.get("confidence")})
 
+    with get_conn() as conn:
+        queue_rows = conn.execute(
+            """
+            SELECT id
+            FROM suggestions
+            WHERE status = 'pending'
+              AND id = (
+                  SELECT MAX(s2.id)
+                  FROM suggestions s2
+                  WHERE s2.document_id = suggestions.document_id
+                    AND s2.status = 'pending'
+              )
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+    queue_ids = [item["id"] for item in queue_rows]
+    index = queue_ids.index(suggestion.id) if suggestion.id in queue_ids else -1
+    prev_id = queue_ids[index - 1] if index > 0 else None
+    next_id = queue_ids[index + 1] if index >= 0 and index + 1 < len(queue_ids) else None
+
+    original_tag_ids = [tag_id for tag_id in _json_list(suggestion.original_tags_json) if isinstance(tag_id, int)]
+    effective_tag_ids = [
+        tag.get("id") for tag in _json_list(suggestion.proposed_tags_json) if isinstance(tag, dict)
+    ]
+    effective_tag_ids = [tag_id for tag_id in effective_tag_ids if isinstance(tag_id, int)]
+    changed_fields = {
+        "title": (suggestion.proposed_title or suggestion.original_title or "") != (suggestion.original_title or ""),
+        "date": (suggestion.effective_date or "") != (suggestion.original_date or ""),
+        "correspondent": suggestion.effective_correspondent_id != suggestion.original_correspondent,
+        "doctype": suggestion.effective_doctype_id != suggestion.original_doctype,
+        "storage_path": suggestion.effective_storage_path_id != suggestion.original_storage_path,
+        "tags": sorted(effective_tag_ids) != sorted(original_tag_ids),
+    }
+
     return {
         "suggestion": {
             "id": suggestion.id,
@@ -268,6 +324,9 @@ async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, A
             "reasoning": suggestion.reasoning,
             "judge_verdict": suggestion.judge_verdict,
             "judge_reasoning": suggestion.judge_reasoning,
+            "prev_id": prev_id,
+            "next_id": next_id,
+            "preview_url": f"/api/v1/review/{suggestion.id}/preview",
         },
         "original": {
             "title": suggestion.original_title,
@@ -307,7 +366,23 @@ async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, A
         "options": lookups,
         "context_docs": _json_list(suggestion.context_docs_json),
         "original_proposal": _json_object(suggestion.original_proposed_json),
+        "changed_fields": changed_fields,
     }
+
+
+@router.get("/review/{suggestion_id}/preview")
+async def review_preview_api(request: Request, suggestion_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT document_id FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    content, content_type = await request.app.state.paperless.download_document(row["document_id"])
+    return StreamingResponse(
+        iter([content]),
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="document-{row["document_id"]}"'},
+    )
 
 
 @router.post("/review/{suggestion_id}/save")

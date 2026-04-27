@@ -1,58 +1,25 @@
-"""RAG chat — ask questions about your documents."""
+"""Chat entry route — legacy server-rendered chat removed."""
 
 from __future__ import annotations
 
-import structlog
-from fastapi import APIRouter, Cookie, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-
-from app.chat import ask, get_or_create_session
-from app.request_security import is_https_request
-
-log = structlog.get_logger(__name__)
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 router = APIRouter(prefix="/chat")
 
 
 @router.get("")
-async def chat_page(request: Request, chat_session: str | None = Cookie(default=None)):
-    """Redirect chat page traffic to the Svelte admin frontend."""
+async def chat_page(_request: Request):
     return RedirectResponse(url="/app/chat", status_code=302)
 
 
-@router.post("/send")
-async def chat_send(
-    request: Request,
-    question: str = Form(...),
-    chat_session: str | None = Cookie(default=None),
-):
-    """Process a chat question via the RAG pipeline."""
-    session_id, session = get_or_create_session(chat_session)
-    paperless = request.app.state.paperless
-    ollama = request.app.state.ollama
-
-    result = await ask(question, session, paperless, ollama)
-
-    tmpl = request.app.state.templates.get_template("partials/chat_messages.html")
-    html = tmpl.render(messages=session.messages, sources=result.sources)
-    response = HTMLResponse(html)
-    response.set_cookie(
-        "chat_session",
-        session_id,
-        httponly=True,
-        samesite="lax",
-        secure=is_https_request(request),
+@router.api_route("/{path:path}", methods=["POST", "PUT", "PATCH", "DELETE"])
+async def chat_legacy_removed(_request: Request, path: str):
+    del path
+    return JSONResponse(
+        {
+            "detail": "Legacy HTMX chat endpoints were removed. Use the /app/chat frontend and /api/v1/chat endpoints.",
+            "status": "removed",
+        },
+        status_code=410,
     )
-    return response
-
-
-@router.post("/clear")
-async def chat_clear(
-    request: Request,
-    chat_session: str | None = Cookie(default=None),
-):
-    """Clear conversation history."""
-    if chat_session:
-        _, session = get_or_create_session(chat_session)
-        session.messages.clear()
-    return HTMLResponse('<div id="chat-messages" class="p-4 space-y-4"></div>')

@@ -104,11 +104,18 @@ export type ReviewQueueItem = {
   proposed_storage_path_name: string | null;
   judge_verdict: string | null;
   document_status: string | null;
+  effective_correspondent_id?: number | null;
 };
 
 export type ReviewQueuePayload = {
   total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
   items: ReviewQueueItem[];
+  filters?: {
+    correspondents: ReviewEntityOption[];
+  };
 };
 
 export type ReviewEntityOption = {
@@ -132,6 +139,9 @@ export type ReviewDetailPayload = {
     reasoning: string | null;
     judge_verdict: string | null;
     judge_reasoning: string | null;
+    prev_id: number | null;
+    next_id: number | null;
+    preview_url: string;
   };
   original: {
     title: string | null;
@@ -166,6 +176,7 @@ export type ReviewDetailPayload = {
   };
   context_docs: Array<Record<string, unknown>>;
   original_proposal: Record<string, unknown> | null;
+  changed_fields: Record<string, boolean>;
 };
 
 export type ReviewMutationResponse = {

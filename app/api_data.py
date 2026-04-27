@@ -111,10 +111,58 @@ def get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def get_review_queue(limit: int = 100) -> dict[str, Any]:
+def get_review_queue(
+    *,
+    page: int = 1,
+    per_page: int = 25,
+    min_conf: int | None = None,
+    max_conf: int | None = None,
+    correspondent_id: int | None = None,
+    judge_verdict: str | None = None,
+    sort: str = "created_desc",
+) -> dict[str, Any]:
+    page = max(page, 1)
+    per_page = max(1, min(per_page, 100))
+    sort_map = {
+        "created_desc": "s.created_at DESC, s.id DESC",
+        "confidence_asc": "COALESCE(s.confidence, -1) ASC, s.created_at DESC, s.id DESC",
+        "confidence_desc": "COALESCE(s.confidence, -1) DESC, s.created_at DESC, s.id DESC",
+    }
+    order_by = sort_map.get(sort, sort_map["created_desc"])
+
+    filters = [
+        "s.status = 'pending'",
+        "s.id = (SELECT MAX(s2.id) FROM suggestions s2 WHERE s2.document_id = s.document_id AND s2.status = 'pending')",
+    ]
+    params: list[Any] = []
+
+    if min_conf is not None:
+        filters.append("COALESCE(s.confidence, 0) >= ?")
+        params.append(min_conf)
+    if max_conf is not None:
+        filters.append("COALESCE(s.confidence, 0) <= ?")
+        params.append(max_conf)
+    if correspondent_id is not None:
+        filters.append("COALESCE(s.proposed_correspondent_id, s.original_correspondent) = ?")
+        params.append(correspondent_id)
+    if judge_verdict:
+        filters.append("s.judge_verdict = ?")
+        params.append(judge_verdict)
+
+    where_clause = " AND ".join(filters)
+    offset = (page - 1) * per_page
+
     with db.get_conn() as conn:
+        total = conn.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM suggestions s
+            WHERE {where_clause}
+            """,
+            params,
+        ).fetchone()["c"]
         rows = conn.execute(
-            """
+            f"""
             SELECT s.id,
                    s.document_id,
                    s.created_at,
@@ -125,22 +173,25 @@ def get_review_queue(limit: int = 100) -> dict[str, Any]:
                    s.proposed_doctype_name,
                    s.proposed_storage_path_name,
                    s.judge_verdict,
+                   COALESCE(s.proposed_correspondent_id, s.original_correspondent) AS effective_correspondent_id,
                    pd.status AS document_status
             FROM suggestions s
             LEFT JOIN processed_documents pd ON pd.document_id = s.document_id
-            WHERE s.status = 'pending'
-              AND s.id = (
-                  SELECT MAX(s2.id)
-                  FROM suggestions s2
-                  WHERE s2.document_id = s.document_id
-                    AND s2.status = 'pending'
-              )
-            ORDER BY s.created_at DESC, s.id DESC
-            LIMIT ?
+            WHERE {where_clause}
+            ORDER BY {order_by}
+            LIMIT ? OFFSET ?
             """,
-            (limit,),
+            [*params, per_page, offset],
         ).fetchall()
-    return {"items": [dict(row) for row in rows], "total": len(rows)}
+
+    total_pages = max((total + per_page - 1) // per_page, 1) if total else 1
+    return {
+        "items": [dict(row) for row in rows],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
 
 
 def get_inbox_snapshot(limit: int = 100) -> dict[str, Any]:

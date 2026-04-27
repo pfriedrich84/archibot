@@ -71,7 +71,7 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
 
         return (
             f'<div id="pipeline-status" hx-get="/pipeline-status"'
-            f' hx-trigger="every 3s" hx-swap="outerHTML"'
+            f' hx-trigger="every 3s" hx-swap="morph"'
             f' class="mb-6 bg-white rounded-xl shadow-sm border border-blue-200 p-6">'
             f'<div class="flex items-center justify-between mb-3">'
             f'<div class="flex items-center gap-3">'
@@ -82,7 +82,7 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
             f'<span class="text-sm font-semibold text-blue-700">Pipeline Running</span>'
             f'<span class="text-sm text-gray-500">{label}{elapsed}</span>'
             f"</div>"
-            f'<button hx-post="/cancel-poll-dashboard" hx-target="#pipeline-status" hx-swap="outerHTML"'
+            f'<button hx-post="/cancel-poll-dashboard" hx-target="#pipeline-status" hx-swap="morph"'
             f' class="text-xs px-3 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200">Cancel</button>'
             f"</div>"
             f'<div class="w-full bg-gray-100 rounded-full h-2.5">'
@@ -133,7 +133,7 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
 
     return (
         f'<div id="pipeline-status" hx-get="/pipeline-status"'
-        f' hx-trigger="every 30s" hx-swap="outerHTML"'
+        f' hx-trigger="every 30s" hx-swap="morph"'
         f' class="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">'
         f'<div class="flex items-center justify-between flex-wrap gap-2">'
         f'<div class="flex items-center gap-3">'
@@ -143,7 +143,7 @@ def _render_pipeline_status(poll, last_poll: dict | None, next_run: str | None) 
         f"</div>"
         f'<div class="flex items-center gap-3">'
         f"{next_info}"
-        f'<button hx-post="/trigger-poll-dashboard" hx-target="#pipeline-status" hx-swap="outerHTML"'
+        f'<button hx-post="/trigger-poll-dashboard" hx-target="#pipeline-status" hx-swap="morph"'
         f' hx-disabled-elt="this"'
         f' class="text-xs px-3 py-1.5 rounded-md bg-primary-600 text-white hover:bg-primary-700'
         f' disabled:opacity-50">Run Now</button>'
