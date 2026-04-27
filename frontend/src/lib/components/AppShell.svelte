@@ -29,7 +29,7 @@
 
 <div class="min-h-screen bg-slate-950 text-slate-100">
   <div class="flex min-h-screen">
-    <aside class="hidden w-80 border-r border-slate-800 bg-slate-900/80 xl:block">
+    <aside class="hidden w-72 border-r border-slate-800 bg-slate-900/80 xl:block">
       <Sidebar class="h-full border-none bg-transparent px-4 py-6">
         <SidebarBrand href={navHref('/')} class="px-2">
           <img src={`${base}/logo.png`} class="mr-3 h-10 w-10 rounded-xl bg-slate-800 p-1" alt="ArchiBot" />
@@ -85,10 +85,6 @@
         </NavBrand>
 
         <div class="ms-auto flex items-center gap-3">
-          <div class="hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2 md:block">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Admin Shell</p>
-            <p class="text-sm text-slate-200">Svelte 5 · SvelteKit SPA · Responsive</p>
-          </div>
           <button
             type="button"
             class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200"
