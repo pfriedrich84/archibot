@@ -117,14 +117,19 @@
         </div>
       </div>
 
-      <main class="flex-1 px-4 py-6 md:px-8 xl:px-10">
-        <section class="surface-gradient rounded-3xl border border-slate-800 px-6 py-8 shadow-2xl shadow-slate-950/30">
-          <div>
-            <p class="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">Migration Preview</p>
-            <h1 class="mt-2 text-3xl font-semibold text-white">{title}</h1>
-            {#if subtitle}
-              <p class="mt-2 max-w-5xl text-sm text-slate-300">{subtitle}</p>
-            {/if}
+      <main class="flex-1 px-4 py-5 md:px-8 xl:px-10">
+        <section class="surface-gradient rounded-3xl border border-slate-800 px-6 py-6 shadow-2xl shadow-slate-950/20">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-[0.24em] text-emerald-300">Migration Preview</p>
+              <h1 class="mt-2 text-3xl font-semibold text-white">{title}</h1>
+              {#if subtitle}
+                <p class="mt-2 max-w-4xl text-sm text-slate-300">{subtitle}</p>
+              {/if}
+            </div>
+            <Badge color="gray" class="hidden rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-slate-300 lg:inline-flex">
+              /api/v1 live
+            </Badge>
           </div>
         </section>
 
