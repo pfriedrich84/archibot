@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from app.db import init_db
+from app.db import get_conn, init_db
 from app.main import app, templates
 from tests.conftest import bootstrap_csrf_client
 
@@ -97,3 +99,22 @@ class TestRouteSmoke:
         r = client.get("/healthz")
         assert r.status_code == 200
         assert r.json() == {"status": "ok"}
+
+    def test_dashboard_and_system_status_handle_mixed_timestamp_formats(self, client):
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO poll_cycles (id, started_at, finished_at, total_docs, succeeded, failed, skipped) VALUES (?,?,?,?,?,?,?)",
+                ("cycle-mixed", "2026-04-20 00:00:00", "2026-04-20 00:00:04", 2, 2, 0, 0),
+            )
+
+        app.state.scheduler = SimpleNamespace(
+            get_job=lambda _job_id: SimpleNamespace(next_run_time=datetime(2026, 4, 27, 12, 0, tzinfo=UTC))
+        )
+
+        dashboard = client.get("/api/v1/dashboard")
+        status = client.get("/api/v1/system/status")
+
+        assert dashboard.status_code == 200
+        assert status.status_code == 200
+        assert dashboard.json()["pipeline"]["last_poll"]["relative_finished"] is not None
+        assert status.json()["jobs"]["poll"]["next_run_at"].endswith("+00:00")
