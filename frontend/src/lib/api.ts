@@ -79,3 +79,23 @@ export const loadEmbeddings = (fetcher: typeof fetch) => apiFetch<EmbeddingsPayl
 export const loadChat = (fetcher: typeof fetch) => apiFetch<ChatPayload>('/api/v1/chat', fetcher);
 export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
+
+export const approveTag = (name: string) => apiMutation<ReviewMutationResponse>('/api/v1/tags/approve', { name });
+export const rejectTag = (name: string) => apiMutation<ReviewMutationResponse>('/api/v1/tags/reject', { name });
+export const unblacklistTag = (name: string) => apiMutation<ReviewMutationResponse>('/api/v1/tags/unblacklist', { name });
+export const approveCorrespondent = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/correspondents/approve', { name });
+export const rejectCorrespondent = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/correspondents/reject', { name });
+export const unblacklistCorrespondent = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/correspondents/unblacklist', { name });
+export const approveDoctype = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/doctypes/approve', { name });
+export const rejectDoctype = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/doctypes/reject', { name });
+export const unblacklistDoctype = (name: string) =>
+  apiMutation<ReviewMutationResponse>('/api/v1/doctypes/unblacklist', { name });
+export const startPoll = () => apiMutation<DashboardPayload['pipeline']>('/api/v1/jobs/poll/start', {});
+export const cancelPoll = () => apiMutation<DashboardPayload['pipeline']>('/api/v1/jobs/poll/cancel', {});
+export const startReindex = () => apiMutation<DashboardPayload['reindex']>('/api/v1/jobs/reindex/start', {});
+export const cancelReindexJob = () => apiMutation<DashboardPayload['reindex']>('/api/v1/jobs/reindex/cancel', {});

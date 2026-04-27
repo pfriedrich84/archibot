@@ -201,21 +201,31 @@ export type InboxPayload = {
   }>;
 };
 
+export type ApprovalEntity = {
+  name: string;
+  paperless_id: number | null;
+  approved: boolean;
+  first_seen: string;
+  times_seen: number;
+  notes: string | null;
+};
+
+export type ApprovalBlacklistEntity = {
+  name: string;
+  rejected_at: string;
+  times_seen: number;
+  notes: string | null;
+};
+
+export type ApprovalSnapshot = {
+  whitelist: ApprovalEntity[];
+  blacklist: ApprovalBlacklistEntity[];
+};
+
 export type TagsPayload = {
-  whitelist: Array<{
-    name: string;
-    paperless_id: number | null;
-    approved: boolean;
-    first_seen: string;
-    times_seen: number;
-    notes: string | null;
-  }>;
-  blacklist: Array<{
-    name: string;
-    rejected_at: string;
-    times_seen: number;
-    notes: string | null;
-  }>;
+  tags: ApprovalSnapshot;
+  correspondents: ApprovalSnapshot;
+  doctypes: ApprovalSnapshot;
 };
 
 export type ErrorsPayload = {

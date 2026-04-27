@@ -22,6 +22,9 @@ def _setup_app(tmp_path, monkeypatch):
     mock_paperless.list_document_types = AsyncMock(return_value=[])
     mock_paperless.list_storage_paths = AsyncMock(return_value=[])
     mock_paperless.list_tags = AsyncMock(return_value=[])
+    mock_paperless.create_tag = AsyncMock(return_value=SimpleNamespace(id=101))
+    mock_paperless.create_correspondent = AsyncMock(return_value=SimpleNamespace(id=201))
+    mock_paperless.create_document_type = AsyncMock(return_value=SimpleNamespace(id=301))
 
     app.state.paperless = mock_paperless
     app.state.ollama = AsyncMock()
@@ -53,6 +56,14 @@ def _setup_app(tmp_path, monkeypatch):
         conn.execute(
             "INSERT INTO tag_blacklist (name, times_seen) VALUES (?, ?)",
             ("Spam", 2),
+        )
+        conn.execute(
+            "INSERT INTO correspondent_whitelist (name, approved) VALUES (?, ?)",
+            ("ACME GmbH", 0),
+        )
+        conn.execute(
+            "INSERT INTO doctype_whitelist (name, approved) VALUES (?, ?)",
+            ("Vertrag", 0),
         )
         conn.execute(
             "INSERT INTO audit_log (action, document_id, actor, details) VALUES (?,?,?,?)",
@@ -128,8 +139,10 @@ def test_tags_api_returns_whitelist_and_blacklist(client):
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["whitelist"][0]["name"] == "Neue Idee"
-    assert payload["blacklist"][0]["name"] == "Spam"
+    assert payload["tags"]["whitelist"][0]["name"] == "Neue Idee"
+    assert payload["tags"]["blacklist"][0]["name"] == "Spam"
+    assert payload["correspondents"]["whitelist"][0]["name"] == "ACME GmbH"
+    assert payload["doctypes"]["whitelist"][0]["name"] == "Vertrag"
 
 
 def test_stats_api_returns_operational_metrics(client):
@@ -164,6 +177,40 @@ def test_settings_schema_api_groups_fields(client):
     token_field = next(f for f in paperless_category["fields"] if f["name"] == "paperless_token")
     assert token_field["sensitive"] is True
     assert token_field["value"] == ""
+
+
+def test_tag_approval_api_updates_whitelist(client):
+    response = client.post("/api/v1/tags/approve", json={"name": "Neue Idee"})
+    assert response.status_code == 200
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT approved, paperless_id FROM tag_whitelist WHERE name = ?", ("Neue Idee",)
+        ).fetchone()
+    assert row["approved"] == 1
+    assert row["paperless_id"] == 101
+
+
+def test_job_control_api_starts_poll(client, monkeypatch):
+    monkeypatch.setattr("app.routes.api.start_poll_task", lambda: True)
+    monkeypatch.setattr(
+        "app.routes.api.get_poll_progress",
+        lambda: SimpleNamespace(
+            running=True,
+            phase="prepare",
+            done=0,
+            total=0,
+            succeeded=0,
+            failed=0,
+            skipped=0,
+            cancelled=False,
+            error=None,
+            started_at="2026-04-27T09:00:00+00:00",
+        ),
+    )
+
+    response = client.post("/api/v1/jobs/poll/start", json={})
+    assert response.status_code == 200
+    assert response.json()["running"] is True
 
 
 def test_save_settings_api_persists_updates(client):

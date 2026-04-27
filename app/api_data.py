@@ -178,17 +178,25 @@ def get_inbox_snapshot(limit: int = 100) -> dict[str, Any]:
     return {"items": [dict(row) for row in rows], "counts": counts, "total": len(rows)}
 
 
-def get_tags_snapshot() -> dict[str, Any]:
+def _approval_snapshot(kind: str) -> dict[str, Any]:
     with db.get_conn() as conn:
         whitelist_rows = conn.execute(
-            "SELECT name, paperless_id, approved, first_seen, times_seen, notes FROM tag_whitelist ORDER BY approved ASC, times_seen DESC, name ASC"
+            f"SELECT name, paperless_id, approved, first_seen, times_seen, notes FROM {kind}_whitelist ORDER BY approved ASC, times_seen DESC, name ASC"
         ).fetchall()
         blacklist_rows = conn.execute(
-            "SELECT name, rejected_at, times_seen, notes FROM tag_blacklist ORDER BY rejected_at DESC, name ASC"
+            f"SELECT name, rejected_at, times_seen, notes FROM {kind}_blacklist ORDER BY rejected_at DESC, name ASC"
         ).fetchall()
     return {
         "whitelist": [{**dict(row), "approved": bool(row["approved"])} for row in whitelist_rows],
         "blacklist": [dict(row) for row in blacklist_rows],
+    }
+
+
+def get_tags_snapshot() -> dict[str, Any]:
+    return {
+        "tags": _approval_snapshot("tag"),
+        "correspondents": _approval_snapshot("correspondent"),
+        "doctypes": _approval_snapshot("doctype"),
     }
 
 

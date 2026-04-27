@@ -179,8 +179,18 @@ const inboxPayload = {
 };
 
 const tagsPayload = {
-  whitelist: [{ name: 'Rechnung', paperless_id: 5, approved: true, first_seen: '2026-04-20', times_seen: 8, notes: null }],
-  blacklist: [{ name: 'Spam', rejected_at: '2026-04-21', times_seen: 2, notes: null }]
+  tags: {
+    whitelist: [{ name: 'Rechnung', paperless_id: 5, approved: true, first_seen: '2026-04-20', times_seen: 8, notes: null }],
+    blacklist: [{ name: 'Spam', rejected_at: '2026-04-21', times_seen: 2, notes: null }]
+  },
+  correspondents: {
+    whitelist: [{ name: 'Stadtwerke', paperless_id: 7, approved: true, first_seen: '2026-04-20', times_seen: 4, notes: null }],
+    blacklist: []
+  },
+  doctypes: {
+    whitelist: [{ name: 'Rechnung', paperless_id: 9, approved: true, first_seen: '2026-04-20', times_seen: 5, notes: null }],
+    blacklist: []
+  }
 };
 
 const errorsPayload = {
@@ -269,7 +279,7 @@ test('dashboard renders hero metrics', async ({ page }) => {
   await page.goto('/app/');
   await expect(page.getByText('Pending Review')).toBeVisible();
   await expect(page.getByText('Errors (24h)')).toBeVisible();
-  await expect(page.getByText('Flowbite Svelte', { exact: true })).toBeVisible();
+  await expect(page.getByText('/api/v1 live', { exact: true })).toBeVisible();
 });
 
 test('settings route renders schema-driven category card', async ({ page }) => {

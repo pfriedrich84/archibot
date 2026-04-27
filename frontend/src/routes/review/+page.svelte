@@ -242,6 +242,39 @@
   subtitle="Native Svelte-Review mit Bearbeiten, Speichern, Accept/Reject und schnellerer Operability statt Legacy-Roundtrip."
 >
   {#snippet children()}
+    {#if filteredItems.length === 0}
+      <div class="space-y-6">
+        <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Moderation Queue</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">Keine offenen Vorschläge</h2>
+              <p class="mt-2 text-sm text-slate-400">
+                Sobald neue Dokumente klassifiziert wurden, kannst du hier Titel, Tags, Korrespondenten und Typen prüfen und direkt übernehmen.
+              </p>
+            </div>
+            <a href="/app/settings" class="inline-flex">
+              <Button color="green" class="rounded-xl">Polling oder Reindex starten</Button>
+            </a>
+          </div>
+
+          <div class="mt-6 grid gap-4 md:grid-cols-3">
+            <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 text-emerald-100">
+              <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/70">Review</p>
+              <p class="mt-2 text-sm">Neue Vorschläge erscheinen automatisch nach dem nächsten Polling-Lauf.</p>
+            </div>
+            <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-5 text-sky-100">
+              <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Freigaben</p>
+              <p class="mt-2 text-sm">Unbekannte Tags, Korrespondenten und Typen verwaltest du gesammelt unter „Freigaben“.</p>
+            </div>
+            <div class="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-5 text-purple-100">
+              <p class="text-xs uppercase tracking-[0.2em] text-purple-200/70">Bulk-Aktionen</p>
+              <p class="mt-2 text-sm">Bei neuen Treffern kannst du später wieder gefiltert annehmen oder verwerfen.</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    {:else}
     <div class="grid gap-6 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.3fr)]">
       <div class="space-y-6">
         <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
@@ -626,5 +659,6 @@
         {/if}
       </div>
     </div>
+    {/if}
   {/snippet}
 </AppShell>

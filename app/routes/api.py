@@ -23,8 +23,10 @@ from app.api_data import (
 )
 from app.config_writer import apply_runtime_changes, save_config
 from app.db import get_conn
+from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
+from app.worker import cancel_poll, get_poll_progress, start_poll_task
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -67,6 +69,13 @@ def _coerce_tag_ids(value: Any) -> list[int]:
         with contextlib.suppress(TypeError, ValueError):
             tag_ids.append(int(item))
     return list(dict.fromkeys(tag_ids))
+
+
+def _coerce_name(payload: dict[str, Any], key: str = "name") -> str:
+    value = str(payload.get(key) or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail=f"Missing {key}")
+    return value
 
 
 async def _load_review_lookups(request: Request) -> dict[str, list[dict[str, Any]]]:
@@ -484,6 +493,225 @@ async def inbox_api(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, 
 @router.get("/tags")
 async def tags_api() -> dict[str, Any]:
     return get_tags_snapshot()
+
+
+@router.post("/tags/approve")
+async def approve_tag_api(
+    request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    entity = await request.app.state.paperless.create_tag(name)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tag_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
+            (entity.id, name),
+        )
+    return {"ok": True, "status": "approved", "message": f"Tag '{name}' freigegeben."}
+
+
+@router.post("/tags/reject")
+async def reject_tag_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT times_seen FROM tag_whitelist WHERE name = ?", (name,)
+        ).fetchone()
+        times_seen = row["times_seen"] if row else 1
+        conn.execute("DELETE FROM tag_whitelist WHERE name = ?", (name,))
+        conn.execute(
+            "INSERT OR REPLACE INTO tag_blacklist (name, times_seen) VALUES (?, ?)",
+            (name, times_seen),
+        )
+    return {"ok": True, "status": "rejected", "message": f"Tag '{name}' blockiert."}
+
+
+@router.post("/tags/unblacklist")
+async def unblacklist_tag_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM tag_blacklist WHERE name = ?", (name,))
+    return {"ok": True, "status": "restored", "message": f"Tag '{name}' wieder freigegeben."}
+
+
+@router.post("/correspondents/approve")
+async def approve_correspondent_api(
+    request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    entity = await request.app.state.paperless.create_correspondent(name)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE correspondent_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
+            (entity.id, name),
+        )
+    return {"ok": True, "status": "approved", "message": f"Korrespondent '{name}' freigegeben."}
+
+
+@router.post("/correspondents/reject")
+async def reject_correspondent_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT times_seen FROM correspondent_whitelist WHERE name = ?", (name,)
+        ).fetchone()
+        times_seen = row["times_seen"] if row else 1
+        conn.execute("DELETE FROM correspondent_whitelist WHERE name = ?", (name,))
+        conn.execute(
+            "INSERT OR REPLACE INTO correspondent_blacklist (name, times_seen) VALUES (?, ?)",
+            (name, times_seen),
+        )
+    return {"ok": True, "status": "rejected", "message": f"Korrespondent '{name}' blockiert."}
+
+
+@router.post("/correspondents/unblacklist")
+async def unblacklist_correspondent_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM correspondent_blacklist WHERE name = ?", (name,))
+    return {
+        "ok": True,
+        "status": "restored",
+        "message": f"Korrespondent '{name}' wieder freigegeben.",
+    }
+
+
+@router.post("/doctypes/approve")
+async def approve_doctype_api(
+    request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    entity = await request.app.state.paperless.create_document_type(name)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE doctype_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
+            (entity.id, name),
+        )
+    return {"ok": True, "status": "approved", "message": f"Dokumenttyp '{name}' freigegeben."}
+
+
+@router.post("/doctypes/reject")
+async def reject_doctype_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT times_seen FROM doctype_whitelist WHERE name = ?", (name,)
+        ).fetchone()
+        times_seen = row["times_seen"] if row else 1
+        conn.execute("DELETE FROM doctype_whitelist WHERE name = ?", (name,))
+        conn.execute(
+            "INSERT OR REPLACE INTO doctype_blacklist (name, times_seen) VALUES (?, ?)",
+            (name, times_seen),
+        )
+    return {"ok": True, "status": "rejected", "message": f"Dokumenttyp '{name}' blockiert."}
+
+
+@router.post("/doctypes/unblacklist")
+async def unblacklist_doctype_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    name = _coerce_name(payload)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM doctype_blacklist WHERE name = ?", (name,))
+    return {
+        "ok": True,
+        "status": "restored",
+        "message": f"Dokumenttyp '{name}' wieder freigegeben.",
+    }
+
+
+@router.post("/jobs/poll/start")
+async def start_poll_api() -> dict[str, Any]:
+    started = start_poll_task()
+    progress = get_poll_progress()
+    if not started and not progress.running:
+        raise HTTPException(status_code=409, detail="Poll konnte nicht gestartet werden.")
+    return {
+        "running": progress.running,
+        "phase": progress.phase,
+        "done": progress.done,
+        "total": progress.total,
+        "succeeded": progress.succeeded,
+        "failed": progress.failed,
+        "skipped": progress.skipped,
+        "cancelled": progress.cancelled,
+        "error": progress.error,
+        "started_at": progress.started_at,
+        "last_poll": None,
+        "next_run_at": None,
+    }
+
+
+@router.post("/jobs/poll/cancel")
+async def cancel_poll_api() -> dict[str, Any]:
+    cancel_poll()
+    progress = get_poll_progress()
+    return {
+        "running": progress.running,
+        "phase": progress.phase,
+        "done": progress.done,
+        "total": progress.total,
+        "succeeded": progress.succeeded,
+        "failed": progress.failed,
+        "skipped": progress.skipped,
+        "cancelled": progress.cancelled,
+        "error": progress.error,
+        "started_at": progress.started_at,
+        "last_poll": None,
+        "next_run_at": None,
+    }
+
+
+@router.post("/jobs/reindex/start")
+async def start_reindex_api(request: Request) -> dict[str, Any]:
+    started = start_reindex_task(request.app.state.paperless, request.app.state.ollama)
+    progress = get_reindex_progress()
+    if not started and not progress.running:
+        raise HTTPException(status_code=409, detail="Reindex konnte nicht gestartet werden.")
+    return {
+        "running": progress.running,
+        "done": progress.done,
+        "total": progress.total,
+        "failed": progress.failed,
+        "cancelled": progress.cancelled,
+        "error": progress.error,
+        "started_at": progress.started_at,
+        "finished_at": progress.finished_at,
+    }
+
+
+@router.post("/jobs/reindex/cancel")
+async def cancel_reindex_api() -> dict[str, Any]:
+    cancel_reindex()
+    progress = get_reindex_progress()
+    return {
+        "running": progress.running,
+        "done": progress.done,
+        "total": progress.total,
+        "failed": progress.failed,
+        "cancelled": progress.cancelled,
+        "error": progress.error,
+        "started_at": progress.started_at,
+        "finished_at": progress.finished_at,
+    }
 
 
 @router.get("/stats")
