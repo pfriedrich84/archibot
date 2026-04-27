@@ -40,10 +40,10 @@
       </div>
 
       {#if data.inbox.items.length > 0}
-        <div class="mt-6 space-y-3">
+        <div class="mt-5 space-y-2.5">
           {#each data.inbox.items as item}
-            <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 p-4">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 p-3.5">
+              <div class="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium text-white">Dokument #{item.document_id}</span>
@@ -52,17 +52,17 @@
                     {/if}
                     <Badge color={statusColor(item.status)}>{item.status}</Badge>
                   </div>
-                  <h3 class="mt-3 truncate text-lg font-semibold text-white">{item.proposed_title || 'Noch kein Vorschlag'}</h3>
-                  <p class="mt-1 text-sm text-slate-400">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
+                  <p class="mt-2 text-sm font-medium text-slate-300">{item.proposed_title || 'Noch kein Vorschlag'}</p>
+                  <p class="mt-0.5 text-sm text-slate-500">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
                 </div>
-                <div class="grid gap-2 text-xs text-slate-400 sm:grid-cols-2 lg:w-[24rem]">
+                <div class="grid gap-2 text-xs text-slate-400 sm:grid-cols-2 lg:w-[23rem]">
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Dokumenttyp</span>
-                    <span class="mt-1 block text-slate-200">{item.proposed_doctype_name || 'Offen'}</span>
+                    <span class="mt-1 block font-medium text-slate-200">{item.proposed_doctype_name || 'Offen'}</span>
                   </div>
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Zuletzt verarbeitet</span>
-                    <span class="mt-1 block text-slate-200">{item.last_processed || '—'}</span>
+                    <span class="mt-1 block font-medium text-slate-200">{item.last_processed || '—'}</span>
                   </div>
                 </div>
               </div>

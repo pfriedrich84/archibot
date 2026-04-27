@@ -86,24 +86,24 @@
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Polling</p>
               <h2 class="mt-2 text-2xl font-semibold text-white">Dokumente verarbeiten</h2>
-              <p class="mt-2 text-sm text-slate-400">Startet den nächsten Erfassungs- und Klassifizierungslauf für neue Dokumente.</p>
+              <p class="mt-1.5 text-sm text-slate-400">Startet den nächsten Erfassungs- und Klassifizierungslauf für neue Dokumente.</p>
             </div>
             <Badge color={dashboard.pipeline.running ? 'blue' : 'green'}>{dashboard.pipeline.running ? 'Aktiv' : 'Bereit'}</Badge>
           </div>
 
-          <div class="mt-6 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
+          <div class="mt-5 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5">
             <div class="mb-2 flex items-center justify-between text-sm text-slate-300">
               <span>Fortschritt</span>
               <span>{dashboard.pipeline.total > 0 ? `${dashboard.pipeline.done}/${dashboard.pipeline.total}` : 'Kein aktiver Lauf'}</span>
             </div>
             <Progressbar progress={pollPct()} color="blue" />
-            <div class="mt-4 grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
+            <div class="mt-3 grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
               <div>Phase: <span class="text-slate-200">{dashboard.pipeline.phase || 'prepare'}</span></div>
               <div>Fehler: <span class="text-slate-200">{dashboard.pipeline.failed}</span></div>
             </div>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-3">
+          <div class="mt-5 flex flex-wrap gap-3">
             <Button color="green" onclick={() => void runJobAction('poll-start', startPoll)} disabled={actionState !== '' || dashboard.pipeline.running}>
               {actionState === 'poll-start' ? 'Startet …' : 'Polling starten'}
             </Button>
@@ -118,24 +118,24 @@
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Embeddings</p>
               <h2 class="mt-2 text-2xl font-semibold text-white">Reindex starten</h2>
-              <p class="mt-2 text-sm text-slate-400">Erstellt den Embedding-Index neu und aktualisiert semantische Suche und Kontextdaten.</p>
+              <p class="mt-1.5 text-sm text-slate-400">Erstellt den Embedding-Index neu und aktualisiert semantische Suche und Kontextdaten.</p>
             </div>
             <Badge color={dashboard.reindex.running ? 'purple' : 'green'}>{dashboard.reindex.running ? 'Aktiv' : 'Bereit'}</Badge>
           </div>
 
-          <div class="mt-6 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
+          <div class="mt-5 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5">
             <div class="mb-2 flex items-center justify-between text-sm text-slate-300">
               <span>Fortschritt</span>
               <span>{dashboard.reindex.total > 0 ? `${dashboard.reindex.done}/${dashboard.reindex.total}` : 'Kein aktiver Lauf'}</span>
             </div>
             <Progressbar progress={reindexPct()} color="purple" />
-            <div class="mt-4 grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
+            <div class="mt-3 grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
               <div>Fehler: <span class="text-slate-200">{dashboard.reindex.failed}</span></div>
               <div>Index: <span class="text-slate-200">{dashboard.health.embedding_index_ready ? 'Bereit' : 'Fehlt'}</span></div>
             </div>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-3">
+          <div class="mt-5 flex flex-wrap gap-3">
             <Button color="purple" onclick={() => void runJobAction('reindex-start', startReindex)} disabled={actionState !== '' || dashboard.reindex.running}>
               {actionState === 'reindex-start' ? 'Startet …' : 'Reindex starten'}
             </Button>
@@ -155,20 +155,20 @@
           <Badge color="gray">{status.app.frontend.mode}</Badge>
         </div>
 
-        <div class="mt-6 space-y-3 text-sm">
-          <div class={`rounded-2xl border p-4 ${readinessTone(status.services.paperless.configured)}`}>
+        <div class="mt-5 space-y-2.5 text-sm">
+          <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.paperless.configured)}`}>
             <div class="text-xs uppercase tracking-[0.2em] opacity-70">Paperless</div>
             <div class="mt-2 font-medium">{status.services.paperless.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div>
           </div>
-          <div class={`rounded-2xl border p-4 ${readinessTone(status.services.ollama.configured)}`}>
+          <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.ollama.configured)}`}>
             <div class="text-xs uppercase tracking-[0.2em] opacity-70">Ollama</div>
             <div class="mt-2 font-medium">{status.services.ollama.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div>
           </div>
-          <div class={`rounded-2xl border p-4 ${readinessTone(dashboard.health.embedding_index_ready)}`}>
+          <div class={`rounded-2xl border p-3.5 ${readinessTone(dashboard.health.embedding_index_ready)}`}>
             <div class="text-xs uppercase tracking-[0.2em] opacity-70">Embedding-Index</div>
             <div class="mt-2 font-medium">{dashboard.health.embedding_index_ready ? 'Bereit für Suche und Kontext' : 'Index fehlt oder ist noch leer'}</div>
           </div>
-          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4 text-slate-300">
+          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5 text-slate-300">
             <div class="text-xs uppercase tracking-[0.2em] text-slate-500">Logging</div>
             <div class="mt-2 font-medium text-white">{status.logging.level}</div>
           </div>
@@ -187,9 +187,9 @@
             <Badge color="gray">{category.fields.length} Felder</Badge>
           </div>
 
-          <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {#each category.fields as field}
-              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4">
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
                 <div class="flex items-start justify-between gap-3">
                   <div>
                     <p class="font-medium text-white">{field.label}</p>
@@ -202,8 +202,8 @@
                   {/if}
                 </div>
 
-                <p class="mt-3 text-sm text-slate-400">{field.help}</p>
-                <div class="mt-4 text-sm text-slate-300">
+                <p class="mt-2.5 text-sm text-slate-400">{field.help}</p>
+                <div class="mt-3 text-sm text-slate-300">
                   {#if field.sensitive}
                     {#if field.configured}
                       <span class="text-emerald-300">Konfiguriert</span>

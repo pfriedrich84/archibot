@@ -59,25 +59,25 @@
           </Badge>
         </div>
 
-        <div class="mt-6 grid gap-3 sm:grid-cols-2">
+        <div class="mt-5 grid gap-3 sm:grid-cols-2">
           {#each serviceChecks as check}
-            <div class={`rounded-2xl border p-4 ${check.ok ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-amber-500/20 bg-amber-500/10'}`}>
+            <div class={`rounded-2xl border p-3.5 ${check.ok ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-amber-500/20 bg-amber-500/10'}`}>
               <p class="text-xs uppercase tracking-wide text-slate-400">{check.label}</p>
-              <p class={`mt-2 text-lg font-semibold ${check.ok ? 'text-emerald-100' : 'text-amber-100'}`}>
+              <p class={`mt-1.5 text-lg font-semibold ${check.ok ? 'text-emerald-100' : 'text-amber-100'}`}>
                 {check.ok ? 'OK' : 'Prüfen'}
               </p>
             </div>
           {/each}
         </div>
 
-        <div class="mt-6 grid gap-4 md:grid-cols-2">
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <div class="mt-5 grid gap-3 md:grid-cols-2">
+          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
             <p class="text-xs uppercase tracking-wide text-slate-500">Poll-Intervall</p>
-            <p class="mt-2 text-lg font-semibold text-white">{data.dashboard.health.poll_interval_seconds}s</p>
+            <p class="mt-1.5 text-lg font-semibold text-white">{data.dashboard.health.poll_interval_seconds}s</p>
           </div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
             <p class="text-xs uppercase tracking-wide text-slate-500">Frontend-Modus</p>
-            <p class="mt-2 text-lg font-semibold text-white capitalize">{data.status.app.frontend.mode}</p>
+            <p class="mt-1.5 text-lg font-semibold text-white capitalize">{data.status.app.frontend.mode}</p>
           </div>
         </div>
       </Card>
@@ -93,9 +93,9 @@
           </Badge>
         </div>
 
-        <div class="mt-6 space-y-3">
+        <div class="mt-5 space-y-3">
           {#each data.dashboard.recent_errors.slice(0, 3) as item}
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+            <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5">
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
                   <Badge color="red">{item.stage}</Badge>
@@ -105,8 +105,8 @@
                 </div>
                 <span class="text-xs text-slate-500">{formatDateTime(item.occurred_at)}</span>
               </div>
-              <p class="mt-3 font-medium text-white">{item.message}</p>
-              <p class="mt-2 text-sm text-slate-400">{item.details || 'Keine Zusatzdetails vorhanden.'}</p>
+              <p class="mt-2.5 font-medium text-white">{item.message}</p>
+              <p class="mt-1.5 text-sm text-slate-400">{item.details || 'Keine Zusatzdetails vorhanden.'}</p>
             </div>
           {:else}
             <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">

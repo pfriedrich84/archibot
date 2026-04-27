@@ -19,11 +19,11 @@
 
 <Card size="xl" class={`h-full rounded-3xl border bg-gradient-to-br ${accentClasses[accent as keyof typeof accentClasses]} bg-slate-900/70 shadow-lg shadow-slate-950/20`}>
   <div class="flex items-start justify-between gap-3">
-    <div>
-      <p class="text-sm text-slate-400">{title}</p>
-      <p class="mt-3 text-4xl font-semibold text-white">{value}</p>
+    <div class="min-w-0">
+      <p class="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">{title}</p>
+      <p class="mt-2 text-5xl font-semibold leading-none text-white">{value}</p>
       {#if hint}
-        <p class="mt-3 text-sm text-slate-400">{hint}</p>
+        <p class="mt-3 text-sm leading-5 text-slate-400">{hint}</p>
       {/if}
     </div>
     {#if trend}

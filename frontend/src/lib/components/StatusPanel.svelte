@@ -35,7 +35,7 @@
   }
 </script>
 
-<div class="grid gap-6 xl:grid-cols-[1.45fr,0.95fr]">
+<div class="grid gap-5 xl:grid-cols-[1.35fr,0.95fr]">
   <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
     <div class="flex items-start justify-between gap-4">
       <div>
@@ -46,8 +46,8 @@
       <Badge color={dashboard.pipeline.running ? 'blue' : 'green'}>{phaseLabel(dashboard.pipeline.phase)}</Badge>
     </div>
 
-    <div class="mt-6 space-y-5">
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+    <div class="mt-5 space-y-4">
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3.5">
         <div class="mb-2 flex justify-between text-sm text-slate-300">
           <span>Polling</span>
           <span>{progressLabel(dashboard.pipeline.done, dashboard.pipeline.total || 0)}</span>
@@ -55,7 +55,7 @@
         <Progressbar progress={pollPct()} color="blue" />
       </div>
 
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3.5">
         <div class="mb-2 flex justify-between text-sm text-slate-300">
           <span>Reindex</span>
           <span>{progressLabel(dashboard.reindex.done, dashboard.reindex.total || 0)}</span>
@@ -63,18 +63,18 @@
         <Progressbar progress={reindexPct()} color="purple" />
       </div>
 
-      <div class="grid gap-4 md:grid-cols-3">
-        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <p class="text-xs uppercase tracking-wide text-slate-500">OCR</p>
-          <p class="mt-2 text-lg font-semibold text-white">{dashboard.health.ocr_mode}</p>
+      <div class="grid gap-3 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+          <p class="text-[11px] uppercase tracking-wide text-slate-500">OCR</p>
+          <p class="mt-1.5 text-xl font-semibold text-white">{dashboard.health.ocr_mode}</p>
         </div>
-        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <p class="text-xs uppercase tracking-wide text-slate-500">Auto-Commit</p>
-          <p class="mt-2 text-lg font-semibold text-white">{dashboard.health.auto_commit_confidence}%</p>
+        <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+          <p class="text-[11px] uppercase tracking-wide text-slate-500">Auto-Commit</p>
+          <p class="mt-1.5 text-xl font-semibold text-white">{dashboard.health.auto_commit_confidence}%</p>
         </div>
-        <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-          <p class="text-xs uppercase tracking-wide text-slate-500">Embedding Index</p>
-          <p class="mt-2 text-lg font-semibold text-white">{dashboard.health.embedding_index_ready ? 'Bereit' : 'Fehlt'}</p>
+        <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+          <p class="text-[11px] uppercase tracking-wide text-slate-500">Embedding Index</p>
+          <p class="mt-1.5 text-xl font-semibold text-white">{dashboard.health.embedding_index_ready ? 'Bereit' : 'Fehlt'}</p>
         </div>
       </div>
     </div>
@@ -89,22 +89,22 @@
       <Badge color="gray">Live</Badge>
     </div>
 
-    <div class="mt-6 grid gap-3">
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <p class="text-sm text-slate-400">Rendering</p>
-        <p class="mt-1 font-medium text-white">{status.app.frontend.rendering === 'hybrid' ? 'Hybrid' : status.app.frontend.rendering}</p>
+    <div class="mt-5 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Rendering</p>
+        <p class="mt-1.5 font-medium text-white">{status.app.frontend.rendering === 'hybrid' ? 'Hybrid' : status.app.frontend.rendering}</p>
       </div>
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <p class="text-sm text-slate-400">Log Level</p>
-        <p class="mt-1 font-medium text-white">{status.logging.level}</p>
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Log Level</p>
+        <p class="mt-1.5 font-medium text-white">{status.logging.level}</p>
       </div>
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <p class="text-sm text-slate-400">Strukturierte Logs</p>
-        <p class="mt-1 font-medium text-white">{status.logging.structured_logs ? 'Aktiv' : 'Inaktiv'}</p>
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Strukturierte Logs</p>
+        <p class="mt-1.5 font-medium text-white">{status.logging.structured_logs ? 'Aktiv' : 'Inaktiv'}</p>
       </div>
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <p class="text-sm text-slate-400">Legacy UI</p>
-        <p class="mt-1 font-medium text-white">{status.app.legacy_ui.deprecated ? 'Veraltet, noch aktiv' : 'Aktiv'}</p>
+      <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Legacy UI</p>
+        <p class="mt-1.5 font-medium text-white">{status.app.legacy_ui.deprecated ? 'Veraltet, noch aktiv' : 'Aktiv'}</p>
       </div>
     </div>
   </Card>
