@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,6 +26,12 @@ def _setup_app(tmp_path, monkeypatch):
     app.state.paperless = mock_paperless
     app.state.ollama = AsyncMock()
     app.state.templates = templates
+    app.state.scheduler = SimpleNamespace(
+        get_job=lambda _job_id: None,
+        reschedule_job=lambda *args, **kwargs: None,
+        pause_job=lambda *args, **kwargs: None,
+        resume_job=lambda *args, **kwargs: None,
+    )
 
     with get_conn() as conn:
         conn.execute(

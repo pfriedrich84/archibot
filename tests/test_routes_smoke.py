@@ -108,7 +108,9 @@ class TestRouteSmoke:
             )
 
         app.state.scheduler = SimpleNamespace(
-            get_job=lambda _job_id: SimpleNamespace(next_run_time=datetime(2026, 4, 27, 12, 0, tzinfo=UTC))
+            get_job=lambda _job_id: SimpleNamespace(
+                next_run_time=datetime(2026, 4, 27, 12, 0, tzinfo=UTC)
+            )
         )
 
         dashboard = client.get("/api/v1/dashboard")
