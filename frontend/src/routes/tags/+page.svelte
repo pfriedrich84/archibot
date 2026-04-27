@@ -35,6 +35,10 @@
     return items.filter((item) => !item.approved).length;
   }
 
+  function approvedCount(items: ApprovalEntity[]) {
+    return items.filter((item) => item.approved).length;
+  }
+
   function formatDate(value: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -108,14 +112,20 @@
   ];
 </script>
 
-<AppShell title="Freigaben" subtitle="Tags, Korrespondenten und Dokumenttypen an einer Stelle prüfen und übernehmen.">
+<AppShell title="Freigaben" subtitle="Neue Tags, Korrespondenten und Dokumenttypen gesammelt prüfen, freigeben oder gezielt blockieren.">
   {#snippet children()}
     {#if initialized}
-    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
       {#each sections as section}
         {@const state = snapshot[section.key] as ApprovalSnapshot}
-        <StatCard title={`${section.title} offen`} value={pendingCount(state.whitelist)} hint="Warten auf Freigabe" accent={section.accent} />
+        <StatCard title={`${section.title} offen`} value={pendingCount(state.whitelist)} hint={`${approvedCount(state.whitelist)} bereits freigegeben`} accent={section.accent} />
       {/each}
+      <StatCard
+        title="Blockiert gesamt"
+        value={sections.reduce((sum, section) => sum + (snapshot[section.key] as ApprovalSnapshot).blacklist.length, 0)}
+        hint="Kann bei Bedarf wieder freigegeben werden"
+        accent="red"
+      />
     </div>
 
     {#if feedback}
@@ -127,83 +137,99 @@
     <div class="mt-6 space-y-6">
       {#each sections as section}
         {@const state = snapshot[section.key] as ApprovalSnapshot}
-        <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
-            <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        {@const pending = state.whitelist.filter((item) => !item.approved)}
+        {@const approved = state.whitelist.filter((item) => item.approved)}
+        <div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+            <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pending approvals</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Freigaben</p>
                 <h2 class="mt-2 text-2xl font-semibold text-white">{section.title}</h2>
                 <p class="mt-2 text-sm text-slate-400">{section.subtitle}</p>
               </div>
-              <Badge color="gray">{pendingCount(state.whitelist)} offen</Badge>
+              <div class="flex flex-wrap gap-2">
+                <Badge color="gray">{pending.length} offen</Badge>
+                <Badge color="green">{approved.length} live</Badge>
+              </div>
             </div>
 
-            <div class="mt-6 space-y-3">
-              {#each state.whitelist.filter((item) => !item.approved) as item}
-                <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <div class="font-medium text-white">{item.name}</div>
-                      <div class="mt-1 text-xs text-slate-500">
-                        gesehen: {item.times_seen} · zuerst: {formatDate(item.first_seen)}
+            {#if pending.length > 0}
+              <div class="mt-6 space-y-3">
+                {#each pending as item}
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div class="min-w-0">
+                        <div class="font-medium text-white">{item.name}</div>
+                        <div class="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                            <span class="block text-[11px] uppercase tracking-wide text-slate-500">Häufigkeit</span>
+                            <span class="mt-1 block text-slate-200">{item.times_seen} Sichtungen</span>
+                          </div>
+                          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                            <span class="block text-[11px] uppercase tracking-wide text-slate-500">Zuerst gesehen</span>
+                            <span class="mt-1 block text-slate-200">{formatDate(item.first_seen)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex shrink-0 flex-wrap gap-2">
+                        <Button size="sm" color="green" onclick={() => void runAction(`${section.key}:approve:${item.name}`, () => section.approve(item.name))} disabled={busyKey !== ''}>
+                          {busyKey === `${section.key}:approve:${item.name}` ? 'Freigabe …' : 'Freigeben'}
+                        </Button>
+                        <Button size="sm" color="red" onclick={() => void runAction(`${section.key}:reject:${item.name}`, () => section.reject(item.name))} disabled={busyKey !== ''}>
+                          {busyKey === `${section.key}:reject:${item.name}` ? 'Blockiert …' : 'Blockieren'}
+                        </Button>
                       </div>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                      <Button size="sm" color="green" onclick={() => void runAction(`${section.key}:approve:${item.name}`, () => section.approve(item.name))} disabled={busyKey !== ''}>
-                        {busyKey === `${section.key}:approve:${item.name}` ? 'Freigabe …' : 'Freigeben'}
-                      </Button>
-                      <Button size="sm" color="red" onclick={() => void runAction(`${section.key}:reject:${item.name}`, () => section.reject(item.name))} disabled={busyKey !== ''}>
-                        {busyKey === `${section.key}:reject:${item.name}` ? 'Blockiert …' : 'Blockieren'}
-                      </Button>
-                    </div>
                   </div>
-                </div>
-              {:else}
-                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-sm text-emerald-100">
-                  Keine offenen {section.title.toLowerCase()}-Vorschläge.
-                </div>
-              {/each}
-            </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="mt-6 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-emerald-100">
+                <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/70">Kein offener Stapel</p>
+                <p class="mt-2 text-base font-medium">Für {section.title.toLowerCase()} wartet aktuell nichts auf Freigabe.</p>
+                <p class="mt-2 text-sm text-emerald-50/80">Neue Vorschläge erscheinen hier automatisch, sobald Review-Läufe unbekannte Werte erzeugen.</p>
+              </div>
+            {/if}
           </Card>
 
-          <div class="space-y-6">
-            <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <div class="space-y-6 xl:sticky xl:top-24 xl:self-start">
+            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Approved</p>
-                  <h3 class="mt-2 text-xl font-semibold text-white">Bereits freigegeben</h3>
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bereits live</p>
+                  <h3 class="mt-2 text-xl font-semibold text-white">Freigegebene Einträge</h3>
                 </div>
-                <Badge color="green">{state.whitelist.filter((item) => item.approved).length}</Badge>
+                <Badge color="green">{approved.length}</Badge>
               </div>
 
               <div class="mt-4 space-y-3">
-                {#each state.whitelist.filter((item) => item.approved).slice(0, 6) as item}
-                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                {#each approved.slice(0, 6) as item}
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
                     <div class="font-medium text-white">{item.name}</div>
                     <div class="mt-1 text-xs text-slate-500">Paperless-ID: {item.paperless_id ?? '—'}</div>
                   </div>
                 {:else}
-                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Noch nichts freigegeben.</div>
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4 text-sm text-slate-400">Noch keine freigegebenen Einträge.</div>
                 {/each}
               </div>
             </Card>
 
-            <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Blacklist</p>
-                  <h3 class="mt-2 text-xl font-semibold text-white">Blockiert</h3>
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Blockliste</p>
+                  <h3 class="mt-2 text-xl font-semibold text-white">Blockierte Einträge</h3>
                 </div>
                 <Badge color="gray">{state.blacklist.length}</Badge>
               </div>
 
               <div class="mt-4 space-y-3">
                 {#each state.blacklist.slice(0, 6) as item}
-                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
                     <div class="flex items-center justify-between gap-3">
-                      <div>
+                      <div class="min-w-0">
                         <div class="font-medium text-white">{item.name}</div>
-                        <div class="mt-1 text-xs text-slate-500">abgelehnt: {formatDate(item.rejected_at)}</div>
+                        <div class="mt-1 text-xs text-slate-500">abgelehnt am {formatDate(item.rejected_at)}</div>
                       </div>
                       <Button size="xs" color="alternative" onclick={() => void runAction(`${section.key}:restore:${item.name}`, () => section.unblacklist(item.name))} disabled={busyKey !== ''}>
                         {busyKey === `${section.key}:restore:${item.name}` ? '…' : 'Entfernen'}
@@ -211,7 +237,7 @@
                     </div>
                   </div>
                 {:else}
-                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Keine blockierten Einträge.</div>
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4 text-sm text-slate-400">Keine blockierten Einträge.</div>
                 {/each}
               </div>
             </Card>

@@ -4,25 +4,37 @@
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
+
+  function formatDateTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  }
 </script>
 
-<AppShell title="Fehler" subtitle="Recent-Errors werden über den neuen JSON-Endpunkt mit operativer Sichtbarkeit dargestellt.">
+<AppShell title="Fehler" subtitle="Aktuelle Fehlersignale schnell triagieren und den nächsten sinnvollen Schritt in Review, Inbox oder Legacy-Analyse ableiten.">
   {#snippet children()}
-    <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Operational Errors</p>
           <h2 class="mt-2 text-2xl font-semibold text-white">{data.errors.items.length} aktuelle Fehler</h2>
+          <p class="mt-2 text-sm text-slate-400">Konzentriere dich zuerst auf Stage, betroffenes Dokument und Zeitpunkt. Danach entscheiden Review oder Legacy-Fehlerliste über die nächste Aktion.</p>
         </div>
         <a href="/errors" class="inline-flex"><Button color="dark" class="rounded-xl border border-slate-700">Legacy-Fehlerliste</Button></a>
       </div>
 
       <div class="mt-6 space-y-4">
         {#each data.errors.items as item}
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
             <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div class="flex items-center gap-2">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
                   <Badge color="red">{item.stage}</Badge>
                   {#if item.document_id}
                     <Badge color="gray">Dokument #{item.document_id}</Badge>
@@ -31,7 +43,7 @@
                 <h3 class="mt-3 text-lg font-semibold text-white">{item.message}</h3>
                 <p class="mt-2 text-sm text-slate-400">{item.details || 'Keine Zusatzdetails vorhanden.'}</p>
               </div>
-              <div class="text-xs text-slate-500">{item.occurred_at}</div>
+              <div class="shrink-0 rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">{formatDateTime(item.occurred_at)}</div>
             </div>
           </div>
         {:else}

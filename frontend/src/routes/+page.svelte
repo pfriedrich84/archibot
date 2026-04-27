@@ -28,17 +28,17 @@
 
 <AppShell
   title="Dashboard"
-  subtitle="Kernmetriken, Status und Fehlerübersicht aus den neuen API-Endpunkten."
+  subtitle="Gesundheit, Durchsatz und offene Risiken auf einen Blick — mit direktem Fokus auf tägliche Betriebsentscheidungen."
 >
   {#snippet children()}
     <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-      <StatCard title="Pending Review" value={data.dashboard.kpis.pending_review} hint="Vorschläge warten auf Freigabe" accent="emerald" />
-      <StatCard title="Errors (24h)" value={data.dashboard.kpis.errors_24h} hint="Fehler der letzten 24 Stunden" accent="red" />
-      <StatCard title="Inbox Pending" value={data.dashboard.kpis.inbox_pending} hint="Dokumente im Posteingang" accent="blue" />
+      <StatCard title="Review offen" value={data.dashboard.kpis.pending_review} hint="Vorschläge warten auf Freigabe" accent="emerald" />
+      <StatCard title="Fehler 24h" value={data.dashboard.kpis.errors_24h} hint="Aktive Warnsignale" accent="red" />
+      <StatCard title="Inbox offen" value={data.dashboard.kpis.inbox_pending} hint="Dokumente im Posteingang" accent="blue" />
       <StatCard
-        title="Committed Today"
+        title="Heute bestätigt"
         value={data.dashboard.kpis.committed_today}
-        hint="Heute bestätigte Dokumente"
+        hint="Bereits übernommene Dokumente"
         accent="purple"
       />
     </div>
@@ -48,10 +48,10 @@
     </div>
 
     <div class="mt-6 grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
-      <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">System Readiness</p>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Systembereitschaft</p>
             <h2 class="mt-2 text-2xl font-semibold text-white">Auf einen Blick</h2>
           </div>
           <Badge color={data.status.app.legacy_ui.cutover_ready ? 'green' : 'yellow'}>
@@ -82,10 +82,10 @@
         </div>
       </Card>
 
-      <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Recent Errors</p>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Letzte Fehler</p>
             <h2 class="mt-2 text-2xl font-semibold text-white">Schnelle Triage</h2>
           </div>
           <Badge color={data.dashboard.recent_errors.length > 0 ? 'red' : 'green'}>

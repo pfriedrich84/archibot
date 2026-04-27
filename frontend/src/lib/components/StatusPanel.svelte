@@ -36,10 +36,10 @@
 </script>
 
 <div class="grid gap-6 xl:grid-cols-[1.45fr,0.95fr]">
-  <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline Status</p>
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">{dashboard.pipeline.running ? 'Polling aktiv' : 'Pipeline bereit'}</h2>
         <p class="mt-2 text-sm text-slate-400">Nächster Poll: {formatDateTime(dashboard.pipeline.next_run_at)}</p>
       </div>
@@ -80,10 +80,10 @@
     </div>
   </Card>
 
-  <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
     <div class="flex items-center justify-between gap-3">
       <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime / Logs</p>
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime & Logs</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">Betrieb</h2>
       </div>
       <Badge color="gray">Live</Badge>

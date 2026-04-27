@@ -239,23 +239,28 @@
 
 <AppShell
   title="Review Queue"
-  subtitle="Native Svelte-Review mit Bearbeiten, Speichern, Accept/Reject und schnellerer Operability statt Legacy-Roundtrip."
+  subtitle="Dokumentvorschläge prüfen, Metadaten anpassen und direkt übernehmen — ohne Wechsel zurück in die Legacy-Oberfläche."
 >
   {#snippet children()}
     {#if filteredItems.length === 0}
       <div class="space-y-6">
-        <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Moderation Queue</p>
+              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Review Queue</p>
               <h2 class="mt-2 text-2xl font-semibold text-white">Keine offenen Vorschläge</h2>
               <p class="mt-2 text-sm text-slate-400">
-                Sobald neue Dokumente klassifiziert wurden, kannst du hier Titel, Tags, Korrespondenten und Typen prüfen und direkt übernehmen.
+                Sobald neue Dokumente klassifiziert wurden, kannst du hier Titel, Datum, Tags, Korrespondenten und Typen prüfen und direkt übernehmen.
               </p>
             </div>
-            <a href="/app/settings" class="inline-flex">
-              <Button color="green" class="rounded-xl">Polling oder Reindex starten</Button>
-            </a>
+            <div class="flex flex-wrap gap-2">
+              <a href="/app/settings" class="inline-flex">
+                <Button color="green" class="rounded-xl">Polling oder Reindex starten</Button>
+              </a>
+              <a href="/app/tags" class="inline-flex">
+                <Button color="dark" class="rounded-xl border border-slate-700">Freigaben öffnen</Button>
+              </a>
+            </div>
           </div>
 
           <div class="mt-6 grid gap-4 md:grid-cols-3">
@@ -277,13 +282,13 @@
     {:else}
     <div class="grid gap-6 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.3fr)]">
       <div class="space-y-6">
-        <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Moderation Queue</p>
-              <h2 class="mt-2 text-2xl font-semibold text-white">{items.length} aktive Vorschläge</h2>
+              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Review Queue</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">{filteredItems.length} von {items.length} Vorschlägen im Blick</h2>
               <p class="mt-2 text-sm text-slate-400">
-                Direkte Bearbeitung ohne Wechsel in die Legacy-Ansicht. Fokus auf schnelle Entscheidungen und sichtbare Unsicherheiten.
+                Nutze Filter, prüfe Unsicherheiten und übernimm Dokumente direkt in Paperless. Die Detailansicht rechts bleibt auf die aktive Entscheidung fokussiert.
               </p>
             </div>
             <a href="/review" class="inline-flex">
@@ -293,15 +298,15 @@
 
           <div class="mt-6 grid gap-3 sm:grid-cols-3">
             <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-              <p class="text-xs uppercase tracking-wide text-emerald-200/70">High confidence</p>
+              <p class="text-xs uppercase tracking-wide text-emerald-200/70">Hohe Sicherheit</p>
               <p class="mt-2 text-2xl font-semibold text-emerald-50">{queueStats.high}</p>
             </div>
             <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
-              <p class="text-xs uppercase tracking-wide text-sky-200/70">Judge corrected</p>
+              <p class="text-xs uppercase tracking-wide text-sky-200/70">Judge korrigiert</p>
               <p class="mt-2 text-2xl font-semibold text-sky-50">{queueStats.judgeCorrected}</p>
             </div>
             <div class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-              <p class="text-xs uppercase tracking-wide text-amber-200/70">Path unresolved</p>
+              <p class="text-xs uppercase tracking-wide text-amber-200/70">Pfad offen</p>
               <p class="mt-2 text-2xl font-semibold text-amber-50">{queueStats.unresolvedPaths}</p>
             </div>
           </div>
@@ -332,7 +337,7 @@
 
           <div class="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bulk actions</p>
+              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bulk-Aktionen</p>
               <p class="mt-1 text-sm text-slate-300">Wirken auf alle {filteredItems.length} Vorschläge im aktuellen Filter.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -342,7 +347,7 @@
                 disabled={mutationState !== null || filteredItems.length === 0}
                 class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {mutationState === 'bulk-accept' ? 'Übernimmt …' : 'Bulk accept filtered'}
+                {mutationState === 'bulk-accept' ? 'Übernimmt …' : 'Gefilterte annehmen'}
               </button>
               <button
                 type="button"
@@ -350,7 +355,7 @@
                 disabled={mutationState !== null || filteredItems.length === 0}
                 class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {mutationState === 'bulk-reject' ? 'Verwirft …' : 'Bulk reject filtered'}
+                {mutationState === 'bulk-reject' ? 'Verwirft …' : 'Gefilterte verwerfen'}
               </button>
             </div>
           </div>
@@ -372,37 +377,40 @@
               }`}
             >
               <div class="flex items-start justify-between gap-3">
-                <div>
+                <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-sm font-semibold text-white">#{item.document_id}</span>
-                    <span class="text-xs text-slate-500">Suggestion #{item.id}</span>
+                    <span class="text-sm font-semibold text-white">Dokument #{item.document_id}</span>
+                    <span class="text-xs text-slate-500">Vorschlag #{item.id}</span>
                     {#if item.document_status}
                       <span class="rounded-full border border-slate-700 bg-slate-950/80 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-300">
                         {item.document_status}
                       </span>
                     {/if}
                   </div>
-                  <h3 class="mt-3 text-lg font-semibold text-white">{item.proposed_title || 'Ohne Titelvorschlag'}</h3>
+                  <h3 class="mt-3 truncate text-lg font-semibold text-white">{item.proposed_title || 'Ohne Titelvorschlag'}</h3>
                   <p class="mt-1 text-sm text-slate-400">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
                 </div>
-                <span class={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${confidenceTone(item.confidence)}`}>
+                <span class={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${confidenceTone(item.confidence)}`}>
                   {item.confidence ?? '—'}{item.confidence !== null ? '%' : ''}
                 </span>
               </div>
 
-              <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                <span class="rounded-full border border-slate-800 bg-slate-950/70 px-2.5 py-1 text-slate-300">
-                  {item.proposed_doctype_name || 'Typ offen'}
-                </span>
-                {#if item.proposed_storage_path_name}
-                  <span class="rounded-full border border-slate-800 bg-slate-950/70 px-2.5 py-1 text-slate-400">
-                    {item.proposed_storage_path_name}
-                  </span>
-                {/if}
-                {#if item.judge_verdict}
-                  <span class={`font-medium ${judgeTone(item.judge_verdict)}`}>Judge: {item.judge_verdict}</span>
-                {/if}
+              <div class="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 px-3 py-2">
+                  <span class="block text-[11px] uppercase tracking-wide text-slate-500">Dokumenttyp</span>
+                  <span class="mt-1 block text-slate-200">{item.proposed_doctype_name || 'Offen'}</span>
+                </div>
+                <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 px-3 py-2">
+                  <span class="block text-[11px] uppercase tracking-wide text-slate-500">Pfad</span>
+                  <span class="mt-1 block truncate text-slate-200">{item.proposed_storage_path_name || 'Noch nicht gesetzt'}</span>
+                </div>
               </div>
+
+              {#if item.judge_verdict}
+                <div class="mt-3 text-xs">
+                  <span class={`font-medium ${judgeTone(item.judge_verdict)}`}>Judge: {item.judge_verdict}</span>
+                </div>
+              {/if}
             </button>
           {:else}
             <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
@@ -422,7 +430,7 @@
         {/if}
 
         {#if loadingDetail}
-          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
             <div class="space-y-3">
               <div class="h-5 w-40 animate-pulse rounded bg-slate-800"></div>
               <div class="h-12 animate-pulse rounded-2xl bg-slate-800"></div>
@@ -431,11 +439,11 @@
             </div>
           </Card>
         {:else if detailError}
-          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
             <div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div>
           </Card>
         {:else if detail}
-          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20 xl:sticky xl:top-24">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -449,51 +457,51 @@
                     </Badge>
                   {/if}
                 </div>
-                <h2 class="mt-3 text-2xl font-semibold text-white">Review Inspector</h2>
-                <p class="mt-2 text-sm text-slate-400">Feinjustiere Vorschlag, speichere Zwischenschritte oder committe direkt nach Paperless.</p>
+                <h2 class="mt-3 text-2xl font-semibold text-white">Dokument prüfen</h2>
+                <p class="mt-2 text-sm text-slate-400">Feinjustiere den Vorschlag, speichere Zwischenschritte oder übernimm das Dokument direkt nach Paperless.</p>
               </div>
               <div class="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-right">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Created</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Erstellt</p>
                 <p class="mt-1 text-sm text-slate-200">{detail.suggestion.created_at}</p>
               </div>
             </div>
 
             {#if detail.suggestion.reasoning}
               <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Model reasoning</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Modellbegründung</p>
                 <p class="mt-2 text-sm text-slate-300">{detail.suggestion.reasoning}</p>
               </div>
             {/if}
 
             {#if detail.suggestion.judge_reasoning}
               <div class="mt-4 rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Judge note</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Judge-Hinweis</p>
                 <p class="mt-2 text-sm text-sky-50/90">{detail.suggestion.judge_reasoning}</p>
               </div>
             {/if}
 
             <div class="mt-6 grid gap-6 xl:grid-cols-2">
               <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Original</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bestehende Metadaten</p>
                 <dl class="mt-4 space-y-4 text-sm">
                   <div>
-                    <dt class="text-slate-500">Title</dt>
+                    <dt class="text-slate-500">Titel</dt>
                     <dd class="mt-1 text-slate-100">{detail.original.title || '—'}</dd>
                   </div>
                   <div>
-                    <dt class="text-slate-500">Date</dt>
+                    <dt class="text-slate-500">Datum</dt>
                     <dd class="mt-1 text-slate-100">{detail.original.date || '—'}</dd>
                   </div>
                   <div>
-                    <dt class="text-slate-500">Correspondent</dt>
+                    <dt class="text-slate-500">Korrespondent</dt>
                     <dd class="mt-1 text-slate-100">{detail.original.correspondent_name || '—'}</dd>
                   </div>
                   <div>
-                    <dt class="text-slate-500">Document type</dt>
+                    <dt class="text-slate-500">Dokumenttyp</dt>
                     <dd class="mt-1 text-slate-100">{detail.original.doctype_name || '—'}</dd>
                   </div>
                   <div>
-                    <dt class="text-slate-500">Storage path</dt>
+                    <dt class="text-slate-500">Speicherpfad</dt>
                     <dd class="mt-1 text-slate-100">{detail.original.storage_path_name || '—'}</dd>
                   </div>
                   <div>
@@ -510,54 +518,54 @@
               </div>
 
               <div class="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                <p class="text-xs uppercase tracking-[0.2em] text-emerald-300/70">Editable proposal</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-emerald-300/70">Bearbeitbarer Vorschlag</p>
                 <div class="mt-4 space-y-4">
                   <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Title</span>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Titel</span>
                     <input bind:value={formTitle} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40" />
                   </label>
 
                   <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Date</span>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Datum</span>
                     <input bind:value={formDate} type="date" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40" />
                   </label>
 
                   <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Correspondent</span>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Korrespondent</span>
                     <select bind:value={formCorrespondentId} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40">
-                      <option value="">— None —</option>
+                      <option value="">— Kein Eintrag —</option>
                       {#each detail.options.correspondents as option}
                         <option value={String(option.id)}>{option.name}</option>
                       {/each}
                     </select>
                     {#if detail.proposed.suggested_correspondent_name}
-                      <p class="mt-2 text-xs text-amber-300">Suggested new: {detail.proposed.suggested_correspondent_name}</p>
+                      <p class="mt-2 text-xs text-amber-300">Neuer Vorschlag: {detail.proposed.suggested_correspondent_name}</p>
                     {/if}
                   </label>
 
                   <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Document type</span>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Dokumenttyp</span>
                     <select bind:value={formDoctypeId} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40">
-                      <option value="">— None —</option>
+                      <option value="">— Kein Eintrag —</option>
                       {#each detail.options.doctypes as option}
                         <option value={String(option.id)}>{option.name}</option>
                       {/each}
                     </select>
                     {#if detail.proposed.suggested_doctype_name}
-                      <p class="mt-2 text-xs text-amber-300">Suggested new: {detail.proposed.suggested_doctype_name}</p>
+                      <p class="mt-2 text-xs text-amber-300">Neuer Vorschlag: {detail.proposed.suggested_doctype_name}</p>
                     {/if}
                   </label>
 
                   <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Storage path</span>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Speicherpfad</span>
                     <select bind:value={formStoragePathId} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40">
-                      <option value="">— None —</option>
+                      <option value="">— Kein Eintrag —</option>
                       {#each detail.options.storage_paths as option}
                         <option value={String(option.id)}>{option.name}</option>
                       {/each}
                     </select>
                     {#if detail.proposed.suggested_storage_path_name}
-                      <p class="mt-2 text-xs text-amber-300">Suggested new: {detail.proposed.suggested_storage_path_name}</p>
+                      <p class="mt-2 text-xs text-amber-300">Neuer Vorschlag: {detail.proposed.suggested_storage_path_name}</p>
                     {/if}
                   </label>
                 </div>
@@ -568,12 +576,12 @@
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Tags</p>
-                  <p class="mt-1 text-sm text-slate-400">Bekannte Tags direkt auswählen. Ungelöste neue Tags bleiben als Hinweis sichtbar.</p>
+                  <p class="mt-1 text-sm text-slate-400">Bekannte Tags direkt auswählen. Neue, noch ungelöste Tags bleiben als Hinweis sichtbar und können später unter Freigaben übernommen werden.</p>
                 </div>
                 {#if unresolvedProposedTags.length > 0}
                   <div class="flex flex-wrap gap-2">
                     {#each unresolvedProposedTags as tagName}
-                      <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-100">New tag: {tagName}</span>
+                      <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-100">Neuer Tag: {tagName}</span>
                     {/each}
                   </div>
                 {/if}
@@ -603,14 +611,14 @@
               <div class="mt-6 grid gap-6 xl:grid-cols-2">
                 {#if detail.original_proposal}
                   <div class="rounded-3xl border border-sky-500/20 bg-sky-500/10 p-5">
-                    <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">First-pass snapshot</p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Erster Modellstand</p>
                     <pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(detail.original_proposal, null, 2)}</pre>
                   </div>
                 {/if}
 
                 {#if detail.context_docs.length > 0}
                   <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
-                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Context docs</p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kontextdokumente</p>
                     <div class="mt-3 space-y-2">
                       {#each detail.context_docs as doc}
                         <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-300">
@@ -623,14 +631,14 @@
               </div>
             {/if}
 
-            <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div class="mt-6 flex flex-col gap-3 border-t border-slate-800/80 pt-5 sm:flex-row xl:sticky xl:bottom-4 xl:bg-slate-900/95 xl:pb-1">
               <button
                 type="button"
                 onclick={() => void runAction('save')}
                 disabled={mutationState !== null}
                 class="inline-flex flex-1 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-slate-600 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {mutationState === 'save' ? 'Speichert …' : 'Save changes'}
+                {mutationState === 'save' ? 'Speichert …' : 'Änderungen speichern'}
               </button>
               <button
                 type="button"
@@ -638,7 +646,7 @@
                 disabled={mutationState !== null}
                 class="inline-flex flex-1 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-50 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {mutationState === 'accept' ? 'Commit läuft …' : 'Accept & commit'}
+                {mutationState === 'accept' ? 'Übernimmt …' : 'Übernehmen & committen'}
               </button>
               <button
                 type="button"
@@ -651,9 +659,9 @@
             </div>
           </Card>
         {:else}
-          <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
             <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">
-              Wähle links einen Vorschlag aus, um ihn nativ in der Svelte-Oberfläche zu bearbeiten.
+              Wähle links einen Vorschlag aus, um Metadaten zu prüfen, anzupassen und direkt zu übernehmen.
             </div>
           </Card>
         {/if}
