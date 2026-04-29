@@ -1,4 +1,5 @@
 import type {
+  ChatAskPayload,
   ChatPayload,
   DashboardPayload,
   EmbeddingsPayload,
@@ -78,6 +79,8 @@ export const loadTags = (fetcher: typeof fetch) => apiFetch<TagsPayload>('/api/v
 export const loadStats = (fetcher: typeof fetch) => apiFetch<StatsPayload>('/api/v1/stats', fetcher);
 export const loadEmbeddings = (fetcher: typeof fetch) => apiFetch<EmbeddingsPayload>('/api/v1/embeddings', fetcher);
 export const loadChat = (fetcher: typeof fetch) => apiFetch<ChatPayload>('/api/v1/chat', fetcher);
+export const askChat = (question: string, sessionId: string | null) =>
+  apiMutation<ChatAskPayload>('/api/v1/chat/ask', { question, session_id: sessionId });
 export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
 export const saveSettings = (updates: Record<string, string | number | boolean | null>) =>

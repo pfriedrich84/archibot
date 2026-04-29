@@ -96,6 +96,9 @@ const settingsSchemaPayload = {
 
 const reviewPayload = {
   total: 1,
+  page: 1,
+  per_page: 25,
+  total_pages: 1,
   items: [
     {
       id: 11,
@@ -230,6 +233,7 @@ const embeddingsPayload = {
       correspondent: 1,
       doctype: 2,
       storage_path: 3,
+      tags: [5, 8],
       created_date: '2026-04-01',
       indexed_at: '2026-04-26T10:00:00Z'
     }
@@ -246,7 +250,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/settings/schema', async (route) => {
     await route.fulfill({ json: settingsSchemaPayload });
   });
-  await page.route('**/api/v1/review/queue', async (route) => {
+  await page.route('**/api/v1/review/queue**', async (route) => {
     await route.fulfill({ json: reviewPayload });
   });
   await page.route('**/api/v1/review/11', async (route) => {
@@ -273,13 +277,19 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/embeddings', async (route) => {
     await route.fulfill({ json: embeddingsPayload });
   });
+  await page.route('**/api/v1/chat', async (route) => {
+    await route.fulfill({ json: { recent_activity: [] } });
+  });
+  await page.route('**/api/v1/chat/ask', async (route) => {
+    await route.fulfill({ json: { session_id: 'testsession', answer: 'Die letzte Rechnung war im April.', sources: [{ id: 77, title: 'Stromrechnung April', distance: 0.123 }] } });
+  });
 });
 
 test('dashboard renders hero metrics', async ({ page }) => {
   await page.goto('/app/');
-  await expect(page.getByText('Pending Review')).toBeVisible();
-  await expect(page.getByText('Errors (24h)')).toBeVisible();
-  await expect(page.getByText('/api/v1 live', { exact: true })).toBeVisible();
+  await expect(page.getByText('Review offen')).toBeVisible();
+  await expect(page.getByText('Fehler 24h')).toBeVisible();
+  await expect(page.getByText('Pipeline bereit')).toBeVisible();
 });
 
 test('settings route renders schema-driven category card', async ({ page }) => {
@@ -291,15 +301,46 @@ test('settings route renders schema-driven category card', async ({ page }) => {
 
 test('review route renders native inspector workflow', async ({ page }) => {
   await page.goto('/app/review');
-  await expect(page.getByText('aktive Vorschläge')).toBeVisible();
+  await expect(page.getByText('1 insgesamt, Seite 1/1')).toBeVisible();
   await expect(page.getByText('Stromrechnung April')).toBeVisible();
-  await expect(page.getByText('Bulk accept filtered')).toBeVisible();
-  await expect(page.getByText('Bulk reject filtered')).toBeVisible();
+  await expect(page.getByText('Gefilterte annehmen')).toBeVisible();
+  await expect(page.getByText('Gefilterte verwerfen')).toBeVisible();
+});
+
+test('sidebar menu opens review and split approval routes', async ({ page }) => {
+  await page.goto('/app/');
+
+  await page.getByRole('link', { name: /^Review/ }).click();
+  await expect(page).toHaveURL(/\/app\/review/);
+  await expect(page.getByRole('heading', { name: 'Review Queue' })).toBeVisible();
+
+  await page.getByRole('link', { name: /^Tags/ }).click();
+  await expect(page).toHaveURL(/\/app\/tags/);
+  await expect(page.getByRole('heading', { name: 'Tags', level: 1 })).toBeVisible();
+  await expect(page.getByText('Rechnung')).toBeVisible();
+
+  await page.getByRole('link', { name: /^Korrespondenten/ }).click();
+  await expect(page).toHaveURL(/\/app\/correspondents/);
+  await expect(page.getByRole('heading', { name: 'Korrespondenten', level: 1 })).toBeVisible();
+  await expect(page.getByText('Stadtwerke')).toBeVisible();
+
+  await page.getByRole('link', { name: /^Dokumenttypen/ }).click();
+  await expect(page).toHaveURL(/\/app\/doctypes/);
+  await expect(page.getByRole('heading', { name: 'Dokumenttypen', level: 1 })).toBeVisible();
+});
+
+test('chat route sends a question and renders answer sources', async ({ page }) => {
+  await page.goto('/app/chat');
+  await expect(page.getByRole('heading', { name: 'Dokumente befragen' })).toBeVisible();
+  await page.getByPlaceholder('Frage an deine Dokumente …').fill('Was ist die letzte Rechnung?');
+  await page.getByRole('button', { name: 'Fragen' }).click();
+  await expect(page.getByText('Die letzte Rechnung war im April.')).toBeVisible();
+  await expect(page.getByText('#77 Stromrechnung April · 0.123')).toBeVisible();
 });
 
 test('stats route renders phase health card', async ({ page }) => {
   await page.goto('/app/stats');
-  await expect(page.getByText('Phase Health')).toBeVisible();
+  await expect(page.getByText('Phasenqualität')).toBeVisible();
   await expect(page.getByText('classify')).toBeVisible();
   await expect(page.getByText('Confidence 80-100')).toBeVisible();
 });

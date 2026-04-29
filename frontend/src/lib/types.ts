@@ -285,3 +285,9 @@ export type ChatPayload = {
     occurred_at: string;
   }>;
 };
+
+export type ChatAskPayload = {
+  session_id: string;
+  answer: string;
+  sources: Array<{ id: number; title: string | null; distance: number }>;
+};

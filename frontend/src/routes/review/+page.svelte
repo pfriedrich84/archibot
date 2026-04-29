@@ -19,11 +19,14 @@
 
   let { data } = $props<{ data: PageData }>();
 
+  const initialReview = () => data.review;
+  const initialUrlState = () => data.urlState;
+
   let initialized = $state(false);
   let syncingUrl = $state(false);
-  let items = $state<ReviewQueueItem[]>([]);
-  let queueMeta = $state<ReviewQueuePayload>(undefined as unknown as ReviewQueuePayload);
-  let selectedId = $state<number | null>(null);
+  let items = $state<ReviewQueueItem[]>([...initialReview().items]);
+  let queueMeta = $state<ReviewQueuePayload>(initialReview());
+  let selectedId = $state<number | null>(initialReview().items[0]?.id ?? null);
   let loadedDetailId = $state<number | null>(null);
   let detail = $state<ReviewDetailPayload | null>(null);
   let loadingDetail = $state(false);
@@ -32,13 +35,13 @@
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   let search = $state('');
-  let page = $state(1);
-  let perPage = $state(25);
-  let minConfidence = $state(0);
-  let maxConfidence = $state(100);
-  let sort = $state<'created_desc' | 'confidence_asc' | 'confidence_desc'>('created_desc');
-  let judgeVerdict = $state('');
-  let correspondentId = $state('');
+  let page = $state(initialUrlState().page || initialReview().page);
+  let perPage = $state(initialUrlState().perPage || initialReview().per_page);
+  let minConfidence = $state(initialUrlState().minConfidence);
+  let maxConfidence = $state(initialUrlState().maxConfidence);
+  let sort = $state<'created_desc' | 'confidence_asc' | 'confidence_desc'>((initialUrlState().sort as 'created_desc' | 'confidence_asc' | 'confidence_desc') || 'created_desc');
+  let judgeVerdict = $state(initialUrlState().judgeVerdict);
+  let correspondentId = $state(initialUrlState().correspondentId);
 
   let formTitle = $state('');
   let formDate = $state('');
@@ -317,16 +320,6 @@
 
   $effect(() => {
     if (!initialized) {
-      queueMeta = data.review;
-      items = [...data.review.items];
-      page = data.urlState.page || data.review.page;
-      perPage = data.urlState.perPage || data.review.per_page;
-      minConfidence = data.urlState.minConfidence;
-      maxConfidence = data.urlState.maxConfidence;
-      sort = (data.urlState.sort as 'created_desc' | 'confidence_asc' | 'confidence_desc') || 'created_desc';
-      judgeVerdict = data.urlState.judgeVerdict;
-      correspondentId = data.urlState.correspondentId;
-      selectedId = data.review.items[0]?.id ?? null;
       if (typeof window !== 'undefined') {
         previewVisible = window.localStorage.getItem('archibot-review-preview') !== 'false';
         shortcutHintDismissed = window.localStorage.getItem('archibot-review-shortcut-hint-dismissed') === 'true';

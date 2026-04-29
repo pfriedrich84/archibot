@@ -27,19 +27,11 @@
     unblacklist: (name: string) => Promise<{ ok: boolean; message: string }>;
     initial: TagsPayload;
   }>();
-  let snapshot = $state<TagsPayload>(undefined as unknown as TagsPayload);
+  const initialSnapshot = () => initial;
+  let snapshot = $state<TagsPayload>(initialSnapshot());
   let feedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
   let busyKey = $state('');
   let search = $state('');
-
-  let initialized = $state(false);
-
-  $effect(() => {
-    if (!initialized) {
-      snapshot = initial;
-      initialized = true;
-    }
-  });
 
   let approvalState = $derived.by((): ApprovalSnapshot => {
     if (snapshotKey === 'correspondents') return snapshot.correspondents;

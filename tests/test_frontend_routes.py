@@ -38,8 +38,19 @@ def test_app_route_serves_frontend_index(client):
     assert "frontend index" in response.text
 
 
-def test_nested_frontend_route_falls_back_to_index(client):
-    response = client.get("/app/review")
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/app/review",
+        "/app/tags",
+        "/app/correspondents",
+        "/app/doctypes",
+        "/app/chat",
+        "/app/embeddings",
+    ],
+)
+def test_nested_frontend_routes_fall_back_to_index(client, path):
+    response = client.get(path)
     assert response.status_code == 200
     assert "frontend index" in response.text
 

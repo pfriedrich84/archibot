@@ -7,9 +7,10 @@
 
   let { data } = $props<{ data: PageData }>();
 
-  let dashboard = $state<DashboardPayload>(undefined as unknown as DashboardPayload);
-  let status = $state<StatusPayload>(undefined as unknown as StatusPayload);
-  let schema = $state<SettingsSchemaPayload>(undefined as unknown as SettingsSchemaPayload);
+  const initialData = () => data;
+  let dashboard = $state<DashboardPayload>(initialData().dashboard);
+  let status = $state<StatusPayload>(initialData().status);
+  let schema = $state<SettingsSchemaPayload>(initialData().schema);
   type SettingValue = string | number | boolean;
 
   let actionState = $state<'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | 'settings-save' | ''>('');

@@ -164,6 +164,24 @@ def test_embeddings_api_returns_recent_rows(client):
     assert payload["items"][0]["title"] == "Rechnung April"
 
 
+def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
+    async def fake_ask(question, session, paperless, ollama):
+        assert question == "Was ist neu?"
+        return SimpleNamespace(
+            answer="Antwort aus dem Test",
+            sources=[{"id": 1, "title": "Rechnung April", "distance": 0.123}],
+        )
+
+    monkeypatch.setattr("app.routes.api.ask_chat", fake_ask)
+
+    response = client.post("/api/v1/chat/ask", json={"question": "Was ist neu?"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"]
+    assert payload["answer"] == "Antwort aus dem Test"
+    assert payload["sources"][0]["id"] == 1
+
+
 def test_settings_schema_api_groups_fields(client):
     response = client.get("/api/v1/settings/schema")
     assert response.status_code == 200

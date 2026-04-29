@@ -22,6 +22,8 @@ from app.api_data import (
     get_system_status,
     get_tags_snapshot,
 )
+from app.chat import ask as ask_chat
+from app.chat import get_or_create_session
 from app.config import settings
 from app.config_writer import apply_runtime_changes, save_config
 from app.db import get_conn, mark_setup_complete
@@ -809,6 +811,30 @@ async def embeddings_api(limit: int = Query(default=100, ge=1, le=500)) -> dict[
 @router.get("/chat")
 async def chat_api(limit: int = Query(default=8, ge=1, le=100)) -> dict[str, Any]:
     return get_chat_snapshot(limit=limit)
+
+
+@router.post("/chat/ask")
+async def chat_ask_api(
+    request: Request, payload: Annotated[dict[str, Any], Body(...)]
+) -> dict[str, Any]:
+    question = str(payload.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Missing question")
+
+    session_id, session = get_or_create_session(
+        str(payload.get("session_id") or "").strip() or None
+    )
+    result = await ask_chat(
+        question,
+        session,
+        request.app.state.paperless,
+        request.app.state.ollama,
+    )
+    return {
+        "session_id": session_id,
+        "answer": result.answer,
+        "sources": result.sources,
+    }
 
 
 @router.get("/settings/schema")
