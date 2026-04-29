@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+
+from app.config import needs_setup
 
 router = APIRouter(tags=["frontend"])
 
@@ -61,6 +63,9 @@ def _frontend_missing_response() -> HTMLResponse:
 @router.get("/app", include_in_schema=False)
 @router.get("/app/{path:path}", include_in_schema=False)
 async def frontend_app(path: str = ""):
+    if needs_setup() and path not in ("setup", "setup/"):
+        return RedirectResponse(url="/app/setup", status_code=302)
+
     if not FRONTEND_BUILD_DIR.exists():
         return _frontend_missing_response()
 
