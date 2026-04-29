@@ -399,7 +399,14 @@
           {#if currentStep < steps.length - 1}
             <Button type="button" color="green" class="rounded-xl" disabled={testingPaperless || testingOllama} onclick={() => void next()}>{testingPaperless || testingOllama ? 'Prüft …' : 'Weiter'}</Button>
           {:else}
-            <Button type="button" color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
+            <button
+              type="button"
+              class="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={saving}
+              onclick={() => void finishSetup()}
+            >
+              {saving ? 'Speichert …' : 'Konfiguration übernehmen'}
+            </button>
           {/if}
         </div>
       </Card>
