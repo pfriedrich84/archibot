@@ -177,6 +177,25 @@ const settingsSchemaPayload = {
           configured: null
         }
       ]
+    },
+    {
+      name: 'Phase 3: Klassifikation',
+      fields: [
+        {
+          name: 'context_max_distance',
+          label: 'Context Max Distance',
+          input_type: 'slider',
+          required: false,
+          restart: null,
+          help: 'EN: Maximum distance. 0 = unlimited. DE: Maximale Distanz. 0 = unbegrenzt. Context Max Docs still limits final context.',
+          sensitive: false,
+          value: 0.5,
+          configured: null,
+          min: 0,
+          max: 1,
+          step: 0.1
+        }
+      ]
     }
   ]
 };
@@ -396,6 +415,9 @@ test('settings route renders schema-driven category card', async ({ page }) => {
   await expect(page.getByLabel('OCR Mode')).toHaveValue('vision_light');
   await expect(page.getByLabel('Classification Model')).toHaveValue('gemma4:e4b');
   await expect(page.getByLabel('Embedding Model')).toHaveValue('qwen3-embedding:4b');
+  await expect(page.getByLabel('Context Max Distance')).toHaveValue('0.5');
+  await expect(page.getByText('0.5')).toBeVisible();
+  await expect(page.getByText(/0 = Unlimited/)).toBeVisible();
 });
 
 test('setup route preselects tags and ollama models', async ({ page }) => {

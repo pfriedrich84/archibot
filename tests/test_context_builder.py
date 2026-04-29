@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import EMBED_DIM
 from app.models import PaperlessDocument, PaperlessEntity
 from app.pipeline.context_builder import (
+    _find_similar_ids,
     document_summary,
     find_similar_by_id,
     find_similar_documents,
@@ -505,6 +506,22 @@ class TestReciprocalRankFusion:
 # Distance threshold
 # ---------------------------------------------------------------------------
 class TestDistanceThreshold:
+    def test_zero_max_distance_keeps_all_results_unlimited(self):
+        """max_distance=0 should mean no distance threshold is applied."""
+        knn_rows = [
+            {"document_id": 10, "distance": 0.15},
+            {"document_id": 20, "distance": 0.95},
+        ]
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.execute.return_value.fetchall.return_value = knn_rows
+
+        with patch("app.pipeline.context_builder.get_conn", return_value=mock_conn):
+            result = _find_similar_ids([0.1] * EMBED_DIM, limit=2, max_distance=0)
+
+        assert result == [(10, 0.15), (20, 0.95)]
+
     @pytest.mark.asyncio
     async def test_max_distance_filters_results(self, mock_ollama: AsyncMock):
         """Context docs beyond max_distance should be excluded."""

@@ -513,19 +513,21 @@ def get_settings_schema() -> dict[str, Any]:
         value = getattr(settings, field_name, "")
         if category not in groups:
             groups[category] = []
-        groups[category].append(
-            {
-                "name": field_name,
-                "label": meta["label"],
-                "input_type": meta["input_type"],
-                "required": meta["required"],
-                "restart": meta["restart"],
-                "help": meta["help"],
-                "sensitive": meta["sensitive"],
-                "value": "" if meta["sensitive"] else value,
-                "configured": bool(value) if meta["sensitive"] else None,
-            }
-        )
+        field = {
+            "name": field_name,
+            "label": meta["label"],
+            "input_type": meta["input_type"],
+            "required": meta["required"],
+            "restart": meta["restart"],
+            "help": meta["help"],
+            "sensitive": meta["sensitive"],
+            "value": "" if meta["sensitive"] else value,
+            "configured": bool(value) if meta["sensitive"] else None,
+        }
+        for key in ("min", "max", "step"):
+            if key in meta:
+                field[key] = meta[key]
+        groups[category].append(field)
 
     return {
         "categories": [{"name": name, "fields": fields} for name, fields in groups.items()],

@@ -104,6 +104,9 @@ export type SettingsSchemaPayload = {
       sensitive: boolean;
       value: string | number | boolean;
       configured: boolean | null;
+      min?: number;
+      max?: number;
+      step?: number;
     }>;
   }>;
   setup_complete: boolean;

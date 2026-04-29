@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # --- Worker ---
     poll_interval_seconds: int = 300
     context_max_docs: int = 5
-    context_max_distance: float = 0.0  # 0 = no threshold; e.g. 1.5 filters irrelevant docs
+    context_max_distance: float = 0.5  # 0 = no threshold/unlimited; 0.5 = default relevance cutoff
     hybrid_search_weight: float = 0.7  # 0.0 = FTS only, 1.0 = vector only, 0.7 = default blend
     max_doc_chars: int = 24000
     embed_max_chars: int = 6000
@@ -276,8 +276,11 @@ def _fm(
     restart: str | None = None,
     help: str = "",
     sensitive: bool = False,
+    min: float | None = None,
+    max: float | None = None,
+    step: float | None = None,
 ) -> dict[str, Any]:
-    return {
+    meta: dict[str, Any] = {
         "category": category,
         "label": label,
         "input_type": input_type,
@@ -286,6 +289,13 @@ def _fm(
         "help": help,
         "sensitive": sensitive,
     }
+    if min is not None:
+        meta["min"] = min
+    if max is not None:
+        meta["max"] = max
+    if step is not None:
+        meta["step"] = step
+    return meta
 
 
 FIELD_META: dict[str, dict[str, Any]] = {
@@ -468,8 +478,17 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "context_max_distance": _fm(
         "Phase 3: Klassifikation",
         "Context Max Distance",
-        "number",
-        help="Max L2 distance for context docs (0 = no threshold). Lower values = stricter relevance filtering.",
+        "slider",
+        help=(
+            "EN: Maximum distance for related context matches. 0 = unlimited/no distance threshold; "
+            "lower values are stricter, higher values include broader context. Context Max Docs still limits "
+            "the final amount of context. DE: Maximale Distanz für verwandte Kontext-Treffer. 0 = unbegrenzt/"
+            "kein Distanz-Schwellwert; kleinere Werte sind strenger, größere Werte erlauben breiteren Kontext. "
+            "Context Max Docs begrenzt weiterhin die endgültige Kontextmenge."
+        ),
+        min=0.0,
+        max=1.0,
+        step=0.1,
     ),
     "hybrid_search_weight": _fm(
         "Phase 2: Embedding",

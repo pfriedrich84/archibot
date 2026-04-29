@@ -203,6 +203,17 @@ def test_settings_schema_api_groups_fields(client):
     ollama_model = next(field for field in all_fields if field["name"] == "ollama_model")
     assert ollama_model["input_type"] == "model_select"
 
+    context_max_distance = next(
+        field for field in all_fields if field["name"] == "context_max_distance"
+    )
+    assert context_max_distance["input_type"] == "slider"
+    assert context_max_distance["value"] == 0.5
+    assert context_max_distance["min"] == 0.0
+    assert context_max_distance["max"] == 1.0
+    assert context_max_distance["step"] == 0.1
+    assert "0 = unlimited" in context_max_distance["help"]
+    assert "0 = unbegrenzt" in context_max_distance["help"].lower()
+
     phase_ocr_category = next(c for c in payload["categories"] if c["name"] == "Phase 1: OCR")
     assert phase_ocr_category["fields"][0]["name"] == "ocr_requested_tag_id"
     ocr_mode = next(f for f in phase_ocr_category["fields"] if f["name"] == "ocr_mode")

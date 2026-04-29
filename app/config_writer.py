@@ -101,6 +101,13 @@ def save_config(updates: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
                 new_float = float(str_val)
             except ValueError:
                 continue
+            meta = FIELD_META.get(key, {})
+            min_value = meta.get("min")
+            max_value = meta.get("max")
+            if min_value is not None and new_float < float(min_value):
+                continue
+            if max_value is not None and new_float > float(max_value):
+                continue
             if new_float == current_val and old_val is not None:
                 continue
             str_val = str(new_float)

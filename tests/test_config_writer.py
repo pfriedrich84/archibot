@@ -148,6 +148,38 @@ class TestSaveConfig:
         changed, _ = save_config({"gui_port": "not_a_number"})
         assert "gui_port" not in changed
 
+    def test_context_max_distance_saves_normalized_decimal(self, tmp_path: Path, monkeypatch):
+        from app.config import settings
+        from app.config_writer import config_env_path, save_config
+
+        monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
+        original = settings.context_max_distance
+
+        changed, _ = save_config({"context_max_distance": "0.5"})
+
+        assert changed["context_max_distance"] == 0.5
+        assert settings.context_max_distance == 0.5
+        assert "CONTEXT_MAX_DISTANCE=0.5" in config_env_path().read_text(encoding="utf-8")
+
+        object.__setattr__(settings, "context_max_distance", original)
+
+    def test_context_max_distance_rejects_out_of_range_values(self, tmp_path: Path, monkeypatch):
+        from app.config import settings
+        from app.config_writer import save_config
+
+        monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
+        original = settings.context_max_distance
+        object.__setattr__(settings, "context_max_distance", 0.5)
+
+        too_low, _ = save_config({"context_max_distance": -0.1})
+        too_high, _ = save_config({"context_max_distance": 1.1})
+
+        assert "context_max_distance" not in too_low
+        assert "context_max_distance" not in too_high
+        assert settings.context_max_distance == 0.5
+
+        object.__setattr__(settings, "context_max_distance", original)
+
 
 class TestApplyRuntimeChanges:
     async def test_restart_telegram_preserves_ollama_dependency(self, monkeypatch):

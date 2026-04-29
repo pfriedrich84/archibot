@@ -112,11 +112,24 @@
 
   function updateDraft(name: string, value: string, type: string) {
     fieldErrors = { ...fieldErrors, [name]: '' };
-    if (type === 'number' || type === 'tag_select') {
+    if (type === 'number' || type === 'tag_select' || type === 'slider') {
       draftSettings[name] = value === '' ? 0 : Number(value);
     } else {
       draftSettings[name] = value;
     }
+  }
+
+  function sliderValue(field: SettingsSchemaPayload['categories'][number]['fields'][number]): number {
+    const value = Number(draftSettings[field.name] ?? field.value ?? 0);
+    const min = field.min ?? 0;
+    const max = field.max ?? 1;
+    if (Number.isNaN(value)) return min;
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function sliderDisplayValue(field: SettingsSchemaPayload['categories'][number]['fields'][number]): string {
+    const value = sliderValue(field);
+    return value === 0 ? 'Unlimited / Unbegrenzt' : value.toFixed(1);
   }
 
   async function saveChangedSettings() {
@@ -234,6 +247,32 @@
                         />
                         {Boolean(draftSettings[field.name]) ? 'Aktiv' : 'Inaktiv'}
                       </label>
+                    {:else if field.input_type === 'slider'}
+                      <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+                        <div class="mb-3 flex items-center justify-between gap-3">
+                          <span class="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Threshold / Schwellwert</span>
+                          <span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${sliderValue(field) === 0 ? 'bg-amber-500/15 text-amber-200' : 'bg-emerald-500/15 text-emerald-200'}`}>
+                            {sliderDisplayValue(field)}
+                          </span>
+                        </div>
+                        <input
+                          aria-label={field.label}
+                          bind:value={draftSettings[field.name]}
+                          type="range"
+                          min={field.min ?? 0}
+                          max={field.max ?? 1}
+                          step={field.step ?? 0.1}
+                          oninput={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
+                          class="w-full accent-emerald-500"
+                        />
+                        <div class="mt-2 flex justify-between text-[11px] text-slate-500">
+                          <span>0 = Unlimited / Unbegrenzt</span>
+                          <span>1.0 = broad / breit</span>
+                        </div>
+                        {#if sliderValue(field) === 0}
+                          <p class="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">Unlimited / Unbegrenzt: no distance threshold is applied. Context Max Docs can still limit the final context.</p>
+                        {/if}
+                      </div>
                     {:else if field.input_type === 'tag_select'}
                       <select
                         aria-label={field.label}
