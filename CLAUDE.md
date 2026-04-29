@@ -450,9 +450,11 @@ Alternativ via `python -m app.cli <command>`.
 
 Ausfuehrliche Dokumentation: `docs/cli.md`
 
-## Pre-Commit Checks (WICHTIG)
+## Pre-Commit Checks (STRICT / WICHTIG)
 
-**Vor jedem Commit muessen diese Checks lokal bestanden werden:**
+**Strikte Regel fuer Agents:** Jeder einzelne Commit muss CI-gruen sein. Nicht committen und nicht pushen, wenn lokale Checks fehlschlagen oder offensichtlich unvollstaendig sind. Wenn ein Check ausnahmsweise nicht lauffaehig ist (z.B. fehlender Browser fuer E2E), muss das im Abschluss klar genannt werden und der Commit darf nur erfolgen, wenn die betroffenen Aenderungen den Check nicht beruehren.
+
+**Vor jedem Code-Commit muessen diese Backend-Checks lokal bestanden werden:**
 
 ```bash
 ruff check app/ tests/          # Lint
@@ -460,8 +462,18 @@ ruff format --check app/ tests/ # Formatting
 pytest tests/ -v                # Tests
 ```
 
+**Wenn Frontend-Dateien (`frontend/`) geaendert wurden, muessen zusaetzlich bestanden werden:**
+
+```bash
+cd frontend
+npm run check
+npm run test:unit
+# Bei UI-/Routing-Aenderungen auch den passenden Playwright-Scope ausfuehren,
+# z.B. npm run test:e2e -- --grep "settings route|setup route"
+```
+
 Bei Fehlern: `ruff format app/ tests/` und `ruff check --fix app/ tests/` ausfuehren,
-dann erneut pruefen. Erst committen wenn alle drei Checks gruen sind.
+dann erneut pruefen. Erst committen wenn alle relevanten Checks gruen sind.
 
 Die CI-Pipeline (`lint-and-verify` Job) fuehrt zusaetzlich aus:
 - `pip check` (Dependency-Kompatibilitaet)
