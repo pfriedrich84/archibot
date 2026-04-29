@@ -16,7 +16,8 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: '/', label: 'Dashboard', emoji: '📊' },
       { href: '/review', label: 'Review', emoji: '✅', badgeKey: 'review' },
-      { href: '/inbox', label: 'Posteingang', emoji: '📥', badgeKey: 'inbox' }
+      { href: '/inbox', label: 'Posteingang', emoji: '📥', badgeKey: 'inbox' },
+      { href: '/processing', label: 'Verarbeitung', emoji: '⚡', badgeKey: 'errors' }
     ]
   },
   {

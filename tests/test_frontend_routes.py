@@ -45,6 +45,7 @@ def test_app_route_serves_frontend_index(client):
         "/app/tags",
         "/app/correspondents",
         "/app/doctypes",
+        "/app/processing",
         "/app/chat",
         "/app/embeddings",
     ],

@@ -1,19 +1,17 @@
 <script lang="ts">
-  import { Badge, Button, Card, Progressbar } from 'flowbite-svelte';
+  import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
-  import { cancelPoll, cancelReindexJob, saveSettings, startPoll, startReindex } from '$lib/api';
-  import type { DashboardPayload, SettingsSchemaPayload, StatusPayload } from '$lib/types';
+  import { saveSettings } from '$lib/api';
+  import type { SettingsSchemaPayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
 
   const initialData = () => data;
-  let dashboard = $state<DashboardPayload>(initialData().dashboard);
-  let status = $state<StatusPayload>(initialData().status);
   let schema = $state<SettingsSchemaPayload>(initialData().schema);
   type SettingValue = string | number | boolean;
 
-  let actionState = $state<'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | 'settings-save' | ''>('');
+  let actionState = $state<'settings-save' | ''>('');
   let feedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
   let draftSettings = $state<Record<string, SettingValue>>({});
   let originalSettings = $state<Record<string, SettingValue>>({});
@@ -22,8 +20,6 @@
 
   $effect(() => {
     if (!initialized) {
-      dashboard = data.dashboard;
-      status = data.status;
       schema = data.schema;
       const values: Record<string, SettingValue> = {};
       for (const category of data.schema.categories) {
@@ -52,13 +48,6 @@
       .filter((category) => category.fields.length > 0 || !needle);
   });
 
-  function pollPct() {
-    return dashboard.pipeline.total > 0 ? Math.round((dashboard.pipeline.done / dashboard.pipeline.total) * 100) : 0;
-  }
-
-  function reindexPct() {
-    return dashboard.reindex.total > 0 ? Math.round((dashboard.reindex.done / dashboard.reindex.total) * 100) : 0;
-  }
 
   let changedSettingsCount = $derived.by(() =>
     Object.entries(draftSettings).filter(([key, value]) => String(value) !== String(originalSettings[key] ?? '')).length
@@ -107,48 +96,10 @@
     }
   }
 
-  function readinessTone(ok: boolean) {
-    return ok
-      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
-      : 'border-amber-500/20 bg-amber-500/10 text-amber-100';
-  }
 
-  async function runJobAction(
-    key: 'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel',
-    action: () => Promise<DashboardPayload['pipeline'] | DashboardPayload['reindex']>
-  ) {
-    actionState = key;
-    feedback = null;
-    try {
-      const result = await action();
-      if (key.startsWith('poll')) {
-        dashboard = { ...dashboard, pipeline: result as DashboardPayload['pipeline'] };
-      } else {
-        dashboard = { ...dashboard, reindex: result as DashboardPayload['reindex'] };
-      }
-      feedback = {
-        type: 'success',
-        message:
-          key === 'poll-start'
-            ? 'Polling gestartet.'
-            : key === 'poll-cancel'
-              ? 'Polling-Abbruch angefordert.'
-              : key === 'reindex-start'
-                ? 'Reindex gestartet.'
-                : 'Reindex-Abbruch angefordert.'
-      };
-    } catch (error) {
-      feedback = {
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Aktion fehlgeschlagen.'
-      };
-    } finally {
-      actionState = '';
-    }
-  }
 </script>
 
-<AppShell title="Einstellungen & Jobs" subtitle="Polling, Reindex und Laufzeitstatus an einer Stelle steuern — mit durchsuchbarer Konfigurationsreferenz für schnelles Auffinden einzelner Settings.">
+<AppShell title="Einstellungen" subtitle="Durchsuchbare Konfigurationsreferenz für schnelles Auffinden und Speichern einzelner Settings.">
   {#snippet children()}
     {#if initialized}
       {#if feedback}
@@ -156,67 +107,6 @@
           {feedback.message}
         </div>
       {/if}
-
-      <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(19rem,0.8fr)]">
-        <div class="grid gap-6 xl:grid-cols-2">
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Polling</p>
-                <h2 class="mt-2 text-2xl font-semibold text-white">Dokumente verarbeiten</h2>
-                <p class="mt-1.5 text-sm text-slate-400">Startet den nächsten Erfassungs- und Klassifizierungslauf für neue Dokumente.</p>
-              </div>
-              <Badge color={dashboard.pipeline.running ? 'blue' : 'green'}>{dashboard.pipeline.running ? 'Aktiv' : 'Bereit'}</Badge>
-            </div>
-
-            <div class="mt-5 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5">
-              <div class="mb-2 flex items-center justify-between text-sm text-slate-300"><span>Fortschritt</span><span>{dashboard.pipeline.total > 0 ? `${dashboard.pipeline.done}/${dashboard.pipeline.total}` : 'Kein aktiver Lauf'}</span></div>
-              <Progressbar progress={pollPct()} color="blue" />
-              <div class="mt-3 grid gap-3 text-sm text-slate-400 sm:grid-cols-2"><div>Phase: <span class="text-slate-200">{dashboard.pipeline.phase || 'prepare'}</span></div><div>Fehler: <span class="text-slate-200">{dashboard.pipeline.failed}</span></div></div>
-            </div>
-
-            <div class="mt-5 flex flex-wrap gap-3">
-              <Button color="green" onclick={() => void runJobAction('poll-start', startPoll)} disabled={actionState !== '' || dashboard.pipeline.running}>{actionState === 'poll-start' ? 'Startet …' : 'Polling starten'}</Button>
-              <Button color="alternative" onclick={() => void runJobAction('poll-cancel', cancelPoll)} disabled={actionState !== '' || !dashboard.pipeline.running}>{actionState === 'poll-cancel' ? 'Stoppt …' : 'Polling stoppen'}</Button>
-            </div>
-          </Card>
-
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Embeddings</p>
-                <h2 class="mt-2 text-2xl font-semibold text-white">Reindex starten</h2>
-                <p class="mt-1.5 text-sm text-slate-400">Erstellt den Embedding-Index neu und aktualisiert semantische Suche und Kontextdaten.</p>
-              </div>
-              <Badge color={dashboard.reindex.running ? 'purple' : 'green'}>{dashboard.reindex.running ? 'Aktiv' : 'Bereit'}</Badge>
-            </div>
-
-            <div class="mt-5 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5">
-              <div class="mb-2 flex items-center justify-between text-sm text-slate-300"><span>Fortschritt</span><span>{dashboard.reindex.total > 0 ? `${dashboard.reindex.done}/${dashboard.reindex.total}` : 'Kein aktiver Lauf'}</span></div>
-              <Progressbar progress={reindexPct()} color="purple" />
-              <div class="mt-3 grid gap-3 text-sm text-slate-400 sm:grid-cols-2"><div>Fehler: <span class="text-slate-200">{dashboard.reindex.failed}</span></div><div>Index: <span class="text-slate-200">{dashboard.health.embedding_index_ready ? 'Bereit' : 'Fehlt'}</span></div></div>
-            </div>
-
-            <div class="mt-5 flex flex-wrap gap-3">
-              <Button color="purple" onclick={() => void runJobAction('reindex-start', startReindex)} disabled={actionState !== '' || dashboard.reindex.running}>{actionState === 'reindex-start' ? 'Startet …' : 'Reindex starten'}</Button>
-              <Button color="alternative" onclick={() => void runJobAction('reindex-cancel', cancelReindexJob)} disabled={actionState !== '' || !dashboard.reindex.running}>{actionState === 'reindex-cancel' ? 'Stoppt …' : 'Reindex stoppen'}</Button>
-            </div>
-          </Card>
-        </div>
-
-        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20 xl:sticky xl:top-24 xl:self-start">
-          <div class="flex items-center justify-between gap-3">
-            <div><p class="text-xs uppercase tracking-[0.2em] text-slate-500">Betriebsstatus</p><h2 class="mt-2 text-2xl font-semibold text-white">Systembereitschaft</h2></div>
-            <Badge color="gray">{status.app.frontend.mode}</Badge>
-          </div>
-          <div class="mt-5 space-y-2.5 text-sm">
-            <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.paperless.configured)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Paperless</div><div class="mt-2 font-medium">{status.services.paperless.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
-            <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.ollama.configured)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Ollama</div><div class="mt-2 font-medium">{status.services.ollama.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
-            <div class={`rounded-2xl border p-3.5 ${readinessTone(dashboard.health.embedding_index_ready)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Embedding-Index</div><div class="mt-2 font-medium">{dashboard.health.embedding_index_ready ? 'Bereit für Suche und Kontext' : 'Index fehlt oder ist noch leer'}</div></div>
-            <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5 text-slate-300"><div class="text-xs uppercase tracking-[0.2em] text-slate-500">Logging</div><div class="mt-2 font-medium text-white">{status.logging.level}</div></div>
-          </div>
-        </Card>
-      </div>
 
       <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

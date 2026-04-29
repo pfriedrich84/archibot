@@ -299,6 +299,15 @@ test('settings route renders schema-driven category card', async ({ page }) => {
   await expect(page.getByText('Paperless URL')).toBeVisible();
 });
 
+test('processing route renders controls and live log', async ({ page }) => {
+  await page.goto('/app/processing');
+  await expect(page.getByRole('heading', { name: 'Verarbeitung' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dokumente verarbeiten' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Reindex starten' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Aktuelle Ereignisse' })).toBeVisible();
+  await expect(page.getByText('out of memory')).toBeVisible();
+});
+
 test('review route renders native inspector workflow', async ({ page }) => {
   await page.goto('/app/review');
   await expect(page.getByText('1 insgesamt, Seite 1/1')).toBeVisible();
@@ -309,6 +318,10 @@ test('review route renders native inspector workflow', async ({ page }) => {
 
 test('sidebar menu opens review and split approval routes', async ({ page }) => {
   await page.goto('/app/');
+
+  await page.getByRole('link', { name: /^Verarbeitung/ }).click();
+  await expect(page).toHaveURL(/\/app\/processing/);
+  await expect(page.getByRole('heading', { name: 'Verarbeitung' })).toBeVisible();
 
   await page.getByRole('link', { name: /^Review/ }).click();
   await expect(page).toHaveURL(/\/app\/review/);
