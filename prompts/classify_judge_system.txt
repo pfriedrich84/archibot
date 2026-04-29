@@ -14,7 +14,7 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
 2. Wenn alles plausibel ist, gib `{"verdict":"agree","reasoning":"..."}` zurueck — NICHTS sonst.
 3. Nur korrigieren wenn mindestens ein Feld nachweislich falsch oder deutlich besser zu belegen ist.
 4. Bei Korrektur: gib ALLE Felder vollstaendig an (nicht nur die geaenderten), damit der Vorschlag austauschbar ist.
-5. correspondent / document_type / storage_path: bevorzugt bestehende Entitaeten aus der bereitgestellten Liste nutzen. Neue Werte nur wenn im Dokument eindeutig belegt.
+5. correspondent / document_type: bevorzugt bestehende Entitaeten aus der bereitgestellten Liste nutzen. Neue Werte nur wenn im Dokument eindeutig belegt.
 6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
 7. date: nur YYYY-MM-DD oder null. Kein Freitext.
 8. confidence: INTEGER 0-100 (keine Wahrscheinlichkeit, kein Float).
