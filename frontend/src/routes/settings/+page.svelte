@@ -63,12 +63,24 @@
     return 'text';
   }
 
+  function tagFieldLabel(fieldName: string): string {
+    if (fieldName === 'paperless_inbox_tag_id') return 'inbox tag';
+    if (fieldName === 'paperless_processed_tag_id') return 'processed tag';
+    if (fieldName === 'ocr_requested_tag_id') return 'OCR tag';
+    return 'tag';
+  }
+
+  function emptyTagOptionLabel(fieldName: string): string {
+    if (fieldName === 'ocr_requested_tag_id') return 'No OCR filter';
+    if (fieldName === 'paperless_processed_tag_id') return 'No processed tag';
+    return 'No tag selected';
+  }
+
   function tagFieldError(fieldName: string): string | null {
     if (fieldErrors[fieldName]) return fieldErrors[fieldName];
-    if (fieldName !== 'ocr_requested_tag_id') return null;
     const value = Number(draftSettings[fieldName] ?? 0);
     if (value > 0 && !paperlessTags.some((tag) => tag.id === value)) {
-      return `Configured OCR tag ID ${value} does not exist in Paperless`;
+      return `Configured ${tagFieldLabel(fieldName)} ID ${value} does not exist in Paperless`;
     }
     return null;
   }
@@ -203,7 +215,7 @@
                         onchange={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
                         class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
                       >
-                        <option value="0">No OCR filter</option>
+                        <option value="0">{emptyTagOptionLabel(field.name)}</option>
                         {#each paperlessTags as tag}
                           <option value={tag.id}>{tag.name} (#{tag.id})</option>
                         {/each}

@@ -30,7 +30,6 @@ from app.db import get_conn, mark_setup_complete
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
-from app.pipeline.ocr_correction import ocr_requested_tag_id
 from app.worker import cancel_poll, get_poll_progress, start_poll_task
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
@@ -868,12 +867,21 @@ async def save_settings_api(
 
     changed, restart_required = save_config(updates)
     field_errors: dict[str, str] = {}
-    if "ocr_requested_tag_id" in updates and ocr_requested_tag_id() > 0:
+    tag_fields = {
+        "paperless_inbox_tag_id": "Configured inbox tag ID {tag_id} does not exist in Paperless",
+        "paperless_processed_tag_id": "Configured processed tag ID {tag_id} does not exist in Paperless",
+        "ocr_requested_tag_id": "Configured OCR tag ID {tag_id} does not exist in Paperless",
+    }
+    changed_tag_fields = [field for field in tag_fields if field in updates and int(getattr(settings, field) or 0) > 0]
+    if changed_tag_fields:
         tags = await request.app.state.paperless.list_tags()
-        if all(tag.id != ocr_requested_tag_id() for tag in tags):
-            message = f"Configured OCR tag ID {ocr_requested_tag_id()} does not exist in Paperless"
-            field_errors["ocr_requested_tag_id"] = message
-            _write_settings_error("ocr_config", message)
+        tag_ids = {tag.id for tag in tags}
+        for field in changed_tag_fields:
+            tag_id = int(getattr(settings, field) or 0)
+            if tag_id not in tag_ids:
+                message = tag_fields[field].format(tag_id=tag_id)
+                field_errors[field] = message
+                _write_settings_error("paperless_config", message)
 
     runtime_fields = {k: v for k, v in changed.items() if k not in restart_required}
     actions: list[str] = []

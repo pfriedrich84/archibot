@@ -311,7 +311,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "paperless_inbox_tag_id": _fm(
         "Paperless",
         "Inbox Tag ID",
-        "number",
+        "tag_select",
         required=True,
         restart="component",
         help="Tag ID used as inbox (e.g. 'Posteingang')",
@@ -319,7 +319,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "paperless_processed_tag_id": _fm(
         "Paperless",
         "Processed Tag ID",
-        "number",
+        "tag_select",
         help="Optional tag ID added after commit (e.g. 'Verarbeitet')",
     ),
     "ocr_requested_tag_id": _fm(
