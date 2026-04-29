@@ -147,7 +147,9 @@ def _normalize_classification_result(
 
     correspondent = (result.correspondent or "").strip() or None
     document_type = (result.document_type or "").strip() or None
-    storage_path = (result.storage_path or "").strip() or None
+    storage_path = (
+        None if target.storage_path is not None else (result.storage_path or "").strip() or None
+    )
 
     seen: set[str] = set()
     norm_tags = []

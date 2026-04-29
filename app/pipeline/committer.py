@@ -27,7 +27,10 @@ async def commit_suggestion(
     """
     doc_id = suggestion.document_id
     try:
-        # -- 1. Build PATCH fields ----------------------------------------
+        # -- 1. Fetch current document state ------------------------------
+        doc = await paperless.get_document(doc_id)
+
+        # -- 2. Build PATCH fields ----------------------------------------
         fields: dict[str, object] = {"title": decision.title}
         if decision.date:
             fields["created_date"] = decision.date
@@ -35,11 +38,10 @@ async def commit_suggestion(
             fields["correspondent"] = decision.correspondent_id
         if decision.doctype_id is not None:
             fields["document_type"] = decision.doctype_id
-        if decision.storage_path_id is not None:
+        if decision.storage_path_id is not None and doc.storage_path is None:
             fields["storage_path"] = decision.storage_path_id
 
-        # -- 2. Merge tags ------------------------------------------------
-        doc = await paperless.get_document(doc_id)
+        # -- 3. Merge tags ------------------------------------------------
         tag_set = set(doc.tags)
         if not settings.keep_inbox_tag:
             tag_set.discard(settings.paperless_inbox_tag_id)
@@ -48,10 +50,10 @@ async def commit_suggestion(
             tag_set.add(settings.paperless_processed_tag_id)
         fields["tags"] = sorted(tag_set)
 
-        # -- 3. PATCH ------------------------------------------------------
+        # -- 4. PATCH ------------------------------------------------------
         await paperless.patch_document(doc_id, fields)
 
-        # -- 4. Update DB -------------------------------------------------
+        # -- 5. Update DB -------------------------------------------------
         with get_conn() as conn:
             conn.execute(
                 "UPDATE suggestions SET status = 'committed' WHERE id = ?",
@@ -62,7 +64,7 @@ async def commit_suggestion(
                 (doc_id,),
             )
 
-            # -- 5. Audit log ---------------------------------------------
+            # -- 6. Audit log ---------------------------------------------
             conn.execute(
                 """
                 INSERT INTO audit_log (action, document_id, actor, details)

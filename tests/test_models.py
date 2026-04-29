@@ -169,13 +169,20 @@ class TestSuggestionRowEffective:
             proposed_correspondent_id=2,
             original_doctype=10,
             proposed_doctype_id=20,
-            original_storage_path=30,
+            original_storage_path=None,
             proposed_storage_path_id=40,
         )
         assert s.effective_date == "2024-06-15"
         assert s.effective_correspondent_id == 2
         assert s.effective_doctype_id == 20
         assert s.effective_storage_path_id == 40
+
+    def test_effective_storage_path_preserves_original_when_set(self):
+        s = self._make_row(
+            original_storage_path=30,
+            proposed_storage_path_id=40,
+        )
+        assert s.effective_storage_path_id == 30
 
     def test_effective_falls_back_to_original(self):
         s = self._make_row(

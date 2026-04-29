@@ -242,6 +242,19 @@ class TestNormalizationHelpers:
         assert norm.confidence == 0
         assert len(norm.reasoning) == 500
 
+    def test_normalize_drops_storage_path_when_target_already_has_one(self):
+        target = PaperlessDocument(id=1, title="Existing", content="x", storage_path=7)
+        raw = ClassificationResult(
+            title="Existing",
+            storage_path="New Path",
+            tags=[],
+            confidence=80,
+        )
+
+        norm = _normalize_classification_result(raw, target=target)
+
+        assert norm.storage_path is None
+
 
 class TestPromptBudget:
     def _make_long_doc(self, doc_id: int = 1, content_len: int = 20000) -> PaperlessDocument:

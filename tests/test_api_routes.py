@@ -27,7 +27,9 @@ def _setup_app(tmp_path, monkeypatch):
     mock_paperless.create_document_type = AsyncMock(return_value=SimpleNamespace(id=301))
 
     app.state.paperless = mock_paperless
-    app.state.ollama = AsyncMock()
+    mock_ollama = AsyncMock()
+    mock_ollama.list_models = AsyncMock(return_value=["gemma4:e4b", "qwen3-embedding:4b"])
+    app.state.ollama = mock_ollama
     app.state.templates = templates
     app.state.scheduler = SimpleNamespace(
         get_job=lambda _job_id: None,
@@ -195,6 +197,14 @@ def test_settings_schema_api_groups_fields(client):
     token_field = next(f for f in paperless_category["fields"] if f["name"] == "paperless_token")
     assert token_field["sensitive"] is True
     assert token_field["value"] == ""
+
+
+def test_ollama_models_api_lists_available_models(client):
+    response = client.get("/api/v1/ollama/models")
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [{"name": "gemma4:e4b"}, {"name": "qwen3-embedding:4b"}]
+    }
 
 
 def test_tag_approval_api_updates_whitelist(client):

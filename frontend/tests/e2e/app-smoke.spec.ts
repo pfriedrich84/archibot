@@ -88,6 +88,77 @@ const settingsSchemaPayload = {
           sensitive: false,
           value: 'http://paperless.local',
           configured: null
+        },
+        {
+          name: 'paperless_inbox_tag_id',
+          label: 'Inbox Tag ID',
+          input_type: 'tag_select',
+          required: true,
+          restart: null,
+          help: 'Tag ID used as inbox',
+          sensitive: false,
+          value: 99,
+          configured: null
+        },
+        {
+          name: 'paperless_processed_tag_id',
+          label: 'Processed Tag ID',
+          input_type: 'tag_select',
+          required: false,
+          restart: null,
+          help: 'Tag added after processing',
+          sensitive: false,
+          value: 77,
+          configured: null
+        },
+        {
+          name: 'ocr_requested_tag_id',
+          label: 'OCR Tag ID',
+          input_type: 'tag_select',
+          required: false,
+          restart: null,
+          help: 'Tag used for OCR filter',
+          sensitive: false,
+          value: 66,
+          configured: null
+        }
+      ]
+    },
+    {
+      name: 'Ollama',
+      fields: [
+        {
+          name: 'ollama_url',
+          label: 'Ollama URL',
+          input_type: 'text',
+          required: true,
+          restart: null,
+          help: 'Ollama endpoint',
+          sensitive: false,
+          value: 'http://ollama.local',
+          configured: null
+        },
+        {
+          name: 'ollama_model',
+          label: 'Classification Model',
+          input_type: 'text',
+          required: true,
+          restart: null,
+          help: 'Classification model',
+          sensitive: false,
+          value: 'gemma4:e4b',
+          configured: null
+        },
+        {
+          name: 'ollama_embed_model',
+          label: 'Embedding Model',
+          input_type: 'text',
+          required: true,
+          restart: null,
+          help: 'Embedding model',
+          sensitive: false,
+          value: 'qwen3-embedding:4b',
+          configured: null
         }
       ]
     }
@@ -268,6 +339,12 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/tags', async (route) => {
     await route.fulfill({ json: tagsPayload });
   });
+  await page.route('**/api/v1/paperless/tags', async (route) => {
+    await route.fulfill({ json: { items: [{ id: 99, name: 'Posteingang' }, { id: 77, name: 'Verarbeitet' }, { id: 66, name: 'OCR' }] } });
+  });
+  await page.route('**/api/v1/ollama/models', async (route) => {
+    await route.fulfill({ json: { items: [{ name: 'gemma4:e4b' }, { name: 'qwen3-embedding:4b' }, { name: 'llama3.2:3b' }] } });
+  });
   await page.route('**/api/v1/errors/recent', async (route) => {
     await route.fulfill({ json: errorsPayload });
   });
@@ -297,6 +374,19 @@ test('settings route renders schema-driven category card', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Paperless' })).toBeVisible();
   await expect(page.getByText('Paperless URL')).toBeVisible();
+  await expect(page.getByLabel('Inbox Tag ID')).toHaveValue('99');
+});
+
+test('setup route preselects tags and ollama models', async ({ page }) => {
+  await page.goto('/app/setup');
+  await page.getByRole('button', { name: /Inbox/ }).click();
+  await expect(page.getByLabel('Inbox Tag ID')).toHaveValue('99');
+  await expect(page.getByLabel('Processed Tag ID')).toHaveValue('77');
+  await expect(page.getByLabel('OCR Tag ID')).toHaveValue('66');
+
+  await page.getByRole('button', { name: /Ollama/ }).click();
+  await expect(page.getByLabel('Klassifikationsmodell')).toHaveValue('gemma4:e4b');
+  await expect(page.getByLabel('Embedding-Modell')).toHaveValue('qwen3-embedding:4b');
 });
 
 test('processing route renders controls and live log', async ({ page }) => {

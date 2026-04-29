@@ -140,7 +140,7 @@ def register(mcp: FastMCP) -> None:
             name="update_document",
             description=(
                 "Update metadata of a Paperless-NGX document (title, correspondent, "
-                "document type, storage path, tags). Only provided fields are changed."
+                "document type, storage path, tags). Existing storage paths are preserved."
             ),
             annotations=ToolAnnotations(
                 readOnlyHint=False, destructiveHint=False, idempotentHint=True
@@ -165,7 +165,9 @@ def register(mcp: FastMCP) -> None:
             if document_type_id is not None:
                 fields["document_type"] = document_type_id
             if storage_path_id is not None:
-                fields["storage_path"] = storage_path_id
+                doc = await deps.paperless.get_document(document_id)
+                if doc.storage_path is None:
+                    fields["storage_path"] = storage_path_id
             if tag_ids is not None:
                 fields["tags"] = tag_ids
 

@@ -1,7 +1,12 @@
 import type { PageLoad } from './$types';
-import { loadSettingsSchema, loadStatus } from '$lib/api';
+import { loadOllamaModelOptions, loadPaperlessTagOptions, loadSettingsSchema, loadStatus } from '$lib/api';
 
 export const load: PageLoad = async ({ fetch }) => {
-  const [schema, status] = await Promise.all([loadSettingsSchema(fetch), loadStatus(fetch)]);
-  return { schema, status };
+  const [schema, status, paperlessTags, ollamaModels] = await Promise.all([
+    loadSettingsSchema(fetch),
+    loadStatus(fetch),
+    loadPaperlessTagOptions(fetch).catch(() => ({ items: [] })),
+    loadOllamaModelOptions(fetch).catch(() => ({ items: [] }))
+  ]);
+  return { schema, status, paperlessTags, ollamaModels };
 };

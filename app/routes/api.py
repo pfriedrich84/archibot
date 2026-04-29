@@ -848,6 +848,12 @@ async def paperless_tags_api(request: Request) -> dict[str, Any]:
     return {"items": [{"id": tag.id, "name": tag.name} for tag in tags]}
 
 
+@router.get("/ollama/models")
+async def ollama_models_api(request: Request) -> dict[str, Any]:
+    models = await request.app.state.ollama.list_models()
+    return {"items": [{"name": name} for name in models]}
+
+
 def _write_settings_error(stage: str, message: str) -> None:
     with get_conn() as conn:
         conn.execute(

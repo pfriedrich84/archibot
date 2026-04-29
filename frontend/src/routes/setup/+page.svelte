@@ -3,6 +3,7 @@
   import AppShell from '$lib/components/AppShell.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import { saveSettings } from '$lib/api';
+  import type { OllamaModelOption, PaperlessTagOption } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -11,6 +12,8 @@
     paperless_url: string;
     paperless_token: string;
     paperless_inbox_tag_id: number;
+    paperless_processed_tag_id: number;
+    ocr_requested_tag_id: number;
     ollama_url: string;
     ollama_model: string;
     ollama_embed_model: string;
@@ -32,6 +35,8 @@
   let currentStep = $state(0);
   let saving = $state(false);
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  let paperlessTags = $derived<PaperlessTagOption[]>(data.paperlessTags.items);
+  let ollamaModels = $derived<OllamaModelOption[]>(data.ollamaModels.items);
 
   function fieldValue(name: string) {
     for (const category of data.schema.categories) {
@@ -45,6 +50,8 @@
     paperless_url: String(fieldValue('paperless_url') ?? ''),
     paperless_token: '',
     paperless_inbox_tag_id: Number(fieldValue('paperless_inbox_tag_id') || 0),
+    paperless_processed_tag_id: Number(fieldValue('paperless_processed_tag_id') || 0),
+    ocr_requested_tag_id: Number(fieldValue('ocr_requested_tag_id') || 0),
     ollama_url: String(fieldValue('ollama_url') ?? 'http://ollama:11434'),
     ollama_model: String(fieldValue('ollama_model') ?? 'gemma4:e4b'),
     ollama_embed_model: String(fieldValue('ollama_embed_model') ?? 'qwen3-embedding:4b'),
@@ -58,6 +65,12 @@
   let inboxReady = $derived(Number(form.paperless_inbox_tag_id) > 0);
   let ollamaReady = $derived(Boolean(String(form.ollama_url).trim() && String(form.ollama_model).trim() && String(form.ollama_embed_model).trim()));
   let canFinish = $derived(paperlessReady && inboxReady && ollamaReady);
+
+  function modelOptionsFor(currentValue: string) {
+    const names = new Set(ollamaModels.map((model) => model.name).filter(Boolean));
+    if (currentValue) names.add(currentValue);
+    return [...names].sort();
+  }
 
   function validateStep(index: number) {
     if (index === 1) return paperlessReady;
@@ -154,15 +167,55 @@
               <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Status laut Backend: {data.status.services.paperless.configured ? 'Paperless ist konfiguriert.' : 'Noch nicht konfiguriert.'}</div>
             </div>
           {:else if currentStep === 2}
-            <div class="grid gap-4">
-              <label class="grid gap-2 text-sm text-slate-300">Inbox Tag ID<input bind:value={form.paperless_inbox_tag_id} type="number" min="1" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
-              <p class="text-sm text-slate-400">Der native Tag-Picker kann später ergänzt werden; für jetzt verhindert diese Pflichtprüfung leere oder ungültige Setup-Abschlüsse.</p>
+            <div class="grid gap-4 md:grid-cols-3">
+              <label class="grid gap-2 text-sm text-slate-300">
+                Inbox Tag ID
+                <select bind:value={form.paperless_inbox_tag_id} aria-label="Inbox Tag ID" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
+                  <option value={0}>No tag selected</option>
+                  {#each paperlessTags as tag}
+                    <option value={tag.id}>{tag.name} (#{tag.id})</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                Processed Tag ID
+                <select bind:value={form.paperless_processed_tag_id} aria-label="Processed Tag ID" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
+                  <option value={0}>No processed tag</option>
+                  {#each paperlessTags as tag}
+                    <option value={tag.id}>{tag.name} (#{tag.id})</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                OCR Tag ID
+                <select bind:value={form.ocr_requested_tag_id} aria-label="OCR Tag ID" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
+                  <option value={0}>No OCR filter</option>
+                  {#each paperlessTags as tag}
+                    <option value={tag.id}>{tag.name} (#{tag.id})</option>
+                  {/each}
+                </select>
+              </label>
+              <p class="text-sm text-slate-400 md:col-span-3">Die gespeicherten Tag-IDs werden aus Paperless geladen und vorausgewählt. Nur der Inbox Tag ist Pflicht.</p>
             </div>
           {:else if currentStep === 3}
             <div class="grid gap-4 md:grid-cols-2">
               <label class="grid gap-2 text-sm text-slate-300 md:col-span-2">Ollama URL<input bind:value={form.ollama_url} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
-              <label class="grid gap-2 text-sm text-slate-300">Klassifikationsmodell<input bind:value={form.ollama_model} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
-              <label class="grid gap-2 text-sm text-slate-300">Embedding-Modell<input bind:value={form.ollama_embed_model} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                Klassifikationsmodell
+                <select bind:value={form.ollama_model} aria-label="Klassifikationsmodell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
+                  {#each modelOptionsFor(form.ollama_model) as name}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                Embedding-Modell
+                <select bind:value={form.ollama_embed_model} aria-label="Embedding-Modell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
+                  {#each modelOptionsFor(form.ollama_embed_model) as name}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+              </label>
             </div>
           {:else if currentStep === 4}
             <div class="grid gap-4 md:grid-cols-2">

@@ -5,6 +5,7 @@ import type {
   EmbeddingsPayload,
   ErrorsPayload,
   InboxPayload,
+  OllamaModelsPayload,
   PaperlessTagsPayload,
   ReviewBulkMutationResponse,
   ReviewDetailPayload,
@@ -86,6 +87,8 @@ export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
 export const loadPaperlessTagOptions = (fetcher: typeof fetch) =>
   apiFetch<PaperlessTagsPayload>('/api/v1/paperless/tags', fetcher);
+export const loadOllamaModelOptions = (fetcher: typeof fetch) =>
+  apiFetch<OllamaModelsPayload>('/api/v1/ollama/models', fetcher);
 export const saveSettings = (updates: Record<string, string | number | boolean | null>) =>
   apiMutation<{ saved: boolean; changed: Record<string, unknown>; restart_required: string[]; actions: string[]; field_errors?: Record<string, string> }>(
     '/api/v1/settings',

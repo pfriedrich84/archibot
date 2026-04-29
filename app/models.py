@@ -204,11 +204,9 @@ class SuggestionRow(BaseModel):
 
     @property
     def effective_storage_path_id(self) -> int | None:
-        return (
-            self.proposed_storage_path_id
-            if self.proposed_storage_path_id is not None
-            else self.original_storage_path
-        )
+        if self.original_storage_path is not None:
+            return self.original_storage_path
+        return self.proposed_storage_path_id
 
 
 # =============================================================================

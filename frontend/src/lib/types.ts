@@ -83,6 +83,14 @@ export type PaperlessTagsPayload = {
   items: PaperlessTagOption[];
 };
 
+export type OllamaModelOption = {
+  name: string;
+};
+
+export type OllamaModelsPayload = {
+  items: OllamaModelOption[];
+};
+
 export type SettingsSchemaPayload = {
   categories: Array<{
     name: string;

@@ -85,6 +85,10 @@
     return null;
   }
 
+  function tagSelectValue(fieldName: string): number {
+    return tagFieldError(fieldName) ? 0 : Number(draftSettings[fieldName] ?? 0);
+  }
+
   function updateDraft(name: string, value: string, type: string) {
     fieldErrors = { ...fieldErrors, [name]: '' };
     if (type === 'number' || type === 'tag_select') {
@@ -211,11 +215,12 @@
                       </label>
                     {:else if field.input_type === 'tag_select'}
                       <select
-                        value={String(tagFieldError(field.name) ? 0 : draftSettings[field.name] ?? 0)}
+                        aria-label={field.label}
+                        value={tagSelectValue(field.name)}
                         onchange={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
                         class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
                       >
-                        <option value="0">{emptyTagOptionLabel(field.name)}</option>
+                        <option value={0}>{emptyTagOptionLabel(field.name)}</option>
                         {#each paperlessTags as tag}
                           <option value={tag.id}>{tag.name} (#{tag.id})</option>
                         {/each}

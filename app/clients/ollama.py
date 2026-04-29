@@ -98,12 +98,17 @@ class OllamaClient:
                 log.debug("waiting for GPU memory recovery", delay_s=delay)
                 await asyncio.sleep(delay)
 
+    async def list_models(self) -> list[str]:
+        """Return model names available from Ollama's /api/tags endpoint."""
+        r = await self._client.get("/api/tags")
+        r.raise_for_status()
+        data = r.json()
+        names = [str(m.get("name", "")).strip() for m in data.get("models", [])]
+        return sorted({name for name in names if name})
+
     async def model_available(self, name: str) -> bool:
         try:
-            r = await self._client.get("/api/tags")
-            r.raise_for_status()
-            data = r.json()
-            tags = [m.get("name", "") for m in data.get("models", [])]
+            tags = await self.list_models()
             return any(t == name or t.startswith(name + ":") for t in tags)
         except Exception:
             return False

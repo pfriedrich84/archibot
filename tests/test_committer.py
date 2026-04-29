@@ -105,6 +105,46 @@ async def test_commit_keeps_inbox_tag_when_enabled(mock_paperless, patch_db, mon
 
 
 @pytest.mark.asyncio
+async def test_commit_sets_storage_path_only_when_document_has_none(
+    mock_paperless, patch_db, monkeypatch
+):
+    """A suggested storage path may be applied only to documents without one."""
+    monkeypatch.setattr("app.pipeline.committer.settings.paperless_inbox_tag_id", 99)
+    monkeypatch.setattr("app.pipeline.committer.settings.paperless_processed_tag_id", None)
+
+    mock_paperless.get_document.return_value = PaperlessDocument(
+        id=42, title="old", tags=[99], storage_path=None
+    )
+
+    suggestion = _make_suggestion()
+    decision = _make_decision(storage_path_id=12)
+
+    await commit_suggestion(suggestion, decision, mock_paperless)
+
+    fields = mock_paperless.patch_document.call_args[0][1]
+    assert fields["storage_path"] == 12
+
+
+@pytest.mark.asyncio
+async def test_commit_never_changes_existing_storage_path(mock_paperless, patch_db, monkeypatch):
+    """Existing storage paths are preserved even if the decision contains another one."""
+    monkeypatch.setattr("app.pipeline.committer.settings.paperless_inbox_tag_id", 99)
+    monkeypatch.setattr("app.pipeline.committer.settings.paperless_processed_tag_id", None)
+
+    mock_paperless.get_document.return_value = PaperlessDocument(
+        id=42, title="old", tags=[99], storage_path=7
+    )
+
+    suggestion = _make_suggestion()
+    decision = _make_decision(storage_path_id=12)
+
+    await commit_suggestion(suggestion, decision, mock_paperless)
+
+    fields = mock_paperless.patch_document.call_args[0][1]
+    assert "storage_path" not in fields
+
+
+@pytest.mark.asyncio
 async def test_commit_skips_none_fields(mock_paperless, patch_db, monkeypatch):
     """None values for optional fields should not be sent."""
     monkeypatch.setattr("app.pipeline.committer.settings.paperless_inbox_tag_id", 99)
