@@ -84,6 +84,28 @@
     return [...names].sort();
   }
 
+  function tagLabel(id: number) {
+    const numericId = Number(id);
+    if (!numericId) return 'Nicht gesetzt';
+    const tag = paperlessTags.find((candidate) => Number(candidate.id) === numericId);
+    return tag ? `${tag.name} (#${tag.id})` : `#${numericId}`;
+  }
+
+  const summaryItems = $derived([
+    { label: 'Paperless URL', value: form.paperless_url || 'Fehlt', ok: Boolean(String(form.paperless_url).trim()) },
+    { label: 'Paperless API Token', value: paperlessTokenConfigured || form.paperless_token ? 'Gespeichert' : 'Fehlt', ok: paperlessReady },
+    { label: 'Inbox Tag', value: tagLabel(form.paperless_inbox_tag_id), ok: inboxReady },
+    { label: 'Processed Tag', value: tagLabel(form.paperless_processed_tag_id), ok: true },
+    { label: 'OCR Tag', value: tagLabel(form.ocr_requested_tag_id), ok: true },
+    { label: 'Ollama URL', value: form.ollama_url || 'Fehlt', ok: Boolean(String(form.ollama_url).trim()) },
+    { label: 'Klassifikationsmodell', value: form.ollama_model || 'Fehlt', ok: Boolean(String(form.ollama_model).trim()) },
+    { label: 'Embedding-Modell', value: form.ollama_embed_model || 'Fehlt', ok: Boolean(String(form.ollama_embed_model).trim()) },
+    { label: 'OCR Modus', value: form.ocr_mode, ok: true },
+    { label: 'Auto-Commit ab Konfidenz', value: `${form.auto_commit_confidence}%`, ok: true },
+    { label: 'Telegram', value: form.enable_telegram ? 'Aktiviert' : 'Deaktiviert', ok: true },
+    { label: 'LLM-as-Judge', value: form.enable_judge_verification ? 'Aktiviert' : 'Deaktiviert', ok: true }
+  ]);
+
   function validateStep(index: number) {
     if (index === 1) return paperlessReady;
     if (index === 2) return inboxReady;
@@ -307,10 +329,23 @@
             <div class="space-y-4">
               <div class="grid gap-3 md:grid-cols-3">
                 <div class={`rounded-2xl border p-4 ${paperlessReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Paperless<br /><strong>{paperlessReady ? 'bereit' : 'fehlt'}</strong></div>
-                <div class={`rounded-2xl border p-4 ${inboxReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Inbox Tag<br /><strong>{inboxReady ? form.paperless_inbox_tag_id : 'fehlt'}</strong></div>
+                <div class={`rounded-2xl border p-4 ${inboxReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Inbox Tag<br /><strong>{inboxReady ? tagLabel(form.paperless_inbox_tag_id) : 'fehlt'}</strong></div>
                 <div class={`rounded-2xl border p-4 ${ollamaReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Ollama<br /><strong>{ollamaReady ? 'bereit' : 'fehlt'}</strong></div>
               </div>
-              <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Setup abschließen'}</Button>
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Konfigurationsübersicht</h3>
+                <dl class="mt-4 grid gap-3 md:grid-cols-2">
+                  {#each summaryItems as item}
+                    <div class={`rounded-xl border p-3 ${item.ok ? 'border-slate-800 bg-slate-900/70' : 'border-rose-500/30 bg-rose-500/10'}`}>
+                      <dt class="text-xs uppercase tracking-wide text-slate-500">{item.label}</dt>
+                      <dd class={`mt-1 break-words text-sm font-medium ${item.ok ? 'text-slate-100' : 'text-rose-100'}`}>{item.value}</dd>
+                    </div>
+                  {/each}
+                </dl>
+              </div>
+
+              <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
               {#if feedback?.type === 'success'}<a href="/app" class="ml-3 inline-flex text-sm font-medium text-emerald-300 hover:text-emerald-200">Zum Dashboard →</a>{/if}
             </div>
           {/if}
@@ -321,7 +356,7 @@
           {#if currentStep < steps.length - 1}
             <Button color="green" class="rounded-xl" disabled={testingPaperless || testingOllama} onclick={() => void next()}>{testingPaperless || testingOllama ? 'Prüft …' : 'Weiter'}</Button>
           {:else}
-            <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Abschließen'}</Button>
+            <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
           {/if}
         </div>
       </Card>
