@@ -68,11 +68,14 @@ def test_setup_mode_redirects_app_to_setup(monkeypatch, client):
 
     response = client.get("/app", follow_redirects=False)
     setup_response = client.get("/app/setup", follow_redirects=False)
+    asset_response = client.get("/app/asset.js", follow_redirects=False)
 
     assert response.status_code == 302
     assert response.headers["location"] == "/app/setup"
     assert setup_response.status_code == 200
     assert "frontend index" in setup_response.text
+    assert asset_response.status_code == 200
+    assert "console.log" in asset_response.text
 
 
 def test_missing_build_returns_helpful_status(monkeypatch, client):
