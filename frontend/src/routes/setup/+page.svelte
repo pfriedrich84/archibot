@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
@@ -212,9 +211,13 @@
       if (!String(form.paperless_token).trim() && paperlessTokenConfigured) {
         delete updates.paperless_token;
       }
-      await saveSettings(updates);
+      const result = await saveSettings(updates);
+      if (result.field_errors && Object.keys(result.field_errors).length > 0) {
+        feedback = { type: 'error', message: Object.values(result.field_errors).join(' ') };
+        return;
+      }
       feedback = { type: 'success', message: 'Setup gespeichert. Weiterleitung zum Dashboard …' };
-      await goto(`${base}/`);
+      window.location.assign(`${base}/`);
     } catch (error) {
       feedback = { type: 'error', message: error instanceof Error ? error.message : 'Setup konnte nicht gespeichert werden.' };
     } finally {
@@ -392,11 +395,11 @@
         </div>
 
         <div class="mt-6 flex items-center justify-between border-t border-slate-800 pt-5">
-          <Button color="alternative" class="rounded-xl" disabled={currentStep === 0} onclick={previous}>Zurück</Button>
+          <Button type="button" color="alternative" class="rounded-xl" disabled={currentStep === 0} onclick={previous}>Zurück</Button>
           {#if currentStep < steps.length - 1}
-            <Button color="green" class="rounded-xl" disabled={testingPaperless || testingOllama} onclick={() => void next()}>{testingPaperless || testingOllama ? 'Prüft …' : 'Weiter'}</Button>
+            <Button type="button" color="green" class="rounded-xl" disabled={testingPaperless || testingOllama} onclick={() => void next()}>{testingPaperless || testingOllama ? 'Prüft …' : 'Weiter'}</Button>
           {:else}
-            <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
+            <Button type="button" color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
           {/if}
         </div>
       </Card>
