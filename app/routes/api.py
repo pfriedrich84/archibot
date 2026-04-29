@@ -943,6 +943,12 @@ async def save_settings_api(
         raise HTTPException(status_code=400, detail="Missing updates payload")
 
     changed, restart_required = save_config(updates)
+
+    runtime_fields = {k: v for k, v in changed.items() if k not in restart_required}
+    actions: list[str] = []
+    if runtime_fields:
+        actions = await apply_runtime_changes(request.app, changed)
+
     field_errors: dict[str, str] = {}
     tag_fields = {
         "paperless_inbox_tag_id": "Configured inbox tag ID {tag_id} does not exist in Paperless",
@@ -953,7 +959,13 @@ async def save_settings_api(
         field for field in tag_fields if field in updates and int(getattr(settings, field) or 0) > 0
     ]
     if changed_tag_fields:
-        tags = await request.app.state.paperless.list_tags()
+        paperless = getattr(request.app.state, "paperless", None)
+        if paperless is None:
+            from app.clients.paperless import PaperlessClient
+
+            paperless = PaperlessClient()
+            request.app.state.paperless = paperless
+        tags = await paperless.list_tags()
         tag_ids = {tag.id for tag in tags}
         for field in changed_tag_fields:
             tag_id = int(getattr(settings, field) or 0)
@@ -961,11 +973,6 @@ async def save_settings_api(
                 message = tag_fields[field].format(tag_id=tag_id)
                 field_errors[field] = message
                 _write_settings_error("paperless_config", message)
-
-    runtime_fields = {k: v for k, v in changed.items() if k not in restart_required}
-    actions: list[str] = []
-    if runtime_fields:
-        actions = await apply_runtime_changes(request.app, changed)
 
     if settings.paperless_url and settings.paperless_token and settings.paperless_inbox_tag_id != 0:
         mark_setup_complete()

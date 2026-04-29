@@ -253,6 +253,43 @@ def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
     assert client.get("/api/v1/chat").json()["sessions"] == []
 
 
+def test_settings_save_initializes_paperless_before_tag_validation(client, monkeypatch):
+    from app.config import settings
+
+    original_url = settings.paperless_url
+    original_token = settings.paperless_token
+    original_inbox = settings.paperless_inbox_tag_id
+    app.state.paperless = None
+
+    class FakePaperlessClient:
+        def __init__(self, *args, **kwargs):
+            self.base_url = settings.paperless_url
+
+        async def list_tags(self):
+            return [SimpleNamespace(id=123, name="Posteingang")]
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr("app.clients.paperless.PaperlessClient", FakePaperlessClient)
+    object.__setattr__(settings, "paperless_url", "https://paperless.example")
+    object.__setattr__(settings, "paperless_token", "token")
+    object.__setattr__(settings, "paperless_inbox_tag_id", 0)
+
+    try:
+        response = client.post(
+            "/api/v1/settings",
+            json={"updates": {"paperless_inbox_tag_id": 123}},
+        )
+    finally:
+        object.__setattr__(settings, "paperless_url", original_url)
+        object.__setattr__(settings, "paperless_token", original_token)
+        object.__setattr__(settings, "paperless_inbox_tag_id", original_inbox)
+
+    assert response.status_code == 200
+    assert response.json()["field_errors"] == {}
+
+
 def test_settings_schema_api_groups_fields(client):
     response = client.get("/api/v1/settings/schema")
     assert response.status_code == 200
