@@ -23,7 +23,7 @@ from app.api_data import (
     get_tags_snapshot,
 )
 from app.chat import ask as ask_chat
-from app.chat import get_or_create_session
+from app.chat import delete_chat_session, get_chat_session_snapshot, get_or_create_session
 from app.config import settings
 from app.config_writer import apply_runtime_changes, save_config
 from app.db import get_conn, mark_setup_complete
@@ -811,6 +811,22 @@ async def embeddings_api(limit: int = Query(default=100, ge=1, le=500)) -> dict[
 @router.get("/chat")
 async def chat_api(limit: int = Query(default=8, ge=1, le=100)) -> dict[str, Any]:
     return get_chat_snapshot(limit=limit)
+
+
+@router.get("/chat/sessions/{session_id}")
+async def chat_session_api(session_id: str) -> dict[str, Any]:
+    session = get_chat_session_snapshot(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return session
+
+
+@router.delete("/chat/sessions/{session_id}")
+async def chat_delete_session_api(session_id: str) -> dict[str, Any]:
+    deleted = delete_chat_session(session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"deleted": True}
 
 
 @router.post("/chat/ask")

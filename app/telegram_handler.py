@@ -217,10 +217,10 @@ async def _handle_message(update: dict) -> None:
     if not _ollama or not _paperless or not _telegram:
         return
 
-    from app.chat import ask, get_or_create_session
+    from app.chat import ask, get_or_create_session, markdown_to_telegram_html
 
     session_key = f"tg:{chat_id}"
-    _, session = get_or_create_session(session_key)
+    _, session = get_or_create_session(session_key, origin="telegram")
 
     try:
         result = await ask(text, session, _paperless, _ollama)
@@ -230,9 +230,12 @@ async def _handle_message(update: dict) -> None:
         return
 
     # Build response with optional source references
-    answer = result.answer
+    answer = markdown_to_telegram_html(result.answer)
     if result.sources:
-        source_lines = ", ".join(f"#{s['id']} {s['title']}" for s in result.sources[:5])
+        source_lines = ", ".join(
+            f"#{s['id']} {markdown_to_telegram_html(str(s['title'] or 'Unbenannt'))}"
+            for s in result.sources[:5]
+        )
         answer += f"\n\n<i>Quellen: {source_lines}</i>"
 
     await _telegram.send_message(answer, parse_mode="HTML")

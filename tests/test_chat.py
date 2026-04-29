@@ -160,6 +160,7 @@ class TestAskPipeline:
         assert len(result.sources) == 1
         assert result.sources[0]["id"] == 42
         assert result.sources[0]["title"] == "Stromrechnung Q1"
+        assert session.messages[1]["sources"] == result.sources
 
     @pytest.mark.asyncio()
     async def test_ask_appends_to_session_history(self):
@@ -173,7 +174,7 @@ class TestAskPipeline:
 
         assert len(session.messages) == 2
         assert session.messages[0] == {"role": "user", "content": "Frage"}
-        assert session.messages[1] == {"role": "assistant", "content": "Antwort"}
+        assert session.messages[1] == {"role": "assistant", "content": "Antwort", "sources": []}
 
     @pytest.mark.asyncio()
     async def test_ask_trims_history(self):
@@ -307,7 +308,7 @@ class TestTelegramChatHandler:
                 from app.chat import ChatResult
 
                 mock_ask.return_value = ChatResult(
-                    answer="Das ist die Antwort.",
+                    answer="**Rolle:** Das ist die Antwort.",
                     sources=[{"id": 1, "title": "Doc", "distance": 0.1}],
                 )
 
@@ -321,12 +322,35 @@ class TestTelegramChatHandler:
 
             mock_telegram.send_message.assert_called_once()
             sent_text = mock_telegram.send_message.call_args[0][0]
+            assert "<b>Rolle:</b>" in sent_text
             assert "Antwort" in sent_text
             assert "Quellen" in sent_text
+            assert mock_telegram.send_message.call_args.kwargs["parse_mode"] == "HTML"
         finally:
             th._telegram = old_tg
             th._paperless = old_pl
             th._ollama = old_ol
+
+    def test_markdown_to_telegram_html_formats_bold_and_escapes_html(self):
+        from app.chat import markdown_to_telegram_html
+
+        rendered = markdown_to_telegram_html("**Rolle:** <script>alert(1)</script>")
+
+        assert "<b>Rolle:</b>" in rendered
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+
+    def test_get_or_create_session_preserves_telegram_session_key(self):
+        from app.chat import _sessions, get_or_create_session
+
+        _sessions.clear()
+        session_id, session = get_or_create_session("tg:12345", origin="telegram")
+        second_id, second_session = get_or_create_session("tg:12345", origin="telegram")
+
+        assert session_id == "tg:12345"
+        assert second_id == "tg:12345"
+        assert second_session is session
+        assert session.origin == "telegram"
 
     @pytest.mark.asyncio()
     async def test_handle_message_skips_commands(self):

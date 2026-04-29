@@ -1,6 +1,7 @@
 import type {
   ChatAskPayload,
   ChatPayload,
+  ChatSessionPayload,
   DashboardPayload,
   EmbeddingsPayload,
   ErrorsPayload,
@@ -81,8 +82,21 @@ export const loadTags = (fetcher: typeof fetch) => apiFetch<TagsPayload>('/api/v
 export const loadStats = (fetcher: typeof fetch) => apiFetch<StatsPayload>('/api/v1/stats', fetcher);
 export const loadEmbeddings = (fetcher: typeof fetch) => apiFetch<EmbeddingsPayload>('/api/v1/embeddings', fetcher);
 export const loadChat = (fetcher: typeof fetch) => apiFetch<ChatPayload>('/api/v1/chat', fetcher);
+export const loadChatSession = (sessionId: string, fetcher: typeof fetch = fetch) =>
+  apiFetch<ChatSessionPayload>(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, fetcher);
 export const askChat = (question: string, sessionId: string | null) =>
   apiMutation<ChatAskPayload>('/api/v1/chat/ask', { question, session_id: sessionId });
+export const deleteChatSession = async (sessionId: string) => {
+  const response = await fetch(`${baseUrl}/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: { accept: 'application/json', 'X-CSRF-Token': getCsrfToken() }
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `API mutation failed for /api/v1/chat/sessions/${sessionId}: ${response.status}`);
+  }
+  return (await response.json()) as { deleted: boolean };
+};
 export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
 export const loadPaperlessTagOptions = (fetcher: typeof fetch) =>

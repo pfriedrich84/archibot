@@ -390,10 +390,42 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: embeddingsPayload });
   });
   await page.route('**/api/v1/chat', async (route) => {
-    await route.fulfill({ json: { recent_activity: [] } });
+    await route.fulfill({
+      json: {
+        recent_activity: [],
+        sessions: [
+          {
+            id: 'older-session',
+            title: 'Älterer Chat',
+            preview: 'Archivierte Antwort',
+            origin: 'telegram',
+            last_active: '2026-04-26T10:00:00+00:00',
+            message_count: 2
+          }
+        ]
+      }
+    });
+  });
+  await page.route('**/api/v1/chat/sessions/older-session', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ json: { deleted: true } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        id: 'older-session',
+        title: 'Älterer Chat',
+        origin: 'telegram',
+        last_active: '2026-04-26T10:00:00+00:00',
+        messages: [
+          { role: 'user', content: 'Was ist die Rolle?' },
+          { role: 'assistant', content: '**Rolle:** Archivierte Antwort' }
+        ]
+      }
+    });
   });
   await page.route('**/api/v1/chat/ask', async (route) => {
-    await route.fulfill({ json: { session_id: 'testsession', answer: 'Die letzte Rechnung war im April.', sources: [{ id: 77, title: 'Stromrechnung April', distance: 0.123 }] } });
+    await route.fulfill({ json: { session_id: 'testsession', answer: '**Rolle:** Die letzte Rechnung war im April.', sources: [{ id: 77, title: 'Stromrechnung April', distance: 0.123 }] } });
   });
 });
 
@@ -480,8 +512,11 @@ test('chat route sends a question and renders answer sources', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Dokumente befragen' })).toBeVisible();
   await page.getByPlaceholder('Frage an deine Dokumente …').fill('Was ist die letzte Rechnung?');
   await page.getByRole('button', { name: 'Fragen' }).click();
+  await expect(page.locator('strong', { hasText: 'Rolle:' })).toBeVisible();
   await expect(page.getByText('Die letzte Rechnung war im April.')).toBeVisible();
   await expect(page.getByText('#77 Stromrechnung April · 0.123')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Letzte Chats' })).toBeVisible();
+  await expect(page.getByText('Älterer Chat')).toBeVisible();
 });
 
 test('stats route renders phase health card', async ({ page }) => {

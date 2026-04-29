@@ -339,6 +339,8 @@ def get_stats_snapshot() -> dict[str, Any]:
 
 
 def get_chat_snapshot(limit: int = 8) -> dict[str, Any]:
+    from app.chat import list_chat_sessions
+
     with db.get_conn() as conn:
         rows = conn.execute(
             """
@@ -350,7 +352,10 @@ def get_chat_snapshot(limit: int = 8) -> dict[str, Any]:
             """,
             (limit,),
         ).fetchall()
-    return {"recent_activity": [dict(row) for row in rows]}
+    return {
+        "sessions": list_chat_sessions(limit=limit),
+        "recent_activity": [dict(row) for row in rows],
+    }
 
 
 def get_dashboard_snapshot(app: Any) -> dict[str, Any]:

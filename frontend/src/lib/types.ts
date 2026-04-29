@@ -299,7 +299,37 @@ export type EmbeddingsPayload = {
   }>;
 };
 
+export type ChatSource = {
+  id: number;
+  title: string | null;
+  distance: number;
+};
+
+export type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: ChatSource[];
+};
+
+export type ChatSessionSummary = {
+  id: string;
+  title: string;
+  preview: string;
+  origin: 'web' | 'telegram';
+  last_active: string;
+  message_count: number;
+};
+
+export type ChatSessionPayload = {
+  id: string;
+  title: string;
+  origin: 'web' | 'telegram';
+  last_active: string;
+  messages: ChatMessage[];
+};
+
 export type ChatPayload = {
+  sessions: ChatSessionSummary[];
   recent_activity: Array<{
     details: string | null;
     occurred_at: string;

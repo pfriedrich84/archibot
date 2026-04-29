@@ -6,10 +6,14 @@ Used by both the web route (``app.routes.chat``) and the Telegram handler
 
 from __future__ import annotations
 
+import html
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Literal
 
 import structlog
 
@@ -46,8 +50,10 @@ class _EntityCache:
 
 @dataclass
 class ChatSession:
-    messages: list[dict[str, str]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
     last_active: float = field(default_factory=time.time)
+    created_at: float = field(default_factory=time.time)
+    origin: Literal["web", "telegram"] = "web"
     entity_cache: _EntityCache = field(default_factory=_EntityCache)
 
 
@@ -68,17 +74,79 @@ def _expire_sessions() -> None:
         del _sessions[sid]
 
 
-def get_or_create_session(session_id: str | None) -> tuple[str, ChatSession]:
-    """Return (session_id, session).  Creates a new session if missing/expired."""
+def get_or_create_session(
+    session_id: str | None, *, origin: Literal["web", "telegram"] = "web"
+) -> tuple[str, ChatSession]:
+    """Return (session_id, session). Creates a runtime-only in-memory session."""
     _expire_sessions()
     if session_id and session_id in _sessions:
         session = _sessions[session_id]
         session.last_active = time.time()
         return session_id, session
-    new_id = uuid.uuid4().hex[:16]
-    session = ChatSession()
+    new_id = session_id if origin == "telegram" and session_id else uuid.uuid4().hex[:16]
+    session = ChatSession(origin=origin)
     _sessions[new_id] = session
     return new_id, session
+
+
+def _iso_from_ts(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat()
+
+
+def _session_title(session: ChatSession) -> str:
+    first_user = next((m["content"] for m in session.messages if m.get("role") == "user"), "")
+    title = " ".join(first_user.split())
+    if not title:
+        return "Telegram Chat" if session.origin == "telegram" else "Neuer Chat"
+    return title[:77] + "..." if len(title) > 80 else title
+
+
+def _session_preview(session: ChatSession) -> str:
+    last = session.messages[-1]["content"] if session.messages else ""
+    preview = " ".join(last.split())
+    return preview[:117] + "..." if len(preview) > 120 else preview
+
+
+def list_chat_sessions(limit: int = 20) -> list[dict[str, object]]:
+    """Return completed sessions for the latest-chat overview."""
+    _expire_sessions()
+    completed = [
+        (sid, session)
+        for sid, session in _sessions.items()
+        if any(m.get("role") == "assistant" for m in session.messages)
+    ]
+    completed.sort(key=lambda item: item[1].last_active, reverse=True)
+    return [
+        {
+            "id": sid,
+            "title": _session_title(session),
+            "preview": _session_preview(session),
+            "origin": session.origin,
+            "last_active": _iso_from_ts(session.last_active),
+            "message_count": len(session.messages),
+        }
+        for sid, session in completed[:limit]
+    ]
+
+
+def get_chat_session_snapshot(session_id: str) -> dict[str, object] | None:
+    _expire_sessions()
+    session = _sessions.get(session_id)
+    if not session:
+        return None
+    session.last_active = time.time()
+    return {
+        "id": session_id,
+        "title": _session_title(session),
+        "origin": session.origin,
+        "last_active": _iso_from_ts(session.last_active),
+        "messages": list(session.messages),
+    }
+
+
+def delete_chat_session(session_id: str) -> bool:
+    _expire_sessions()
+    return _sessions.pop(session_id, None) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +160,35 @@ def load_chat_system_prompt() -> str:
     return (settings.prompts_dir / "chat_system.txt").read_text(encoding="utf-8")
 
 
+def markdown_to_telegram_html(markdown: str) -> str:
+    """Render a safe markdown subset to Telegram-compatible HTML."""
+    text = html.escape(markdown)
+
+    code_blocks: list[str] = []
+
+    def stash_code_block(match: re.Match[str]) -> str:
+        code_blocks.append(f"<pre>{match.group(1).strip()}</pre>")
+        return f"\u0000CODE{len(code_blocks) - 1}\u0000"
+
+    text = re.sub(r"```(?:\w+)?\n?(.*?)```", stash_code_block, text, flags=re.DOTALL)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", text)
+
+    def link(match: re.Match[str]) -> str:
+        label = match.group(1)
+        url = html.unescape(match.group(2))
+        if not url.startswith(("http://", "https://")):
+            return label
+        return f'<a href="{html.escape(url, quote=True)}">{label}</a>'
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link, text)
+    text = re.sub(r"^#{1,6}\s+(.+)$", r"<b>\1</b>", text, flags=re.MULTILINE)
+    for index, block in enumerate(code_blocks):
+        text = text.replace(f"\u0000CODE{index}\u0000", block)
+    return text
+
+
 def _build_chat_user_message(question: str, context: str) -> str:
     """Combine user question with document context."""
     if context:
@@ -102,7 +199,7 @@ def _build_chat_user_message(question: str, context: str) -> str:
 def _budget_context_blocks(
     similar: list[SimilarDocument],
     system_prompt: str,
-    history: list[dict[str, str]],
+    history: list[dict[str, Any]],
     question: str,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
@@ -218,16 +315,17 @@ async def ask(
         log.error("chat LLM call failed", error=str(exc))
         answer = "Fehler bei der Verarbeitung. Bitte später erneut versuchen."
 
-    # 5. Update session history (plain Q&A only)
-    session.messages.append({"role": "user", "content": question})
-    session.messages.append({"role": "assistant", "content": answer})
-    if len(session.messages) > MAX_HISTORY:
-        session.messages = session.messages[-MAX_HISTORY:]
-
-    # 6. Build sources list
+    # 5. Build sources list
     sources = [
         {"id": s.document.id, "title": s.document.title, "distance": round(s.distance, 3)}
         for s in similar
     ]
+
+    # 6. Update session history (plain Q&A content plus display metadata)
+    session.messages.append({"role": "user", "content": question})
+    session.messages.append({"role": "assistant", "content": answer, "sources": sources})
+    session.last_active = time.time()
+    if len(session.messages) > MAX_HISTORY:
+        session.messages = session.messages[-MAX_HISTORY:]
 
     return ChatResult(answer=answer, sources=sources)

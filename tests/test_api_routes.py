@@ -167,8 +167,14 @@ def test_embeddings_api_returns_recent_rows(client):
 
 
 def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
+    from app.chat import _sessions
+
+    _sessions.clear()
+
     async def fake_ask(question, session, paperless, ollama):
         assert question == "Was ist neu?"
+        session.messages.append({"role": "user", "content": question})
+        session.messages.append({"role": "assistant", "content": "Antwort aus dem Test"})
         return SimpleNamespace(
             answer="Antwort aus dem Test",
             sources=[{"id": 1, "title": "Rechnung April", "distance": 0.123}],
@@ -182,6 +188,18 @@ def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
     assert payload["session_id"]
     assert payload["answer"] == "Antwort aus dem Test"
     assert payload["sources"][0]["id"] == 1
+
+    snapshot = client.get("/api/v1/chat").json()
+    assert snapshot["sessions"][0]["title"] == "Was ist neu?"
+    assert snapshot["sessions"][0]["origin"] == "web"
+
+    session_response = client.get(f"/api/v1/chat/sessions/{payload['session_id']}")
+    assert session_response.status_code == 200
+    assert session_response.json()["messages"][1]["content"] == "Antwort aus dem Test"
+
+    delete_response = client.delete(f"/api/v1/chat/sessions/{payload['session_id']}")
+    assert delete_response.status_code == 200
+    assert client.get("/api/v1/chat").json()["sessions"] == []
 
 
 def test_settings_schema_api_groups_fields(client):
