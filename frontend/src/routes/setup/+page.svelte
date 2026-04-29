@@ -229,7 +229,7 @@
   }
 </script>
 
-<AppShell title="Setup" subtitle="Geführte Ersteinrichtung für Paperless, Inbox Tag und Ollama — ohne manuelles Bearbeiten von .env-Dateien.">
+<AppShell setupMode title="Setup" subtitle="Geführte Ersteinrichtung für Paperless, Inbox Tag und Ollama — ohne manuelles Bearbeiten von .env-Dateien.">
   {#snippet children()}
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
