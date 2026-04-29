@@ -18,6 +18,8 @@
     ollama_url: string;
     ollama_model: string;
     ollama_embed_model: string;
+    ollama_ocr_model: string;
+    ocr_vision_model: string;
     ocr_mode: string;
     auto_commit_confidence: number;
     enable_telegram: boolean;
@@ -29,7 +31,8 @@
     { id: 'paperless', label: 'Paperless', title: 'Paperless verbinden' },
     { id: 'inbox', label: 'Inbox', title: 'Posteingang festlegen' },
     { id: 'ollama', label: 'Ollama', title: 'Modelle konfigurieren' },
-    { id: 'optional', label: 'Optional', title: 'Automation & Extras' },
+    { id: 'ocr', label: 'OCR', title: 'OCR konfigurieren' },
+    { id: 'advanced', label: 'Erweitert', title: 'Erweiterte Optionen' },
     { id: 'finish', label: 'Fertig', title: 'Zusammenfassung' }
   ] as const;
 
@@ -66,6 +69,8 @@
     ollama_url: String(fieldValue('ollama_url') ?? 'http://ollama:11434'),
     ollama_model: String(fieldValue('ollama_model') ?? 'gemma4:e4b'),
     ollama_embed_model: String(fieldValue('ollama_embed_model') ?? 'qwen3-embedding:4b'),
+    ollama_ocr_model: String(fieldValue('ollama_ocr_model') ?? 'qwen3:4b'),
+    ocr_vision_model: String(fieldValue('ocr_vision_model') ?? 'qwen3-vl:4b'),
     ocr_mode: String(fieldValue('ocr_mode') ?? 'off'),
     auto_commit_confidence: Number(fieldValue('auto_commit_confidence') || 0),
     enable_telegram: Boolean(fieldValue('enable_telegram') ?? false),
@@ -76,7 +81,12 @@
   let paperlessReady = $derived(Boolean(String(form.paperless_url).trim() && (String(form.paperless_token).trim() || paperlessTokenConfigured)));
   let inboxReady = $derived(Number(form.paperless_inbox_tag_id) > 0);
   let ollamaReady = $derived(Boolean(String(form.ollama_url).trim() && String(form.ollama_model).trim() && String(form.ollama_embed_model).trim()));
-  let canFinish = $derived(paperlessReady && inboxReady && ollamaReady);
+  let ocrReady = $derived(
+    form.ocr_mode === 'off' ||
+      (form.ocr_mode === 'text' && Boolean(String(form.ollama_ocr_model).trim())) ||
+      (form.ocr_mode.startsWith('vision') && Boolean(String(form.ocr_vision_model).trim()))
+  );
+  let canFinish = $derived(paperlessReady && inboxReady && ollamaReady && ocrReady);
 
   function modelOptionsFor(currentValue: string) {
     const names = new Set(ollamaModels.map((model) => model.name).filter(Boolean));
@@ -100,7 +110,9 @@
     { label: 'Ollama URL', value: form.ollama_url || 'Fehlt', ok: Boolean(String(form.ollama_url).trim()) },
     { label: 'Klassifikationsmodell', value: form.ollama_model || 'Fehlt', ok: Boolean(String(form.ollama_model).trim()) },
     { label: 'Embedding-Modell', value: form.ollama_embed_model || 'Fehlt', ok: Boolean(String(form.ollama_embed_model).trim()) },
-    { label: 'OCR Modus', value: form.ocr_mode, ok: true },
+    { label: 'OCR Modus', value: form.ocr_mode, ok: ocrReady },
+    { label: 'OCR Textmodell', value: form.ollama_ocr_model || 'Fehlt', ok: form.ocr_mode !== 'text' || Boolean(String(form.ollama_ocr_model).trim()) },
+    { label: 'OCR Vision-Modell', value: form.ocr_vision_model || 'Fehlt', ok: !form.ocr_mode.startsWith('vision') || Boolean(String(form.ocr_vision_model).trim()) },
     { label: 'Auto-Commit ab Konfidenz', value: `${form.auto_commit_confidence}%`, ok: true },
     { label: 'Telegram', value: form.enable_telegram ? 'Aktiviert' : 'Deaktiviert', ok: true },
     { label: 'LLM-as-Judge', value: form.enable_judge_verification ? 'Aktiviert' : 'Deaktiviert', ok: true }
@@ -110,6 +122,7 @@
     if (index === 1) return paperlessReady;
     if (index === 2) return inboxReady;
     if (index === 3) return ollamaReady;
+    if (index === 4) return ocrReady;
     return true;
   }
 
@@ -172,7 +185,7 @@
     if (currentStep === 1 && !(await testPaperless())) {
       return;
     }
-    if (currentStep === 3 && !(await testOllama())) {
+    if ((currentStep === 3 || currentStep === 4) && !(await testOllama())) {
       return;
     }
     currentStep = Math.min(currentStep + 1, steps.length - 1);
@@ -185,7 +198,7 @@
 
   async function finishSetup() {
     if (!canFinish) {
-      feedback = { type: 'error', message: 'Setup kann erst abgeschlossen werden, wenn Paperless, Inbox Tag und Ollama konfiguriert sind.' };
+      feedback = { type: 'error', message: 'Setup kann erst abgeschlossen werden, wenn Paperless, Inbox Tag, Ollama und OCR konfiguriert sind.' };
       return;
     }
 
@@ -226,7 +239,7 @@
           </Badge>
         </div>
 
-        <div class="mt-6 grid gap-2 sm:grid-cols-3 xl:grid-cols-6" aria-label="Setup-Schritte">
+        <div class="mt-6 grid gap-2 sm:grid-cols-3 xl:grid-cols-7" aria-label="Setup-Schritte">
           {#each steps as step, index}
             <button
               type="button"
@@ -320,7 +333,31 @@
             </div>
           {:else if currentStep === 4}
             <div class="grid gap-4 md:grid-cols-2">
-              <label class="grid gap-2 text-sm text-slate-300">OCR Modus<select bind:value={form.ocr_mode} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50"><option value="off">Aus</option><option value="text">Text</option><option value="vision_light">Vision light</option><option value="vision_full">Vision full</option></select></label>
+              <div class="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
+                <span>{ollamaModels.length ? `${ollamaModels.length} Modelle geladen.` : 'Noch keine OCR-Modelle geladen.'}</span>
+                <Button color="alternative" class="rounded-xl" disabled={!String(form.ollama_url).trim() || testingOllama} onclick={() => void testOllama()}>{testingOllama ? 'Prüft …' : 'Verbindung testen & OCR-Modelle laden'}</Button>
+              </div>
+              <label class="grid gap-2 text-sm text-slate-300 md:col-span-2">OCR Modus<select bind:value={form.ocr_mode} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50"><option value="off">Aus</option><option value="text">Text</option><option value="vision_light">Vision light</option><option value="vision_full">Vision full</option></select></label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                OCR Textmodell
+                <select bind:value={form.ollama_ocr_model} aria-label="OCR Textmodell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" disabled={form.ocr_mode !== 'text'}>
+                  {#each modelOptionsFor(form.ollama_ocr_model) as name}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="grid gap-2 text-sm text-slate-300">
+                OCR Vision-Modell
+                <select bind:value={form.ocr_vision_model} aria-label="OCR Vision-Modell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" disabled={!form.ocr_mode.startsWith('vision')}>
+                  {#each modelOptionsFor(form.ocr_vision_model) as name}
+                    <option value={name}>{name}</option>
+                  {/each}
+                </select>
+              </label>
+              <p class="text-sm text-slate-400 md:col-span-2">Bei OCR Modus „Aus“ werden keine OCR-Modelle genutzt. Für Text-OCR zählt das Textmodell, für Vision-OCR das Vision-Modell.</p>
+            </div>
+          {:else if currentStep === 5}
+            <div class="grid gap-4 md:grid-cols-2">
               <label class="grid gap-2 text-sm text-slate-300">Auto-Commit ab Konfidenz<input bind:value={form.auto_commit_confidence} type="number" min="0" max="100" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
               <label class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300"><input bind:checked={form.enable_telegram} type="checkbox" class="rounded" /> Telegram aktivieren</label>
               <label class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300"><input bind:checked={form.enable_judge_verification} type="checkbox" class="rounded" /> LLM-as-Judge aktivieren</label>
@@ -331,6 +368,7 @@
                 <div class={`rounded-2xl border p-4 ${paperlessReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Paperless<br /><strong>{paperlessReady ? 'bereit' : 'fehlt'}</strong></div>
                 <div class={`rounded-2xl border p-4 ${inboxReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Inbox Tag<br /><strong>{inboxReady ? tagLabel(form.paperless_inbox_tag_id) : 'fehlt'}</strong></div>
                 <div class={`rounded-2xl border p-4 ${ollamaReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>Ollama<br /><strong>{ollamaReady ? 'bereit' : 'fehlt'}</strong></div>
+                <div class={`rounded-2xl border p-4 ${ocrReady ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>OCR<br /><strong>{ocrReady ? 'bereit' : 'fehlt'}</strong></div>
               </div>
 
               <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
@@ -367,6 +405,7 @@
             <div class="flex justify-between gap-3"><span class="text-slate-400">Paperless</span><Badge color={paperlessReady ? 'green' : 'yellow'}>{paperlessReady ? 'OK' : 'Offen'}</Badge></div>
             <div class="flex justify-between gap-3"><span class="text-slate-400">Inbox Tag</span><Badge color={inboxReady ? 'green' : 'yellow'}>{inboxReady ? 'OK' : 'Offen'}</Badge></div>
             <div class="flex justify-between gap-3"><span class="text-slate-400">Ollama</span><Badge color={ollamaReady ? 'green' : 'yellow'}>{ollamaReady ? 'OK' : 'Offen'}</Badge></div>
+            <div class="flex justify-between gap-3"><span class="text-slate-400">OCR</span><Badge color={ocrReady ? 'green' : 'yellow'}>{ocrReady ? 'OK' : 'Offen'}</Badge></div>
           </div>
         </Card>
       </aside>
