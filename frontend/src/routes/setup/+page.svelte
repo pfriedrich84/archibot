@@ -2,11 +2,12 @@
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
-  import { saveSettings } from '$lib/api';
+  import { saveSettings, testPaperlessConnection } from '$lib/api';
   import type { OllamaModelOption, PaperlessTagOption } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
+  const initialData = () => data;
 
   type SetupForm = {
     paperless_url: string;
@@ -35,7 +36,8 @@
   let currentStep = $state(0);
   let saving = $state(false);
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
-  let paperlessTags = $derived<PaperlessTagOption[]>(data.paperlessTags.items);
+  let testingPaperless = $state(false);
+  let paperlessTags = $state<PaperlessTagOption[]>(initialData().paperlessTags.items);
   let ollamaModels = $derived<OllamaModelOption[]>(data.ollamaModels.items);
 
   function schemaField(name: string) {
@@ -88,10 +90,38 @@
     return true;
   }
 
-  function next() {
+  async function testPaperless() {
+    if (!paperlessReady) {
+      feedback = { type: 'error', message: 'Bitte fülle Paperless URL und API Token aus.' };
+      return false;
+    }
+
+    testingPaperless = true;
+    feedback = null;
+    try {
+      const response = await testPaperlessConnection(form.paperless_url, form.paperless_token);
+      if (!response.ok) {
+        feedback = { type: 'error', message: response.error || 'Paperless-Verbindung fehlgeschlagen.' };
+        return false;
+      }
+      paperlessTags = response.items;
+      feedback = { type: 'success', message: `${response.items.length} Paperless-Tags geladen.` };
+      return true;
+    } catch (error) {
+      feedback = { type: 'error', message: error instanceof Error ? error.message : 'Paperless-Verbindung fehlgeschlagen.' };
+      return false;
+    } finally {
+      testingPaperless = false;
+    }
+  }
+
+  async function next() {
     feedback = null;
     if (!validateStep(currentStep)) {
       feedback = { type: 'error', message: 'Bitte fülle die Pflichtfelder dieses Schritts aus.' };
+      return;
+    }
+    if (currentStep === 1 && !(await testPaperless())) {
       return;
     }
     currentStep = Math.min(currentStep + 1, steps.length - 1);
@@ -177,7 +207,10 @@
             <div class="grid gap-4">
               <label class="grid gap-2 text-sm text-slate-300">Paperless URL<input bind:value={form.paperless_url} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" placeholder="http://paperless:8000" /></label>
               <label class="grid gap-2 text-sm text-slate-300">API Token<input bind:value={form.paperless_token} type="password" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" placeholder={paperlessTokenConfigured ? 'Bereits gespeichert — leer lassen zum Beibehalten' : 'Token aus Paperless'} /></label>
-              <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Status laut Backend: {data.status.services.paperless.configured ? 'Paperless ist konfiguriert.' : 'Noch nicht konfiguriert.'}</div>
+              <div class="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+                <span>Status laut Backend: {data.status.services.paperless.configured ? 'Paperless ist konfiguriert.' : 'Noch nicht konfiguriert.'}</span>
+                <Button color="alternative" class="rounded-xl" disabled={!paperlessReady || testingPaperless} onclick={() => void testPaperless()}>{testingPaperless ? 'Prüft …' : 'Verbindung testen & Tags laden'}</Button>
+              </div>
             </div>
           {:else if currentStep === 2}
             <div class="grid gap-4 md:grid-cols-3">
@@ -253,7 +286,7 @@
         <div class="mt-6 flex items-center justify-between border-t border-slate-800 pt-5">
           <Button color="alternative" class="rounded-xl" disabled={currentStep === 0} onclick={previous}>Zurück</Button>
           {#if currentStep < steps.length - 1}
-            <Button color="green" class="rounded-xl" onclick={next}>Weiter</Button>
+            <Button color="green" class="rounded-xl" disabled={testingPaperless} onclick={() => void next()}>{testingPaperless ? 'Prüft …' : 'Weiter'}</Button>
           {:else}
             <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Abschließen'}</Button>
           {/if}

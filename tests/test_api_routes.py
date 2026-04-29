@@ -166,6 +166,32 @@ def test_embeddings_api_returns_recent_rows(client):
     assert payload["items"][0]["title"] == "Rechnung April"
 
 
+def test_paperless_test_api_fetches_tags_for_setup(client, monkeypatch):
+    created = {}
+
+    class FakePaperlessClient:
+        def __init__(self, base_url, token):
+            created["base_url"] = base_url
+            created["token"] = token
+
+        async def list_tags(self):
+            return [SimpleNamespace(id=99, name="Posteingang")]
+
+        async def aclose(self):
+            created["closed"] = True
+
+    monkeypatch.setattr("app.clients.paperless.PaperlessClient", FakePaperlessClient)
+
+    response = client.post(
+        "/api/v1/paperless/test",
+        json={"paperless_url": "https://paperless.example", "paperless_token": "secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "items": [{"id": 99, "name": "Posteingang"}]}
+    assert created == {"base_url": "https://paperless.example", "token": "secret", "closed": True}
+
+
 def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
     from app.chat import _sessions
 

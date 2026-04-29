@@ -83,6 +83,12 @@ export type PaperlessTagsPayload = {
   items: PaperlessTagOption[];
 };
 
+export type PaperlessTestPayload = {
+  ok: boolean;
+  items: PaperlessTagOption[];
+  error?: string;
+};
+
 export type OllamaModelOption = {
   name: string;
 };

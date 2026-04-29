@@ -8,6 +8,7 @@ import type {
   InboxPayload,
   OllamaModelsPayload,
   PaperlessTagsPayload,
+  PaperlessTestPayload,
   ReviewBulkMutationResponse,
   ReviewDetailPayload,
   ReviewMutationResponse,
@@ -101,6 +102,8 @@ export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
 export const loadPaperlessTagOptions = (fetcher: typeof fetch) =>
   apiFetch<PaperlessTagsPayload>('/api/v1/paperless/tags', fetcher);
+export const testPaperlessConnection = (paperless_url: string, paperless_token: string) =>
+  apiMutation<PaperlessTestPayload>('/api/v1/paperless/test', { paperless_url, paperless_token });
 export const loadOllamaModelOptions = (fetcher: typeof fetch) =>
   apiFetch<OllamaModelsPayload>('/api/v1/ollama/models', fetcher);
 export const saveSettings = (updates: Record<string, string | number | boolean | null>) =>
