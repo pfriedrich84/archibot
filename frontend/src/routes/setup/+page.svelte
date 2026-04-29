@@ -347,7 +347,7 @@
               <label class="grid gap-2 text-sm text-slate-300 md:col-span-2">OCR Modus<select bind:value={form.ocr_mode} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50"><option value="off">Aus</option><option value="text">Text</option><option value="vision_light">Vision light</option><option value="vision_full">Vision full</option></select></label>
               <label class="grid gap-2 text-sm text-slate-300">
                 OCR Textmodell
-                <select bind:value={form.ollama_ocr_model} aria-label="OCR Textmodell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" disabled={form.ocr_mode !== 'text'}>
+                <select bind:value={form.ollama_ocr_model} aria-label="OCR Textmodell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
                   {#each modelOptionsFor(form.ollama_ocr_model) as name}
                     <option value={name}>{name}</option>
                   {/each}
@@ -355,7 +355,7 @@
               </label>
               <label class="grid gap-2 text-sm text-slate-300">
                 OCR Vision-Modell
-                <select bind:value={form.ocr_vision_model} aria-label="OCR Vision-Modell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" disabled={!form.ocr_mode.startsWith('vision')}>
+                <select bind:value={form.ocr_vision_model} aria-label="OCR Vision-Modell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
                   {#each modelOptionsFor(form.ocr_vision_model) as name}
                     <option value={name}>{name}</option>
                   {/each}
