@@ -24,7 +24,6 @@
     ocr_vision_model: string;
     ocr_mode: string;
     auto_commit_confidence: number;
-    enable_telegram: boolean;
     enable_judge_verification: boolean;
   };
 
@@ -75,7 +74,6 @@
     ocr_vision_model: String(fieldValue('ocr_vision_model') ?? 'qwen3-vl:4b'),
     ocr_mode: String(fieldValue('ocr_mode') ?? 'off'),
     auto_commit_confidence: Number(fieldValue('auto_commit_confidence') || 0),
-    enable_telegram: Boolean(fieldValue('enable_telegram') ?? false),
     enable_judge_verification: Boolean(fieldValue('enable_judge_verification') ?? false)
   });
 
@@ -116,7 +114,6 @@
     { label: 'OCR Textmodell', value: form.ollama_ocr_model || 'Fehlt', ok: form.ocr_mode !== 'text' || Boolean(String(form.ollama_ocr_model).trim()) },
     { label: 'OCR Vision-Modell', value: form.ocr_vision_model || 'Fehlt', ok: !form.ocr_mode.startsWith('vision') || Boolean(String(form.ocr_vision_model).trim()) },
     { label: 'Auto-Commit ab Konfidenz', value: `${form.auto_commit_confidence}%`, ok: true },
-    { label: 'Telegram', value: form.enable_telegram ? 'Aktiviert' : 'Deaktiviert', ok: true },
     { label: 'LLM-as-Judge', value: form.enable_judge_verification ? 'Aktiviert' : 'Deaktiviert', ok: true }
   ]);
 
@@ -366,7 +363,6 @@
           {:else if currentStep === 5}
             <div class="grid gap-4 md:grid-cols-2">
               <label class="grid gap-2 text-sm text-slate-300">Auto-Commit ab Konfidenz<input bind:value={form.auto_commit_confidence} type="number" min="0" max="100" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
-              <label class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300"><input bind:checked={form.enable_telegram} type="checkbox" class="rounded" /> Telegram aktivieren</label>
               <label class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300"><input bind:checked={form.enable_judge_verification} type="checkbox" class="rounded" /> LLM-as-Judge aktivieren</label>
             </div>
           {:else}
