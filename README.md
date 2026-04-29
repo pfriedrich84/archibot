@@ -8,7 +8,7 @@
 
 KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als **ein einzelner Docker-Container** gegen eine lokale **Ollama**-Instanz.
 
-Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Freigabe in Paperless geschrieben. Neue Tags, die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst.
+Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Freigabe in Paperless geschrieben. Neue Tags, die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
 ## Features
 
@@ -16,21 +16,21 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - 🧠 Klassifikation via Ollama (Default: `gemma4:e4b`, konfigurierbar)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`sqlite-vec`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
-- ✅ Review-GUI mit HTMX: Annehmen / Ablehnen / Editieren in einem Klick
+- ✅ Review-GUI in der Svelte-Admin-App: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`), optional eingeschraenkt auf Dokumente mit `OCR_REQUESTED_TAG_ID`
 - ⏱️ Robuste Ollama-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ SQLite-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
-- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — im Browser (`/chat`) oder direkt im Telegram-Chat
+- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — im Browser (`/app/chat`) oder direkt im Telegram-Chat
 - 🤖 Telegram-Bot: Vorschläge annehmen/ablehnen + RAG-Chat für Dokument-Fragen (optional)
 - 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
-- 🚀 Setup-Wizard: Geführtes Onboarding mit Verbindungstests beim ersten Start (`/setup`)
-- 📊 Embeddings-Dashboard: Vektor-DB-Inspektion und Similarity-Search (`/embeddings`)
-- 📥 Inbox-View: Posteingang mit Dokumenten-Karten und Bulk-Aktionen (`/inbox`)
-- 🏷️ Tag-Blacklist: Unerwünschte Tags dauerhaft unterdrücken (`/tags`)
+- 🚀 Setup-Wizard: Geführtes Onboarding beim ersten Start (`/app/setup`) mit Paperless-Tag-Dropdowns und aus Ollama geladener Modell-Auswahl
+- 📊 Embeddings-Dashboard: Vektor-DB-Inspektion und Similarity-Search (`/app/embeddings`)
+- 📥 Inbox-View: Posteingang mit Dokumenten-Karten und Bulk-Aktionen (`/app/inbox`)
+- 🏷️ Tag-Blacklist: Unerwünschte Tags dauerhaft unterdrücken (`/app/tags`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
-- ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/settings`)
+- ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/app/settings`); Paperless-Tag-Felder zeigen gespeicherte Werte vorausgewählt
 - 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot)
 
 ## Architektur
@@ -55,16 +55,16 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
         │                                │
         │                                ▼
         │                     ┌──────────────────────┐
-        └─────────────────────│  FastAPI + HTMX GUI  │
-                              │   - /review          │
-                              │   - /chat            │
-                              │   - /inbox           │
-                              │   - /tags            │
-                              │   - /embeddings      │
-                              │   - /stats           │
-                              │   - /settings        │
-                              │   - /setup           │
-                              │   - /errors          │
+        └─────────────────────│ FastAPI + Svelte GUI │
+                              │   - /app/review      │
+                              │   - /app/chat        │
+                              │   - /app/inbox       │
+                              │   - /app/tags        │
+                              │   - /app/embeddings  │
+                              │   - /app/stats       │
+                              │   - /app/settings    │
+                              │   - /app/setup       │
+                              │   - /app/errors      │
                               └──────────────────────┘
                                          ▲
                                          │
@@ -78,7 +78,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
-# → Werte eintragen (Paperless-URL, Token, Ollama-URL, Inbox-Tag-ID)
+# → optional Werte eintragen; alternativ im Setup-Wizard konfigurieren
 
 # 2. Ollama-Modelle ziehen (auf dem Ollama-Host)
 ollama pull gemma4:e4b

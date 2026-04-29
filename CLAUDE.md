@@ -4,7 +4,7 @@ Kontext fuer Claude / Claude Code, wenn an diesem Repo gearbeitet wird.
 
 ## Projekt-Zweck
 
-KI-basierter Klassifikator fuer Paperless-NGX. Pollt die Inbox (Tag `Posteingang`), laesst ein lokales Ollama-Modell fuenf Felder vorschlagen (Titel, Datum, Korrespondent, Dokumenttyp, Speicherpfad), zeigt die Vorschlaege in einer Review-GUI, und schreibt sie nach manueller Freigabe via PATCH zurueck in Paperless. Der `Posteingang`-Tag bleibt nach Commit standardmaessig erhalten (`KEEP_INBOX_TAG=true`).
+KI-basierter Klassifikator fuer Paperless-NGX. Pollt die Inbox (Tag `Posteingang`), laesst ein lokales Ollama-Modell fuenf Felder vorschlagen (Titel, Datum, Korrespondent, Dokumenttyp, Speicherpfad), zeigt die Vorschlaege in einer Review-GUI, und schreibt sie nach manueller Freigabe via PATCH zurueck in Paperless. Der `Posteingang`-Tag bleibt nach Commit standardmaessig erhalten (`KEEP_INBOX_TAG=true`). Ein bereits gesetzter Paperless-Speicherpfad ist unveraenderlich: ArchiBot darf ihn weder im Vorschlag noch beim PATCH ueberschreiben; nur leere Speicherpfade duerfen gesetzt werden.
 
 ## Klassifikationsansatz — Kontext statt Isolation
 
@@ -21,7 +21,7 @@ Dieser Klassifikator geht einen fundamentalen Schritt weiter:
 ```
                   Neues Dokument
                        |
-                  [Embedding]          ← qwen3-embedding:0.6b
+                  [Embedding]          ← qwen3-embedding:4b
                        |
               KNN-Suche in sqlite-vec
                        |
@@ -96,7 +96,7 @@ Der Kontext allein genuegt nicht — zusaetzlich greifen mehrere Sicherheitsnetz
 ## Stack
 
 - Python 3.12, FastAPI + Uvicorn
-- HTMX + Jinja2 fuer das Review-Frontend (kein SPA, kein Build-Schritt)
+- SvelteKit + Flowbite Svelte fuer die Admin-App unter `/app`; FastAPI liefert die statische Build-Ausgabe aus
 - SQLite mit sqlite-vec fuer Embedding-Similarity-Kontext
 - APScheduler fuer den Worker-Loop
 - httpx fuer alle HTTP-Calls (Paperless, Ollama)
@@ -150,13 +150,14 @@ app/
     ocr.py             OCR-Korrektur-Vorschlaege (optional)
     errors.py          Fehlerliste + Retry
     stats.py           Counters, Phasen-Dauer-Metriken, Trend-Chart, Fehlerrate, Auto-Commit-Rate
-    settings.py        Config-Editor, Prompt-Editor, Trigger fuer manuellen Run
+    settings.py        Legacy-Redirect nach /app/settings (alte HTMX-Settings entfernt)
     webhook.py         Webhook-Endpoints: /webhook/new (volle Pipeline) + /webhook/edit (Embedding-Update)
     inbox.py           Inbox-Ansicht: Dokumenten-Karten + Bulk-Aktionen
     embeddings.py      Vektor-DB Dashboard + Similarity-Search
-    setup.py           Onboarding-Wizard mit Verbindungstests
-  templates/           Jinja2 + HTMX
-  static/              CSS + lokal gebundelte htmx.min.js
+    setup.py           Legacy-Redirect nach /app/setup
+  templates/           Legacy/Jinja-Reste und Platzhalter
+  static/              Statische Assets (Logo etc.)
+frontend/              SvelteKit Admin UI (/app): Dashboard, Review, Setup, Settings, Chat, Inbox, Tags, ...
 prompts/
   classify_system.txt          System-Prompt fuer Klassifikation (Deutsch)
   ocr_correction_system.txt    System-Prompt fuer Text-Only OCR-Correction
@@ -204,7 +205,7 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 ## Ollama-Reference
 
 - `POST /api/chat` mit `format: "json"` → strukturierte JSON-Antwort. Unterstuetzt auch `images`-Feld fuer Vision-Modelle (base64-encoded, kein Data-URI-Prefix).
-- `POST /api/embeddings` → Vektor fuer Similarity-Suche (Default: `qwen3-embedding:0.6b`, 1024-dim, 32K context, multilingual DE/EN). Bei Context-Length-Fehlern (500) wird der Text progressiv um 50% gekuerzt und erneut gesendet. Transiente 5xx/429-Fehler werden mit exponentiellem Backoff wiederholt. Konfigurierbar via `OLLAMA_EMBED_RETRIES` (Default: 3) und `OLLAMA_EMBED_RETRY_BASE_DELAY` (Default: 1.0s).
+- `POST /api/embeddings` → Vektor fuer Similarity-Suche (Default: `qwen3-embedding:4b`, 2560-dim bei `OLLAMA_EMBED_DIM=0`, multilingual DE/EN). Bei Context-Length-Fehlern (500) wird der Text progressiv um 50% gekuerzt und erneut gesendet. Transiente 5xx/429-Fehler werden mit exponentiellem Backoff wiederholt. Konfigurierbar via `OLLAMA_EMBED_RETRIES` (Default: 3) und `OLLAMA_EMBED_RETRY_BASE_DELAY` (Default: 1.0s).
 - `POST /api/generate` mit `keep_alive: 0` → Modell aus VRAM entladen (genutzt zwischen Pipeline-Phasen). Nach dem Entladen wartet `unload_model(swap=True)` fuer `OLLAMA_MODEL_SWAP_DELAY` Sekunden (Default: 5), damit die GPU den Speicher freigeben kann bevor das naechste Modell geladen wird. Ohne diese Pause kann Ollamas GPU-Discovery timeouten und veraltete VRAM-Werte nutzen, was zu suboptimaler GPU-Auslastung fuehrt.
 - `GET /api/tags` → Healthcheck + Modell-Liste
 
@@ -212,10 +213,10 @@ Alle Requests: `Authorization: Token <PAPERLESS_TOKEN>`
 
 | Modell | Zweck | Konfiguration | Context Window |
 |--------|-------|---------------|----------------|
-| `qwen3-embedding:0.6b` | Embedding-Similarity-Suche (1024-dim) | `OLLAMA_EMBED_MODEL` | 8192 Tokens (`OLLAMA_EMBED_NUM_CTX`, model supports 32K) |
+| `qwen3-embedding:4b` | Embedding-Similarity-Suche (2560-dim, wenn `OLLAMA_EMBED_DIM=0`) | `OLLAMA_EMBED_MODEL` | 8192 Tokens (`OLLAMA_EMBED_NUM_CTX`, Ollama kann je nach Modell clampen) |
 | `gemma4:e4b` | Klassifikation (Titel, Datum, etc.) | `OLLAMA_MODEL` | 16384 Tokens (`OLLAMA_NUM_CTX`) |
-| `qwen3:0.6b` | Text-Only OCR-Korrektur (optional) | `OLLAMA_OCR_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
-| `qwen3-vl:2b` | Vision-OCR (optional, seitenweise) | `OCR_VISION_MODEL` | 16384 Tokens (`OLLAMA_OCR_NUM_CTX`) |
+| `qwen3:4b` | Text-Only OCR-Korrektur (optional) | `OLLAMA_OCR_MODEL` | 12288 Tokens (`OLLAMA_OCR_NUM_CTX`) |
+| `qwen3-vl:4b` | Vision-OCR (optional, seitenweise) | `OCR_VISION_MODEL` | 12288 Tokens (`OLLAMA_OCR_NUM_CTX`) |
 
 **Text-Limits pro Phase:**
 
@@ -304,7 +305,7 @@ jeder Modellwechsel kostet mehrere Sekunden (entladen + laden).
                   |         |
                +--+---------+----------------+
                | Phase 2: Embedding          |  OLLAMA_EMBED_MODEL
-               | Fuer alle Docs:             |  (qwen3-embedding:0.6b)
+               | Fuer alle Docs:             |  (qwen3-embedding:4b)
                |   Text: max EMBED_MAX_CHARS |  num_ctx: OLLAMA_EMBED_NUM_CTX
                |   1x embed() pro Doc        |  (Default: 8192 Tokens)
                |   KNN-Suche → Kontext       |
@@ -359,10 +360,10 @@ Nachher (phasenweise):     [alle embed] → [alle classify]
                            = 1-2 Switches unabhaengig von N
 
 Ohne OCR:        qwen3-embed ─────────> gemma4:e4b               = 1 Switch
-Text-OCR:        qwen3:0.6b ──> qwen3-embed ────> gemma4:e4b    = 2 Switches
-Vision-OCR:      qwen3-vl:2b ─> qwen3-embed ────> gemma4:e4b    = 2 Switches
+Text-OCR:        qwen3:4b ─────> qwen3-embed ────> gemma4:e4b    = 2 Switches
+Vision-OCR:      qwen3-vl:4b ──> qwen3-embed ────> gemma4:e4b    = 2 Switches
 
-* OCR nutzt separate Modelle (qwen3:0.6b / qwen3-vl:2b), daher immer
+* OCR nutzt separate Modelle (qwen3:4b / qwen3-vl:4b), daher immer
   2 Switches wenn OCR aktiv. Jedes Modell wird nach seiner Phase entladen.
 ```
 
@@ -382,16 +383,18 @@ Embedding trotzdem indexiert (falls vorhanden).
 3. **Confidence-Gate:** Nur wenn `AUTO_COMMIT_CONFIDENCE > 0` UND das LLM einen Score darueber meldet wird ohne Review committed.
 4. **Read-Only bei Fehler:** Wenn Paperless oder Ollama nicht erreichbar sind, wird ein Error-Record geschrieben und der Worker macht weiter. Keine Pipeline-Level-Retries im selben Lauf. Ausnahme: `OllamaClient.embed()` hat HTTP-Level-Retries mit Truncation bei Context-Length-Fehlern und Backoff bei transienten 5xx (konfigurierbar via `OLLAMA_EMBED_RETRIES`).
 5. **Inbox-Tag bleibt:** Standardmaessig (`KEEP_INBOX_TAG=true`) wird der `Posteingang`-Tag nach Commit NICHT entfernt. Nur mit `KEEP_INBOX_TAG=false` wird er beim Commit entfernt.
-6. **Kontext-Qualitaet:** Nur Dokumente die NICHT mehr im Posteingang sind werden als Kontext fuer neue Klassifikationen genutzt. Inbox-Dokumente sind noch nicht reviewed/approved und wuerden unzuverlaessige Metadaten liefern.
-7. **Kontext-Anreicherung:** Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum). Regel 9 im System-Prompt weist das LLM an, diese Metadaten als starke Hinweise zu nutzen.
-8. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Alle `unload_model()`-Aufrufe nutzen `swap=True` und warten `OLLAMA_MODEL_SWAP_DELAY` (Default: 5s) nach dem Entladen, damit die GPU den Speicher vollstaendig freigeben kann. Dies gilt auch fuer das finale Entladen nach Phase 3, da das Modell sonst beim naechsten Poll-Zyklus die VRAM-Erkennung stoert.
-9. **Embedding-Deduplizierung:** Pro Dokument wird `ollama.embed()` genau einmal aufgerufen. Das Ergebnis wird sowohl fuer die KNN-Kontext-Suche als auch fuer die Indexierung wiederverwendet (`_EmbeddingResult`-Dataclass traegt den Vektor zwischen den Phasen).
-10. **OCR-Cache:** Korrigierter Text landet in `doc_ocr_cache`, nie in Paperless. Sowohl `poll_inbox()` als auch `reindex_all()` nutzen gecachte Korrekturen. Beim Reindex wird OCR vor dem Embedding als Phase 0 ausgefuehrt — gecachte Eintraege werden uebersprungen.
-11. **Embedding-Text-Limit:** `document_summary()` begrenzt den **Gesamttext** (Titel + Content) auf `EMBED_MAX_CHARS` (Default 6000). Die Truncation greift auf die kombinierte Laenge, nicht nur auf den Content-Teil — damit kann ein langer Titel das Limit nicht sprengen.
-12. **Settings-Gruppierung:** Die Settings-Seite gruppiert Ollama-Settings nach Pipeline-Phase: "Ollama" (shared: URL, Timeout), "Phase 1: OCR", "Phase 2: Embedding", "Phase 3: Klassifikation". Jede Phase zeigt Modell, Context Window und Text-Limits.
-13. **Phasen-Timing:** Jede Phase misst die Verarbeitungsdauer pro Dokument (`time.monotonic()`) und speichert sie in `phase_timing`. `_record_timing()` faengt alle Fehler ab und blockiert nie die Pipeline. `poll_cycles` gruppiert Timing-Daten pro `poll_inbox()`-Aufruf (`cycle_id`). Die `classify`-Zeile wird nur durch `classifier.classify()` selbst erzeugt — spaetere Fehler (Judge/Store/Notify/Commit) fuehren nicht zu einem zweiten `classify`-Eintrag mit `success=0`.
-14. **Dashboard Pipeline-Status:** Die Dashboard-Seite zeigt ein live-aktualisiertes Pipeline-Status-Card via HTMX (`/pipeline-status`). Im Idle-Zustand: gruener Punkt, letzter Poll, naechster Poll, "Run Now"-Button. Im Running-Zustand: pulsierender blauer Punkt, Phase, Fortschrittsbalken, "Cancel"-Button. Polling-Intervall: 30s idle, 3s running.
-15. **LLM-as-Judge (optional):** Bei `ENABLE_JUDGE_VERIFICATION=true` laeuft nach `classify()` ein zweiter LLM-Pass (`classifier.verify()`). Gate: nur wenn Erst-Confidence `< JUDGE_CONFIDENCE_THRESHOLD` UND Kontext-Docs vorhanden. Verdikte: `agree` / `corrected` / `skipped` / `error`. Bei `corrected` ersetzt das neue Ergebnis die Erst-Klassifikation; der Erst-Vorschlag (raw JSON) wird als `suggestions.original_proposed_json` persistiert. Judge nutzt per Default dasselbe Modell wie die Klassifikation — kein zusaetzlicher GPU-Swap. Transport-/Parse-Fehler werden zu `verdict="error"` herabgestuft und halten die Pipeline nicht auf.
+6. **Speicherpfad bleibt, wenn gesetzt:** Ein bereits gesetzter Paperless-Storage-Path darf nie geaendert werden. `_normalize_classification_result()` verwirft Storage-Path-Vorschlaege fuer Dokumente mit `target.storage_path != None`, `SuggestionRow.effective_storage_path_id` bevorzugt immer `original_storage_path`, und `commit_suggestion()` sendet `storage_path` nur, wenn der aktuell von Paperless geladene Wert `None` ist. Dasselbe gilt fuer das MCP-Tool `update_document`.
+7. **Kontext-Qualitaet:** Nur Dokumente die NICHT mehr im Posteingang sind werden als Kontext fuer neue Klassifikationen genutzt. Inbox-Dokumente sind noch nicht reviewed/approved und wuerden unzuverlaessige Metadaten liefern.
+8. **Kontext-Anreicherung:** Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum). Regel 9 im System-Prompt weist das LLM an, diese Metadaten als starke Hinweise zu nutzen.
+9. **Phasen-Pipeline:** `poll_inbox()` verarbeitet alle Dokumente phasenweise (OCR → Embedding → Klassifikation) statt einzeln. Jede Phase nutzt genau ein Ollama-Modell und entlaedt es danach via `keep_alive=0`. Alle `unload_model()`-Aufrufe nutzen `swap=True` und warten `OLLAMA_MODEL_SWAP_DELAY` (Default: 5s) nach dem Entladen, damit die GPU den Speicher vollstaendig freigeben kann. Dies gilt auch fuer das finale Entladen nach Phase 3, da das Modell sonst beim naechsten Poll-Zyklus die VRAM-Erkennung stoert.
+10. **Embedding-Deduplizierung:** Pro Dokument wird `ollama.embed()` genau einmal aufgerufen. Das Ergebnis wird sowohl fuer die KNN-Kontext-Suche als auch fuer die Indexierung wiederverwendet (`_EmbeddingResult`-Dataclass traegt den Vektor zwischen den Phasen).
+11. **OCR-Cache:** Korrigierter Text landet in `doc_ocr_cache`, nie in Paperless. Sowohl `poll_inbox()` als auch `reindex_all()` nutzen gecachte Korrekturen. Beim Reindex wird OCR vor dem Embedding als Phase 0 ausgefuehrt — gecachte Eintraege werden uebersprungen.
+12. **Embedding-Text-Limit:** `document_summary()` begrenzt den **Gesamttext** (Titel + Content) auf `EMBED_MAX_CHARS` (Default 6000). Die Truncation greift auf die kombinierte Laenge, nicht nur auf den Content-Teil — damit kann ein langer Titel das Limit nicht sprengen.
+13. **Settings/Setup-Auswahlfelder:** `/app/settings` und `/app/setup` muessen gespeicherte Paperless-Tag-IDs als ausgewaehlte Dropdown-Werte anzeigen. `/app/setup` laedt zusaetzlich Ollama-Modelle ueber `GET /api/v1/ollama/models` (Ollama `/api/tags`) und waehlt die gespeicherten Modelle vor; der aktuelle Wert bleibt als Option erhalten, auch wenn Ollama ihn nicht zurueckliefert.
+14. **Settings-Gruppierung:** Die Settings-Seite gruppiert Ollama-Settings nach Pipeline-Phase: "Ollama" (shared: URL, Timeout), "Phase 1: OCR", "Phase 2: Embedding", "Phase 3: Klassifikation". Jede Phase zeigt Modell, Context Window und Text-Limits.
+15. **Phasen-Timing:** Jede Phase misst die Verarbeitungsdauer pro Dokument (`time.monotonic()`) und speichert sie in `phase_timing`. `_record_timing()` faengt alle Fehler ab und blockiert nie die Pipeline. `poll_cycles` gruppiert Timing-Daten pro `poll_inbox()`-Aufruf (`cycle_id`). Die `classify`-Zeile wird nur durch `classifier.classify()` selbst erzeugt — spaetere Fehler (Judge/Store/Notify/Commit) fuehren nicht zu einem zweiten `classify`-Eintrag mit `success=0`.
+16. **Dashboard Pipeline-Status:** Die Svelte-Dashboard-Seite zeigt den Pipeline-Status ueber `/api/v1/dashboard` und Job-Control ueber `/api/v1/jobs/*`.
+17. **LLM-as-Judge (optional):** Bei `ENABLE_JUDGE_VERIFICATION=true` laeuft nach `classify()` ein zweiter LLM-Pass (`classifier.verify()`). Gate: nur wenn Erst-Confidence `< JUDGE_CONFIDENCE_THRESHOLD` UND Kontext-Docs vorhanden. Verdikte: `agree` / `corrected` / `skipped` / `error`. Bei `corrected` ersetzt das neue Ergebnis die Erst-Klassifikation; der Erst-Vorschlag (raw JSON) wird als `suggestions.original_proposed_json` persistiert. Judge nutzt per Default dasselbe Modell wie die Klassifikation — kein zusaetzlicher GPU-Swap. Transport-/Parse-Fehler werden zu `verdict="error"` herabgestuft und halten die Pipeline nicht auf.
 
 ## Deployment (Dockhand)
 
@@ -421,7 +424,7 @@ uvicorn app.main:app --reload --port 8088
 ## CLI Commands (fuer manuelles Testen)
 
 Pipeline-Phasen koennen einzeln via CLI ausgeloest werden — als Alternative
-zu den GUI-Buttons in `/settings`.
+zu den GUI-Buttons in `/app/settings`.
 
 ```bash
 # Voller Reindex: OCR-Korrektur (wenn aktiviert) + Embedding
