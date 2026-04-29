@@ -234,6 +234,20 @@
         </div>
       </Card>
 
+      {#if changedSettingsCount > 0}
+        <div class="fixed bottom-6 right-6 z-30 rounded-3xl border border-emerald-500/30 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/60 backdrop-blur">
+          <div class="flex items-center gap-3">
+            <div class="hidden text-sm sm:block">
+              <p class="font-medium text-white">Ungespeicherte Änderungen</p>
+              <p class="text-xs text-slate-400">{changedSettingsCount} Setting{changedSettingsCount === 1 ? '' : 's'} geändert</p>
+            </div>
+            <Button color="green" class="rounded-2xl px-5" disabled={actionState !== ''} onclick={() => void saveChangedSettings()}>
+              {actionState === 'settings-save' ? 'Speichert …' : `${changedSettingsCount} speichern`}
+            </Button>
+          </div>
+        </div>
+      {/if}
+
       <div class="mt-6 space-y-6">
         {#if filteredCategories.length === 0}
           <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
