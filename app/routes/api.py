@@ -860,13 +860,19 @@ async def settings_schema_api() -> dict[str, Any]:
 
 @router.get("/paperless/tags")
 async def paperless_tags_api(request: Request) -> dict[str, Any]:
-    tags = await request.app.state.paperless.list_tags()
+    paperless = getattr(request.app.state, "paperless", None)
+    if paperless is None:
+        return {"items": []}
+    tags = await paperless.list_tags()
     return {"items": [{"id": tag.id, "name": tag.name} for tag in tags]}
 
 
 @router.get("/ollama/models")
 async def ollama_models_api(request: Request) -> dict[str, Any]:
-    models = await request.app.state.ollama.list_models()
+    ollama = getattr(request.app.state, "ollama", None)
+    if ollama is None:
+        return {"items": []}
+    models = await ollama.list_models()
     return {"items": [{"name": name} for name in models]}
 
 

@@ -8,7 +8,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.config import needs_setup, settings
-from app.db import SCHEMA, mark_setup_required
+from app.db import SCHEMA, init_db, mark_setup_required
 from app.main import app
 
 
@@ -95,7 +95,7 @@ def test_needs_setup_false_for_legacy_populated_db_without_marker(data_dir: Path
 
 
 def test_setup_mode_allows_frontend_setup_route_and_settings_api(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data_dir: Path
 ) -> None:
     build_dir = tmp_path / "frontend-build"
     build_dir.mkdir()
@@ -103,7 +103,11 @@ def test_setup_mode_allows_frontend_setup_route_and_settings_api(
 
     monkeypatch.setattr("app.routes.frontend.FRONTEND_BUILD_DIR", build_dir)
     monkeypatch.setattr("app.main.needs_setup", lambda: True)
+    monkeypatch.setattr("app.api_data.needs_setup", lambda: True)
 
+    init_db()
+    app.state.paperless = None
+    app.state.ollama = None
     client = TestClient(app, raise_server_exceptions=True)
 
     setup_page = client.get("/app/setup", follow_redirects=False)
@@ -112,6 +116,19 @@ def test_setup_mode_allows_frontend_setup_route_and_settings_api(
 
     settings_schema = client.get("/api/v1/settings/schema", follow_redirects=False)
     assert settings_schema.status_code == 200
+
+    system_status = client.get("/api/v1/system/status", follow_redirects=False)
+    assert system_status.status_code == 200
+    assert system_status.headers["content-type"].startswith("application/json")
+    assert system_status.json()["app"]["setup_complete"] is False
+
+    paperless_tags = client.get("/api/v1/paperless/tags", follow_redirects=False)
+    assert paperless_tags.status_code == 200
+    assert paperless_tags.json() == {"items": []}
+
+    ollama_models = client.get("/api/v1/ollama/models", follow_redirects=False)
+    assert ollama_models.status_code == 200
+    assert ollama_models.json() == {"items": []}
 
     redirect = client.get("/review", follow_redirects=False)
     assert redirect.status_code == 302
