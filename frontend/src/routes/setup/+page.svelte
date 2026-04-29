@@ -188,12 +188,16 @@
     if ((currentStep === 3 || currentStep === 4) && !(await testOllama())) {
       return;
     }
-    currentStep = Math.min(currentStep + 1, steps.length - 1);
+    goToStep(currentStep + 1);
+  }
+
+  function goToStep(index: number) {
+    feedback = null;
+    currentStep = Math.max(0, Math.min(index, steps.length - 1));
   }
 
   function previous() {
-    feedback = null;
-    currentStep = Math.max(currentStep - 1, 0);
+    goToStep(currentStep - 1);
   }
 
   async function finishSetup() {
@@ -243,7 +247,7 @@
           {#each steps as step, index}
             <button
               type="button"
-              onclick={() => (currentStep = index)}
+              onclick={() => goToStep(index)}
               class={`rounded-2xl border p-3 text-left transition ${
                 stepState(index) === 'active'
                   ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-50'
