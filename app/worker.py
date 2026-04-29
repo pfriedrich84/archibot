@@ -1032,7 +1032,11 @@ def _record_ocr_tag_missing_error() -> None:
     tag_id = ocr_requested_tag_id()
     if tag_id == 0:
         return
-    _write_error("ocr_config", None, RuntimeError(f"Configured OCR tag ID {tag_id} does not exist in Paperless"))
+    _write_error(
+        "ocr_config",
+        None,
+        RuntimeError(f"Configured OCR tag ID {tag_id} does not exist in Paperless"),
+    )
 
 
 def _write_error(stage: str, doc_id: int | None, exc: Exception) -> None:

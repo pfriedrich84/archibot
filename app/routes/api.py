@@ -878,7 +878,9 @@ async def save_settings_api(
         "paperless_processed_tag_id": "Configured processed tag ID {tag_id} does not exist in Paperless",
         "ocr_requested_tag_id": "Configured OCR tag ID {tag_id} does not exist in Paperless",
     }
-    changed_tag_fields = [field for field in tag_fields if field in updates and int(getattr(settings, field) or 0) > 0]
+    changed_tag_fields = [
+        field for field in tag_fields if field in updates and int(getattr(settings, field) or 0) > 0
+    ]
     if changed_tag_fields:
         tags = await request.app.state.paperless.list_tags()
         tag_ids = {tag.id for tag in tags}

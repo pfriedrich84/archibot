@@ -296,7 +296,11 @@ async def webhook_edit(
                 doc = doc.model_copy(update={"content": text})
                 cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
         else:
-            log.debug("webhook/edit OCR skipped by requested tag filter", document_id=doc_id, reason=reason)
+            log.debug(
+                "webhook/edit OCR skipped by requested tag filter",
+                document_id=doc_id,
+                reason=reason,
+            )
 
         # Compute and store embedding
         summary = context_builder.document_summary(doc)

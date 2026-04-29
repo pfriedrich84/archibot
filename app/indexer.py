@@ -173,9 +173,15 @@ async def reindex_all(
                     log.info("reindex cancelled during OCR phase")
                     break
                 try:
-                    eligible, reason = should_run_ocr_for_document(doc, available_tags=available_tags)
+                    eligible, reason = should_run_ocr_for_document(
+                        doc, available_tags=available_tags
+                    )
                     if not eligible:
-                        log.debug("reindex OCR skipped by requested tag filter", doc_id=doc.id, reason=reason)
+                        log.debug(
+                            "reindex OCR skipped by requested tag filter",
+                            doc_id=doc.id,
+                            reason=reason,
+                        )
                         continue
                     text, num = await maybe_correct_ocr(doc, ollama, paperless)
                     if num > 0 or ocr_mode.startswith("vision"):

@@ -202,9 +202,7 @@ def test_settings_schema_api_groups_fields(client):
 def test_ollama_models_api_lists_available_models(client):
     response = client.get("/api/v1/ollama/models")
     assert response.status_code == 200
-    assert response.json() == {
-        "items": [{"name": "gemma4:e4b"}, {"name": "qwen3-embedding:4b"}]
-    }
+    assert response.json() == {"items": [{"name": "gemma4:e4b"}, {"name": "qwen3-embedding:4b"}]}
 
 
 def test_tag_approval_api_updates_whitelist(client):
