@@ -117,6 +117,22 @@ class TestSaveConfig:
         # Restore
         object.__setattr__(settings, "keep_inbox_tag", original)
 
+    def test_blank_sensitive_field_preserves_existing_secret(self, tmp_path: Path, monkeypatch):
+        from app.config import settings
+        from app.config_writer import config_env_path, save_config
+
+        monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
+        original = settings.paperless_token
+        object.__setattr__(settings, "paperless_token", "existing-token")
+
+        changed, _ = save_config({"paperless_token": ""})
+
+        assert "paperless_token" not in changed
+        assert settings.paperless_token == "existing-token"
+        assert not config_env_path().exists()
+
+        object.__setattr__(settings, "paperless_token", original)
+
     def test_save_ignores_unknown_fields(self, tmp_path: Path, monkeypatch):
         from app.config_writer import save_config
 

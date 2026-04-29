@@ -78,6 +78,10 @@ def save_config(updates: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
         old_val = existing.get(env_key)
         current_val = getattr(settings, key)
 
+        # A blank sensitive field in the UI means "keep the existing secret".
+        if FIELD_META.get(key, {}).get("sensitive") and str_val == "" and current_val:
+            continue
+
         # Normalise booleans for comparison
         if isinstance(current_val, bool):
             new_bool = str_val.lower() in ("true", "1", "yes")

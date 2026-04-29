@@ -38,12 +38,20 @@
   let paperlessTags = $derived<PaperlessTagOption[]>(data.paperlessTags.items);
   let ollamaModels = $derived<OllamaModelOption[]>(data.ollamaModels.items);
 
-  function fieldValue(name: string) {
+  function schemaField(name: string) {
     for (const category of data.schema.categories) {
-      const field = category.fields.find((candidate: { name: string; value: string | number | boolean }) => candidate.name === name);
-      if (field) return field.value;
+      const field = category.fields.find((candidate: { name: string }) => candidate.name === name);
+      if (field) return field;
     }
-    return '';
+    return null;
+  }
+
+  function fieldValue(name: string) {
+    return schemaField(name)?.value ?? '';
+  }
+
+  function fieldConfigured(name: string) {
+    return Boolean(schemaField(name)?.configured);
   }
 
   let form = $state<SetupForm>({
@@ -61,7 +69,8 @@
     enable_judge_verification: Boolean(fieldValue('enable_judge_verification') ?? false)
   });
 
-  let paperlessReady = $derived(Boolean(String(form.paperless_url).trim() && String(form.paperless_token).trim()));
+  let paperlessTokenConfigured = $derived(fieldConfigured('paperless_token'));
+  let paperlessReady = $derived(Boolean(String(form.paperless_url).trim() && (String(form.paperless_token).trim() || paperlessTokenConfigured)));
   let inboxReady = $derived(Number(form.paperless_inbox_tag_id) > 0);
   let ollamaReady = $derived(Boolean(String(form.ollama_url).trim() && String(form.ollama_model).trim() && String(form.ollama_embed_model).trim()));
   let canFinish = $derived(paperlessReady && inboxReady && ollamaReady);
@@ -102,7 +111,11 @@
     saving = true;
     feedback = null;
     try {
-      await saveSettings({ ...form });
+      const updates: Partial<SetupForm> = { ...form };
+      if (!String(form.paperless_token).trim() && paperlessTokenConfigured) {
+        delete updates.paperless_token;
+      }
+      await saveSettings(updates);
       feedback = { type: 'success', message: 'Setup gespeichert. Du kannst jetzt zum Dashboard wechseln.' };
     } catch (error) {
       feedback = { type: 'error', message: error instanceof Error ? error.message : 'Setup konnte nicht gespeichert werden.' };
@@ -163,7 +176,7 @@
           {:else if currentStep === 1}
             <div class="grid gap-4">
               <label class="grid gap-2 text-sm text-slate-300">Paperless URL<input bind:value={form.paperless_url} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" placeholder="http://paperless:8000" /></label>
-              <label class="grid gap-2 text-sm text-slate-300">API Token<input bind:value={form.paperless_token} type="password" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" placeholder="Token aus Paperless" /></label>
+              <label class="grid gap-2 text-sm text-slate-300">API Token<input bind:value={form.paperless_token} type="password" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" placeholder={paperlessTokenConfigured ? 'Bereits gespeichert — leer lassen zum Beibehalten' : 'Token aus Paperless'} /></label>
               <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Status laut Backend: {data.status.services.paperless.configured ? 'Paperless ist konfiguriert.' : 'Noch nicht konfiguriert.'}</div>
             </div>
           {:else if currentStep === 2}
