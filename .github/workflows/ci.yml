@@ -81,14 +81,20 @@ jobs:
 
       - name: Template syntax check
         run: |
-          python -c "
+          python - <<'PY'
+          from pathlib import Path
+          template_dir = Path('app/templates')
+          template_files = [p for p in template_dir.rglob('*') if p.is_file() and p.name != '.gitkeep'] if template_dir.exists() else []
+          if not template_files:
+              print('No server-rendered Jinja templates to check')
+              raise SystemExit(0)
           from jinja2 import Environment, FileSystemLoader
-          env = Environment(loader=FileSystemLoader('app/templates'))
+          env = Environment(loader=FileSystemLoader(str(template_dir)))
           templates = env.list_templates()
           for t in templates:
               env.get_template(t)
           print(f'All {len(templates)} templates OK')
-          "
+          PY
 
       - name: Console script check
         run: |
