@@ -870,7 +870,9 @@ async def paperless_tags_api(request: Request) -> dict[str, Any]:
 
 
 @router.post("/paperless/test")
-async def paperless_test_api(payload: Annotated[dict[str, Any] | None, Body()] = None) -> dict[str, Any]:
+async def paperless_test_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
     from app.clients.paperless import PaperlessClient
 
     payload = payload or {}
