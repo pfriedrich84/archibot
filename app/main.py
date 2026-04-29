@@ -15,7 +15,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
@@ -36,7 +35,10 @@ log = structlog.get_logger(__name__)
 _BASE_DIR = Path(__file__).parent
 _STATIC_DIR = _BASE_DIR / "static"
 _TEMPLATES_DIR = _BASE_DIR / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+# Legacy tests and extension points still attach app.state.templates, but the
+# server-rendered Jinja UI was removed. Keep a lightweight sentinel instead of
+# requiring Jinja2 at runtime.
+templates = object()
 
 # ---------------------------------------------------------------------------
 # Logging setup
