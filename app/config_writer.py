@@ -86,6 +86,8 @@ def save_config(updates: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
             str_val = str(new_bool).lower()
             new_value = new_bool
         elif isinstance(current_val, int):
+            if str_val == "":
+                str_val = "0"
             try:
                 new_int = int(str_val)
             except ValueError:

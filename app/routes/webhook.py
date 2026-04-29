@@ -17,6 +17,7 @@ from app.pipeline.ocr_correction import (
     cache_ocr_correction,
     effective_ocr_mode,
     maybe_correct_ocr,
+    should_run_ocr_for_document,
 )
 from app.worker import _process_document
 
@@ -221,6 +222,7 @@ async def webhook_new(
             doctypes,
             storage_paths,
             tags,
+            require_ocr_tag_info=True,
         )
         return {"status": "ok", "document_id": doc_id}
     except Exception as exc:
@@ -287,10 +289,14 @@ async def webhook_edit(
 
         # Optional OCR correction (caches locally, never writes to Paperless)
         ocr_mode = effective_ocr_mode()
-        text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
-        if num_corrections > 0:
-            doc = doc.model_copy(update={"content": text})
-            cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
+        eligible, reason = should_run_ocr_for_document(doc, require_tag_info=True)
+        if eligible:
+            text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
+            if num_corrections > 0:
+                doc = doc.model_copy(update={"content": text})
+                cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
+        else:
+            log.debug("webhook/edit OCR skipped by requested tag filter", document_id=doc_id, reason=reason)
 
         # Compute and store embedding
         summary = context_builder.document_summary(doc)

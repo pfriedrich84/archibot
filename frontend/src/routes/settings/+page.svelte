@@ -2,13 +2,15 @@
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import { saveSettings } from '$lib/api';
-  import type { SettingsSchemaPayload } from '$lib/types';
+  import type { PaperlessTagOption, SettingsSchemaPayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
 
   const initialData = () => data;
   let schema = $state<SettingsSchemaPayload>(initialData().schema);
+  let paperlessTags = $state<PaperlessTagOption[]>(initialData().paperlessTags.items);
+  let fieldErrors = $state<Record<string, string>>({});
   type SettingValue = string | number | boolean;
 
   let actionState = $state<'settings-save' | ''>('');
@@ -21,6 +23,7 @@
   $effect(() => {
     if (!initialized) {
       schema = data.schema;
+      paperlessTags = data.paperlessTags.items;
       const values: Record<string, SettingValue> = {};
       for (const category of data.schema.categories) {
         for (const field of category.fields) {
@@ -60,8 +63,19 @@
     return 'text';
   }
 
+  function tagFieldError(fieldName: string): string | null {
+    if (fieldErrors[fieldName]) return fieldErrors[fieldName];
+    if (fieldName !== 'ocr_requested_tag_id') return null;
+    const value = Number(draftSettings[fieldName] ?? 0);
+    if (value > 0 && !paperlessTags.some((tag) => tag.id === value)) {
+      return `Configured OCR tag ID ${value} does not exist in Paperless`;
+    }
+    return null;
+  }
+
   function updateDraft(name: string, value: string, type: string) {
-    if (type === 'number') {
+    fieldErrors = { ...fieldErrors, [name]: '' };
+    if (type === 'number' || type === 'tag_select') {
       draftSettings[name] = value === '' ? 0 : Number(value);
     } else {
       draftSettings[name] = value;
@@ -82,6 +96,7 @@
     feedback = null;
     try {
       const result = await saveSettings(updates);
+      fieldErrors = result.field_errors ?? {};
       originalSettings = { ...originalSettings, ...updates };
       feedback = {
         type: 'success',
@@ -182,6 +197,20 @@
                         />
                         {Boolean(draftSettings[field.name]) ? 'Aktiv' : 'Inaktiv'}
                       </label>
+                    {:else if field.input_type === 'tag_select'}
+                      <select
+                        value={String(tagFieldError(field.name) ? 0 : draftSettings[field.name] ?? 0)}
+                        onchange={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
+                        class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
+                      >
+                        <option value="0">No OCR filter</option>
+                        {#each paperlessTags as tag}
+                          <option value={tag.id}>{tag.name} (#{tag.id})</option>
+                        {/each}
+                      </select>
+                      {#if tagFieldError(field.name)}
+                        <p class="mt-2 text-xs text-rose-300">{tagFieldError(field.name)}</p>
+                      {/if}
                     {:else}
                       <input
                         value={String(draftSettings[field.name] ?? '')}

@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # --- OCR ---
     ocr_mode: str = "off"  # off | text | vision_light | vision_full
+    ocr_requested_tag_id: int = 0  # 0 = no tag filter; otherwise Paperless tag ID required for OCR
     ocr_vision_model: str = "qwen3-vl:4b"
     ocr_vision_max_pages: int = 3
     ocr_vision_dpi: int = 150
@@ -320,6 +321,12 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Processed Tag ID",
         "number",
         help="Optional tag ID added after commit (e.g. 'Verarbeitet')",
+    ),
+    "ocr_requested_tag_id": _fm(
+        "Paperless",
+        "Tag ID to improve OCR",
+        "tag_select",
+        help="Only run OCR for documents with this Paperless tag. Empty disables the filter.",
     ),
     "keep_inbox_tag": _fm(
         "Paperless", "Keep Inbox Tag", "bool", help="Keep the inbox tag on documents after commit"

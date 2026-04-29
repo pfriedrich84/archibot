@@ -55,6 +55,51 @@ def _parse_ocr_response(raw: dict[str, object], fallback_text: str) -> tuple[str
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+def ocr_requested_tag_id() -> int:
+    """Return the configured OCR tag filter ID, or 0 when disabled."""
+    raw = getattr(settings, "ocr_requested_tag_id", 0)
+    if raw in (None, ""):
+        return 0
+    if not isinstance(raw, int | str):
+        return 0
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def configured_ocr_tag_exists(tags: list[object]) -> bool:
+    """Return True when the configured OCR tag is disabled or exists in *tags*."""
+    requested = ocr_requested_tag_id()
+    if requested == 0:
+        return True
+    return any(getattr(tag, "id", None) == requested for tag in tags)
+
+
+def should_run_ocr_for_document(
+    doc: PaperlessDocument,
+    *,
+    available_tags: list[object] | None = None,
+    require_tag_info: bool = False,
+) -> tuple[bool, str]:
+    """Return ``(eligible, reason)`` for the configured OCR tag filter.
+
+    ``available_tags`` lets callers detect a configured tag that was deleted in
+    Paperless.  ``require_tag_info`` is useful for webhook payload paths where
+    missing document tag IDs must not trigger an extra lookup just for OCR.
+    """
+    requested = ocr_requested_tag_id()
+    if requested == 0:
+        return True, "no_filter"
+    if available_tags is not None and not configured_ocr_tag_exists(available_tags):
+        return False, "configured_tag_missing"
+    if require_tag_info and not doc.tags:
+        return False, "document_tags_missing"
+    if requested not in doc.tags:
+        return False, "tag_absent"
+    return True, "tag_present"
+
+
 def effective_ocr_mode() -> str:
     """Return the active OCR mode, honouring the deprecated ``enable_ocr_correction``."""
     mode = settings.ocr_mode
@@ -81,6 +126,11 @@ async def maybe_correct_ocr(
     mode = effective_ocr_mode()
 
     if mode == "off":
+        return text, 0
+
+    eligible, reason = should_run_ocr_for_document(doc)
+    if not eligible:
+        log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
         return text, 0
     if mode == "text":
         return await _correct_text_only(doc, ollama)
@@ -136,6 +186,7 @@ async def batch_correct_documents(
 
     # Fetch all documents from Paperless (not from local DB)
     all_docs = await paperless.list_all_documents()
+    available_tags = await paperless.list_tags()
 
     if not force:
         with get_conn() as conn:
@@ -151,6 +202,10 @@ async def batch_correct_documents(
 
     for doc in all_docs:
         try:
+            eligible, reason = should_run_ocr_for_document(doc, available_tags=available_tags)
+            if not eligible:
+                log.debug("batch OCR skipped by requested tag filter", doc_id=doc.id, reason=reason)
+                continue
             text, num = await maybe_correct_ocr(doc, ollama, paperless)
             if num > 0 or mode.startswith("vision"):
                 cache_ocr_correction(doc.id, text, mode, num)

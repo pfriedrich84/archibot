@@ -18,6 +18,7 @@ from app.pipeline.ocr_correction import (
     effective_ocr_mode,
     get_cached_ocr,
     maybe_correct_ocr,
+    should_run_ocr_for_document,
 )
 
 log = structlog.get_logger(__name__)
@@ -165,14 +166,17 @@ async def reindex_all(
         if ocr_mode != "off":
             log.info("reindex phase ocr — correcting documents", mode=ocr_mode)
             docs = await paperless.list_all_documents()
+            available_tags = await paperless.list_tags()
             corrected = 0
             for doc in docs:
                 if _reindex_progress.cancelled:
                     log.info("reindex cancelled during OCR phase")
                     break
-                if get_cached_ocr(doc.id) is not None:
-                    continue  # already cached from a previous run
                 try:
+                    eligible, reason = should_run_ocr_for_document(doc, available_tags=available_tags)
+                    if not eligible:
+                        log.debug("reindex OCR skipped by requested tag filter", doc_id=doc.id, reason=reason)
+                        continue
                     text, num = await maybe_correct_ocr(doc, ollama, paperless)
                     if num > 0 or ocr_mode.startswith("vision"):
                         cache_ocr_correction(doc.id, text, ocr_mode, num)

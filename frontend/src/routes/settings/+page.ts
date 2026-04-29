@@ -1,7 +1,10 @@
 import type { PageLoad } from './$types';
-import { loadSettingsSchema } from '$lib/api';
+import { loadPaperlessTagOptions, loadSettingsSchema } from '$lib/api';
 
 export const load: PageLoad = async ({ fetch }) => {
-  const schema = await loadSettingsSchema(fetch);
-  return { schema };
+  const [schema, paperlessTags] = await Promise.all([
+    loadSettingsSchema(fetch),
+    loadPaperlessTagOptions(fetch).catch(() => ({ items: [] }))
+  ]);
+  return { schema, paperlessTags };
 };

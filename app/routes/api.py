@@ -30,6 +30,7 @@ from app.db import get_conn, mark_setup_complete
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
+from app.pipeline.ocr_correction import ocr_requested_tag_id
 from app.worker import cancel_poll, get_poll_progress, start_poll_task
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
@@ -842,6 +843,20 @@ async def settings_schema_api() -> dict[str, Any]:
     return get_settings_schema()
 
 
+@router.get("/paperless/tags")
+async def paperless_tags_api(request: Request) -> dict[str, Any]:
+    tags = await request.app.state.paperless.list_tags()
+    return {"items": [{"id": tag.id, "name": tag.name} for tag in tags]}
+
+
+def _write_settings_error(stage: str, message: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO errors (stage, document_id, message) VALUES (?, ?, ?)",
+            (stage, None, message),
+        )
+
+
 @router.post("/settings")
 async def save_settings_api(
     request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
@@ -852,6 +867,14 @@ async def save_settings_api(
         raise HTTPException(status_code=400, detail="Missing updates payload")
 
     changed, restart_required = save_config(updates)
+    field_errors: dict[str, str] = {}
+    if "ocr_requested_tag_id" in updates and ocr_requested_tag_id() > 0:
+        tags = await request.app.state.paperless.list_tags()
+        if all(tag.id != ocr_requested_tag_id() for tag in tags):
+            message = f"Configured OCR tag ID {ocr_requested_tag_id()} does not exist in Paperless"
+            field_errors["ocr_requested_tag_id"] = message
+            _write_settings_error("ocr_config", message)
+
     runtime_fields = {k: v for k, v in changed.items() if k not in restart_required}
     actions: list[str] = []
     if runtime_fields:
@@ -865,4 +888,5 @@ async def save_settings_api(
         "changed": changed,
         "restart_required": sorted(restart_required),
         "actions": actions,
+        "field_errors": field_errors,
     }

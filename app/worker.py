@@ -29,7 +29,14 @@ from app.models import (
 from app.pipeline import classifier, context_builder
 from app.pipeline.committer import commit_suggestion
 from app.pipeline.context_builder import SimilarDocument
-from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
+from app.pipeline.ocr_correction import (
+    cache_ocr_correction,
+    configured_ocr_tag_exists,
+    effective_ocr_mode,
+    maybe_correct_ocr,
+    ocr_requested_tag_id,
+    should_run_ocr_for_document,
+)
 from app.telegram_handler import notify_suggestion
 
 log = structlog.get_logger(__name__)
@@ -446,6 +453,8 @@ async def _process_document(
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
+    *,
+    require_ocr_tag_info: bool = False,
 ) -> ProcessResult:
     """Run the full classification pipeline for a single document.
 
@@ -462,10 +471,16 @@ async def _process_document(
 
     # Optional OCR correction (modifies content in-memory only, caches in our DB)
     ocr_mode = effective_ocr_mode()
-    text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
-    if num_corrections > 0:
-        doc = doc.model_copy(update={"content": text})
-        cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
+    eligible, reason = should_run_ocr_for_document(
+        doc, available_tags=tags, require_tag_info=require_ocr_tag_info
+    )
+    if eligible:
+        text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
+        if num_corrections > 0:
+            doc = doc.model_copy(update={"content": text})
+            cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
+    else:
+        log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
 
     # Compute embedding once — reuse for context search and indexing
     embed_result = _EmbeddingResult()
@@ -664,6 +679,7 @@ async def _phase_ocr(
     ollama: OllamaClient,
     paperless: PaperlessClient,
     cycle_id: str,
+    tags: list[PaperlessEntity] | None = None,
 ) -> list[PaperlessDocument]:
     """Phase 1: Run OCR correction on all documents.
 
@@ -684,6 +700,12 @@ async def _phase_ocr(
         t0 = time.monotonic()
         ok = True
         try:
+            eligible, reason = should_run_ocr_for_document(doc, available_tags=tags)
+            if not eligible:
+                log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
+                _record_timing(cycle_id, doc.id, "ocr", t0, success=True)
+                corrected.append(doc)
+                continue
             text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
             if num_corrections > 0:
                 doc = doc.model_copy(update={"content": text})
@@ -916,6 +938,10 @@ async def poll_inbox(*, force: bool = False) -> None:
         _write_error("poll", None, exc)
         return
 
+    if not configured_ocr_tag_exists(tags):
+        log.warning("configured OCR tag missing in Paperless", tag_id=ocr_requested_tag_id())
+        _record_ocr_tag_missing_error()
+
     # --- Phase 0: Idempotency filter + mark pending ---
     batch: list[PaperlessDocument] = []
     skipped = 0
@@ -959,7 +985,7 @@ async def poll_inbox(*, force: bool = False) -> None:
         if _poll_progress.cancelled:
             log.info("poll cancelled before OCR phase")
             return
-        batch = await _phase_ocr(batch, _ollama, _paperless, cycle_id)
+        batch = await _phase_ocr(batch, _ollama, _paperless, cycle_id, tags)
 
         # --- Phase 2: Embedding + context search (embed model) ---
         _poll_progress.phase = "embed"
@@ -1000,6 +1026,13 @@ async def poll_inbox(*, force: bool = False) -> None:
         auto_committed=auto_committed,
         errored=errored,
     )
+
+
+def _record_ocr_tag_missing_error() -> None:
+    tag_id = ocr_requested_tag_id()
+    if tag_id == 0:
+        return
+    _write_error("ocr_config", None, RuntimeError(f"Configured OCR tag ID {tag_id} does not exist in Paperless"))
 
 
 def _write_error(stage: str, doc_id: int | None, exc: Exception) -> None:

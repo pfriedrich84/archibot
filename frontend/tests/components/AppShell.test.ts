@@ -13,7 +13,7 @@ describe('PagePlaceholder', () => {
       }
     });
 
-    expect(body).toContain('Migration Workbench');
+    expect(body).toContain('Arbeitsbereich in Überarbeitung');
     expect(body).toContain('Review Queue');
     expect(body).toContain('/api/v1/review/*');
   });

@@ -74,6 +74,15 @@ export type StatusPayload = {
   logging: { level: string; request_ids: boolean; structured_logs: boolean };
 };
 
+export type PaperlessTagOption = {
+  id: number;
+  name: string;
+};
+
+export type PaperlessTagsPayload = {
+  items: PaperlessTagOption[];
+};
+
 export type SettingsSchemaPayload = {
   categories: Array<{
     name: string;

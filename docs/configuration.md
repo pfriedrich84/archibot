@@ -39,6 +39,7 @@ in `config.env` persistiert.
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
+| `OCR_REQUESTED_TAG_ID` | `0` | Optionaler Paperless-Tag-Filter fuer OCR. `0`, leer oder nicht gesetzt = OCR fuer alle Dokumente. In der Settings-UI kann eine leere Auswahl den Env-Wert deaktivieren. Wenn der Tag spaeter in Paperless geloescht wird, wird OCR uebersprungen und ein Fehler im Dashboard angezeigt. Webhooks ohne Tag-IDs loesen keinen Zusatz-Lookup fuer OCR aus und ueberspringen OCR. |
 | `OLLAMA_OCR_MODEL` | `qwen3:4b` | Modell fuer Text-Only OCR-Korrektur |
 | `OCR_VISION_MODEL` | `qwen3-vl:4b` | Vision-Modell fuer OCR (muss vision-faehig sein) |
 | `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten fuer Vision-OCR |
@@ -53,6 +54,8 @@ in `config.env` persistiert.
 | `text` | Text-only LLM-Korrektur | Ja | 1 LLM-Call |
 | `vision_light` | Bild + OCR-Text vergleichen | Ja | 1 Download + N Vision-Calls |
 | `vision_full` | Seite-fuer-Seite Korrektur | Nein (laeuft immer) | 1 Download + N Vision-Calls |
+
+Wenn `OCR_REQUESTED_TAG_ID` gesetzt ist, laeuft bzw. wiederholt sich OCR nur fuer Dokumente, die diesen Tag aktuell tragen. Die restliche Pipeline (Embedding/Klassifikation) laeuft bei nicht passenden Dokumenten weiter.
 
 **Graceful Degradation:** `vision_full` → `vision_light` → `text` → `off`.
 Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
