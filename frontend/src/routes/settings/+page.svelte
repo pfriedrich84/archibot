@@ -204,7 +204,7 @@
           </Card>
         </div>
 
-        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20 xl:sticky xl:top-24 xl:self-start">
+        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20 xl:sticky xl:top-24 xl:self-start">
           <div class="flex items-center justify-between gap-3">
             <div><p class="text-xs uppercase tracking-[0.2em] text-slate-500">Betriebsstatus</p><h2 class="mt-2 text-2xl font-semibold text-white">Systembereitschaft</h2></div>
             <Badge color="gray">{status.app.frontend.mode}</Badge>
