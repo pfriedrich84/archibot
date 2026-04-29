@@ -15,13 +15,17 @@ export const navGroups: NavGroup[] = [
     label: 'Arbeitsplatz',
     items: [
       { href: '/', label: 'Dashboard', emoji: '📊' },
-      { href: '/inbox', label: 'Posteingang', emoji: '📥', badgeKey: 'inbox' },
-      { href: '/review', label: 'Review Queue', emoji: '✅', badgeKey: 'review' }
+      { href: '/review', label: 'Review', emoji: '✅', badgeKey: 'review' },
+      { href: '/inbox', label: 'Posteingang', emoji: '📥', badgeKey: 'inbox' }
     ]
   },
   {
     label: 'Freigaben',
-    items: [{ href: '/tags', label: 'Tags', emoji: '🏷️', badgeKey: 'approvals' }]
+    items: [
+      { href: '/tags', label: 'Tags', emoji: '🏷️', badgeKey: 'tags' },
+      { href: '/correspondents', label: 'Korrespondenten', emoji: '👤', badgeKey: 'correspondents' },
+      { href: '/doctypes', label: 'Dokumenttypen', emoji: '📄', badgeKey: 'doctypes' }
+    ]
   },
   {
     label: 'Analyse',

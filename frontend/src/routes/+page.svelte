@@ -18,6 +18,15 @@
     }).format(date);
   }
 
+  let navBadges = $derived({
+    review: data.dashboard.kpis.pending_review,
+    inbox: data.dashboard.kpis.inbox_pending,
+    errors: data.dashboard.kpis.errors_24h,
+    tags: data.dashboard.kpis.pending_tags ?? 0,
+    correspondents: data.dashboard.kpis.pending_correspondents ?? 0,
+    doctypes: data.dashboard.kpis.pending_doctypes ?? 0
+  });
+
   let serviceChecks = $derived([
     { label: 'Setup', ok: data.dashboard.health.setup_complete },
     { label: 'Paperless', ok: data.dashboard.health.paperless_configured },
@@ -29,9 +38,10 @@
 <AppShell
   title="Dashboard"
   subtitle="Gesundheit, Durchsatz und offene Risiken auf einen Blick — mit direktem Fokus auf tägliche Betriebsentscheidungen."
-  navBadges={{ review: data.dashboard.kpis.pending_review, inbox: data.dashboard.kpis.inbox_pending, errors: data.dashboard.kpis.errors_24h }}
+  navBadges={navBadges}
 >
   {#snippet children()}
+    <div class="mx-auto max-w-7xl space-y-6">
     <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Review offen" value={data.dashboard.kpis.pending_review} hint="Vorschläge warten auf Freigabe" accent="emerald" />
       <StatCard title="Fehler 24h" value={data.dashboard.kpis.errors_24h} hint="Aktive Warnsignale" accent="red" />
@@ -44,11 +54,11 @@
       />
     </div>
 
-    <div class="mt-6">
+    <div class="max-w-5xl">
       <StatusPanel dashboard={data.dashboard} status={data.status} />
     </div>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
+    <div class="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
       <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
@@ -116,6 +126,7 @@
           {/each}
         </div>
       </Card>
+    </div>
     </div>
   {/snippet}
 </AppShell>

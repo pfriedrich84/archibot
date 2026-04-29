@@ -16,7 +16,7 @@ router = APIRouter(prefix="/correspondents")
 
 @router.get("")
 async def correspondent_list(request: Request):
-    return RedirectResponse(url="/app/settings", status_code=302)
+    return RedirectResponse(url="/app/correspondents", status_code=302)
 
 
 @router.post("/{name:path}/approve")

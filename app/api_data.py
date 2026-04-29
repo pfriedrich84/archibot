@@ -364,6 +364,12 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
         pending_tags = conn.execute(
             "SELECT COUNT(*) AS c FROM tag_whitelist WHERE approved = 0"
         ).fetchone()["c"]
+        pending_correspondents = conn.execute(
+            "SELECT COUNT(*) AS c FROM correspondent_whitelist WHERE approved = 0"
+        ).fetchone()["c"]
+        pending_doctypes = conn.execute(
+            "SELECT COUNT(*) AS c FROM doctype_whitelist WHERE approved = 0"
+        ).fetchone()["c"]
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM processed_documents").fetchone()["c"]
         embedded = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
         inbox_pending = conn.execute(
@@ -393,6 +399,8 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "committed_today": committed_today,
             "errors_24h": errors_24h,
             "pending_tags": pending_tags,
+            "pending_correspondents": pending_correspondents,
+            "pending_doctypes": pending_doctypes,
             "processed_documents": total_docs,
             "embedded_documents": embedded,
             "inbox_pending": inbox_pending,

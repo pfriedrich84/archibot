@@ -16,7 +16,7 @@ router = APIRouter(prefix="/doctypes")
 
 @router.get("")
 async def doctype_list(request: Request):
-    return RedirectResponse(url="/app/settings", status_code=302)
+    return RedirectResponse(url="/app/doctypes", status_code=302)
 
 
 @router.post("/{name:path}/approve")
