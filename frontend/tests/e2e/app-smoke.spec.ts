@@ -110,16 +110,32 @@ const settingsSchemaPayload = {
           sensitive: false,
           value: 77,
           configured: null
-        },
+        }
+      ]
+    },
+    {
+      name: 'Phase 1: OCR',
+      fields: [
         {
           name: 'ocr_requested_tag_id',
-          label: 'OCR Tag ID',
+          label: 'Tag ID to improve OCR',
           input_type: 'tag_select',
           required: false,
           restart: null,
           help: 'Tag used for OCR filter',
           sensitive: false,
           value: 66,
+          configured: null
+        },
+        {
+          name: 'ocr_mode',
+          label: 'OCR Mode',
+          input_type: 'ocr_mode_select',
+          required: false,
+          restart: null,
+          help: 'off | text | vision_light | vision_full',
+          sensitive: false,
+          value: 'vision_light',
           configured: null
         }
       ]
@@ -375,6 +391,9 @@ test('settings route renders schema-driven category card', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Paperless' })).toBeVisible();
   await expect(page.getByText('Paperless URL')).toBeVisible();
   await expect(page.getByLabel('Inbox Tag ID')).toHaveValue('99');
+  await expect(page.getByRole('heading', { name: 'Phase 1: OCR' })).toBeVisible();
+  await expect(page.getByLabel('Tag ID to improve OCR')).toHaveValue('66');
+  await expect(page.getByLabel('OCR Mode')).toHaveValue('vision_light');
   await expect(page.getByLabel('Classification Model')).toHaveValue('gemma4:e4b');
   await expect(page.getByLabel('Embedding Model')).toHaveValue('qwen3-embedding:4b');
 });

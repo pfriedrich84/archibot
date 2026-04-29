@@ -203,6 +203,11 @@ def test_settings_schema_api_groups_fields(client):
     ollama_model = next(field for field in all_fields if field["name"] == "ollama_model")
     assert ollama_model["input_type"] == "model_select"
 
+    phase_ocr_category = next(c for c in payload["categories"] if c["name"] == "Phase 1: OCR")
+    assert phase_ocr_category["fields"][0]["name"] == "ocr_requested_tag_id"
+    ocr_mode = next(f for f in phase_ocr_category["fields"] if f["name"] == "ocr_mode")
+    assert ocr_mode["input_type"] == "ocr_mode_select"
+
 
 def test_ollama_models_api_lists_available_models(client):
     response = client.get("/api/v1/ollama/models")

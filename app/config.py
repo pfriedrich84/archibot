@@ -321,12 +321,6 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "tag_select",
         help="Optional tag ID added after commit (e.g. 'Verarbeitet')",
     ),
-    "ocr_requested_tag_id": _fm(
-        "Paperless",
-        "Tag ID to improve OCR",
-        "tag_select",
-        help="Only run OCR for documents with this Paperless tag. Empty disables the filter.",
-    ),
     "keep_inbox_tag": _fm(
         "Paperless", "Keep Inbox Tag", "bool", help="Keep the inbox tag on documents after commit"
     ),
@@ -350,9 +344,16 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Set to 0 to disable.",
     ),
     # --- Phase 1: OCR ---
+    "ocr_requested_tag_id": _fm(
+        "Phase 1: OCR",
+        "Tag ID to improve OCR",
+        "tag_select",
+        help="Only run OCR for documents with this Paperless tag. Empty disables the filter.",
+    ),
     "ocr_mode": _fm(
         "Phase 1: OCR",
         "OCR Mode",
+        "ocr_mode_select",
         help="off | text | vision_light | vision_full",
     ),
     "ollama_ocr_model": _fm(

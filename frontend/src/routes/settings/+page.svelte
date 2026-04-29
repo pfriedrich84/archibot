@@ -103,6 +103,13 @@
     return 'No model selected';
   }
 
+  const ocrModeOptions = [
+    { value: 'off', label: 'Off' },
+    { value: 'text', label: 'Text' },
+    { value: 'vision_light', label: 'Vision light' },
+    { value: 'vision_full', label: 'Vision full' }
+  ];
+
   function updateDraft(name: string, value: string, type: string) {
     fieldErrors = { ...fieldErrors, [name]: '' };
     if (type === 'number' || type === 'tag_select') {
@@ -254,6 +261,17 @@
                         {/if}
                         {#each modelOptionsFor(String(draftSettings[field.name] ?? '')) as name}
                           <option value={name}>{name}</option>
+                        {/each}
+                      </select>
+                    {:else if field.input_type === 'ocr_mode_select'}
+                      <select
+                        aria-label={field.label}
+                        value={String(draftSettings[field.name] ?? 'off')}
+                        onchange={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
+                        class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
+                      >
+                        {#each ocrModeOptions as option}
+                          <option value={option.value}>{option.label}</option>
                         {/each}
                       </select>
                     {:else}
