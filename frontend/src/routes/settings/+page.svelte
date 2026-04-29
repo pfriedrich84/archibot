@@ -158,7 +158,7 @@
 
       <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(19rem,0.8fr)]">
         <div class="grid gap-6 xl:grid-cols-2">
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="flex items-center justify-between gap-3">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Polling</p>
@@ -180,7 +180,7 @@
             </div>
           </Card>
 
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="flex items-center justify-between gap-3">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Embeddings</p>
@@ -217,7 +217,7 @@
         </Card>
       </div>
 
-      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Settings bearbeiten</p>
@@ -235,13 +235,13 @@
 
       <div class="mt-6 space-y-6">
         {#if filteredCategories.length === 0}
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">Keine Settings passen zur aktuellen Suche.</div>
           </Card>
         {/if}
 
         {#each filteredCategories as category}
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Konfigurationsbereich</p>

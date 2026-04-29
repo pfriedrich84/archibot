@@ -36,7 +36,7 @@
 </script>
 
 <div class="grid gap-5 xl:grid-cols-[1.35fr,0.95fr]">
-  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline</p>
@@ -80,7 +80,7 @@
     </div>
   </Card>
 
-  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
     <div class="flex items-center justify-between gap-3">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime & Logs</p>

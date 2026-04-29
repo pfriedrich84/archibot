@@ -108,7 +108,7 @@
 <AppShell title="Setup" subtitle="Geführte Ersteinrichtung für Paperless, Inbox Tag und Ollama — ohne manuelles Bearbeiten von .env-Dateien.">
   {#snippet children()}
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Setup Wizard</p>
@@ -195,7 +195,7 @@
       </Card>
 
       <aside class="space-y-4">
-        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+        <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bereitschaft</p>
           <div class="mt-4 space-y-3 text-sm">
             <div class="flex justify-between gap-3"><span class="text-slate-400">Paperless</span><Badge color={paperlessReady ? 'green' : 'yellow'}>{paperlessReady ? 'OK' : 'Offen'}</Badge></div>

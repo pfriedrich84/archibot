@@ -25,7 +25,7 @@
       <StatCard title="Committed" value={data.inbox.counts.committed ?? 0} hint="Bereits bestätigt" accent="purple" />
     </div>
 
-    <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Inbox Snapshot</p>

@@ -24,7 +24,7 @@
     </div>
 
     <div class="mt-6 grid gap-6 xl:grid-cols-2">
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Vorschlagsstatus</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">Verteilung</h2>
         <div class="mt-6 flex flex-wrap gap-2">
@@ -43,7 +43,7 @@
         </div>
       </Card>
 
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Phasenqualität</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">Letzte 30 Tage</h2>
         <div class="mt-6 space-y-3">
