@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -27,7 +28,7 @@ import structlog
 from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.db import init_db
+from app.db import init_db, mark_setup_required
 
 
 def _configure_logging() -> None:
@@ -214,8 +215,13 @@ def cmd_reset(include_config: bool = False) -> None:
         p.unlink()
         log.info("deleted", path=str(p))
 
-    # Recreate clean DB
+    # Recreate clean DB and force onboarding on next app start.
     init_db()
+    if db_path.exists():
+        try:
+            mark_setup_required()
+        except sqlite3.Error as exc:
+            log.warning("could not persist setup-required marker", error=str(exc))
     print(f"Reset complete. Clean database created at {db_path}")
 
 

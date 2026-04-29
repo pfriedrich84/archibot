@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Badge, Button, Card, Progressbar } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
-  import { cancelPoll, cancelReindexJob, startPoll, startReindex } from '$lib/api';
+  import { cancelPoll, cancelReindexJob, saveSettings, startPoll, startReindex } from '$lib/api';
   import type { DashboardPayload, SettingsSchemaPayload, StatusPayload } from '$lib/types';
   import type { PageData } from './$types';
 
@@ -10,8 +10,12 @@
   let dashboard = $state<DashboardPayload>(undefined as unknown as DashboardPayload);
   let status = $state<StatusPayload>(undefined as unknown as StatusPayload);
   let schema = $state<SettingsSchemaPayload>(undefined as unknown as SettingsSchemaPayload);
-  let actionState = $state<'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | ''>('');
+  type SettingValue = string | number | boolean;
+
+  let actionState = $state<'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | 'settings-save' | ''>('');
   let feedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
+  let draftSettings = $state<Record<string, SettingValue>>({});
+  let originalSettings = $state<Record<string, SettingValue>>({});
   let initialized = $state(false);
   let search = $state('');
 
@@ -20,6 +24,14 @@
       dashboard = data.dashboard;
       status = data.status;
       schema = data.schema;
+      const values: Record<string, SettingValue> = {};
+      for (const category of data.schema.categories) {
+        for (const field of category.fields) {
+          values[field.name] = field.sensitive ? '' : field.value;
+        }
+      }
+      draftSettings = { ...values };
+      originalSettings = { ...values };
       initialized = true;
     }
   });
@@ -45,6 +57,53 @@
 
   function reindexPct() {
     return dashboard.reindex.total > 0 ? Math.round((dashboard.reindex.done / dashboard.reindex.total) * 100) : 0;
+  }
+
+  let changedSettingsCount = $derived.by(() =>
+    Object.entries(draftSettings).filter(([key, value]) => String(value) !== String(originalSettings[key] ?? '')).length
+  );
+
+  function inputType(type: string) {
+    if (type === 'password') return 'password';
+    if (type === 'number') return 'number';
+    if (type === 'url') return 'url';
+    return 'text';
+  }
+
+  function updateDraft(name: string, value: string, type: string) {
+    if (type === 'number') {
+      draftSettings[name] = value === '' ? 0 : Number(value);
+    } else {
+      draftSettings[name] = value;
+    }
+  }
+
+  async function saveChangedSettings() {
+    const updates: Record<string, SettingValue> = {};
+    for (const [key, value] of Object.entries(draftSettings)) {
+      if (String(value) !== String(originalSettings[key] ?? '')) updates[key] = value;
+    }
+    if (Object.keys(updates).length === 0) {
+      feedback = { type: 'success', message: 'Keine Änderungen zu speichern.' };
+      return;
+    }
+
+    actionState = 'settings-save';
+    feedback = null;
+    try {
+      const result = await saveSettings(updates);
+      originalSettings = { ...originalSettings, ...updates };
+      feedback = {
+        type: 'success',
+        message: result.restart_required.length > 0
+          ? `Gespeichert. Restart erforderlich für: ${result.restart_required.join(', ')}`
+          : 'Settings gespeichert und soweit möglich live angewendet.'
+      };
+    } catch (error) {
+      feedback = { type: 'error', message: error instanceof Error ? error.message : 'Settings konnten nicht gespeichert werden.' };
+    } finally {
+      actionState = '';
+    }
   }
 
   function readinessTone(ok: boolean) {
@@ -161,12 +220,15 @@
       <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Settings-Suche</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Konfiguration schnell finden</h2>
-            <p class="mt-1.5 text-sm text-slate-400">Filtert nach Bereich, Key, Label und Hilfetext. Treffende Kategorien bleiben sichtbar und dienen als Referenz während Setup und Betrieb.</p>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Settings bearbeiten</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Konfiguration schnell finden und speichern</h2>
+            <p class="mt-1.5 text-sm text-slate-400">Filtert nach Bereich, Key, Label und Hilfetext. Sensible Werte bleiben geschützt und werden nur aktualisiert, wenn du sie neu eingibst.</p>
           </div>
-          <div class="w-full max-w-xl">
-            <input bind:value={search} type="search" placeholder="Nach Setting-Namen, Label oder Hilfetext suchen …" class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500/40" />
+          <div class="flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:items-center">
+            <input bind:value={search} type="search" placeholder="Nach Setting-Namen, Label oder Hilfetext suchen …" class="min-w-0 flex-1 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500/40" />
+            <Button color="green" class="rounded-xl" disabled={actionState !== '' || changedSettingsCount === 0} onclick={() => void saveChangedSettings()}>
+              {actionState === 'settings-save' ? 'Speichert …' : changedSettingsCount > 0 ? `${changedSettingsCount} speichern` : 'Gespeichert'}
+            </Button>
           </div>
         </div>
       </Card>
@@ -205,14 +267,27 @@
 
                   <p class="mt-2.5 text-sm text-slate-400">{field.help}</p>
                   <div class="mt-3 text-sm text-slate-300">
-                    {#if field.sensitive}
-                      {#if field.configured}
-                        <span class="text-emerald-300">Konfiguriert</span>
-                      {:else}
-                        <span class="text-amber-300">Nicht gesetzt</span>
-                      {/if}
+                    {#if field.input_type === 'bool'}
+                      <label class="inline-flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-sm text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draftSettings[field.name])}
+                          onchange={(event) => (draftSettings[field.name] = event.currentTarget.checked)}
+                          class="rounded border-slate-600 bg-slate-950 text-emerald-500 focus:ring-emerald-500"
+                        />
+                        {Boolean(draftSettings[field.name]) ? 'Aktiv' : 'Inaktiv'}
+                      </label>
                     {:else}
-                      <code class="break-all text-emerald-300">{String(field.value)}</code>
+                      <input
+                        value={String(draftSettings[field.name] ?? '')}
+                        type={inputType(field.input_type)}
+                        placeholder={field.sensitive && field.configured ? 'Konfiguriert — leer lassen für unverändert' : ''}
+                        oninput={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
+                        class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500/40"
+                      />
+                      {#if field.sensitive}
+                        <p class="mt-2 text-xs {field.configured ? 'text-emerald-300' : 'text-amber-300'}">{field.configured ? 'Bereits konfiguriert' : 'Noch nicht gesetzt'}</p>
+                      {/if}
                     {/if}
                   </div>
                 </div>

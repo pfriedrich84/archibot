@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -177,14 +178,86 @@ def _apply_config_env_overrides() -> None:
 
 _apply_config_env_overrides()
 
+_SETUP_COMPLETE_KEY = "setup_completed_at"
+_SETUP_REQUIRED_KEY = "setup_required"
+_LEGACY_ACTIVITY_TABLES = (
+    "processed_documents",
+    "suggestions",
+    "tag_whitelist",
+    "correspondent_whitelist",
+    "doctype_whitelist",
+    "doc_embedding_meta",
+    "doc_ocr_cache",
+    "audit_log",
+    "poll_cycles",
+    "errors",
+)
 
-def needs_setup() -> bool:
-    """True when essential Paperless fields are missing (first-run state)."""
+
+def _essential_config_missing() -> bool:
     return (
         not settings.paperless_url
         or not settings.paperless_token
         or settings.paperless_inbox_tag_id == 0
     )
+
+
+def _db_requires_setup(db_path: Path) -> bool:
+    """True when the DB is missing, empty, invalid, or still uninitialized."""
+    if not db_path.exists():
+        return True
+
+    try:
+        if db_path.stat().st_size == 0:
+            return True
+    except OSError:
+        return True
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return True
+
+    try:
+        app_state_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_state'"
+        ).fetchone()
+        if app_state_exists:
+            required = conn.execute(
+                "SELECT value FROM app_state WHERE key = ?", (_SETUP_REQUIRED_KEY,)
+            ).fetchone()
+            if required and str(required[0]).lower() in {"1", "true", "yes"}:
+                return True
+
+            row = conn.execute(
+                "SELECT value FROM app_state WHERE key = ?", (_SETUP_COMPLETE_KEY,)
+            ).fetchone()
+            if row and row[0]:
+                return False
+
+            # A schema-initialized database plus complete essential env/config is usable.
+            # Explicit reset flows set setup_required above to force re-onboarding.
+            return False
+
+        for table in _LEGACY_ACTIVITY_TABLES:
+            table_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?", (table,)
+            ).fetchone()
+            if not table_exists:
+                return True
+            if conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
+                return False
+
+        return True
+    except sqlite3.Error:
+        return True
+    finally:
+        conn.close()
+
+
+def needs_setup() -> bool:
+    """True when essential config or persistent setup state is still missing."""
+    return _essential_config_missing() or _db_requires_setup(settings.db_path)
 
 
 # ---------------------------------------------------------------------------

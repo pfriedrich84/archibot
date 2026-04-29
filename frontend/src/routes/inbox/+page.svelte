@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
   import StatCard from '$lib/components/StatCard.svelte';
   import type { PageData } from './$types';
 
@@ -15,7 +16,7 @@
   }
 </script>
 
-<AppShell title="Posteingang" subtitle="Neue Dokumente, Bearbeitungsstatus und Vorschläge schnell scannen, bevor du in Review oder Fehleranalyse wechselst.">
+<AppShell title="Posteingang" subtitle="Neue Dokumente, Bearbeitungsstatus und Vorschläge schnell scannen, bevor du in Review oder Fehleranalyse wechselst." navBadges={{ inbox: data.inbox.total, review: data.inbox.counts.pending ?? 0, errors: data.inbox.counts.error ?? 0 }}>
   {#snippet children()}
     <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Dokumente" value={data.inbox.total} hint="Geladene Inbox-Einträge" accent="blue" />
@@ -70,10 +71,8 @@
           {/each}
         </div>
       {:else}
-        <div class="mt-6 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-emerald-100">
-          <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/70">Kein Rückstau</p>
-          <p class="mt-2 text-base font-medium">Aktuell sind keine Inbox-Daten verfügbar.</p>
-          <p class="mt-2 text-sm text-emerald-50/80">Sobald neue Dokumente verarbeitet werden, erscheint hier wieder eine kompakte Triage-Ansicht.</p>
+        <div class="mt-6">
+          <EmptyState icon="✅" title="Kein Rückstau" description="Aktuell sind keine Inbox-Daten verfügbar. Sobald neue Dokumente verarbeitet werden, erscheint hier wieder eine kompakte Triage-Ansicht." actionHref="/app/settings" actionLabel="Polling starten" />
         </div>
       {/if}
     </Card>

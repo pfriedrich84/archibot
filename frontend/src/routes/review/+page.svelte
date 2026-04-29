@@ -1,6 +1,10 @@
 <script lang="ts">
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
+  import ConfidenceBadge from '$lib/components/ConfidenceBadge.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+  import SuggestionDiff from '$lib/components/SuggestionDiff.svelte';
   import {
     acceptReviewSuggestion,
     bulkAcceptReviewSuggestions,
@@ -419,6 +423,7 @@
 <AppShell
   title="Review Queue"
   subtitle="Dokumentvorschläge prüfen, filtern und direkt übernehmen — mit Preview, Diff-Hervorhebung, Tastenkürzeln und skalierbarer Queue-Navigation."
+  navBadges={{ review: queueMeta?.total ?? data.queue.total }}
 >
   {#snippet children()}
     {#if !shortcutHintDismissed}
@@ -431,19 +436,7 @@
     {/if}
 
     {#if items.length === 0}
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Review Queue</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Keine offenen Vorschläge</h2>
-            <p class="mt-2 text-sm text-slate-400">Sobald neue Dokumente klassifiziert wurden, erscheinen sie hier automatisch.</p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <a href="/app/settings" class="inline-flex"><Button color="green" class="rounded-xl">Polling oder Reindex starten</Button></a>
-            <a href="/app/tags" class="inline-flex"><Button color="dark" class="rounded-xl border border-slate-700">Freigaben öffnen</Button></a>
-          </div>
-        </div>
-      </Card>
+      <EmptyState icon="✅" title="Keine offenen Vorschläge" description="Sobald neue Dokumente klassifiziert wurden, erscheinen sie hier automatisch. Starte bei Bedarf Polling oder Reindex in den Einstellungen." actionHref="/app/settings" actionLabel="Polling oder Reindex starten" />
     {:else}
       {#if feedback}
         <div class={`mb-4 rounded-2xl border p-4 text-sm ${feedback.type === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : feedback.type === 'info' ? 'border-sky-500/20 bg-sky-500/10 text-sky-100' : 'border-rose-500/20 bg-rose-500/10 text-rose-100'}`}>
@@ -567,7 +560,7 @@
                     <h3 class="mt-3 truncate text-lg font-semibold text-white">{item.proposed_title || 'Ohne Titelvorschlag'}</h3>
                     <p class="mt-1 text-sm text-slate-400">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
                   </div>
-                  <span class={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${confidenceTone(item.confidence)}`}>{item.confidence ?? '—'}{item.confidence !== null ? '%' : ''}</span>
+                  <ConfidenceBadge confidence={item.confidence} compact />
                 </div>
                 <div class="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 px-3 py-2">
@@ -599,9 +592,7 @@
 
         <div class="space-y-6">
           {#if loadingDetail}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
-              <div class="space-y-3"><div class="h-5 w-40 animate-pulse rounded bg-slate-800"></div><div class="h-12 animate-pulse rounded-2xl bg-slate-800"></div><div class="h-48 animate-pulse rounded-3xl bg-slate-800"></div></div>
-            </Card>
+            <LoadingSkeleton rows={3} />
           {:else if detailError}
             <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div></Card>
           {:else if detail}
@@ -610,7 +601,7 @@
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
                     <Badge color="gray">Dokument #{detail.suggestion.document_id}</Badge>
-                    <Badge color={detail.suggestion.confidence !== null && detail.suggestion.confidence >= 80 ? 'green' : detail.suggestion.confidence !== null && detail.suggestion.confidence >= 50 ? 'yellow' : 'red'}>{detail.suggestion.confidence ?? '—'}{detail.suggestion.confidence !== null ? '%' : ''}</Badge>
+                    <ConfidenceBadge confidence={detail.suggestion.confidence} />
                     {#if detail.suggestion.judge_verdict}<Badge color={detail.suggestion.judge_verdict === 'agree' ? 'green' : detail.suggestion.judge_verdict === 'corrected' ? 'blue' : 'gray'}>Judge: {detail.suggestion.judge_verdict}</Badge>{/if}
                   </div>
                   <h2 class="mt-3 text-2xl font-semibold text-white">Dokument prüfen</h2>
@@ -629,6 +620,15 @@
                   <p class="mt-2 text-sm text-slate-300">{detail.suggestion.reasoning}</p>
                 </div>
               {/if}
+
+              <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <SuggestionDiff label="Titel" original={detail.original.title} proposed={formTitle} changed={detail.changed_fields.title} />
+                <SuggestionDiff label="Datum" original={detail.original.date} proposed={formDate} changed={detail.changed_fields.date} />
+                <SuggestionDiff label="Korrespondent" original={detail.original.correspondent_name} proposed={correspondentQuery || detail.proposed.suggested_correspondent_name} changed={detail.changed_fields.correspondent} />
+                <SuggestionDiff label="Dokumenttyp" original={detail.original.doctype_name} proposed={doctypeQuery || detail.proposed.suggested_doctype_name} changed={detail.changed_fields.doctype} />
+                <SuggestionDiff label="Speicherpfad" original={detail.original.storage_path_name} proposed={storagePathQuery || detail.proposed.suggested_storage_path_name} changed={detail.changed_fields.storage_path} />
+                <SuggestionDiff label="Tags" original={detail.original.tags.map((tag) => tag.name).join(', ')} proposed={selectedTagObjects.map((tag) => tag.name).join(', ')} changed={detail.changed_fields.tags} />
+              </div>
 
               <div class={`mt-6 grid gap-6 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2' : 'xl:grid-cols-2'}`}>
                 {#if previewVisible}

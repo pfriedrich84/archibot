@@ -80,6 +80,11 @@ export const loadEmbeddings = (fetcher: typeof fetch) => apiFetch<EmbeddingsPayl
 export const loadChat = (fetcher: typeof fetch) => apiFetch<ChatPayload>('/api/v1/chat', fetcher);
 export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
+export const saveSettings = (updates: Record<string, string | number | boolean | null>) =>
+  apiMutation<{ saved: boolean; changed: Record<string, unknown>; restart_required: string[]; actions: string[] }>(
+    '/api/v1/settings',
+    { updates }
+  );
 
 export const approveTag = (name: string) => apiMutation<ReviewMutationResponse>('/api/v1/tags/approve', { name });
 export const rejectTag = (name: string) => apiMutation<ReviewMutationResponse>('/api/v1/tags/reject', { name });

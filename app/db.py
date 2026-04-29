@@ -201,6 +201,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 -- =========================================================================
+-- App state
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS app_state (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =========================================================================
 -- Poll cycle summaries (one row per poll_inbox() invocation)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS poll_cycles (
@@ -331,6 +340,36 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate(conn)
     log.info("database ready")
+
+
+def mark_setup_complete() -> None:
+    """Persist that onboarding completed successfully."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM app_state WHERE key = 'setup_required'")
+        conn.execute(
+            """
+            INSERT INTO app_state(key, value)
+            VALUES('setup_completed_at', datetime('now'))
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+            """
+        )
+
+
+def mark_setup_required() -> None:
+    """Persist that setup must run again, e.g. after a state reset."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM app_state WHERE key = 'setup_completed_at'")
+        conn.execute(
+            """
+            INSERT INTO app_state(key, value)
+            VALUES('setup_required', 'true')
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = datetime('now')
+            """
+        )
 
 
 @contextmanager

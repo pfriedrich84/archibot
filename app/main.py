@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
@@ -34,6 +35,8 @@ log = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 _BASE_DIR = Path(__file__).parent
 _STATIC_DIR = _BASE_DIR / "static"
+_TEMPLATES_DIR = _BASE_DIR / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -133,7 +136,11 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if needs_setup() and not (
-            path.startswith("/setup") or path.startswith("/static") or path in ("/healthz",)
+            path.startswith("/setup")
+            or path.startswith("/app")
+            or path.startswith("/api/v1/settings")
+            or path.startswith("/static")
+            or path in ("/healthz",)
         ):
             from starlette.responses import RedirectResponse
 
@@ -191,7 +198,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
 
     if needs_setup():
-        log.info("essential config missing — entering setup mode")
+        log.info("setup required — entering setup mode")
         app.state.paperless = None
         app.state.ollama = None
         app.state.telegram = None

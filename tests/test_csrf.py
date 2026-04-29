@@ -53,14 +53,14 @@ def test_post_requires_csrf_token():
 
     raw_client = TestClient(app, raise_server_exceptions=False)
     raw_client.get("/healthz")
-    r = raw_client.post("/chat/clear")
+    r = raw_client.post("/api/v1/review/bulk/reject", json={"suggestion_ids": []})
     assert r.status_code == 403
     assert "CSRF" in r.text
 
 
 def test_post_accepts_valid_csrf_token(client):
-    r = client.post("/chat/clear")
-    assert r.status_code == 200
+    r = client.post("/api/v1/review/bulk/reject", json={"suggestion_ids": []})
+    assert r.status_code == 400
 
 
 @patch("app.routes.webhook._process_document", new_callable=AsyncMock)

@@ -1,4 +1,4 @@
-"""Tests for bulk approve/reject in the review queue."""
+"""Tests for native API bulk approve/reject in the review queue."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from tests.conftest import bootstrap_csrf_client
 
 
 def _insert_suggestion(conn, sid, doc_id, *, status="pending", confidence=75):
-    """Insert a minimal test suggestion into the DB."""
     conn.execute(
         """INSERT INTO suggestions
            (id, document_id, status, confidence,
@@ -29,9 +28,9 @@ def _insert_suggestion(conn, sid, doc_id, *, status="pending", confidence=75):
             confidence,
             f"Title for doc {doc_id}",
             "2025-01-15",
-            2,  # correspondent
-            10,  # doctype
-            30,  # storage_path
+            2,
+            10,
+            30,
             json.dumps([{"name": "Finanzen", "id": 20}]),
         ),
     )
@@ -66,67 +65,38 @@ def client():
     return bootstrap_csrf_client(TestClient(app, raise_server_exceptions=True))
 
 
-# ---------------------------------------------------------------------------
-# Bulk Approve
-# ---------------------------------------------------------------------------
-
-
-class TestBulkApprove:
+class TestBulkApproveApi:
     def test_commits_selected(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
         _insert_suggestion(db_conn, 2, 200)
 
-        r = client.post("/review/bulk-approve", data={"suggestion_ids": ["1", "2"]})
+        r = client.post("/api/v1/review/bulk/accept", json={"suggestion_ids": [1, 2]})
         assert r.status_code == 200
+        payload = r.json()
+        assert payload["succeeded"] == 2
+        assert payload["failed"] == 0
 
-        # Both should be committed
         rows = db_conn.execute("SELECT id, status FROM suggestions ORDER BY id").fetchall()
-        assert [(row["id"], row["status"]) for row in rows] == [
-            (1, "committed"),
-            (2, "committed"),
-        ]
-
-        # Response should contain OOB fragments for both desktop and mobile
-        assert 'id="suggestion-1"' in r.text
-        assert 'id="suggestion-2"' in r.text
-        assert 'id="suggestion-m-1"' in r.text
-        assert 'id="suggestion-m-2"' in r.text
-        assert "hx-swap-oob" in r.text
-
-        # Toast header
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "2 approved" in trigger["showToast"]["message"]
-        assert trigger["showToast"]["type"] == "success"
+        assert [(row["id"], row["status"]) for row in rows] == [(1, "committed"), (2, "committed")]
 
     def test_empty_selection(self, client, patch_db):
-        r = client.post("/review/bulk-approve", data={})
-        assert r.status_code == 200
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "No suggestions selected" in trigger["showToast"]["message"]
+        r = client.post("/api/v1/review/bulk/accept", json={"suggestion_ids": []})
+        assert r.status_code == 400
 
     def test_skips_non_pending(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100, status="pending")
         _insert_suggestion(db_conn, 2, 200, status="committed")
 
-        r = client.post("/review/bulk-approve", data={"suggestion_ids": ["1", "2"]})
+        r = client.post("/api/v1/review/bulk/accept", json={"suggestion_ids": [1, 2]})
         assert r.status_code == 200
-
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "1 approved" in trigger["showToast"]["message"]
-        assert "1 skipped" in trigger["showToast"]["message"]
-
-        # Only ID 1 should be committed; ID 2 remains unchanged
-        s1 = db_conn.execute("SELECT status FROM suggestions WHERE id=1").fetchone()
-        s2 = db_conn.execute("SELECT status FROM suggestions WHERE id=2").fetchone()
-        assert s1["status"] == "committed"
-        assert s2["status"] == "committed"  # was already committed
+        payload = r.json()
+        assert payload["succeeded"] == 1
+        assert payload["skipped"] == 1
+        assert payload["statuses"] == {"1": "committed", "2": "skipped"}
 
     def test_partial_failure(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
         _insert_suggestion(db_conn, 2, 200)
-
-        # Make get_document fail for doc 200
-        original_get = app.state.paperless.get_document
 
         async def get_doc_side_effect(doc_id):
             if doc_id == 200:
@@ -135,32 +105,22 @@ class TestBulkApprove:
 
         app.state.paperless.get_document = AsyncMock(side_effect=get_doc_side_effect)
 
-        r = client.post("/review/bulk-approve", data={"suggestion_ids": ["1", "2"]})
+        r = client.post("/api/v1/review/bulk/accept", json={"suggestion_ids": [1, 2]})
         assert r.status_code == 200
-
-        trigger = json.loads(r.headers["HX-Trigger"])
-        msg = trigger["showToast"]["message"]
-        assert "1 approved" in msg
-        assert "1 failed" in msg
-        assert trigger["showToast"]["type"] == "error"
-
-        # OOB fragments should have correct styling
-        assert "bg-green-50" in r.text
-        assert "bg-red-50" in r.text
-
-        app.state.paperless.get_document = original_get
+        payload = r.json()
+        assert payload["succeeded"] == 1
+        assert payload["failed"] == 1
+        assert payload["ok"] is False
 
     def test_uses_proposed_values(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
 
-        r = client.post("/review/bulk-approve", data={"suggestion_ids": ["1"]})
+        r = client.post("/api/v1/review/bulk/accept", json={"suggestion_ids": [1]})
         assert r.status_code == 200
 
-        # Verify patch_document was called with the proposed values
         call_args = app.state.paperless.patch_document.call_args
-        doc_id_arg = call_args[0][0]
+        assert call_args[0][0] == 100
         fields_arg = call_args[0][1]
-        assert doc_id_arg == 100
         assert fields_arg["title"] == "Title for doc 100"
         assert fields_arg["created_date"] == "2025-01-15"
         assert fields_arg["correspondent"] == 2
@@ -168,65 +128,42 @@ class TestBulkApprove:
         assert fields_arg["storage_path"] == 30
 
 
-# ---------------------------------------------------------------------------
-# Bulk Reject
-# ---------------------------------------------------------------------------
-
-
-class TestBulkReject:
+class TestBulkRejectApi:
     def test_rejects_selected(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
         _insert_suggestion(db_conn, 2, 200)
 
-        r = client.post("/review/bulk-reject", data={"suggestion_ids": ["1", "2"]})
+        r = client.post("/api/v1/review/bulk/reject", json={"suggestion_ids": [1, 2]})
         assert r.status_code == 200
+        payload = r.json()
+        assert payload["succeeded"] == 2
 
         rows = db_conn.execute("SELECT id, status FROM suggestions ORDER BY id").fetchall()
-        assert [(row["id"], row["status"]) for row in rows] == [
-            (1, "rejected"),
-            (2, "rejected"),
-        ]
+        assert [(row["id"], row["status"]) for row in rows] == [(1, "rejected"), (2, "rejected")]
 
-        # Audit log entries
         audit = db_conn.execute("SELECT action FROM audit_log ORDER BY id").fetchall()
         assert len(audit) == 2
         assert all(row["action"] == "reject" for row in audit)
 
-        # OOB fragments
-        assert 'id="suggestion-1"' in r.text
-        assert 'id="suggestion-m-2"' in r.text
-        assert "hx-swap-oob" in r.text
-
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "2 rejected" in trigger["showToast"]["message"]
-
     def test_empty_selection(self, client, patch_db):
-        r = client.post("/review/bulk-reject", data={})
-        assert r.status_code == 200
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "No suggestions selected" in trigger["showToast"]["message"]
+        r = client.post("/api/v1/review/bulk/reject", json={"suggestion_ids": []})
+        assert r.status_code == 400
 
     def test_skips_non_pending(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100, status="pending")
         _insert_suggestion(db_conn, 2, 200, status="rejected")
 
-        r = client.post("/review/bulk-reject", data={"suggestion_ids": ["1", "2"]})
+        r = client.post("/api/v1/review/bulk/reject", json={"suggestion_ids": [1, 2]})
         assert r.status_code == 200
-
-        trigger = json.loads(r.headers["HX-Trigger"])
-        assert "1 rejected" in trigger["showToast"]["message"]
-        assert "1 skipped" in trigger["showToast"]["message"]
-
-
-# ---------------------------------------------------------------------------
-# Template rendering
-# ---------------------------------------------------------------------------
+        payload = r.json()
+        assert payload["succeeded"] == 1
+        assert payload["skipped"] == 1
+        assert payload["statuses"] == {"1": "rejected", "2": "skipped"}
 
 
-class TestReviewListTemplate:
+class TestReviewRedirects:
     def test_review_get_redirects_to_admin_app(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)
-
         r = client.get("/review", follow_redirects=False)
         assert r.status_code == 302
         assert r.headers["location"] == "/app/review"
@@ -234,7 +171,6 @@ class TestReviewListTemplate:
     def test_review_get_redirects_even_with_multiple_suggestions(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100, confidence=90)
         _insert_suggestion(db_conn, 2, 200, confidence=50)
-
         r = client.get("/review", follow_redirects=False)
         assert r.status_code == 302
         assert r.headers["location"] == "/app/review"

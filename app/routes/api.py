@@ -22,8 +22,9 @@ from app.api_data import (
     get_system_status,
     get_tags_snapshot,
 )
+from app.config import settings
 from app.config_writer import apply_runtime_changes, save_config
-from app.db import get_conn
+from app.db import get_conn, mark_setup_complete
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
@@ -249,203 +250,7 @@ async def review_queue_api(
     return payload
 
 
-@router.get("/review/{suggestion_id}")
-async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, Any]:
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-
-    suggestion = _row_to_suggestion(row)
-    lookups = await _load_review_lookups(request)
-    correspondent_lookup = {item["id"]: item["name"] for item in lookups["correspondents"]}
-    doctype_lookup = {item["id"]: item["name"] for item in lookups["doctypes"]}
-    storage_lookup = {item["id"]: item["name"] for item in lookups["storage_paths"]}
-    tag_lookup = {item["id"]: item["name"] for item in lookups["tags"]}
-
-    original_tags = [
-        {"id": tag_id, "name": tag_lookup.get(tag_id, f"Tag #{tag_id}")}
-        for tag_id in _json_list(suggestion.original_tags_json)
-        if isinstance(tag_id, int)
-    ]
-    proposed_tags = []
-    for tag in _json_list(suggestion.proposed_tags_json):
-        if not isinstance(tag, dict):
-            continue
-        tag_id = tag.get("id")
-        tag_name = (
-            tag.get("name")
-            or (tag_lookup.get(tag_id) if isinstance(tag_id, int) else None)
-            or "Unbekannt"
-        )
-        proposed_tags.append({"id": tag_id, "name": tag_name, "confidence": tag.get("confidence")})
-
-    with get_conn() as conn:
-        queue_rows = conn.execute(
-            """
-            SELECT id
-            FROM suggestions
-            WHERE status = 'pending'
-              AND id = (
-                  SELECT MAX(s2.id)
-                  FROM suggestions s2
-                  WHERE s2.document_id = suggestions.document_id
-                    AND s2.status = 'pending'
-              )
-            ORDER BY created_at DESC, id DESC
-            """
-        ).fetchall()
-    queue_ids = [item["id"] for item in queue_rows]
-    index = queue_ids.index(suggestion.id) if suggestion.id in queue_ids else -1
-    prev_id = queue_ids[index - 1] if index > 0 else None
-    next_id = queue_ids[index + 1] if index >= 0 and index + 1 < len(queue_ids) else None
-
-    original_tag_ids = [tag_id for tag_id in _json_list(suggestion.original_tags_json) if isinstance(tag_id, int)]
-    effective_tag_ids = [
-        tag.get("id") for tag in _json_list(suggestion.proposed_tags_json) if isinstance(tag, dict)
-    ]
-    effective_tag_ids = [tag_id for tag_id in effective_tag_ids if isinstance(tag_id, int)]
-    changed_fields = {
-        "title": (suggestion.proposed_title or suggestion.original_title or "") != (suggestion.original_title or ""),
-        "date": (suggestion.effective_date or "") != (suggestion.original_date or ""),
-        "correspondent": suggestion.effective_correspondent_id != suggestion.original_correspondent,
-        "doctype": suggestion.effective_doctype_id != suggestion.original_doctype,
-        "storage_path": suggestion.effective_storage_path_id != suggestion.original_storage_path,
-        "tags": sorted(effective_tag_ids) != sorted(original_tag_ids),
-    }
-
-    return {
-        "suggestion": {
-            "id": suggestion.id,
-            "document_id": suggestion.document_id,
-            "created_at": suggestion.created_at,
-            "status": suggestion.status,
-            "confidence": suggestion.confidence,
-            "reasoning": suggestion.reasoning,
-            "judge_verdict": suggestion.judge_verdict,
-            "judge_reasoning": suggestion.judge_reasoning,
-            "prev_id": prev_id,
-            "next_id": next_id,
-            "preview_url": f"/api/v1/review/{suggestion.id}/preview",
-        },
-        "original": {
-            "title": suggestion.original_title,
-            "date": suggestion.original_date,
-            "correspondent_id": suggestion.original_correspondent,
-            "correspondent_name": correspondent_lookup.get(suggestion.original_correspondent),
-            "doctype_id": suggestion.original_doctype,
-            "doctype_name": doctype_lookup.get(suggestion.original_doctype),
-            "storage_path_id": suggestion.original_storage_path,
-            "storage_path_name": storage_lookup.get(suggestion.original_storage_path),
-            "tags": original_tags,
-        },
-        "proposed": {
-            "title": suggestion.proposed_title or suggestion.original_title or "",
-            "date": suggestion.effective_date,
-            "correspondent_id": suggestion.effective_correspondent_id,
-            "correspondent_name": correspondent_lookup.get(suggestion.effective_correspondent_id),
-            "suggested_correspondent_name": (
-                suggestion.proposed_correspondent_name
-                if suggestion.proposed_correspondent_id is None
-                else None
-            ),
-            "doctype_id": suggestion.effective_doctype_id,
-            "doctype_name": doctype_lookup.get(suggestion.effective_doctype_id),
-            "suggested_doctype_name": (
-                suggestion.proposed_doctype_name if suggestion.proposed_doctype_id is None else None
-            ),
-            "storage_path_id": suggestion.effective_storage_path_id,
-            "storage_path_name": storage_lookup.get(suggestion.effective_storage_path_id),
-            "suggested_storage_path_name": (
-                suggestion.proposed_storage_path_name
-                if suggestion.proposed_storage_path_id is None
-                else None
-            ),
-            "tags": proposed_tags,
-        },
-        "options": lookups,
-        "context_docs": _json_list(suggestion.context_docs_json),
-        "original_proposal": _json_object(suggestion.original_proposed_json),
-        "changed_fields": changed_fields,
-    }
-
-
-@router.get("/review/{suggestion_id}/preview")
-async def review_preview_api(request: Request, suggestion_id: int):
-    with get_conn() as conn:
-        row = conn.execute("SELECT document_id FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-
-    content, content_type = await request.app.state.paperless.download_document(row["document_id"])
-    return StreamingResponse(
-        iter([content]),
-        media_type=content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="document-{row["document_id"]}"'},
-    )
-
-
-@router.post("/review/{suggestion_id}/save")
-async def review_save_api(
-    request: Request, suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
-) -> dict[str, Any]:
-    payload = payload or {}
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-
-    suggestion = _row_to_suggestion(row)
-    await _save_review_payload(request, suggestion, payload)
-    return {"ok": True, "status": "saved", "message": "Änderungen gespeichert."}
-
-
-@router.post("/review/{suggestion_id}/accept")
-async def review_accept_api(
-    request: Request, suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
-) -> dict[str, Any]:
-    payload = payload or {}
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-
-    suggestion = _row_to_suggestion(row)
-    suggestion = await _save_review_payload(request, suggestion, payload)
-    return await _commit_review_suggestion(request, suggestion)
-
-
-@router.post("/review/{suggestion_id}/reject")
-async def review_reject_api(
-    suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
-) -> dict[str, Any]:
-    del payload
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT document_id, status FROM suggestions WHERE id = ?", (suggestion_id,)
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Suggestion not found")
-        conn.execute("UPDATE suggestions SET status = 'rejected' WHERE id = ?", (suggestion_id,))
-        conn.execute(
-            """
-            UPDATE processed_documents
-            SET status = 'rejected'
-            WHERE document_id = ?
-            """,
-            (row["document_id"],),
-        )
-        conn.execute(
-            """
-            INSERT INTO audit_log (action, document_id, actor, details)
-            VALUES ('reject', ?, 'user', NULL)
-            """,
-            (row["document_id"],),
-        )
-
-    return {"ok": True, "status": "rejected", "message": "Vorschlag verworfen."}
-
-
+# Bulk review routes must be registered before /review/{suggestion_id}.
 @router.post("/review/bulk/accept")
 async def review_bulk_accept_api(
     request: Request, payload: Annotated[dict[str, Any] | None, Body()] = None
@@ -558,6 +363,208 @@ async def review_bulk_reject_api(
         "skipped": skipped,
         "statuses": statuses,
     }
+
+
+@router.get("/review/{suggestion_id}")
+async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, Any]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    suggestion = _row_to_suggestion(row)
+    lookups = await _load_review_lookups(request)
+    correspondent_lookup = {item["id"]: item["name"] for item in lookups["correspondents"]}
+    doctype_lookup = {item["id"]: item["name"] for item in lookups["doctypes"]}
+    storage_lookup = {item["id"]: item["name"] for item in lookups["storage_paths"]}
+    tag_lookup = {item["id"]: item["name"] for item in lookups["tags"]}
+
+    original_tags = [
+        {"id": tag_id, "name": tag_lookup.get(tag_id, f"Tag #{tag_id}")}
+        for tag_id in _json_list(suggestion.original_tags_json)
+        if isinstance(tag_id, int)
+    ]
+    proposed_tags = []
+    for tag in _json_list(suggestion.proposed_tags_json):
+        if not isinstance(tag, dict):
+            continue
+        tag_id = tag.get("id")
+        tag_name = (
+            tag.get("name")
+            or (tag_lookup.get(tag_id) if isinstance(tag_id, int) else None)
+            or "Unbekannt"
+        )
+        proposed_tags.append({"id": tag_id, "name": tag_name, "confidence": tag.get("confidence")})
+
+    with get_conn() as conn:
+        queue_rows = conn.execute(
+            """
+            SELECT id
+            FROM suggestions
+            WHERE status = 'pending'
+              AND id = (
+                  SELECT MAX(s2.id)
+                  FROM suggestions s2
+                  WHERE s2.document_id = suggestions.document_id
+                    AND s2.status = 'pending'
+              )
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+    queue_ids = [item["id"] for item in queue_rows]
+    index = queue_ids.index(suggestion.id) if suggestion.id in queue_ids else -1
+    prev_id = queue_ids[index - 1] if index > 0 else None
+    next_id = queue_ids[index + 1] if index >= 0 and index + 1 < len(queue_ids) else None
+
+    original_tag_ids = [
+        tag_id for tag_id in _json_list(suggestion.original_tags_json) if isinstance(tag_id, int)
+    ]
+    effective_tag_ids = [
+        tag.get("id") for tag in _json_list(suggestion.proposed_tags_json) if isinstance(tag, dict)
+    ]
+    effective_tag_ids = [tag_id for tag_id in effective_tag_ids if isinstance(tag_id, int)]
+    changed_fields = {
+        "title": (suggestion.proposed_title or suggestion.original_title or "")
+        != (suggestion.original_title or ""),
+        "date": (suggestion.effective_date or "") != (suggestion.original_date or ""),
+        "correspondent": suggestion.effective_correspondent_id != suggestion.original_correspondent,
+        "doctype": suggestion.effective_doctype_id != suggestion.original_doctype,
+        "storage_path": suggestion.effective_storage_path_id != suggestion.original_storage_path,
+        "tags": sorted(effective_tag_ids) != sorted(original_tag_ids),
+    }
+
+    return {
+        "suggestion": {
+            "id": suggestion.id,
+            "document_id": suggestion.document_id,
+            "created_at": suggestion.created_at,
+            "status": suggestion.status,
+            "confidence": suggestion.confidence,
+            "reasoning": suggestion.reasoning,
+            "judge_verdict": suggestion.judge_verdict,
+            "judge_reasoning": suggestion.judge_reasoning,
+            "prev_id": prev_id,
+            "next_id": next_id,
+            "preview_url": f"/api/v1/review/{suggestion.id}/preview",
+        },
+        "original": {
+            "title": suggestion.original_title,
+            "date": suggestion.original_date,
+            "correspondent_id": suggestion.original_correspondent,
+            "correspondent_name": correspondent_lookup.get(suggestion.original_correspondent),
+            "doctype_id": suggestion.original_doctype,
+            "doctype_name": doctype_lookup.get(suggestion.original_doctype),
+            "storage_path_id": suggestion.original_storage_path,
+            "storage_path_name": storage_lookup.get(suggestion.original_storage_path),
+            "tags": original_tags,
+        },
+        "proposed": {
+            "title": suggestion.proposed_title or suggestion.original_title or "",
+            "date": suggestion.effective_date,
+            "correspondent_id": suggestion.effective_correspondent_id,
+            "correspondent_name": correspondent_lookup.get(suggestion.effective_correspondent_id),
+            "suggested_correspondent_name": (
+                suggestion.proposed_correspondent_name
+                if suggestion.proposed_correspondent_id is None
+                else None
+            ),
+            "doctype_id": suggestion.effective_doctype_id,
+            "doctype_name": doctype_lookup.get(suggestion.effective_doctype_id),
+            "suggested_doctype_name": (
+                suggestion.proposed_doctype_name if suggestion.proposed_doctype_id is None else None
+            ),
+            "storage_path_id": suggestion.effective_storage_path_id,
+            "storage_path_name": storage_lookup.get(suggestion.effective_storage_path_id),
+            "suggested_storage_path_name": (
+                suggestion.proposed_storage_path_name
+                if suggestion.proposed_storage_path_id is None
+                else None
+            ),
+            "tags": proposed_tags,
+        },
+        "options": lookups,
+        "context_docs": _json_list(suggestion.context_docs_json),
+        "original_proposal": _json_object(suggestion.original_proposed_json),
+        "changed_fields": changed_fields,
+    }
+
+
+@router.get("/review/{suggestion_id}/preview")
+async def review_preview_api(request: Request, suggestion_id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT document_id FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    content, content_type = await request.app.state.paperless.download_document(row["document_id"])
+    return StreamingResponse(
+        iter([content]),
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="document-{row["document_id"]}"'},
+    )
+
+
+@router.post("/review/{suggestion_id}/save")
+async def review_save_api(
+    request: Request, suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    suggestion = _row_to_suggestion(row)
+    await _save_review_payload(request, suggestion, payload)
+    return {"ok": True, "status": "saved", "message": "Änderungen gespeichert."}
+
+
+@router.post("/review/{suggestion_id}/accept")
+async def review_accept_api(
+    request: Request, suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    suggestion = _row_to_suggestion(row)
+    suggestion = await _save_review_payload(request, suggestion, payload)
+    return await _commit_review_suggestion(request, suggestion)
+
+
+@router.post("/review/{suggestion_id}/reject")
+async def review_reject_api(
+    suggestion_id: int, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    del payload
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT document_id, status FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        conn.execute("UPDATE suggestions SET status = 'rejected' WHERE id = ?", (suggestion_id,))
+        conn.execute(
+            """
+            UPDATE processed_documents
+            SET status = 'rejected'
+            WHERE document_id = ?
+            """,
+            (row["document_id"],),
+        )
+        conn.execute(
+            """
+            INSERT INTO audit_log (action, document_id, actor, details)
+            VALUES ('reject', ?, 'user', NULL)
+            """,
+            (row["document_id"],),
+        )
+
+    return {"ok": True, "status": "rejected", "message": "Vorschlag verworfen."}
 
 
 @router.get("/inbox")
@@ -823,6 +830,9 @@ async def save_settings_api(
     actions: list[str] = []
     if runtime_fields:
         actions = await apply_runtime_changes(request.app, changed)
+
+    if settings.paperless_url and settings.paperless_token and settings.paperless_inbox_tag_id != 0:
+        mark_setup_complete()
 
     return {
         "saved": bool(changed),

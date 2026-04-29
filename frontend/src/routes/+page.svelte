@@ -29,6 +29,7 @@
 <AppShell
   title="Dashboard"
   subtitle="Gesundheit, Durchsatz und offene Risiken auf einen Blick — mit direktem Fokus auf tägliche Betriebsentscheidungen."
+  navBadges={{ review: data.dashboard.kpis.pending_review, inbox: data.dashboard.kpis.inbox_pending, errors: data.dashboard.kpis.errors_24h }}
 >
   {#snippet children()}
     <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">

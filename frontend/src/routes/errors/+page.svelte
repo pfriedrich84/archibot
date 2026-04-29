@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -17,7 +18,7 @@
   }
 </script>
 
-<AppShell title="Fehler" subtitle="Aktuelle Fehlersignale schnell triagieren und den nächsten sinnvollen Schritt in Review, Inbox oder Legacy-Analyse ableiten.">
+<AppShell title="Fehler" subtitle="Aktuelle Fehlersignale schnell triagieren und den nächsten sinnvollen Schritt in Review, Inbox oder Legacy-Analyse ableiten." navBadges={{ errors: data.errors.items.length }}>
   {#snippet children()}
     <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -47,7 +48,7 @@
             </div>
           </div>
         {:else}
-          <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-sm text-emerald-100">Keine aktuellen Fehler in der Datenbank.</div>
+          <EmptyState icon="🟢" title="Keine aktuellen Fehler" description="Die Fehlerliste ist leer. Falls ein Polling- oder Reindex-Job scheitert, erscheint hier ein triagierbarer Eintrag mit nächster Aktion." />
         {/each}
       </div>
     </Card>

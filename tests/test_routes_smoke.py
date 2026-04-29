@@ -52,9 +52,10 @@ class TestRouteSmoke:
         assert r.status_code == 302
         assert r.headers["location"] == "/app/review"
 
-    def test_review_detail_not_found(self, client):
-        r = client.get("/review/99999")
-        assert r.status_code == 404
+    def test_review_detail_redirects(self, client):
+        r = client.get("/review/99999", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/app/review"
 
     def test_approvals_entry_redirects(self, client):
         r = client.get("/approvals", follow_redirects=False)
@@ -91,9 +92,9 @@ class TestRouteSmoke:
         assert r.status_code == 302
         assert r.headers["location"] == "/app/embeddings"
 
-    def test_embeddings_search(self, client):
+    def test_embeddings_search_legacy_removed(self, client):
         r = client.get("/embeddings/search")
-        assert r.status_code == 200
+        assert r.status_code == 410
 
     def test_healthz(self, client):
         r = client.get("/healthz")
