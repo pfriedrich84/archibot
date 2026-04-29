@@ -423,7 +423,7 @@
 <AppShell
   title="Review Queue"
   subtitle="Dokumentvorschläge prüfen, filtern und direkt übernehmen — mit Preview, Diff-Hervorhebung, Tastenkürzeln und skalierbarer Queue-Navigation."
-  navBadges={{ review: queueMeta?.total ?? data.queue.total }}
+  navBadges={{ review: queueMeta?.total ?? data.review.total }}
 >
   {#snippet children()}
     {#if !shortcutHintDismissed}
@@ -446,7 +446,7 @@
 
       <div class="grid gap-6 xl:grid-cols-[minmax(19rem,0.9fr)_minmax(0,1.6fr)]">
         <div class="space-y-6">
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Review Queue</p>
@@ -577,7 +577,7 @@
                 {/if}
               </button>
             {:else}
-              <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-slate-950/20">
+              <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/20">
                 <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-sm text-emerald-100">Keine Vorschläge im aktuellen Filter.</div>
               </Card>
             {/each}
@@ -594,9 +594,9 @@
           {#if loadingDetail}
             <LoadingSkeleton rows={3} />
           {:else if detailError}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div></Card>
+            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div></Card>
           {:else if detail}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20">
+            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
@@ -739,7 +739,7 @@
               </div>
             </Card>
           {:else}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">Wähle links einen Vorschlag aus. Mit <strong>j</strong>/<strong>k</strong> springst du durch die Queue, <strong>Enter</strong> lädt das Detail, <strong>a</strong>/<strong>r</strong>/<strong>e</strong> führen Aktionen aus.</div></Card>
+            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">Wähle links einen Vorschlag aus. Mit <strong>j</strong>/<strong>k</strong> springst du durch die Queue, <strong>Enter</strong> lädt das Detail, <strong>a</strong>/<strong>r</strong>/<strong>e</strong> führen Aktionen aus.</div></Card>
           {/if}
         </div>
       </div>
