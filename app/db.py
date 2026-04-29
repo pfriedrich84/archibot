@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS doc_embedding_meta (
     correspondent INTEGER,
     doctype       INTEGER,
     storage_path  INTEGER,
+    tags_json     TEXT,
     created_date  TEXT,
     indexed_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -268,6 +269,11 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
         "doc_embedding_meta",
         "created_date",
         "ALTER TABLE doc_embedding_meta ADD COLUMN created_date TEXT",
+    ),
+    (
+        "doc_embedding_meta",
+        "tags_json",
+        "ALTER TABLE doc_embedding_meta ADD COLUMN tags_json TEXT",
     ),
     (
         "suggestions",

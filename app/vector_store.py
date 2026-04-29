@@ -15,6 +15,7 @@ All other code should go through this module instead of touching
 
 from __future__ import annotations
 
+import json
 import struct
 
 import structlog
@@ -64,8 +65,8 @@ def store(doc: PaperlessDocument, embedding: list[float]) -> None:
             """
             INSERT OR REPLACE INTO doc_embedding_meta
                 (document_id, title, correspondent, doctype, storage_path,
-                 created_date, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                 tags_json, created_date, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
             """,
             (
                 doc.id,
@@ -73,6 +74,7 @@ def store(doc: PaperlessDocument, embedding: list[float]) -> None:
                 doc.correspondent,
                 doc.document_type,
                 doc.storage_path,
+                json.dumps(doc.tags),
                 doc.created_date,
             ),
         )

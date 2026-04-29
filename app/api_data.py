@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
@@ -256,14 +257,23 @@ def get_embeddings_snapshot(limit: int = 100) -> dict[str, Any]:
         total = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
         rows = conn.execute(
             """
-            SELECT document_id, title, correspondent, doctype, storage_path, created_date, indexed_at
+            SELECT document_id, title, correspondent, doctype, storage_path, tags_json, created_date, indexed_at
             FROM doc_embedding_meta
             ORDER BY indexed_at DESC, document_id DESC
             LIMIT ?
             """,
             (limit,),
         ).fetchall()
-    return {"total_embedded": total, "items": [dict(row) for row in rows]}
+    items = []
+    for row in rows:
+        item = dict(row)
+        try:
+            tags = json.loads(item.pop("tags_json") or "[]")
+        except json.JSONDecodeError:
+            tags = []
+        item["tags"] = tags if isinstance(tags, list) else []
+        items.append(item)
+    return {"total_embedded": total, "items": items}
 
 
 def get_stats_snapshot() -> dict[str, Any]:

@@ -273,6 +273,7 @@ export type EmbeddingsPayload = {
     correspondent: number | null;
     doctype: number | null;
     storage_path: number | null;
+    tags: number[];
     created_date: string | null;
     indexed_at: string;
   }>;

@@ -13,7 +13,7 @@
     <div class="grid gap-6 md:grid-cols-3">
       <StatCard title="Indexierte Dokumente" value={data.embeddings.total_embedded} hint="Metadatensätze im Vektorindex" accent="emerald" />
       <StatCard title="Sichtbare Zeilen" value={data.embeddings.items.length} hint="Aktuell geladen" accent="blue" />
-      <StatCard title="Suche" value="Geplant" hint="Similarity und Filter als nächster Schritt" accent="purple" />
+      <StatCard title="Metadaten" value="IDs" hint="Korrespondent, Typ, Pfad und Tags" accent="purple" />
     </div>
 
     {#if data.embeddings.items.length > 0}
@@ -34,12 +34,34 @@
                   <div class="text-sm font-medium text-white">Dokument #{item.document_id}</div>
                   <h3 class="mt-1.5 truncate text-base font-semibold text-white">{item.title || 'Unbenanntes Dokument'}</h3>
                 </div>
-                <div class="grid gap-2 text-xs text-slate-400 sm:grid-cols-2 lg:w-[20rem]">
+                <div class="grid gap-2 text-xs text-slate-400 sm:grid-cols-2 xl:grid-cols-3 lg:w-[34rem]">
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Korrespondent</span>
+                    <span class="mt-1 block text-slate-200">{item.correspondent ?? '—'}</span>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Dokumenttyp</span>
+                    <span class="mt-1 block text-slate-200">{item.doctype ?? '—'}</span>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Speicherpfad</span>
+                    <span class="mt-1 block text-slate-200">{item.storage_path ?? '—'}</span>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2 sm:col-span-2 xl:col-span-3">
+                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Tags</span>
+                    <span class="mt-1 flex flex-wrap gap-1.5 text-slate-200">
+                      {#each item.tags as tagId}
+                        <span class="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5">{tagId}</span>
+                      {:else}
+                        <span>—</span>
+                      {/each}
+                    </span>
+                  </div>
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Erstellt</span>
                     <span class="mt-1 block text-slate-200">{item.created_date || '—'}</span>
                   </div>
-                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
+                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2 sm:col-span-1 xl:col-span-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Indexiert</span>
                     <span class="mt-1 block text-slate-200">{item.indexed_at}</span>
                   </div>
