@@ -141,7 +141,7 @@ const settingsSchemaPayload = {
         {
           name: 'ollama_model',
           label: 'Classification Model',
-          input_type: 'text',
+          input_type: 'model_select',
           required: true,
           restart: null,
           help: 'Classification model',
@@ -152,7 +152,7 @@ const settingsSchemaPayload = {
         {
           name: 'ollama_embed_model',
           label: 'Embedding Model',
-          input_type: 'text',
+          input_type: 'model_select',
           required: true,
           restart: null,
           help: 'Embedding model',
@@ -375,6 +375,8 @@ test('settings route renders schema-driven category card', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Paperless' })).toBeVisible();
   await expect(page.getByText('Paperless URL')).toBeVisible();
   await expect(page.getByLabel('Inbox Tag ID')).toHaveValue('99');
+  await expect(page.getByLabel('Classification Model')).toHaveValue('gemma4:e4b');
+  await expect(page.getByLabel('Embedding Model')).toHaveValue('qwen3-embedding:4b');
 });
 
 test('setup route preselects tags and ollama models', async ({ page }) => {

@@ -119,7 +119,7 @@ Prueft in `processed_documents` ob das Dokument bei diesem `updated_at`-Timestam
 
 ### 2. OCR-Korrektur (optional)
 
-Nur aktiv bei `ENABLE_OCR_CORRECTION=true`. Heuristik prueft ob der Text typische OCR-Artefakte enthaelt (viele `?`, einzelne Buchstaben-Woerter). Falls ja, wird der Text via LLM korrigiert — nur im Speicher, Paperless wird nicht veraendert.
+Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt ist. Heuristik prueft ob der Text typische OCR-Artefakte enthaelt (viele `?`, einzelne Buchstaben-Woerter). Falls ja, wird der Text via LLM korrigiert — nur im Speicher, Paperless wird nicht veraendert.
 
 ### 3. Kontext-Suche
 

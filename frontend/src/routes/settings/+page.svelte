@@ -2,7 +2,7 @@
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import { saveSettings } from '$lib/api';
-  import type { PaperlessTagOption, SettingsSchemaPayload } from '$lib/types';
+  import type { OllamaModelOption, PaperlessTagOption, SettingsSchemaPayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -10,6 +10,7 @@
   const initialData = () => data;
   let schema = $state<SettingsSchemaPayload>(initialData().schema);
   let paperlessTags = $state<PaperlessTagOption[]>(initialData().paperlessTags.items);
+  let ollamaModels = $state<OllamaModelOption[]>(initialData().ollamaModels.items);
   let fieldErrors = $state<Record<string, string>>({});
   type SettingValue = string | number | boolean;
 
@@ -24,6 +25,7 @@
     if (!initialized) {
       schema = data.schema;
       paperlessTags = data.paperlessTags.items;
+      ollamaModels = data.ollamaModels.items;
       const values: Record<string, SettingValue> = {};
       for (const category of data.schema.categories) {
         for (const field of category.fields) {
@@ -87,6 +89,18 @@
 
   function tagSelectValue(fieldName: string): number {
     return tagFieldError(fieldName) ? 0 : Number(draftSettings[fieldName] ?? 0);
+  }
+
+  function modelOptionsFor(currentValue: string) {
+    const names = new Set(ollamaModels.map((model) => model.name).filter(Boolean));
+    if (currentValue) names.add(currentValue);
+    return [...names].sort();
+  }
+
+  function emptyModelOptionLabel(fieldName: string): string {
+    if (fieldName === 'ollama_judge_model') return 'Reuse Classification Model';
+    if (fieldName === 'ocr_vision_model') return 'Use Classification Model';
+    return 'No model selected';
   }
 
   function updateDraft(name: string, value: string, type: string) {
@@ -228,6 +242,20 @@
                       {#if tagFieldError(field.name)}
                         <p class="mt-2 text-xs text-rose-300">{tagFieldError(field.name)}</p>
                       {/if}
+                    {:else if field.input_type === 'model_select'}
+                      <select
+                        aria-label={field.label}
+                        value={String(draftSettings[field.name] ?? '')}
+                        onchange={(event) => updateDraft(field.name, event.currentTarget.value, field.input_type)}
+                        class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
+                      >
+                        {#if !field.required || field.name === 'ollama_judge_model' || field.name === 'ocr_vision_model'}
+                          <option value="">{emptyModelOptionLabel(field.name)}</option>
+                        {/if}
+                        {#each modelOptionsFor(String(draftSettings[field.name] ?? '')) as name}
+                          <option value={name}>{name}</option>
+                        {/each}
+                      </select>
                     {:else}
                       <input
                         value={String(draftSettings[field.name] ?? '')}

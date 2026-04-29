@@ -101,15 +101,9 @@ def should_run_ocr_for_document(
 
 
 def effective_ocr_mode() -> str:
-    """Return the active OCR mode, honouring the deprecated ``enable_ocr_correction``."""
+    """Return the active OCR mode."""
     mode = settings.ocr_mode
-    if mode != "off":
-        return mode if mode in _VALID_OCR_MODES else "off"
-    # Backwards compat: enable_ocr_correction=true → "text"
-    if settings.enable_ocr_correction:
-        log.warning("enable_ocr_correction is deprecated — use OCR_MODE=text instead")
-        return "text"
-    return "off"
+    return mode if mode in _VALID_OCR_MODES else "off"
 
 
 async def maybe_correct_ocr(

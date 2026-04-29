@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     max_doc_chars: int = 24000
     embed_max_chars: int = 6000
     auto_commit_confidence: int = 0  # 0 = immer manuell reviewen
-    enable_ocr_correction: bool = False  # deprecated, use ocr_mode instead
 
     # --- LLM-as-Judge verification (optional second pass) ---
     enable_judge_verification: bool = False
@@ -359,12 +358,14 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "ollama_ocr_model": _fm(
         "Phase 1: OCR",
         "OCR Text Model",
+        "model_select",
         restart="component",
         help="Model for text-only OCR correction (ocr_mode=text). 4b is a good 6GB preset.",
     ),
     "ocr_vision_model": _fm(
         "Phase 1: OCR",
         "Vision Model",
+        "model_select",
         restart="component",
         help="Ollama model for vision OCR (empty = use Classification Model)",
     ),
@@ -386,16 +387,11 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "number",
         help="num_ctx for OCR models. Vision OCR needs more context (~1536 tokens/page image). Default: 12288.",
     ),
-    "enable_ocr_correction": _fm(
-        "Phase 1: OCR",
-        "Enable OCR Correction (deprecated)",
-        "bool",
-        help="Deprecated: use OCR_MODE=text instead. Kept for backwards compatibility.",
-    ),
     # --- Phase 2: Embedding ---
     "ollama_embed_model": _fm(
         "Phase 2: Embedding",
         "Embedding Model",
+        "model_select",
         restart="component",
         help="Ollama model for embeddings (e.g. qwen3-embedding:4b)",
     ),
@@ -434,6 +430,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "ollama_model": _fm(
         "Phase 3: Klassifikation",
         "Classification Model",
+        "model_select",
         restart="component",
         help="Ollama model for classification (e.g. gemma4:e4b)",
     ),
@@ -502,6 +499,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "ollama_judge_model": _fm(
         "Phase 3: Klassifikation",
         "Judge Model (optional)",
+        "model_select",
         restart="component",
         help="Ollama model used for judge pass. Empty = reuse Classification Model (no GPU swap).",
     ),

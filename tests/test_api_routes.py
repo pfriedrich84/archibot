@@ -198,6 +198,11 @@ def test_settings_schema_api_groups_fields(client):
     assert token_field["sensitive"] is True
     assert token_field["value"] == ""
 
+    all_fields = [field for category in payload["categories"] for field in category["fields"]]
+    assert not any(field["name"] == "enable_ocr_correction" for field in all_fields)
+    ollama_model = next(field for field in all_fields if field["name"] == "ollama_model")
+    assert ollama_model["input_type"] == "model_select"
+
 
 def test_ollama_models_api_lists_available_models(client):
     response = client.get("/api/v1/ollama/models")

@@ -96,38 +96,26 @@ class TestEffectiveOcrMode:
     def test_ocr_mode_off(self):
         with patch("app.pipeline.ocr_correction.settings") as s:
             s.ocr_mode = "off"
-            s.enable_ocr_correction = False
             assert effective_ocr_mode() == "off"
 
     def test_ocr_mode_text(self):
         with patch("app.pipeline.ocr_correction.settings") as s:
             s.ocr_mode = "text"
-            s.enable_ocr_correction = False
             assert effective_ocr_mode() == "text"
 
     def test_ocr_mode_vision_light(self):
         with patch("app.pipeline.ocr_correction.settings") as s:
             s.ocr_mode = "vision_light"
-            s.enable_ocr_correction = False
             assert effective_ocr_mode() == "vision_light"
 
     def test_ocr_mode_vision_full(self):
         with patch("app.pipeline.ocr_correction.settings") as s:
             s.ocr_mode = "vision_full"
-            s.enable_ocr_correction = False
             assert effective_ocr_mode() == "vision_full"
-
-    def test_backwards_compat_enable_ocr_correction(self):
-        """enable_ocr_correction=True with ocr_mode=off -> text mode."""
-        with patch("app.pipeline.ocr_correction.settings") as s:
-            s.ocr_mode = "off"
-            s.enable_ocr_correction = True
-            assert effective_ocr_mode() == "text"
 
     def test_invalid_mode_falls_back_to_off(self):
         with patch("app.pipeline.ocr_correction.settings") as s:
             s.ocr_mode = "invalid_mode"
-            s.enable_ocr_correction = False
             assert effective_ocr_mode() == "off"
 
 
