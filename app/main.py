@@ -145,6 +145,7 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
             or path == "/api/v1/paperless/tags"
             or path == "/api/v1/paperless/test"
             or path == "/api/v1/ollama/models"
+            or path == "/api/v1/ollama/test"
             or path.startswith("/static")
             or path in ("/healthz",)
         ):

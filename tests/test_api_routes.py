@@ -192,6 +192,31 @@ def test_paperless_test_api_fetches_tags_for_setup(client, monkeypatch):
     assert created == {"base_url": "https://paperless.example", "token": "secret", "closed": True}
 
 
+def test_ollama_test_api_fetches_models_for_setup(client, monkeypatch):
+    created = {}
+
+    class FakeOllamaClient:
+        def __init__(self, base_url):
+            created["base_url"] = base_url
+
+        async def list_models(self):
+            return ["gemma4:e4b", "qwen3-embedding:4b"]
+
+        async def aclose(self):
+            created["closed"] = True
+
+    monkeypatch.setattr("app.clients.ollama.OllamaClient", FakeOllamaClient)
+
+    response = client.post("/api/v1/ollama/test", json={"ollama_url": "http://ollama:11434"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "items": [{"name": "gemma4:e4b"}, {"name": "qwen3-embedding:4b"}],
+    }
+    assert created == {"base_url": "http://ollama:11434", "closed": True}
+
+
 def test_chat_ask_api_returns_answer_and_session(client, monkeypatch):
     from app.chat import _sessions
 

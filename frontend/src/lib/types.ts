@@ -97,6 +97,12 @@ export type OllamaModelsPayload = {
   items: OllamaModelOption[];
 };
 
+export type OllamaTestPayload = {
+  ok: boolean;
+  items: OllamaModelOption[];
+  error?: string;
+};
+
 export type SettingsSchemaPayload = {
   categories: Array<{
     name: string;

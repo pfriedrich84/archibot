@@ -7,6 +7,7 @@ import type {
   ErrorsPayload,
   InboxPayload,
   OllamaModelsPayload,
+  OllamaTestPayload,
   PaperlessTagsPayload,
   PaperlessTestPayload,
   ReviewBulkMutationResponse,
@@ -106,6 +107,8 @@ export const testPaperlessConnection = (paperless_url: string, paperless_token: 
   apiMutation<PaperlessTestPayload>('/api/v1/paperless/test', { paperless_url, paperless_token });
 export const loadOllamaModelOptions = (fetcher: typeof fetch) =>
   apiFetch<OllamaModelsPayload>('/api/v1/ollama/models', fetcher);
+export const testOllamaConnection = (ollama_url: string) =>
+  apiMutation<OllamaTestPayload>('/api/v1/ollama/test', { ollama_url });
 export const saveSettings = (updates: Record<string, string | number | boolean | null>) =>
   apiMutation<{ saved: boolean; changed: Record<string, unknown>; restart_required: string[]; actions: string[]; field_errors?: Record<string, string> }>(
     '/api/v1/settings',

@@ -902,6 +902,29 @@ async def ollama_models_api(request: Request) -> dict[str, Any]:
     return {"items": [{"name": name} for name in models]}
 
 
+@router.post("/ollama/test")
+async def ollama_test_api(
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+) -> dict[str, Any]:
+    from app.clients.ollama import OllamaClient
+
+    payload = payload or {}
+    base_url = str(payload.get("ollama_url") or settings.ollama_url or "").strip()
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Ollama URL is required")
+
+    client = OllamaClient(base_url=base_url)
+    try:
+        models = await client.list_models()
+    except Exception as exc:
+        log.warning("ollama setup test failed", error=str(exc), url=base_url)
+        return {"ok": False, "items": [], "error": str(exc)}
+    finally:
+        await client.aclose()
+
+    return {"ok": True, "items": [{"name": name} for name in models]}
+
+
 def _write_settings_error(stage: str, message: str) -> None:
     with get_conn() as conn:
         conn.execute(

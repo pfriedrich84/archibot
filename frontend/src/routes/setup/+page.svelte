@@ -2,7 +2,7 @@
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
-  import { saveSettings, testPaperlessConnection } from '$lib/api';
+  import { saveSettings, testOllamaConnection, testPaperlessConnection } from '$lib/api';
   import type { OllamaModelOption, PaperlessTagOption } from '$lib/types';
   import type { PageData } from './$types';
 
@@ -37,8 +37,9 @@
   let saving = $state(false);
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   let testingPaperless = $state(false);
+  let testingOllama = $state(false);
   let paperlessTags = $state<PaperlessTagOption[]>(initialData().paperlessTags.items);
-  let ollamaModels = $derived<OllamaModelOption[]>(data.ollamaModels.items);
+  let ollamaModels = $state<OllamaModelOption[]>(initialData().ollamaModels.items);
 
   function schemaField(name: string) {
     for (const category of data.schema.categories) {
@@ -115,6 +116,31 @@
     }
   }
 
+  async function testOllama() {
+    if (!String(form.ollama_url).trim()) {
+      feedback = { type: 'error', message: 'Bitte fülle die Ollama URL aus.' };
+      return false;
+    }
+
+    testingOllama = true;
+    feedback = null;
+    try {
+      const response = await testOllamaConnection(form.ollama_url);
+      if (!response.ok) {
+        feedback = { type: 'error', message: response.error || 'Ollama-Verbindung fehlgeschlagen.' };
+        return false;
+      }
+      ollamaModels = response.items;
+      feedback = { type: 'success', message: `${response.items.length} Ollama-Modelle geladen.` };
+      return true;
+    } catch (error) {
+      feedback = { type: 'error', message: error instanceof Error ? error.message : 'Ollama-Verbindung fehlgeschlagen.' };
+      return false;
+    } finally {
+      testingOllama = false;
+    }
+  }
+
   async function next() {
     feedback = null;
     if (!validateStep(currentStep)) {
@@ -122,6 +148,9 @@
       return;
     }
     if (currentStep === 1 && !(await testPaperless())) {
+      return;
+    }
+    if (currentStep === 3 && !(await testOllama())) {
       return;
     }
     currentStep = Math.min(currentStep + 1, steps.length - 1);
@@ -246,6 +275,10 @@
           {:else if currentStep === 3}
             <div class="grid gap-4 md:grid-cols-2">
               <label class="grid gap-2 text-sm text-slate-300 md:col-span-2">Ollama URL<input bind:value={form.ollama_url} class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50" /></label>
+              <div class="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between md:col-span-2">
+                <span>{ollamaModels.length ? `${ollamaModels.length} Modelle geladen.` : 'Noch keine Modelle geladen.'}</span>
+                <Button color="alternative" class="rounded-xl" disabled={!String(form.ollama_url).trim() || testingOllama} onclick={() => void testOllama()}>{testingOllama ? 'Prüft …' : 'Verbindung testen & Modelle laden'}</Button>
+              </div>
               <label class="grid gap-2 text-sm text-slate-300">
                 Klassifikationsmodell
                 <select bind:value={form.ollama_model} aria-label="Klassifikationsmodell" class="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none focus:border-emerald-500/50">
@@ -286,7 +319,7 @@
         <div class="mt-6 flex items-center justify-between border-t border-slate-800 pt-5">
           <Button color="alternative" class="rounded-xl" disabled={currentStep === 0} onclick={previous}>Zurück</Button>
           {#if currentStep < steps.length - 1}
-            <Button color="green" class="rounded-xl" disabled={testingPaperless} onclick={() => void next()}>{testingPaperless ? 'Prüft …' : 'Weiter'}</Button>
+            <Button color="green" class="rounded-xl" disabled={testingPaperless || testingOllama} onclick={() => void next()}>{testingPaperless || testingOllama ? 'Prüft …' : 'Weiter'}</Button>
           {:else}
             <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Abschließen'}</Button>
           {/if}
