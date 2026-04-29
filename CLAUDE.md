@@ -452,7 +452,7 @@ Ausfuehrliche Dokumentation: `docs/cli.md`
 
 ## Pre-Commit Checks (STRICT / WICHTIG)
 
-**Strikte Regel fuer Agents:** Jeder einzelne Commit muss CI-gruen sein. Nicht committen und nicht pushen, wenn lokale Checks fehlschlagen oder offensichtlich unvollstaendig sind. Wenn ein Check ausnahmsweise nicht lauffaehig ist (z.B. fehlender Browser fuer E2E), muss das im Abschluss klar genannt werden und der Commit darf nur erfolgen, wenn die betroffenen Aenderungen den Check nicht beruehren.
+**Strikte Regel fuer Agents:** Jeder einzelne Commit muss im GitHub-Repository CI-gruen sein. Lokale Checks sind nur die Vorbedingung: Nicht committen und nicht pushen, wenn lokale Checks fehlschlagen oder offensichtlich unvollstaendig sind. Nach jedem Push muss der Agent die GitHub Actions / Commit-Status-Checks fuer den gepushten Commit beobachten (z.B. `gh run list`, `gh run watch`, GitHub UI oder vergleichbare API) und sicherstellen, dass sie erfolgreich abschliessen. Wenn GitHub CI rot wird, muss der Agent sofort nachbessern, erneut pushen und wieder warten, bis der neue Commit gruen ist. Wenn ein Check ausnahmsweise nicht pruefbar ist, muss das im Abschluss klar genannt werden; Ziel bleibt trotzdem: der aktuelle `main`-Commit im GitHub-Repo ist gruen.
 
 **Vor jedem Code-Commit muessen diese Backend-Checks lokal bestanden werden:**
 
