@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -214,7 +216,8 @@
         delete updates.paperless_token;
       }
       await saveSettings(updates);
-      feedback = { type: 'success', message: 'Setup gespeichert. Du kannst jetzt zum Dashboard wechseln.' };
+      feedback = { type: 'success', message: 'Setup gespeichert. Weiterleitung zum Dashboard …' };
+      await goto(`${base}/`);
     } catch (error) {
       feedback = { type: 'error', message: error instanceof Error ? error.message : 'Setup konnte nicht gespeichert werden.' };
     } finally {
