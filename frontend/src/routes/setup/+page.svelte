@@ -345,8 +345,7 @@
                 </dl>
               </div>
 
-              <Button color="green" class="rounded-xl" disabled={!canFinish || saving} onclick={() => void finishSetup()}>{saving ? 'Speichert …' : 'Konfiguration übernehmen'}</Button>
-              {#if feedback?.type === 'success'}<a href="/app" class="ml-3 inline-flex text-sm font-medium text-emerald-300 hover:text-emerald-200">Zum Dashboard →</a>{/if}
+              {#if feedback?.type === 'success'}<a href="/app" class="inline-flex text-sm font-medium text-emerald-300 hover:text-emerald-200">Zum Dashboard →</a>{/if}
             </div>
           {/if}
         </div>
