@@ -4,43 +4,27 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 import structlog
 
 from app.clients.ollama import OllamaClient
 from app.config import settings
 from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
+from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _prompt_override_path() -> Path:
-    """Path for user-edited prompt override in the persistent data dir."""
-    return Path(settings.data_dir) / "classify_system.txt"
-
-
-def _judge_prompt_override_path() -> Path:
-    """Path for user-edited judge prompt override in the persistent data dir."""
-    return Path(settings.data_dir) / "classify_judge_system.txt"
-
-
 def _load_system_prompt() -> str:
     """Load system prompt — user override in /data takes precedence over built-in default."""
-    override = _prompt_override_path()
-    if override.is_file():
-        return override.read_text(encoding="utf-8")
-    return (settings.prompts_dir / "classify_system.txt").read_text(encoding="utf-8")
+    return load_prompt("classify")
 
 
 def _load_judge_system_prompt() -> str:
     """Load judge system prompt — user override in /data takes precedence over default."""
-    override = _judge_prompt_override_path()
-    if override.is_file():
-        return override.read_text(encoding="utf-8")
-    return (settings.prompts_dir / "classify_judge_system.txt").read_text(encoding="utf-8")
+    return load_prompt("classify_judge")
 
 
 def _truncate(text: str, limit: int) -> str:

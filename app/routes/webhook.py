@@ -13,13 +13,13 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.indexer import is_reindexing
 from app.pipeline import context_builder
+from app.pipeline.document_processing import process_document
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
     effective_ocr_mode,
     maybe_correct_ocr,
     should_run_ocr_for_document,
 )
-from app.worker import _process_document
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/webhook")
@@ -214,7 +214,7 @@ async def webhook_new(
         storage_paths = await paperless.list_storage_paths()
         tags = await paperless.list_tags()
 
-        await _process_document(
+        await process_document(
             doc,
             paperless,
             ollama,

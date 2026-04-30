@@ -63,7 +63,7 @@ def test_post_accepts_valid_csrf_token(client):
     assert r.status_code == 400
 
 
-@patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+@patch("app.routes.webhook.process_document", new_callable=AsyncMock)
 def test_webhook_is_exempt_from_csrf(mock_process, client):
     client.headers.pop("X-CSRF-Token", None)
     r = client.post("/webhook/new", json={"document_id": 42})

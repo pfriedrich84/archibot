@@ -170,10 +170,10 @@ class TestUnblacklist:
         assert row is None
 
     def test_unblacklist_allows_reproposal(self, client, db_path, monkeypatch):
-        """After unblacklist, _upsert_tag_whitelist should be able to insert the tag again."""
+        """After unblacklist, upsert_tag_proposal should be able to insert the tag again."""
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.execute("INSERT INTO tag_blacklist (name) VALUES ('FreedTag')")
@@ -183,10 +183,10 @@ class TestUnblacklist:
         # Unblacklist
         client.post("/tags/unblacklist?name=FreedTag")
 
-        # Now _upsert_tag_whitelist should work
-        from app.worker import _upsert_tag_whitelist
+        # Now upsert_tag_proposal should work
+        from app.pipeline.document_processing import upsert_tag_proposal
 
-        _upsert_tag_whitelist("FreedTag")
+        upsert_tag_proposal("FreedTag")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

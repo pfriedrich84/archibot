@@ -100,14 +100,14 @@ def client():
 class TestWebhookNew:
     """Full-processing webhook endpoint."""
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_legacy_format(self, mock_process, client):
         r = client.post("/webhook/new", json={"document_id": 42})
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
         mock_process.assert_awaited_once()
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_workflow_format(self, mock_process, client):
         payload = {"event": "document_created", "object": {"id": 42, "title": "Test"}}
         r = client.post("/webhook/new", json=payload)
@@ -119,14 +119,14 @@ class TestWebhookNew:
         r = client.post("/webhook/new", json={"foo": "bar"})
         assert r.status_code == 422
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_auth_required(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
         r = client.post("/webhook/new", json={"document_id": 42})
         assert r.status_code == 403
         mock_process.assert_not_awaited()
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_auth_success(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_secret", "my-secret")
         r = client.post(
@@ -137,7 +137,7 @@ class TestWebhookNew:
         assert r.status_code == 200
         mock_process.assert_awaited_once()
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_processing_error_hides_exception_details(self, mock_process, client):
         mock_process.side_effect = Exception("database password leaked")
         r = client.post("/webhook/new", json={"document_id": 42})
@@ -241,7 +241,7 @@ class TestWebhookEdit:
 # Multipart/form-data tests (Paperless "include document" option)
 # ---------------------------------------------------------------------------
 class TestWebhookLogging:
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_default_logging_avoids_raw_payload_preview(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_log_raw_body", False)
 
@@ -257,7 +257,7 @@ class TestWebhookLogging:
         assert "secret-value" not in logged
         mock_process.assert_awaited_once()
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_optional_raw_logging_redacts_sensitive_fields(self, mock_process, client, monkeypatch):
         monkeypatch.setattr("app.config.settings.webhook_log_raw_body", True)
 
@@ -282,7 +282,7 @@ class TestWebhookMultipart:
     multipart/form-data with the PDF attached instead of plain JSON.
     """
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_new_multipart_with_json_field(self, mock_process, client):
         """webhook/new should parse document_id from a JSON form field."""
         payload = json.dumps({"event": "document_created", "object": {"id": 42}})
@@ -310,7 +310,7 @@ class TestWebhookMultipart:
         assert r.status_code == 200
         assert r.json()["action"] == "reembedded"
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_new_multipart_plain_fields(self, mock_process, client):
         """webhook/new should handle plain form fields (document_id as string)."""
         r = client.post(
@@ -330,7 +330,7 @@ class TestWebhookMultipart:
         )
         assert r.status_code == 422
 
-    @patch("app.routes.webhook._process_document", new_callable=AsyncMock)
+    @patch("app.routes.webhook.process_document", new_callable=AsyncMock)
     def test_new_multipart_binary_pdf_no_crash(self, mock_process, client):
         """webhook/new must not crash on binary PDF data with invalid UTF-8."""
         # Simulate the exact bytes that caused the UnicodeDecodeError

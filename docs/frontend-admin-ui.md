@@ -45,7 +45,7 @@ The FastAPI backend serves the generated static SvelteKit build from `frontend/b
 ## Route rollout plan
 
 1. **Dashboard**: highest polish, backed by `/api/v1/dashboard` and `/api/v1/system/status`
-2. **Settings**: schema-driven categories via `/api/v1/settings/schema`
+2. **Settings**: schema-driven categories via `/api/v1/settings/schema`, plus editable system prompts via `/api/v1/settings/prompts`
 3. **Errors / Stats / Review / Inbox**: migrate to data-rich Svelte tables and filters
 4. **Embeddings / Chat / Setup**: specialized workflows with focused UX
 5. **Cutover**: remove direct entrypoints to deprecated templates only after parity

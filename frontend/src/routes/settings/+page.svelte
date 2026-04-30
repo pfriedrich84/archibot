@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Badge, Button, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
-  import { saveSettings } from '$lib/api';
-  import type { OllamaModelOption, PaperlessTagOption, SettingsSchemaPayload } from '$lib/types';
+  import { resetPrompt, savePrompt, saveSettings } from '$lib/api';
+  import type { OllamaModelOption, PaperlessTagOption, PromptItem, SettingsSchemaPayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -11,10 +11,14 @@
   let schema = $state<SettingsSchemaPayload>(initialData().schema);
   let paperlessTags = $state<PaperlessTagOption[]>(initialData().paperlessTags.items);
   let ollamaModels = $state<OllamaModelOption[]>(initialData().ollamaModels.items);
+  let prompts = $state<PromptItem[]>(initialData().prompts.items);
+  let promptDrafts = $state<Record<string, string>>({});
+  let promptMaxChars = $state<number>(initialData().prompts.max_chars);
+  let activePromptKey = $state<string>(initialData().prompts.items[0]?.key ?? '');
   let fieldErrors = $state<Record<string, string>>({});
   type SettingValue = string | number | boolean;
 
-  let actionState = $state<'settings-save' | ''>('');
+  let actionState = $state<'settings-save' | `prompt-${string}` | ''>('');
   let feedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
   let draftSettings = $state<Record<string, SettingValue>>({});
   let originalSettings = $state<Record<string, SettingValue>>({});
@@ -26,6 +30,10 @@
       schema = data.schema;
       paperlessTags = data.paperlessTags.items;
       ollamaModels = data.ollamaModels.items;
+      prompts = data.prompts.items;
+      promptMaxChars = data.prompts.max_chars;
+      promptDrafts = Object.fromEntries(data.prompts.items.map((prompt: PromptItem) => [prompt.key, prompt.content]));
+      activePromptKey = data.prompts.items[0]?.key ?? '';
       const values: Record<string, SettingValue> = {};
       for (const category of data.schema.categories) {
         for (const field of category.fields) {
@@ -57,6 +65,10 @@
   let changedSettingsCount = $derived.by(() =>
     Object.entries(draftSettings).filter(([key, value]) => String(value) !== String(originalSettings[key] ?? '')).length
   );
+
+  let activePrompt = $derived(prompts.find((prompt) => prompt.key === activePromptKey) ?? prompts[0]);
+  let activePromptDraft = $derived(activePrompt ? (promptDrafts[activePrompt.key] ?? '') : '');
+  let activePromptChanged = $derived(Boolean(activePrompt && activePromptDraft !== activePrompt.content));
 
   function inputType(type: string) {
     if (type === 'password') return 'password';
@@ -132,6 +144,46 @@
     return value === 0 ? 'Unlimited / Unbegrenzt' : value.toFixed(1);
   }
 
+  function syncPrompts(items: PromptItem[]) {
+    prompts = items;
+    promptDrafts = Object.fromEntries(items.map((prompt) => [prompt.key, prompt.content]));
+    if (!items.some((prompt) => prompt.key === activePromptKey)) activePromptKey = items[0]?.key ?? '';
+  }
+
+  async function saveActivePrompt() {
+    if (!activePrompt) return;
+    if (activePromptDraft.length > promptMaxChars) {
+      feedback = { type: 'error', message: `Prompt ist zu lang (max. ${promptMaxChars} Zeichen).` };
+      return;
+    }
+    actionState = `prompt-${activePrompt.key}`;
+    feedback = null;
+    try {
+      const result = await savePrompt(activePrompt.key, activePromptDraft);
+      syncPrompts(result.items);
+      feedback = { type: 'success', message: `Prompt „${activePrompt.label}“ gespeichert.` };
+    } catch (error) {
+      feedback = { type: 'error', message: error instanceof Error ? error.message : 'Prompt konnte nicht gespeichert werden.' };
+    } finally {
+      actionState = '';
+    }
+  }
+
+  async function resetActivePrompt() {
+    if (!activePrompt) return;
+    actionState = `prompt-${activePrompt.key}`;
+    feedback = null;
+    try {
+      const result = await resetPrompt(activePrompt.key);
+      syncPrompts(result.items);
+      feedback = { type: 'success', message: `Prompt „${activePrompt.label}“ auf Standard zurückgesetzt.` };
+    } catch (error) {
+      feedback = { type: 'error', message: error instanceof Error ? error.message : 'Prompt konnte nicht zurückgesetzt werden.' };
+    } finally {
+      actionState = '';
+    }
+  }
+
   async function saveChangedSettings() {
     const updates: Record<string, SettingValue> = {};
     for (const [key, value] of Object.entries(draftSettings)) {
@@ -187,6 +239,61 @@
             </Button>
           </div>
         </div>
+      </Card>
+
+      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Prompts bearbeiten</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">System-Prompts anpassen</h2>
+            <p class="mt-1.5 text-sm text-slate-400">Änderungen werden als Overrides im Data-Verzeichnis gespeichert. Zurücksetzen aktiviert wieder den eingebauten Standard.</p>
+          </div>
+          {#if activePrompt}
+            <div class="flex flex-wrap gap-2">
+              <Button color="alternative" class="rounded-xl" disabled={actionState !== '' || !activePrompt.overridden} onclick={() => void resetActivePrompt()}>Standard wiederherstellen</Button>
+              <Button color="green" class="rounded-xl" disabled={actionState !== '' || !activePromptChanged || activePromptDraft.length > promptMaxChars} onclick={() => void saveActivePrompt()}>
+                {actionState === `prompt-${activePrompt.key}` ? 'Speichert …' : 'Prompt speichern'}
+              </Button>
+            </div>
+          {/if}
+        </div>
+
+        {#if activePrompt}
+          <div class="mt-5 grid gap-4 lg:grid-cols-[18rem_1fr]">
+            <div class="space-y-2">
+              {#each prompts as prompt}
+                <button
+                  type="button"
+                  class={`w-full rounded-2xl border px-4 py-3 text-left transition ${prompt.key === activePrompt.key ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'}`}
+                  onclick={() => (activePromptKey = prompt.key)}
+                >
+                  <span class="block font-medium text-white">{prompt.label}</span>
+                  <span class="mt-1 block text-xs text-slate-500">{prompt.filename}</span>
+                  {#if prompt.overridden}<span class="mt-2 inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">Override aktiv</span>{/if}
+                </button>
+              {/each}
+            </div>
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 class="font-semibold text-white">{activePrompt.label}</h3>
+                  <p class="mt-1 text-sm text-slate-400">{activePrompt.description}</p>
+                </div>
+                <Badge color={activePromptChanged ? 'yellow' : activePrompt.overridden ? 'green' : 'gray'}>{activePromptChanged ? 'Geändert' : activePrompt.overridden ? 'Override' : 'Standard'}</Badge>
+              </div>
+              <textarea
+                value={activePromptDraft}
+                oninput={(event) => (promptDrafts = { ...promptDrafts, [activePrompt.key]: event.currentTarget.value })}
+                class="min-h-[26rem] w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-4 font-mono text-sm text-slate-100 outline-none transition focus:border-emerald-500/40"
+                spellcheck="false"
+              ></textarea>
+              <div class="mt-2 flex justify-between text-xs {activePromptDraft.length > promptMaxChars ? 'text-rose-300' : 'text-slate-500'}">
+                <span>{activePromptDraft.length} / {promptMaxChars} Zeichen</span>
+                <span>{activePrompt.filename}</span>
+              </div>
+            </div>
+          </div>
+        {/if}
       </Card>
 
       {#if changedSettingsCount > 0}

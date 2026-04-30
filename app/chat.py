@@ -12,7 +12,6 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Literal
 
 import structlog
@@ -27,6 +26,7 @@ from app.pipeline.classifier import (
     _tokens_to_chars,
 )
 from app.pipeline.context_builder import SimilarDocument, find_similar_by_query_text
+from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
 
@@ -154,10 +154,7 @@ def delete_chat_session(session_id: str) -> bool:
 # ---------------------------------------------------------------------------
 def load_chat_system_prompt() -> str:
     """Load chat system prompt — user override in /data takes precedence."""
-    override = Path(settings.data_dir) / "chat_system.txt"
-    if override.is_file():
-        return override.read_text(encoding="utf-8")
-    return (settings.prompts_dir / "chat_system.txt").read_text(encoding="utf-8")
+    return load_prompt("chat")
 
 
 def markdown_to_telegram_html(markdown: str) -> str:

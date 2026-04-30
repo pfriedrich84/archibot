@@ -31,6 +31,7 @@ from app.db import get_conn, mark_setup_complete
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
+from app.prompt_store import get_prompt_spec, prompt_payload, reset_prompt, save_prompt
 from app.worker import cancel_poll, get_poll_progress, start_poll_task
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
@@ -858,6 +859,38 @@ async def chat_ask_api(
 @router.get("/settings/schema")
 async def settings_schema_api() -> dict[str, Any]:
     return get_settings_schema()
+
+
+@router.get("/settings/prompts")
+async def settings_prompts_api() -> dict[str, Any]:
+    return prompt_payload()
+
+
+@router.post("/settings/prompts/{prompt_key}")
+async def save_prompt_api(
+    prompt_key: str, payload: Annotated[dict[str, Any] | None, Body()] = None
+) -> dict[str, Any]:
+    payload = payload or {}
+    try:
+        get_prompt_spec(prompt_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown prompt") from exc
+
+    action = str(payload.get("action") or "save")
+    if action == "reset":
+        reset_prompt(prompt_key)
+    elif action == "save":
+        content = payload.get("content")
+        if not isinstance(content, str):
+            raise HTTPException(status_code=400, detail="Missing prompt content")
+        try:
+            save_prompt(prompt_key, content)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported prompt action")
+
+    return prompt_payload()
 
 
 @router.get("/paperless/tags")

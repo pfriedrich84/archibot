@@ -326,6 +326,53 @@ def test_settings_schema_api_groups_fields(client):
     assert ocr_mode["input_type"] == "ocr_mode_select"
 
 
+def test_settings_prompts_api_lists_editable_prompts(client):
+    response = client.get("/api/v1/settings/prompts")
+    assert response.status_code == 200
+    payload = response.json()
+
+    keys = {item["key"] for item in payload["items"]}
+    assert {
+        "classify",
+        "classify_judge",
+        "ocr_correction",
+        "ocr_vision_light",
+        "ocr_vision_full",
+        "chat",
+    } <= keys
+    classify = next(item for item in payload["items"] if item["key"] == "classify")
+    assert classify["filename"] == "classify_system.txt"
+    assert classify["overridden"] is False
+    assert classify["content"] == classify["default_content"]
+
+
+def test_settings_prompt_api_saves_and_resets_override(client, tmp_path):
+    save_response = client.post(
+        "/api/v1/settings/prompts/chat",
+        json={"action": "save", "content": "Custom chat prompt"},
+    )
+    assert save_response.status_code == 200
+    chat = next(item for item in save_response.json()["items"] if item["key"] == "chat")
+    assert chat["content"] == "Custom chat prompt"
+    assert chat["overridden"] is True
+    assert (tmp_path / "chat_system.txt").read_text(encoding="utf-8") == "Custom chat prompt"
+
+    reset_response = client.post("/api/v1/settings/prompts/chat", json={"action": "reset"})
+    assert reset_response.status_code == 200
+    chat = next(item for item in reset_response.json()["items"] if item["key"] == "chat")
+    assert chat["overridden"] is False
+    assert not (tmp_path / "chat_system.txt").exists()
+
+
+def test_settings_prompt_api_rejects_empty_prompt(client):
+    response = client.post(
+        "/api/v1/settings/prompts/classify",
+        json={"action": "save", "content": "   "},
+    )
+    assert response.status_code == 400
+    assert "empty" in response.json()["detail"]
+
+
 def test_ollama_models_api_lists_available_models(client):
     response = client.get("/api/v1/ollama/models")
     assert response.status_code == 200

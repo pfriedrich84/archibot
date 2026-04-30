@@ -10,47 +10,49 @@ import structlog
 
 from app.db import EMBED_DIM
 from app.models import PaperlessDocument
-from app.worker import (
-    _phase_classify,
-    _phase_embed,
-    _phase_ocr,
-    _process_document,
-    _resolve_entity,
-    _resolve_tags,
-    _upsert_tag_whitelist,
-    poll_inbox,
+from app.pipeline.document_processing import (
+    EmbeddingResult,
+    maybe_run_judge,
+    phase_classify,
+    phase_embed,
+    phase_ocr,
+    process_document,
+    resolve_entity,
+    resolve_tags,
+    upsert_tag_proposal,
 )
+from app.worker import poll_inbox
 
 
 class TestResolveEntity:
     def test_exact_match(self, sample_entities):
-        assert _resolve_entity("Max Mustermann", sample_entities) == 1
+        assert resolve_entity("Max Mustermann", sample_entities) == 1
 
     def test_case_insensitive(self, sample_entities):
-        assert _resolve_entity("max mustermann", sample_entities) == 1
-        assert _resolve_entity("STADTWERKE MÜNCHEN", sample_entities) == 2
-        assert _resolve_entity("deutsche post", sample_entities) == 3
+        assert resolve_entity("max mustermann", sample_entities) == 1
+        assert resolve_entity("STADTWERKE MÜNCHEN", sample_entities) == 2
+        assert resolve_entity("deutsche post", sample_entities) == 3
 
     def test_no_match(self, sample_entities):
-        assert _resolve_entity("Unbekannter Absender", sample_entities) is None
+        assert resolve_entity("Unbekannter Absender", sample_entities) is None
 
     def test_none_input(self, sample_entities):
-        assert _resolve_entity(None, sample_entities) is None
+        assert resolve_entity(None, sample_entities) is None
 
     def test_empty_string(self, sample_entities):
-        assert _resolve_entity("", sample_entities) is None
+        assert resolve_entity("", sample_entities) is None
 
     def test_empty_entity_list(self):
-        assert _resolve_entity("Something", []) is None
+        assert resolve_entity("Something", []) is None
 
     def test_partial_match_not_found(self, sample_entities):
         """Partial matches should NOT resolve — only exact."""
-        assert _resolve_entity("Max", sample_entities) is None
-        assert _resolve_entity("Stadtwerke", sample_entities) is None
+        assert resolve_entity("Max", sample_entities) is None
+        assert resolve_entity("Stadtwerke", sample_entities) is None
 
     def test_whitespace_not_trimmed(self, sample_entities):
         """Leading/trailing whitespace means no match."""
-        assert _resolve_entity(" Max Mustermann ", sample_entities) is None
+        assert resolve_entity(" Max Mustermann ", sample_entities) is None
 
 
 class TestResolveTags:
@@ -59,7 +61,7 @@ class TestResolveTags:
             {"name": "Finanzen", "confidence": 90},
             {"name": "Wohnung", "confidence": 70},
         ]
-        ids, dicts = _resolve_tags(proposed, sample_entities)
+        ids, dicts = resolve_tags(proposed, sample_entities)
         assert ids == [20, 21]
         assert len(dicts) == 2
         assert dicts[0] == {"name": "Finanzen", "confidence": 90, "id": 20}
@@ -70,7 +72,7 @@ class TestResolveTags:
             {"name": "Finanzen", "confidence": 90},
             {"name": "NeuerTag", "confidence": 60},
         ]
-        ids, dicts = _resolve_tags(proposed, sample_entities)
+        ids, dicts = resolve_tags(proposed, sample_entities)
         assert ids == [20]  # only Finanzen resolved
         assert dicts[1] == {"name": "NeuerTag", "confidence": 60, "id": None}
 
@@ -78,23 +80,23 @@ class TestResolveTags:
         proposed = [
             {"name": "Komplett Neu", "confidence": 50},
         ]
-        ids, dicts = _resolve_tags(proposed, sample_entities)
+        ids, dicts = resolve_tags(proposed, sample_entities)
         assert ids == []
         assert dicts[0]["id"] is None
 
     def test_empty_proposed(self, sample_entities, patch_db):
-        ids, dicts = _resolve_tags([], sample_entities)
+        ids, dicts = resolve_tags([], sample_entities)
         assert ids == []
         assert dicts == []
 
     def test_case_insensitive_tag_match(self, sample_entities, patch_db):
         proposed = [{"name": "finanzen", "confidence": 80}]
-        ids, _dicts = _resolve_tags(proposed, sample_entities)
+        ids, _dicts = resolve_tags(proposed, sample_entities)
         assert ids == [20]
 
     def test_default_confidence(self, sample_entities, patch_db):
         proposed = [{"name": "Finanzen"}]  # no confidence key
-        _ids, dicts = _resolve_tags(proposed, sample_entities)
+        _ids, dicts = resolve_tags(proposed, sample_entities)
         assert dicts[0]["confidence"] == 50  # default
 
 
@@ -102,7 +104,7 @@ class TestBlacklistFiltering:
     """Verify that blacklisted tags are excluded from whitelist insertion."""
 
     def test_blacklisted_tag_not_inserted(self, sample_entities, patch_db, tmp_db):
-        """A tag in the blacklist should be silently skipped by _upsert_tag_whitelist."""
+        """A tag in the blacklist should be silently skipped by upsert_tag_proposal."""
         import sqlite3
 
         conn = sqlite3.connect(str(tmp_db))
@@ -111,7 +113,7 @@ class TestBlacklistFiltering:
         conn.close()
 
         proposed = [{"name": "BadTag", "confidence": 90}]
-        ids, dicts = _resolve_tags(proposed, sample_entities)
+        ids, dicts = resolve_tags(proposed, sample_entities)
         assert ids == []  # not resolved (doesn't exist in Paperless)
         assert dicts[0]["id"] is None
 
@@ -126,7 +128,7 @@ class TestBlacklistFiltering:
         import sqlite3
 
         proposed = [{"name": "GoodTag", "confidence": 80}]
-        _resolve_tags(proposed, sample_entities)
+        resolve_tags(proposed, sample_entities)
 
         conn = sqlite3.connect(str(tmp_db))
         row = conn.execute("SELECT * FROM tag_whitelist WHERE name = 'GoodTag'").fetchone()
@@ -142,7 +144,7 @@ class TestBlacklistFiltering:
         conn.commit()
         conn.close()
 
-        _upsert_tag_whitelist("BlockedTag")
+        upsert_tag_proposal("BlockedTag")
 
         conn = sqlite3.connect(str(tmp_db))
         row = conn.execute("SELECT * FROM tag_whitelist WHERE name = 'BlockedTag'").fetchone()
@@ -161,7 +163,7 @@ class TestBlacklistFiltering:
 
         # LLM proposes same tag again
         proposed = [{"name": "OldTag", "confidence": 85}]
-        _resolve_tags(proposed, sample_entities)
+        resolve_tags(proposed, sample_entities)
 
         # Should NOT appear in whitelist
         conn = sqlite3.connect(str(tmp_db))
@@ -180,7 +182,7 @@ class TestBlacklistFiltering:
         conn.commit()
         conn.close()
 
-        _upsert_tag_whitelist("steuer")
+        upsert_tag_proposal("steuer")
 
         conn = sqlite3.connect(str(tmp_db))
         conn.row_factory = sqlite3.Row
@@ -193,7 +195,7 @@ class TestBlacklistFiltering:
 
 
 class TestProcessDocumentReturn:
-    """Verify _process_document returns the correct ProcessResult."""
+    """Verify process_document returns the correct ProcessResult."""
 
     @pytest.mark.asyncio
     async def test_skipped_when_already_processed(self, patch_db, tmp_db):
@@ -217,7 +219,7 @@ class TestProcessDocumentReturn:
         conn.commit()
         conn.close()
 
-        result = await _process_document(
+        result = await process_document(
             doc,
             AsyncMock(),  # paperless (unused for skip path)
             AsyncMock(),  # ollama (unused for skip path)
@@ -250,7 +252,7 @@ class TestProcessDocumentReturn:
         conn.close()
 
         with structlog.testing.capture_logs() as logs:
-            result = await _process_document(
+            result = await process_document(
                 doc,
                 AsyncMock(),
                 AsyncMock(),
@@ -335,17 +337,17 @@ class TestPollCycleSummary:
         mock_paperless.list_storage_paths = AsyncMock(return_value=[])
         mock_paperless.list_tags = AsyncMock(return_value=[])
 
-        mock_phase_ocr = AsyncMock(return_value=[doc])
-        mock_phase_embed = AsyncMock(return_value=[])
-        mock_phase_classify = AsyncMock(return_value=(1, 0, 0))
+        mockphase_ocr = AsyncMock(return_value=[doc])
+        mockphase_embed = AsyncMock(return_value=[])
+        mockphase_classify = AsyncMock(return_value=(1, 0, 0))
 
         with (
             patch("app.worker._paperless", mock_paperless),
             patch("app.worker._ollama", AsyncMock()),
             patch("app.worker._has_embedding_index", return_value=True),
-            patch("app.worker._phase_ocr", mock_phase_ocr),
-            patch("app.worker._phase_embed", mock_phase_embed),
-            patch("app.worker._phase_classify", mock_phase_classify),
+            patch("app.pipeline.document_processing.phase_ocr", mockphase_ocr),
+            patch("app.pipeline.document_processing.phase_embed", mockphase_embed),
+            patch("app.pipeline.document_processing.phase_classify", mockphase_classify),
             structlog.testing.capture_logs() as logs,
         ):
             await poll_inbox(force=True)
@@ -357,7 +359,7 @@ class TestPollCycleSummary:
         assert summary[0]["classified"] == 1
         assert summary[0]["auto_committed"] == 0
         assert summary[0]["errored"] == 0
-        mock_phase_ocr.assert_awaited_once()
+        mockphase_ocr.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +386,7 @@ class TestPhaseEmbed:
         mock_ollama.embed_model = "nomic-embed-text-v2-moe"
         mock_ollama.unload_model = AsyncMock()
         mock_paperless = AsyncMock()
-        results = await _phase_embed(docs, mock_paperless, mock_ollama, "test_cycle")
+        results = await phase_embed(docs, mock_paperless, mock_ollama, "test_cycle")
 
         # Exactly 3 embed calls — one per doc
         assert mock_ollama.embed.call_count == 3
@@ -399,7 +401,7 @@ class TestPhaseEmbed:
         mock_ollama.embed_model = "nomic-embed-text-v2-moe"
         mock_ollama.unload_model = AsyncMock()
 
-        results = await _phase_embed(docs, AsyncMock(), mock_ollama, "test_cycle")
+        results = await phase_embed(docs, AsyncMock(), mock_ollama, "test_cycle")
 
         assert results[1].embedding is None
         assert results[1].similar_results == []
@@ -411,7 +413,7 @@ class TestPhaseEmbed:
         mock_ollama.embed = AsyncMock(return_value=[0.1] * EMBED_DIM)
         mock_ollama.embed_model = "nomic-embed-text-v2-moe"
         mock_ollama.unload_model = AsyncMock()
-        await _phase_embed([_make_doc(1)], AsyncMock(), mock_ollama, "test_cycle")
+        await phase_embed([_make_doc(1)], AsyncMock(), mock_ollama, "test_cycle")
 
         mock_ollama.unload_model.assert_called_once_with("nomic-embed-text-v2-moe", swap=True)
 
@@ -429,12 +431,12 @@ class TestPhaseOcr:
         mock_paperless = AsyncMock()
 
         with (
-            patch("app.worker.effective_ocr_mode", return_value="text"),
-            patch("app.worker.maybe_correct_ocr") as mock_ocr,
-            patch("app.worker.cache_ocr_correction"),
+            patch("app.pipeline.document_processing.effective_ocr_mode", return_value="text"),
+            patch("app.pipeline.document_processing.maybe_correct_ocr") as mock_ocr,
+            patch("app.pipeline.document_processing.cache_ocr_correction"),
         ):
             mock_ocr.return_value = ("fixed text", 3)
-            result = await _phase_ocr([doc], mock_ollama, mock_paperless, "test_cycle")
+            result = await phase_ocr([doc], mock_ollama, mock_paperless, "test_cycle")
 
         assert result[0].content == "fixed text"
         mock_ollama.unload_model.assert_called_once_with("qwen3:0.6b", swap=True)
@@ -447,8 +449,8 @@ class TestPhaseOcr:
         mock_ollama.unload_model = AsyncMock()
         mock_paperless = AsyncMock()
 
-        with patch("app.worker.effective_ocr_mode", return_value="off"):
-            result = await _phase_ocr(docs, mock_ollama, mock_paperless, "test_cycle")
+        with patch("app.pipeline.document_processing.effective_ocr_mode", return_value="off"):
+            result = await phase_ocr(docs, mock_ollama, mock_paperless, "test_cycle")
 
         assert result == docs
         mock_ollama.unload_model.assert_not_called()
@@ -463,10 +465,13 @@ class TestPhaseOcr:
         mock_paperless = AsyncMock()
 
         with (
-            patch("app.worker.effective_ocr_mode", return_value="text"),
-            patch("app.worker.maybe_correct_ocr", side_effect=RuntimeError("fail")),
+            patch("app.pipeline.document_processing.effective_ocr_mode", return_value="text"),
+            patch(
+                "app.pipeline.document_processing.maybe_correct_ocr",
+                side_effect=RuntimeError("fail"),
+            ),
         ):
-            result = await _phase_ocr([doc], mock_ollama, mock_paperless, "test_cycle")
+            result = await phase_ocr([doc], mock_ollama, mock_paperless, "test_cycle")
 
         assert result[0].content == "original text"
 
@@ -477,14 +482,12 @@ class TestPhaseClassify:
     @pytest.mark.asyncio
     async def test_classify_uses_precomputed_context(self):
         """Classification should use similar_results from the embedding phase."""
-        from app.worker import _EmbeddingResult
-
         doc = _make_doc(1)
         context_doc = _make_doc(10, title="Similar Doc")
         from app.pipeline.context_builder import SimilarDocument
 
         embed_results = {
-            1: _EmbeddingResult(
+            1: EmbeddingResult(
                 embedding=[0.1] * EMBED_DIM,
                 similar_results=[SimilarDocument(document=context_doc, distance=0.2)],
             )
@@ -495,11 +498,11 @@ class TestPhaseClassify:
         mock_ollama.unload_model = AsyncMock()
 
         with (
-            patch("app.worker.classifier.classify") as mock_classify,
-            patch("app.worker._store_suggestion") as mock_store,
-            patch("app.worker.notify_suggestion"),
-            patch("app.worker.context_builder.store_embedding"),
-            patch("app.worker.settings") as mock_settings,
+            patch("app.pipeline.document_processing.classifier.classify") as mock_classify,
+            patch("app.pipeline.document_processing.store_suggestion") as mock_store,
+            patch("app.pipeline.document_processing.notify_suggestion"),
+            patch("app.pipeline.document_processing.context_builder.store_embedding"),
+            patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
             mock_settings.auto_commit_confidence = 0
             from app.models import ClassificationResult
@@ -515,7 +518,7 @@ class TestPhaseClassify:
             )
             mock_store.return_value = AsyncMock(id=1, proposed_correspondent_id=None)
 
-            _classified, _auto_committed, _errored = await _phase_classify(
+            _classified, _auto_committed, _errored = await phase_classify(
                 [doc], embed_results, AsyncMock(), mock_ollama, [], [], [], [], "test_cycle"
             )
 
@@ -528,18 +531,16 @@ class TestPhaseClassify:
     @pytest.mark.asyncio
     async def test_unload_called_after_classify_phase(self):
         """The classify model should be unloaded at the end of the phase."""
-        from app.worker import _EmbeddingResult
-
         mock_ollama = AsyncMock()
         mock_ollama.model = "gemma3:4b"
         mock_ollama.unload_model = AsyncMock()
 
         with (
-            patch("app.worker.classifier.classify") as mock_classify,
-            patch("app.worker._store_suggestion") as mock_store,
-            patch("app.worker.notify_suggestion"),
-            patch("app.worker.context_builder.store_embedding"),
-            patch("app.worker.settings") as mock_settings,
+            patch("app.pipeline.document_processing.classifier.classify") as mock_classify,
+            patch("app.pipeline.document_processing.store_suggestion") as mock_store,
+            patch("app.pipeline.document_processing.notify_suggestion"),
+            patch("app.pipeline.document_processing.context_builder.store_embedding"),
+            patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
             mock_settings.auto_commit_confidence = 0
             from app.models import ClassificationResult
@@ -550,9 +551,9 @@ class TestPhaseClassify:
             )
             mock_store.return_value = AsyncMock(id=1, proposed_correspondent_id=None)
 
-            await _phase_classify(
+            await phase_classify(
                 [_make_doc(1)],
-                {1: _EmbeddingResult()},
+                {1: EmbeddingResult()},
                 AsyncMock(),
                 mock_ollama,
                 [],
@@ -575,21 +576,23 @@ class TestPhaseClassify:
         import sqlite3
 
         from app.models import ClassificationResult
-        from app.worker import _EmbeddingResult
 
         doc = _make_doc(1)
-        embed_results = {1: _EmbeddingResult(embedding=[0.1] * EMBED_DIM, similar_results=[])}
+        embed_results = {1: EmbeddingResult(embedding=[0.1] * EMBED_DIM, similar_results=[])}
 
         mock_ollama = AsyncMock()
         mock_ollama.model = "gemma3:4b"
         mock_ollama.unload_model = AsyncMock()
 
         with (
-            patch("app.worker.classifier.classify") as mock_classify,
-            patch("app.worker._store_suggestion", side_effect=RuntimeError("DB exploded")),
-            patch("app.worker._write_error"),
-            patch("app.worker.context_builder.store_embedding"),
-            patch("app.worker.settings") as mock_settings,
+            patch("app.pipeline.document_processing.classifier.classify") as mock_classify,
+            patch(
+                "app.pipeline.document_processing.store_suggestion",
+                side_effect=RuntimeError("DB exploded"),
+            ),
+            patch("app.pipeline.document_processing.record_processing_error"),
+            patch("app.pipeline.document_processing.context_builder.store_embedding"),
+            patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
             mock_settings.auto_commit_confidence = 0
             mock_settings.enable_judge_verification = False
@@ -597,7 +600,7 @@ class TestPhaseClassify:
                 ClassificationResult(title="T", confidence=80, reasoning="ok", tags=[]),
                 "{}",
             )
-            _c, _a, errored = await _phase_classify(
+            _c, _a, errored = await phase_classify(
                 [doc],
                 embed_results,
                 AsyncMock(),
@@ -618,30 +621,33 @@ class TestPhaseClassify:
         ).fetchall()
         conn.close()
         # Exactly one classify timing row — the success from classify() itself.
-        # The _store_suggestion failure must NOT have added a second row.
+        # The store_suggestion failure must NOT have added a second row.
         assert len(rows) == 1
         assert rows[0]["success"] == 1
 
     @pytest.mark.asyncio
     async def test_embed_still_indexed_on_classify_failure(self):
         """Even if classification fails, a pre-computed embedding should be stored."""
-        from app.worker import _EmbeddingResult
-
         doc = _make_doc(1)
-        embed_results = {1: _EmbeddingResult(embedding=[0.1] * EMBED_DIM, similar_results=[])}
+        embed_results = {1: EmbeddingResult(embedding=[0.1] * EMBED_DIM, similar_results=[])}
 
         mock_ollama = AsyncMock()
         mock_ollama.model = "gemma3:4b"
         mock_ollama.unload_model = AsyncMock()
 
         with (
-            patch("app.worker.classifier.classify", side_effect=RuntimeError("LLM failed")),
-            patch("app.worker._write_error"),
-            patch("app.worker.context_builder.store_embedding") as mock_store_emb,
-            patch("app.worker.settings") as mock_settings,
+            patch(
+                "app.pipeline.document_processing.classifier.classify",
+                side_effect=RuntimeError("LLM failed"),
+            ),
+            patch("app.pipeline.document_processing.record_processing_error"),
+            patch(
+                "app.pipeline.document_processing.context_builder.store_embedding"
+            ) as mock_store_emb,
+            patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
             mock_settings.auto_commit_confidence = 0
-            _classified, _auto_committed, errored = await _phase_classify(
+            _classified, _auto_committed, errored = await phase_classify(
                 [doc], embed_results, AsyncMock(), mock_ollama, [], [], [], [], "test_cycle"
             )
 
@@ -651,23 +657,22 @@ class TestPhaseClassify:
 
 
 class TestMaybeRunJudge:
-    """Tests for the _maybe_run_judge gate and wiring."""
+    """Tests for the maybe_run_judge gate and wiring."""
 
     @pytest.mark.asyncio
     async def test_disabled_returns_initial_unchanged(self):
         from app.models import ClassificationResult
-        from app.worker import _maybe_run_judge
 
         initial = ClassificationResult(title="T", confidence=40, reasoning="x", tags=[])
         doc = _make_doc(1)
         ollama = AsyncMock()
         ollama.chat_json = AsyncMock()
 
-        with patch("app.worker.settings") as mock_settings:
+        with patch("app.pipeline.document_processing.settings") as mock_settings:
             mock_settings.enable_judge_verification = False
             mock_settings.judge_confidence_threshold = 85
             mock_settings.ollama_judge_model = ""
-            outcome = await _maybe_run_judge(
+            outcome = await maybe_run_judge(
                 doc, initial, "{}", [_make_doc(10)], [], [], [], [], ollama, cycle_id=None
             )
         assert outcome.result is initial
@@ -677,18 +682,17 @@ class TestMaybeRunJudge:
     @pytest.mark.asyncio
     async def test_skipped_when_confidence_above_threshold(self):
         from app.models import ClassificationResult
-        from app.worker import _maybe_run_judge
 
         initial = ClassificationResult(title="T", confidence=95, reasoning="x", tags=[])
         doc = _make_doc(1)
         ollama = AsyncMock()
         ollama.chat_json = AsyncMock()
 
-        with patch("app.worker.settings") as mock_settings:
+        with patch("app.pipeline.document_processing.settings") as mock_settings:
             mock_settings.enable_judge_verification = True
             mock_settings.judge_confidence_threshold = 85
             mock_settings.ollama_judge_model = ""
-            outcome = await _maybe_run_judge(
+            outcome = await maybe_run_judge(
                 doc, initial, "{}", [_make_doc(10)], [], [], [], [], ollama, cycle_id=None
             )
         assert outcome.verdict == "skipped"
@@ -697,18 +701,17 @@ class TestMaybeRunJudge:
     @pytest.mark.asyncio
     async def test_skipped_when_no_context_docs(self):
         from app.models import ClassificationResult
-        from app.worker import _maybe_run_judge
 
         initial = ClassificationResult(title="T", confidence=40, reasoning="x", tags=[])
         doc = _make_doc(1)
         ollama = AsyncMock()
         ollama.chat_json = AsyncMock()
 
-        with patch("app.worker.settings") as mock_settings:
+        with patch("app.pipeline.document_processing.settings") as mock_settings:
             mock_settings.enable_judge_verification = True
             mock_settings.judge_confidence_threshold = 85
             mock_settings.ollama_judge_model = ""
-            outcome = await _maybe_run_judge(
+            outcome = await maybe_run_judge(
                 doc, initial, "{}", [], [], [], [], [], ollama, cycle_id=None
             )
         assert outcome.verdict == "skipped"
@@ -717,7 +720,6 @@ class TestMaybeRunJudge:
     @pytest.mark.asyncio
     async def test_corrected_result_replaces_initial(self):
         from app.models import ClassificationResult, JudgeVerdict
-        from app.worker import _maybe_run_judge
 
         initial = ClassificationResult(title="Original", confidence=40, reasoning="x", tags=[])
         corrected = ClassificationResult(title="Corrected", confidence=80, reasoning="y", tags=[])
@@ -726,9 +728,9 @@ class TestMaybeRunJudge:
         raw_response = '{"title":"Original"}'
 
         with (
-            patch("app.worker.settings") as mock_settings,
+            patch("app.pipeline.document_processing.settings") as mock_settings,
             patch(
-                "app.worker.classifier.verify",
+                "app.pipeline.document_processing.classifier.verify",
                 AsyncMock(
                     return_value=JudgeVerdict(
                         verdict="corrected", reasoning="ctx overrides", corrected=corrected
@@ -739,7 +741,7 @@ class TestMaybeRunJudge:
             mock_settings.enable_judge_verification = True
             mock_settings.judge_confidence_threshold = 85
             mock_settings.ollama_judge_model = ""
-            outcome = await _maybe_run_judge(
+            outcome = await maybe_run_judge(
                 doc,
                 initial,
                 raw_response,
@@ -760,23 +762,22 @@ class TestMaybeRunJudge:
     @pytest.mark.asyncio
     async def test_agree_keeps_initial_result(self):
         from app.models import ClassificationResult, JudgeVerdict
-        from app.worker import _maybe_run_judge
 
         initial = ClassificationResult(title="Original", confidence=40, reasoning="x", tags=[])
         doc = _make_doc(1)
         ollama = AsyncMock()
 
         with (
-            patch("app.worker.settings") as mock_settings,
+            patch("app.pipeline.document_processing.settings") as mock_settings,
             patch(
-                "app.worker.classifier.verify",
+                "app.pipeline.document_processing.classifier.verify",
                 AsyncMock(return_value=JudgeVerdict(verdict="agree", reasoning="ok")),
             ),
         ):
             mock_settings.enable_judge_verification = True
             mock_settings.judge_confidence_threshold = 85
             mock_settings.ollama_judge_model = ""
-            outcome = await _maybe_run_judge(
+            outcome = await maybe_run_judge(
                 doc, initial, "{}", [_make_doc(10)], [], [], [], [], ollama, cycle_id=None
             )
 
@@ -830,8 +831,8 @@ class TestPhasedPollInbox:
             patch("app.worker._paperless", mock_paperless),
             patch("app.worker._ollama", mock_ollama),
             patch("app.worker._has_embedding_index", return_value=True),
-            patch("app.worker.notify_suggestion"),
-            patch("app.worker.context_builder.store_embedding"),
+            patch("app.pipeline.document_processing.notify_suggestion"),
+            patch("app.pipeline.document_processing.context_builder.store_embedding"),
         ):
             await poll_inbox()
 

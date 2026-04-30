@@ -16,6 +16,7 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
 from app.models import PaperlessDocument
+from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
 
@@ -257,8 +258,7 @@ async def _correct_text_only(
     log.info("ocr text correction triggered", doc_id=doc.id)
 
     try:
-        prompt_path = settings.prompts_dir / "ocr_correction_system.txt"
-        system = prompt_path.read_text(encoding="utf-8")
+        system = load_prompt("ocr_correction")
         user_text = text[: settings.max_doc_chars]
         raw = await ollama.chat_json(
             system=system,
@@ -304,8 +304,7 @@ async def _correct_vision_light(
             log.warning("no pages rendered, falling back to text mode", doc_id=doc.id)
             return await _correct_text_only(doc, ollama)
 
-        prompt_path = settings.prompts_dir / "ocr_vision_light_system.txt"
-        system = prompt_path.read_text(encoding="utf-8")
+        system = load_prompt("ocr_vision_light")
         user_text = text[: settings.max_doc_chars]
         vision_model = settings.ocr_vision_model or ollama.model
 
@@ -356,8 +355,7 @@ async def _correct_vision_full(
         # Split OCR text into per-page chunks
         page_texts = _split_text_by_pages(text, len(images))
 
-        prompt_path = settings.prompts_dir / "ocr_vision_full_system.txt"
-        system = prompt_path.read_text(encoding="utf-8")
+        system = load_prompt("ocr_vision_full")
         vision_model = settings.ocr_vision_model or ollama.model
 
         corrected_pages: list[str] = []

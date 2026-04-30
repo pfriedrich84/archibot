@@ -152,7 +152,7 @@ async def cmd_poll(*, force: bool = False) -> None:
 async def cmd_process_doc(document_id: int, *, force: bool = False) -> None:
     """Process exactly one document by ID (OCR + embed + classify)."""
     from app.db import get_conn
-    from app.worker import _process_document
+    from app.pipeline.document_processing import process_document
 
     paperless = PaperlessClient()
     ollama = OllamaClient()
@@ -169,7 +169,7 @@ async def cmd_process_doc(document_id: int, *, force: bool = False) -> None:
                     "DELETE FROM processed_documents WHERE document_id = ?", (document_id,)
                 )
 
-        result = await _process_document(
+        result = await process_document(
             doc,
             paperless,
             ollama,

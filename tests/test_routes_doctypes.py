@@ -165,10 +165,10 @@ class TestDoctypeUnblacklist:
         assert row is None
 
     def test_unblacklist_allows_reproposal(self, client, db_path, monkeypatch):
-        """After unblacklist, _upsert_doctype_whitelist should insert again."""
+        """After unblacklist, upsert_doctype_proposal should insert again."""
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.execute("INSERT INTO doctype_blacklist (name) VALUES ('FreedType')")
@@ -177,9 +177,9 @@ class TestDoctypeUnblacklist:
 
         client.post("/doctypes/FreedType/unblacklist")
 
-        from app.worker import _upsert_doctype_whitelist
+        from app.pipeline.document_processing import upsert_doctype_proposal
 
-        _upsert_doctype_whitelist("FreedType")
+        upsert_doctype_proposal("FreedType")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -209,16 +209,16 @@ class TestDoctypeUnblacklist:
 
 
 class TestDoctypeWhitelistUpsert:
-    """Test the worker-level _upsert_doctype_whitelist function."""
+    """Test the document-processing upsert_doctype_proposal function."""
 
     def test_upsert_creates_new_entry(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
-        from app.worker import _upsert_doctype_whitelist
+        from app.pipeline.document_processing import upsert_doctype_proposal
 
-        _upsert_doctype_whitelist("New Doctype")
+        upsert_doctype_proposal("New Doctype")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -231,12 +231,12 @@ class TestDoctypeWhitelistUpsert:
     def test_upsert_increments_times_seen(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
-        from app.worker import _upsert_doctype_whitelist
+        from app.pipeline.document_processing import upsert_doctype_proposal
 
-        _upsert_doctype_whitelist("Repeated Doctype")
-        _upsert_doctype_whitelist("Repeated Doctype")
+        upsert_doctype_proposal("Repeated Doctype")
+        upsert_doctype_proposal("Repeated Doctype")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -250,16 +250,16 @@ class TestDoctypeWhitelistUpsert:
     def test_upsert_skips_blacklisted(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.execute("INSERT INTO doctype_blacklist (name) VALUES ('Blocked One')")
         conn.commit()
         conn.close()
 
-        from app.worker import _upsert_doctype_whitelist
+        from app.pipeline.document_processing import upsert_doctype_proposal
 
-        _upsert_doctype_whitelist("Blocked One")
+        upsert_doctype_proposal("Blocked One")
 
         conn = sqlite3.connect(str(db_path))
         row = conn.execute("SELECT * FROM doctype_whitelist WHERE name = 'Blocked One'").fetchone()
@@ -271,7 +271,7 @@ class TestDoctypeWhitelistUpsert:
         """Upsert should treat differing capitalization as the same doctype."""
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -279,9 +279,9 @@ class TestDoctypeWhitelistUpsert:
         conn.commit()
         conn.close()
 
-        from app.worker import _upsert_doctype_whitelist
+        from app.pipeline.document_processing import upsert_doctype_proposal
 
-        _upsert_doctype_whitelist("rechnung")
+        upsert_doctype_proposal("rechnung")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

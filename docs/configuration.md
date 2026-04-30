@@ -144,3 +144,9 @@ und sind sofort wirksam — kein Container-Neustart noetig.
 
 Ausnahmen, die einen Neustart erfordern, sind in der UI entsprechend markiert
 (z.B. `GUI_PORT`, `MCP_TRANSPORT`).
+
+Unter `/app/settings` koennen auch die System-Prompts fuer Klassifikation,
+Judge-Pruefung, OCR-Korrektur und RAG-Chat bearbeitet werden. Prompt-Aenderungen
+werden als Dateien in `{DATA_DIR}` gespeichert (z.B. `classify_system.txt`) und
+ueberschreiben die eingebauten Defaults; per Reset wird die Override-Datei wieder
+entfernt.

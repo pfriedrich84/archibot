@@ -211,10 +211,10 @@ class TestCorrespondentUnblacklist:
         assert row is None
 
     def test_unblacklist_allows_reproposal(self, client, db_path, monkeypatch):
-        """After unblacklist, _upsert_correspondent_whitelist should insert again."""
+        """After unblacklist, upsert_correspondent_proposal should insert again."""
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.execute("INSERT INTO correspondent_blacklist (name) VALUES ('FreedCorr')")
@@ -224,10 +224,10 @@ class TestCorrespondentUnblacklist:
         # Unblacklist
         client.post("/correspondents/FreedCorr/unblacklist")
 
-        # Now _upsert_correspondent_whitelist should work
-        from app.worker import _upsert_correspondent_whitelist
+        # Now upsert_correspondent_proposal should work
+        from app.pipeline.document_processing import upsert_correspondent_proposal
 
-        _upsert_correspondent_whitelist("FreedCorr")
+        upsert_correspondent_proposal("FreedCorr")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -259,16 +259,16 @@ class TestCorrespondentUnblacklist:
 
 
 class TestCorrespondentWhitelistUpsert:
-    """Test the worker-level _upsert_correspondent_whitelist function."""
+    """Test the document-processing upsert_correspondent_proposal function."""
 
     def test_upsert_creates_new_entry(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
-        from app.worker import _upsert_correspondent_whitelist
+        from app.pipeline.document_processing import upsert_correspondent_proposal
 
-        _upsert_correspondent_whitelist("New Correspondent")
+        upsert_correspondent_proposal("New Correspondent")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -283,12 +283,12 @@ class TestCorrespondentWhitelistUpsert:
     def test_upsert_increments_times_seen(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
-        from app.worker import _upsert_correspondent_whitelist
+        from app.pipeline.document_processing import upsert_correspondent_proposal
 
-        _upsert_correspondent_whitelist("Repeated Correspondent")
-        _upsert_correspondent_whitelist("Repeated Correspondent")
+        upsert_correspondent_proposal("Repeated Correspondent")
+        upsert_correspondent_proposal("Repeated Correspondent")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -302,16 +302,16 @@ class TestCorrespondentWhitelistUpsert:
     def test_upsert_skips_blacklisted(self, db_path, monkeypatch):
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.execute("INSERT INTO correspondent_blacklist (name) VALUES ('Blocked One')")
         conn.commit()
         conn.close()
 
-        from app.worker import _upsert_correspondent_whitelist
+        from app.pipeline.document_processing import upsert_correspondent_proposal
 
-        _upsert_correspondent_whitelist("Blocked One")
+        upsert_correspondent_proposal("Blocked One")
 
         conn = sqlite3.connect(str(db_path))
         row = conn.execute(
@@ -325,7 +325,7 @@ class TestCorrespondentWhitelistUpsert:
         """Upsert should treat differing capitalization as the same correspondent."""
         from tests.conftest import _mock_get_conn
 
-        monkeypatch.setattr("app.worker.get_conn", lambda: _mock_get_conn(db_path))
+        monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(db_path))
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -333,9 +333,9 @@ class TestCorrespondentWhitelistUpsert:
         conn.commit()
         conn.close()
 
-        from app.worker import _upsert_correspondent_whitelist
+        from app.pipeline.document_processing import upsert_correspondent_proposal
 
-        _upsert_correspondent_whitelist("tk")
+        upsert_correspondent_proposal("tk")
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row

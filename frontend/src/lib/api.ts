@@ -8,6 +8,7 @@ import type {
   InboxPayload,
   OllamaModelsPayload,
   OllamaTestPayload,
+  PromptsPayload,
   PaperlessTagsPayload,
   PaperlessTestPayload,
   ReviewBulkMutationResponse,
@@ -101,6 +102,12 @@ export const deleteChatSession = async (sessionId: string) => {
 };
 export const loadSettingsSchema = (fetcher: typeof fetch) =>
   apiFetch<SettingsSchemaPayload>('/api/v1/settings/schema', fetcher);
+export const loadPrompts = (fetcher: typeof fetch) =>
+  apiFetch<PromptsPayload>('/api/v1/settings/prompts', fetcher);
+export const savePrompt = (key: string, content: string) =>
+  apiMutation<PromptsPayload>(`/api/v1/settings/prompts/${encodeURIComponent(key)}`, { action: 'save', content });
+export const resetPrompt = (key: string) =>
+  apiMutation<PromptsPayload>(`/api/v1/settings/prompts/${encodeURIComponent(key)}`, { action: 'reset' });
 export const loadPaperlessTagOptions = (fetcher: typeof fetch) =>
   apiFetch<PaperlessTagsPayload>('/api/v1/paperless/tags', fetcher);
 export const testPaperlessConnection = (paperless_url: string, paperless_token: string) =>

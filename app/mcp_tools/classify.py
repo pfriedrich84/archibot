@@ -50,8 +50,8 @@ def register(mcp: FastMCP) -> None:
 
         # Lazy imports to avoid circular dependencies at module load
         from app.pipeline import classifier, context_builder
+        from app.pipeline.document_processing import store_suggestion
         from app.pipeline.ocr_correction import maybe_correct_ocr
-        from app.worker import _store_suggestion
 
         log.info("MCP classify_document", doc_id=document_id)
 
@@ -77,7 +77,7 @@ def register(mcp: FastMCP) -> None:
         )
 
         # Store suggestion in DB
-        suggestion = _store_suggestion(
+        suggestion = store_suggestion(
             doc, result, raw_response, correspondents, doctypes, storage_paths, tags
         )
 

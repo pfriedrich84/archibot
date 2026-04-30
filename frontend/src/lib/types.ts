@@ -103,6 +103,22 @@ export type OllamaTestPayload = {
   error?: string;
 };
 
+export type PromptItem = {
+  key: string;
+  label: string;
+  description: string;
+  filename: string;
+  content: string;
+  default_content: string;
+  overridden: boolean;
+  chars: number;
+};
+
+export type PromptsPayload = {
+  items: PromptItem[];
+  max_chars: number;
+};
+
 export type SettingsSchemaPayload = {
   categories: Array<{
     name: string;
