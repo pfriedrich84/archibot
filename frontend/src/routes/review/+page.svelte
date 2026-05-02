@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card } from 'flowbite-svelte';
+  import { Badge, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import ConfidenceBadge from '$lib/components/ConfidenceBadge.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -7,8 +7,6 @@
   import SuggestionDiff from '$lib/components/SuggestionDiff.svelte';
   import {
     acceptReviewSuggestion,
-    bulkAcceptReviewSuggestions,
-    bulkRejectReviewSuggestions,
     apiResourceUrl,
     loadReviewDetail,
     loadReviewQueue,
@@ -32,7 +30,7 @@
   let detail = $state<ReviewDetailPayload | null>(null);
   let loadingDetail = $state(false);
   let detailError = $state('');
-  let mutationState = $state<'save' | 'accept' | 'reject' | 'bulk-accept' | 'bulk-reject' | null>(null);
+  let mutationState = $state<'save' | 'accept' | 'reject' | null>(null);
   let feedback = $state<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   let search = $state('');
@@ -250,36 +248,6 @@
     }
   }
 
-  async function runFilteredBulkAction(action: 'bulk-accept' | 'bulk-reject') {
-    const suggestionIds = filteredItems.map((item) => item.id);
-    if (suggestionIds.length === 0) {
-      feedback = { type: 'info', message: 'Keine Vorschläge im aktuellen Filter.' };
-      return;
-    }
-
-    mutationState = action;
-    feedback = null;
-
-    try {
-      const response =
-        action === 'bulk-accept'
-          ? await bulkAcceptReviewSuggestions(suggestionIds)
-          : await bulkRejectReviewSuggestions(suggestionIds);
-
-      feedback = { type: response.ok ? 'success' : 'error', message: response.message };
-      await refreshQueue(null);
-      detail = null;
-      loadedDetailId = null;
-    } catch (error) {
-      feedback = {
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Bulk-Aktion fehlgeschlagen.'
-      };
-    } finally {
-      mutationState = null;
-    }
-  }
-
   async function applyQueueFilters(resetPage = true) {
     if (minConfidence > maxConfidence) {
       const swap = minConfidence;
@@ -418,6 +386,7 @@
   title="Review Queue"
   subtitle="Dokumentvorschläge prüfen, filtern und direkt übernehmen — mit Preview, Diff-Hervorhebung, Tastenkürzeln und skalierbarer Queue-Navigation."
   navBadges={{ review: queueMeta?.total ?? data.review.total }}
+  compactHeader
 >
   {#snippet children()}
     {#if !shortcutHintDismissed}
@@ -438,34 +407,22 @@
         </div>
       {/if}
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.72fr)]">
+      <div class="grid gap-4 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.72fr)]">
         <div class="space-y-6 xl:border-r xl:border-slate-800/80 xl:pr-6">
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Review Queue</p>
-                <h2 class="mt-2 text-2xl font-semibold text-white">{queueMeta.total} insgesamt, Seite {queueMeta.page}/{queueMeta.total_pages}</h2>
-                <p class="mt-2 text-sm text-slate-400">Filtere nach Konfidenz, Korrespondent, Judge-Verdikt und Sortierung. Suche wirkt zusätzlich clientseitig auf die aktuelle Seite.</p>
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Review Queue</p>
+                <h2 class="mt-1 text-lg font-semibold text-white">{queueMeta.total} Vorschläge · Seite {queueMeta.page}/{queueMeta.total_pages}</h2>
               </div>
-              <a href="/review" class="inline-flex"><Button color="dark" class="rounded-xl border border-slate-700">Legacy fallback</Button></a>
-            </div>
-
-            <div class="mt-6 grid gap-3 sm:grid-cols-3">
-              <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                <p class="text-xs uppercase tracking-wide text-emerald-200/70">Hohe Sicherheit</p>
-                <p class="mt-2 text-2xl font-semibold text-emerald-50">{queueStats.high}</p>
-              </div>
-              <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
-                <p class="text-xs uppercase tracking-wide text-sky-200/70">Judge korrigiert</p>
-                <p class="mt-2 text-2xl font-semibold text-sky-50">{queueStats.judgeCorrected}</p>
-              </div>
-              <div class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                <p class="text-xs uppercase tracking-wide text-amber-200/70">Pfad offen</p>
-                <p class="mt-2 text-2xl font-semibold text-amber-50">{queueStats.unresolvedPaths}</p>
+              <div class="flex flex-wrap gap-2 text-xs">
+                <span class="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">{queueStats.high} hohe Sicherheit</span>
+                <span class="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-100">{queueStats.judgeCorrected} korrigiert</span>
+                <span class="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-amber-100">{queueStats.unresolvedPaths} Pfad offen</span>
               </div>
             </div>
 
-            <details class="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4" open>
+            <details class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
               <summary class="cursor-pointer text-sm font-medium text-slate-200">Filter & Sortierung</summary>
               <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <label class="block xl:col-span-3">
@@ -529,17 +486,6 @@
                 </button>
               </div>
             </details>
-
-            <div class="mt-6 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bulk-Aktionen</p>
-                <p class="mt-1 text-sm text-slate-300">Wirken auf alle {filteredItems.length} Vorschläge im aktuellen Seiten- und Suchfilter.</p>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <button type="button" onclick={() => void runFilteredBulkAction('bulk-accept')} disabled={mutationState !== null || filteredItems.length === 0} class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">{mutationState === 'bulk-accept' ? 'Übernimmt …' : 'Gefilterte annehmen'}</button>
-                <button type="button" onclick={() => void runFilteredBulkAction('bulk-reject')} disabled={mutationState !== null || filteredItems.length === 0} class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50">{mutationState === 'bulk-reject' ? 'Verwirft …' : 'Gefilterte verwerfen'}</button>
-              </div>
-            </div>
           </Card>
 
           <div class="space-y-2">
@@ -565,8 +511,8 @@
                 </div>
               </button>
             {:else}
-              <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/20">
-                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6 text-sm text-emerald-100">Keine Vorschläge im aktuellen Filter.</div>
+              <Card size="xl" class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/20">
+                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">Keine Vorschläge im aktuellen Filter.</div>
               </Card>
             {/each}
           </div>
@@ -582,9 +528,9 @@
           {#if loadingDetail}
             <LoadingSkeleton rows={3} />
           {:else if detailError}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-100">{detailError}</div></Card>
+            <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">{detailError}</div></Card>
           {:else if detail}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+            <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
@@ -592,7 +538,7 @@
                     <ConfidenceBadge confidence={detail.suggestion.confidence} />
                     {#if detail.suggestion.judge_verdict}<Badge color={detail.suggestion.judge_verdict === 'agree' ? 'green' : detail.suggestion.judge_verdict === 'corrected' ? 'blue' : 'gray'}>Judge: {detail.suggestion.judge_verdict}</Badge>{/if}
                   </div>
-                  <h2 class="mt-3 text-2xl font-semibold text-white">Dokument prüfen</h2>
+                  <h2 class="mt-3 text-lg font-semibold text-white">Dokument prüfen</h2>
                   <p class="mt-2 text-sm text-slate-400">Preview, Originalwerte und editierbarer Vorschlag nebeneinander — optimiert für den täglichen Review-Workflow.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -609,7 +555,7 @@
                 </div>
               {/if}
 
-              <div class="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <SuggestionDiff label="Titel" original={detail.original.title} proposed={formTitle} changed={detail.changed_fields.title} />
                 <SuggestionDiff label="Datum" original={detail.original.date} proposed={formDate} changed={detail.changed_fields.date} />
                 <SuggestionDiff label="Korrespondent" original={detail.original.correspondent_name} proposed={correspondentQuery || detail.proposed.suggested_correspondent_name} changed={detail.changed_fields.correspondent} />
@@ -618,9 +564,9 @@
                 <SuggestionDiff label="Tags" original={detail.original.tags.map((tag) => tag.name).join(', ')} proposed={selectedTagObjects.map((tag) => tag.name).join(', ')} changed={detail.changed_fields.tags} />
               </div>
 
-              <div class={`mt-6 grid gap-6 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2' : 'xl:grid-cols-2'}`}>
+              <div class={`mt-4 grid gap-4 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2' : 'xl:grid-cols-2'}`}>
                 {#if previewVisible}
-                  <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-4">
+                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                     <div class="mb-3 flex items-center justify-between gap-2">
                       <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Dokumenten-Preview</p>
                       <a href={apiResourceUrl(detail.suggestion.preview_url)} target="_blank" rel="noreferrer" class="text-xs text-emerald-300">Neu öffnen</a>
@@ -629,7 +575,7 @@
                   </div>
                 {/if}
 
-                <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+                <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
                   <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bestehende Metadaten</p>
                   <dl class="mt-4 space-y-4 text-sm">
                     <div class={fieldWrap(detail.changed_fields.title)}><dt class="text-slate-500">Titel</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.title)}`}>{detail.original.title || '—'}</dd></div>
@@ -650,7 +596,7 @@
                   </dl>
                 </div>
 
-                <div class="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                   <p class="text-xs uppercase tracking-[0.2em] text-emerald-300/70">Bearbeitbarer Vorschlag</p>
                   <div class="mt-4 space-y-4">
                     <label class={`block ${fieldWrap(detail.changed_fields.title)}`}><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Titel</span><input bind:value={formTitle} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40" /></label>
@@ -694,7 +640,7 @@
                 </div>
               </div>
 
-              <div class={`mt-6 rounded-3xl border border-slate-800 bg-slate-950/60 p-5 ${fieldWrap(detail.changed_fields.tags)}`}>
+              <div class={`mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-5 ${fieldWrap(detail.changed_fields.tags)}`}>
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Tags</p>
@@ -710,24 +656,24 @@
               </div>
 
               {#if detail.context_docs.length > 0 || detail.original_proposal}
-                <div class="mt-6 grid gap-6 xl:grid-cols-2">
+                <div class="mt-4 grid gap-4 xl:grid-cols-2">
                   {#if detail.original_proposal}
-                    <div class="rounded-3xl border border-sky-500/20 bg-sky-500/10 p-5"><p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Erster Modellstand</p><pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(detail.original_proposal, null, 2)}</pre></div>
+                    <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-5"><p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Erster Modellstand</p><pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(detail.original_proposal, null, 2)}</pre></div>
                   {/if}
                   {#if detail.context_docs.length > 0}
-                    <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5"><p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kontextdokumente</p><div class="mt-3 space-y-2">{#each detail.context_docs as doc}<div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-300"><pre class="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(doc, null, 2)}</pre></div>{/each}</div></div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5"><p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kontextdokumente</p><div class="mt-3 space-y-2">{#each detail.context_docs as doc}<div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-300"><pre class="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(doc, null, 2)}</pre></div>{/each}</div></div>
                   {/if}
                 </div>
               {/if}
 
-              <div class="mt-6 flex flex-col gap-3 border-t border-slate-800/80 pt-5 sm:flex-row">
+              <div class="mt-4 flex flex-col gap-3 border-t border-slate-800/80 pt-5 sm:flex-row">
                 <button type="button" onclick={() => void runAction('save')} disabled={mutationState !== null} class="inline-flex flex-1 items-center justify-center rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-slate-600 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50">{mutationState === 'save' ? 'Speichert …' : 'Änderungen speichern'}</button>
                 <button type="button" onclick={() => void runAction('accept')} disabled={mutationState !== null} class="inline-flex flex-1 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-3 text-sm font-medium text-emerald-50 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50">{mutationState === 'accept' ? 'Übernimmt …' : 'Übernehmen & committen'}</button>
                 <button type="button" onclick={() => void runAction('reject')} disabled={mutationState !== null} class="inline-flex flex-1 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/15 px-4 py-3 text-sm font-medium text-rose-50 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50">{mutationState === 'reject' ? 'Verwirft …' : 'Reject'}</button>
               </div>
             </Card>
           {:else}
-            <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">Wähle links einen Vorschlag aus. Mit <strong>j</strong>/<strong>k</strong> springst du durch die Queue, <strong>Enter</strong> lädt das Detail, <strong>a</strong>/<strong>r</strong>/<strong>e</strong> führen Aktionen aus.</div></Card>
+            <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20"><div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">Wähle links einen Vorschlag aus. Mit <strong>j</strong>/<strong>k</strong> springst du durch die Queue, <strong>Enter</strong> lädt das Detail, <strong>a</strong>/<strong>r</strong>/<strong>e</strong> führen Aktionen aus.</div></Card>
           {/if}
         </div>
       </div>
@@ -735,15 +681,15 @@
 
     {#if shortcutsOpen}
       <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4" role="dialog" aria-modal="true">
-        <div class="w-full max-w-xl rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl shadow-slate-950/40">
+        <div class="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl shadow-slate-950/40">
           <div class="flex items-center justify-between gap-4">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Tastenkürzel</p>
-              <h3 class="mt-2 text-2xl font-semibold text-white">Review-Shortcuts</h3>
+              <h3 class="mt-2 text-lg font-semibold text-white">Review-Shortcuts</h3>
             </div>
             <button type="button" class="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200" onclick={() => (shortcutsOpen = false)}>Schließen</button>
           </div>
-          <div class="mt-6 grid gap-4 sm:grid-cols-2 text-sm text-slate-300">
+          <div class="mt-4 grid gap-4 sm:grid-cols-2 text-sm text-slate-300">
             <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><p class="font-medium text-white">Queue</p><ul class="mt-2 space-y-1"><li><code>j</code> nächste Zeile</li><li><code>k</code> vorherige Zeile</li><li><code>Enter</code> Detail laden</li></ul></div>
             <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><p class="font-medium text-white">Detail</p><ul class="mt-2 space-y-1"><li><code>a</code> Accept</li><li><code>r</code> Reject</li><li><code>e</code> Save</li><li><code>Esc</code> Detail schließen</li></ul></div>
           </div>

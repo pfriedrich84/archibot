@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button, Card } from 'flowbite-svelte';
+  import { Badge, Card } from 'flowbite-svelte';
   import AppShell from '$lib/components/AppShell.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import type { PageData } from './$types';
@@ -18,19 +18,18 @@
   }
 </script>
 
-<AppShell title="Fehler" subtitle="Aktuelle Fehlersignale schnell triagieren und den nächsten sinnvollen Schritt in Review, Inbox oder Legacy-Analyse ableiten." navBadges={{ errors: data.errors.items.length }}>
+<AppShell title="Fehler" subtitle="Aktuelle Fehlersignale schnell triagieren und den nächsten sinnvollen Schritt in Review oder Inbox ableiten." navBadges={{ errors: data.errors.items.length }}>
   {#snippet children()}
-    <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Operational Errors</p>
-          <h2 class="mt-2 text-2xl font-semibold text-white">{data.errors.items.length} aktuelle Fehler</h2>
-          <p class="mt-2 text-sm text-slate-400">Konzentriere dich zuerst auf Stage, betroffenes Dokument und Zeitpunkt. Danach entscheiden Review oder Legacy-Fehlerliste über die nächste Aktion.</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">{data.errors.items.length} aktuelle Fehler</h2>
+          <p class="mt-2 text-sm text-slate-400">Konzentriere dich zuerst auf Stage, betroffenes Dokument und Zeitpunkt. Danach entscheiden Review oder Inbox über die nächste Aktion.</p>
         </div>
-        <a href="/errors" class="inline-flex"><Button color="dark" class="rounded-xl border border-slate-700">Legacy-Fehlerliste</Button></a>
       </div>
 
-      <div class="mt-6 space-y-4">
+      <div class="mt-4 space-y-4">
         {#each data.errors.items as item}
           <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
             <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

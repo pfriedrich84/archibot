@@ -42,7 +42,7 @@
 >
   {#snippet children()}
     <div class="mx-auto max-w-7xl space-y-6">
-    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Review offen" value={data.dashboard.kpis.pending_review} hint="Vorschläge warten auf Freigabe" accent="emerald" />
       <StatCard title="Fehler 24h" value={data.dashboard.kpis.errors_24h} hint="Aktive Warnsignale" accent="red" />
       <StatCard title="Inbox offen" value={data.dashboard.kpis.inbox_pending} hint="Dokumente im Posteingang" accent="blue" />
@@ -58,15 +58,15 @@
       <StatusPanel dashboard={data.dashboard} status={data.status} />
     </div>
 
-    <div class="grid gap-6 xl:grid-cols-[0.95fr,1.05fr]">
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+    <div class="grid gap-4 xl:grid-cols-[0.95fr,1.05fr]">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Systembereitschaft</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Auf einen Blick</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">Auf einen Blick</h2>
           </div>
-          <Badge color={data.status.app.legacy_ui.cutover_ready ? 'green' : 'yellow'}>
-            {data.status.app.legacy_ui.cutover_ready ? 'Bereit' : 'Migration'}
+          <Badge color={data.status.app.setup_complete ? 'green' : 'yellow'}>
+            {data.status.app.setup_complete ? 'Bereit' : 'Setup offen'}
           </Badge>
         </div>
 
@@ -93,11 +93,11 @@
         </div>
       </Card>
 
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Letzte Fehler</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Schnelle Triage</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">Schnelle Triage</h2>
           </div>
           <Badge color={data.dashboard.recent_errors.length > 0 ? 'red' : 'green'}>
             {data.dashboard.recent_errors.length > 0 ? `${data.dashboard.recent_errors.length} aktiv` : 'Keine Signale'}

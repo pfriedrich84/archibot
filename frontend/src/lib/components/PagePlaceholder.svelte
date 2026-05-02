@@ -4,11 +4,11 @@
   let { title, description, apiPath } = $props<{ title: string; description: string; apiPath?: string }>();
 </script>
 
-<Card size="xl" class="rounded-3xl border border-dashed border-slate-700/80 bg-slate-900/55 shadow-lg shadow-slate-950/20">
+<Card size="xl" class="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/55 shadow-lg shadow-slate-950/20">
   <div class="space-y-4">
     <div>
       <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Arbeitsbereich in Überarbeitung</p>
-      <h2 class="mt-2 text-2xl font-semibold text-white">{title}</h2>
+      <h2 class="mt-2 text-lg font-semibold text-white">{title}</h2>
       <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-400">{description}</p>
     </div>
 

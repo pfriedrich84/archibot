@@ -13,8 +13,7 @@ export const translations = {
     errors: 'Fehler',
     chat: 'Chat',
     migrationPreview: 'Migrationsvorschau',
-    poweredBy: 'Neue SvelteKit + Flowbite Admin UI',
-    legacyUi: 'Legacy-UI bleibt bis zur Feature-Parity aktiv.'
+    poweredBy: 'SvelteKit + Flowbite Admin UI'
   },
   en: {
     dashboard: 'Dashboard',
@@ -28,7 +27,6 @@ export const translations = {
     errors: 'Errors',
     chat: 'Chat',
     migrationPreview: 'Migration Preview',
-    poweredBy: 'New SvelteKit + Flowbite admin UI',
-    legacyUi: 'Legacy UI remains active until feature parity.'
+    poweredBy: 'SvelteKit + Flowbite admin UI'
   }
 } as const;

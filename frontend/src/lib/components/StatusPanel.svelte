@@ -36,11 +36,11 @@
 </script>
 
 <div class="grid gap-5 xl:grid-cols-[1.35fr,0.95fr]">
-  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline</p>
-        <h2 class="mt-2 text-2xl font-semibold text-white">{dashboard.pipeline.running ? 'Polling aktiv' : 'Pipeline bereit'}</h2>
+        <h2 class="mt-2 text-lg font-semibold text-white">{dashboard.pipeline.running ? 'Polling aktiv' : 'Pipeline bereit'}</h2>
         <p class="mt-2 text-sm text-slate-400">Nächster Poll: {formatDateTime(dashboard.pipeline.next_run_at)}</p>
       </div>
       <Badge color={dashboard.pipeline.running ? 'blue' : 'green'}>{phaseLabel(dashboard.pipeline.phase)}</Badge>
@@ -80,11 +80,11 @@
     </div>
   </Card>
 
-  <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+  <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
     <div class="flex items-center justify-between gap-3">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Runtime & Logs</p>
-        <h2 class="mt-2 text-2xl font-semibold text-white">Betrieb</h2>
+        <h2 class="mt-2 text-lg font-semibold text-white">Betrieb</h2>
       </div>
       <Badge color="gray">Live</Badge>
     </div>
@@ -103,8 +103,8 @@
         <p class="mt-1.5 font-medium text-white">{status.logging.structured_logs ? 'Aktiv' : 'Inaktiv'}</p>
       </div>
       <div class="rounded-2xl border border-slate-800/80 bg-slate-950/70 p-3.5">
-        <p class="text-[11px] uppercase tracking-wide text-slate-500">Legacy UI</p>
-        <p class="mt-1.5 font-medium text-white">{status.app.legacy_ui.deprecated ? 'Veraltet, noch aktiv' : 'Aktiv'}</p>
+        <p class="text-[11px] uppercase tracking-wide text-slate-500">Admin UI</p>
+        <p class="mt-1.5 font-medium text-white">{status.app.frontend.mode}</p>
       </div>
     </div>
   </Card>

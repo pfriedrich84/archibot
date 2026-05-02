@@ -225,11 +225,11 @@
         </div>
       {/if}
 
-      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Settings bearbeiten</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Konfiguration schnell finden und speichern</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">Konfiguration schnell finden und speichern</h2>
             <p class="mt-1.5 text-sm text-slate-400">Filtert nach Bereich, Key, Label und Hilfetext. Sensible Werte bleiben geschützt und werden nur aktualisiert, wenn du sie neu eingibst.</p>
           </div>
           <div class="flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:items-center">
@@ -241,11 +241,11 @@
         </div>
       </Card>
 
-      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Prompts bearbeiten</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">System-Prompts anpassen</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">System-Prompts anpassen</h2>
             <p class="mt-1.5 text-sm text-slate-400">Änderungen werden als Overrides im Data-Verzeichnis gespeichert. Zurücksetzen aktiviert wieder den eingebauten Standard.</p>
           </div>
           {#if activePrompt}
@@ -297,7 +297,7 @@
       </Card>
 
       {#if changedSettingsCount > 0}
-        <div class="fixed bottom-6 right-6 z-30 rounded-3xl border border-emerald-500/30 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/60 backdrop-blur">
+        <div class="fixed bottom-6 right-6 z-30 rounded-2xl border border-emerald-500/30 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/60 backdrop-blur">
           <div class="flex items-center gap-3">
             <div class="hidden text-sm sm:block">
               <p class="font-medium text-white">Ungespeicherte Änderungen</p>
@@ -310,19 +310,19 @@
         </div>
       {/if}
 
-      <div class="mt-6 space-y-6">
+      <div class="mt-4 space-y-6">
         {#if filteredCategories.length === 0}
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-sm text-slate-300">Keine Settings passen zur aktuellen Suche.</div>
+          <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">Keine Settings passen zur aktuellen Suche.</div>
           </Card>
         {/if}
 
         {#each filteredCategories as category}
-          <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+          <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Konfigurationsbereich</p>
-                <h2 class="mt-2 text-2xl font-semibold text-white">{category.name}</h2>
+                <h2 class="mt-2 text-lg font-semibold text-white">{category.name}</h2>
               </div>
               <Badge color="gray">{category.fields.length} Treffer</Badge>
             </div>

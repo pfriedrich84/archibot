@@ -4,11 +4,12 @@
   import { page } from '$app/state';
   import { navGroups } from '$lib/nav';
 
-  let { title = 'Dashboard', subtitle = '', navBadges = {}, setupMode = false, children } = $props<{
+  let { title = 'Dashboard', subtitle = '', navBadges = {}, setupMode = false, compactHeader = true, children } = $props<{
     title?: string;
     subtitle?: string;
     navBadges?: Record<string, number | string | undefined>;
     setupMode?: boolean;
+    compactHeader?: boolean;
     children: import('svelte').Snippet;
   }>();
 
@@ -40,7 +41,7 @@
   <div class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.13),transparent_32%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.09),transparent_28%)]"></div>
   <div class="flex min-h-screen">
     {#if !setupMode}<aside class="hidden w-72 border-r border-slate-800/80 bg-slate-950/80 backdrop-blur xl:block">
-      <Sidebar class="h-full border-none bg-transparent px-4 py-5">
+      <Sidebar class="h-full border-none bg-transparent px-4 py-4">
         <SidebarBrand href={navHref('/')} class="px-2">
           <img src={`${base}/logo.png`} class="mr-3 h-10 w-10 rounded-xl bg-slate-800 p-1" alt="ArchiBot" />
           <div>
@@ -134,22 +135,24 @@
       </div>{/if}
 
       <main class={`flex-1 px-4 py-4 md:px-8 ${setupMode ? 'mx-auto w-full max-w-7xl xl:px-8' : 'xl:px-10'}`}>
-        <section class="surface-gradient rounded-3xl border border-slate-800/80 px-6 py-5 shadow-2xl shadow-slate-950/20">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <section class={`surface-gradient border border-slate-800/80 shadow-2xl shadow-slate-950/20 ${compactHeader ? 'rounded-2xl px-4 py-3' : 'rounded-2xl px-4 py-4'}`}>
+          <div class={`flex flex-col lg:flex-row lg:items-start lg:justify-between ${compactHeader ? 'gap-2' : 'gap-4'}`}>
             <div>
-              <p class="text-xs font-medium uppercase tracking-[0.24em] text-emerald-300">Review Workspace</p>
-              <h1 class="mt-2 text-3xl font-semibold text-white">{title}</h1>
-              {#if subtitle}
+              <p class={`text-xs font-medium uppercase text-emerald-300 ${compactHeader ? 'tracking-[0.18em]' : 'tracking-[0.24em]'}`}>Review Workspace</p>
+              <h1 class={`font-semibold text-white ${compactHeader ? 'mt-1 text-xl' : 'mt-2 text-xl'}`}>{title}</h1>
+              {#if subtitle && !compactHeader}
                 <p class="mt-2 max-w-4xl text-sm leading-6 text-slate-300">{subtitle}</p>
               {/if}
             </div>
-            <Badge color="gray" class="w-fit rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-slate-300">
-              Betriebsansicht aktiv
-            </Badge>
+            {#if !compactHeader}
+              <Badge color="gray" class="w-fit rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-slate-300">
+                Betriebsansicht aktiv
+              </Badge>
+            {/if}
           </div>
         </section>
 
-        <div class="mt-6">
+        <div class="mt-4">
           {@render children()}
         </div>
       </main>

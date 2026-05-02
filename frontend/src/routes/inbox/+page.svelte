@@ -18,18 +18,18 @@
 
 <AppShell title="Posteingang" subtitle="Neue Dokumente, Bearbeitungsstatus und Vorschläge schnell scannen, bevor du in Review oder Fehleranalyse wechselst." navBadges={{ inbox: data.inbox.total, review: data.inbox.counts.pending ?? 0, errors: data.inbox.counts.error ?? 0 }}>
   {#snippet children()}
-    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Dokumente" value={data.inbox.total} hint="Geladene Inbox-Einträge" accent="blue" />
       <StatCard title="Pending" value={data.inbox.counts.pending ?? 0} hint="Warten auf Review" accent="emerald" />
       <StatCard title="Fehler" value={data.inbox.counts.error ?? 0} hint="Erfordern Aufmerksamkeit" accent="red" />
       <StatCard title="Committed" value={data.inbox.counts.committed ?? 0} hint="Bereits bestätigt" accent="purple" />
     </div>
 
-    <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+    <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Inbox Snapshot</p>
-          <h2 class="mt-2 text-2xl font-semibold text-white">Verarbeitungsstatus</h2>
+          <h2 class="mt-2 text-lg font-semibold text-white">Verarbeitungsstatus</h2>
           <p class="mt-2 text-sm text-slate-400">Nutze die Liste als schnelle Triage: problematische Dokumente zuerst, unklare Fälle danach in die Review Queue.</p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -71,7 +71,7 @@
           {/each}
         </div>
       {:else}
-        <div class="mt-6">
+        <div class="mt-4">
           <EmptyState icon="✅" title="Kein Rückstau" description="Aktuell sind keine Inbox-Daten verfügbar. Sobald neue Dokumente verarbeitet werden, erscheint hier wieder eine kompakte Triage-Ansicht." actionHref="/app/settings" actionLabel="Polling starten" />
         </div>
       {/if}

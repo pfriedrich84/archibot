@@ -16,24 +16,24 @@
 
 <AppShell title="Statistiken" subtitle="Durchsatz, Fehlerlast und Modellvertrauen kompakt lesen, statt rohe Tabellen quer zu vergleichen.">
   {#snippet children()}
-    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Verarbeitet" value={data.stats.totals.processed_documents} hint="Dokumente mit Status" accent="blue" />
       <StatCard title="Eingebettet" value={data.stats.totals.embedded_documents} hint="Im Embedding-Index" accent="emerald" />
       <StatCard title="Commits" value={data.stats.totals.total_commits} hint={`Auto: ${data.stats.totals.auto_commits}`} accent="purple" />
       <StatCard title="Fehler" value={data.stats.totals.total_errors} hint="Alle Fehlerereignisse" accent="red" />
     </div>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-2">
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+    <div class="mt-4 grid gap-4 xl:grid-cols-2">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Vorschlagsstatus</p>
-        <h2 class="mt-2 text-2xl font-semibold text-white">Verteilung</h2>
-        <div class="mt-6 flex flex-wrap gap-2">
+        <h2 class="mt-2 text-lg font-semibold text-white">Verteilung</h2>
+        <div class="mt-4 flex flex-wrap gap-2">
           {#each statusEntries as [status, count]}
             <Badge color="gray">{status}: {count}</Badge>
           {/each}
         </div>
 
-        <div class="mt-6 space-y-3">
+        <div class="mt-4 space-y-3">
           {#each confidenceEntries as [bucket, count]}
             <div class="flex items-center justify-between rounded-2xl border border-slate-800/80 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
               <span>Confidence {bucket}</span>
@@ -43,10 +43,10 @@
         </div>
       </Card>
 
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Phasenqualität</p>
-        <h2 class="mt-2 text-2xl font-semibold text-white">Letzte 30 Tage</h2>
-        <div class="mt-6 space-y-3">
+        <h2 class="mt-2 text-lg font-semibold text-white">Letzte 30 Tage</h2>
+        <div class="mt-4 space-y-3">
           {#each phaseEntries as [phase, stats]}
             <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
               <div class="flex items-center justify-between gap-3">

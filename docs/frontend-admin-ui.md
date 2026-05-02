@@ -1,14 +1,11 @@
-# Frontend Admin UI Migration
+# Frontend Admin UI
 
-This document tracks the new SvelteKit + Flowbite Svelte admin UI that is gradually replacing the legacy server-rendered HTMX interface.
+This document tracks the SvelteKit + Flowbite Svelte admin UI design principles and implementation notes.
 
 ## Current routing model
 
-- New admin app: `/app`
-- Legacy UI: `/`, `/review`, `/inbox`, `/tags`, ...
-- JSON API for the new app: `/api/v1/*`
-
-The old UI stays active until feature parity is reached. The new Svelte app is intentionally isolated under `/app` during migration.
+- Admin app: `/app`
+- JSON API for the app: `/api/v1/*`
 
 ## Build and serve
 
@@ -22,18 +19,22 @@ The FastAPI backend serves the generated static SvelteKit build from `frontend/b
 
 ## Design system principles
 
-- **Dark mode first**: dark surfaces and high-contrast metric cards are the default.
+- **Compact by default**: headers, cards, lists, filters, and empty states should use dense spacing (`p-4`, `gap-4`, `rounded-2xl`) unless a workflow explicitly needs more room.
+- **No legacy fallbacks in the UI**: do not show fallback buttons or migration labels in the admin interface. Users should see one coherent app.
+- **Condensed filters**: filter/sort panels should be collapsed by default unless filtering is the primary task on that page.
+- **Small status pills over large summary blocks**: prefer compact chips for counts and state summaries; reserve large cards for primary KPIs only.
+- **Human-readable values**: show Paperless names for correspondents, document types, storage paths, and tags. IDs are fallback/debug data only.
+- **Clear visual separation**: split navigation/list panes from detail panes with borders or spacing, especially in review workflows.
+- **Dark mode first**: dark surfaces and high-contrast status accents are the default.
 - **Persistent shell**: sidebar + sticky top bar for all admin routes.
-- **Card composition**: dashboard widgets, status panels, settings groups, and placeholders all use rounded card containers.
 - **Flowbite-first components**: prefer Flowbite Svelte primitives before adding custom wrappers.
 - **German-first copy**: German strings should be complete; English may lag.
-- **Migration transparency**: each incomplete screen should communicate its planned API surface and legacy fallback status.
 
 ## Shared component inventory
 
 - `src/lib/components/AppShell.svelte`
   - persistent navigation shell
-  - migration status messaging
+  - compact page header
   - locale toggle placeholder
 - `src/lib/components/StatCard.svelte`
   - KPI/hero metric tile
@@ -42,23 +43,16 @@ The FastAPI backend serves the generated static SvelteKit build from `frontend/b
 - `src/lib/components/PagePlaceholder.svelte`
   - explicit migration placeholder for unfinished views
 
-## Route rollout plan
+## Route UX checklist
 
-1. **Dashboard**: highest polish, backed by `/api/v1/dashboard` and `/api/v1/system/status`
-2. **Settings**: schema-driven categories via `/api/v1/settings/schema`, plus editable system prompts via `/api/v1/settings/prompts`
-3. **Errors / Stats / Review / Inbox**: migrate to data-rich Svelte tables and filters
-4. **Embeddings / Chat / Setup**: specialized workflows with focused UX
-5. **Cutover**: remove direct entrypoints to deprecated templates only after parity
+Before adding or changing an admin page, verify:
 
-## Deprecated legacy areas
-
-The following are legacy UI surfaces slated for later deletion once parity is complete:
-
-- `app/templates/*.html`
-- template-driven routes in `app/routes/*.py` that only exist for server-rendered pages
-- HTMX partials in `app/templates/partials/*`
-
-Do not delete them yet; migration still depends on them for functional fallback.
+1. Page header uses the compact `AppShell` default.
+2. Primary content starts quickly; avoid large intro copy blocks.
+3. Lists are compact, scan-friendly, and visually separated from detail panes.
+4. Filters are collapsed/condensed by default.
+5. No bulk action is shown unless the user explicitly requested that workflow.
+6. Metadata displays names first and IDs only as fallback/debug information.
 
 ## Testing strategy
 

@@ -10,18 +10,18 @@
 
 <AppShell title="Embeddings" subtitle="Indexabdeckung und zuletzt eingebettete Dokumente prüfen, ohne durch rohe Tabellen scrollen zu müssen.">
   {#snippet children()}
-    <div class="grid gap-6 md:grid-cols-3">
+    <div class="grid gap-4 md:grid-cols-3">
       <StatCard title="Indexierte Dokumente" value={data.embeddings.total_embedded} hint="Metadatensätze im Vektorindex" accent="emerald" />
       <StatCard title="Sichtbare Zeilen" value={data.embeddings.items.length} hint="Aktuell geladen" accent="blue" />
       <StatCard title="Metadaten" value="Namen" hint="Korrespondent, Typ, Pfad und Tags" accent="purple" />
     </div>
 
     {#if data.embeddings.items.length > 0}
-      <Card size="xl" class="mt-6 rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Embedding Index</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Neueste Einträge</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">Neueste Einträge</h2>
           </div>
           <Badge color="gray">{data.embeddings.total_embedded} total</Badge>
         </div>
@@ -72,7 +72,7 @@
         </div>
       </Card>
     {:else}
-      <div class="mt-6">
+      <div class="mt-4">
         <PagePlaceholder
           title="Noch keine Embedding-Metadaten verfügbar"
           description="Sobald Dokumente in den Embedding-Index aufgenommen wurden, erscheint hier eine kompakte Inspektionsansicht mit den zuletzt indexierten Einträgen."

@@ -159,12 +159,12 @@
 
 <AppShell title="Chat" subtitle="Stelle Fragen an den lokalen RAG-Index. Antworten nutzen ähnliche Dokumente als Kontext und zeigen Quellen direkt darunter.">
   {#snippet children()}
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">RAG Chat</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Dokumente befragen</h2>
+            <h2 class="mt-2 text-lg font-semibold text-white">Dokumente befragen</h2>
           </div>
           <div class="flex items-center gap-2">
             {#if sessionId}<Badge color="gray">Session {sessionId}</Badge>{/if}
@@ -172,7 +172,7 @@
           </div>
         </div>
 
-        <div class="mt-6 min-h-[24rem] space-y-4 rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
+        <div class="mt-4 min-h-[24rem] space-y-4 rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
           {#if messages.length === 0}
             <EmptyState icon="💬" title="Noch keine Frage gestellt" description="Frage zum Beispiel nach der letzten Rechnung, einem Vertragspartner oder ähnlichen Dokumenten im Embedding-Index." />
           {:else}
@@ -213,13 +213,13 @@
             placeholder="Frage an deine Dokumente …"
             class="min-w-0 flex-1 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500/40"
           />
-          <Button type="submit" color="green" class="rounded-2xl px-6" disabled={loading || !question.trim()}>
+          <Button type="submit" color="green" class="rounded-2xl px-4" disabled={loading || !question.trim()}>
             Fragen
           </Button>
         </form>
       </Card>
 
-      <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
+      <Card size="xl" class="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
         <div class="flex items-start justify-between gap-3">
           <div>
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Chat Sessions</p>
