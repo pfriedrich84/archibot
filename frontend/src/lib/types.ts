@@ -319,9 +319,12 @@ export type EmbeddingsPayload = {
     document_id: number;
     title: string | null;
     correspondent: number | null;
+    correspondent_name: string | null;
     doctype: number | null;
+    doctype_name: string | null;
     storage_path: number | null;
-    tags: number[];
+    storage_path_name: string | null;
+    tags: string[];
     created_date: string | null;
     indexed_at: string;
   }>;

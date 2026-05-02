@@ -13,7 +13,7 @@
     <div class="grid gap-6 md:grid-cols-3">
       <StatCard title="Indexierte Dokumente" value={data.embeddings.total_embedded} hint="Metadatensätze im Vektorindex" accent="emerald" />
       <StatCard title="Sichtbare Zeilen" value={data.embeddings.items.length} hint="Aktuell geladen" accent="blue" />
-      <StatCard title="Metadaten" value="IDs" hint="Korrespondent, Typ, Pfad und Tags" accent="purple" />
+      <StatCard title="Metadaten" value="Namen" hint="Korrespondent, Typ, Pfad und Tags" accent="purple" />
     </div>
 
     {#if data.embeddings.items.length > 0}
@@ -37,21 +37,21 @@
                 <div class="grid gap-2 text-xs text-slate-400 sm:grid-cols-2 xl:grid-cols-3 lg:w-[34rem]">
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Korrespondent</span>
-                    <span class="mt-1 block text-slate-200">{item.correspondent ?? '—'}</span>
+                    <span class="mt-1 block text-slate-200">{item.correspondent_name ?? item.correspondent ?? '—'}</span>
                   </div>
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Dokumenttyp</span>
-                    <span class="mt-1 block text-slate-200">{item.doctype ?? '—'}</span>
+                    <span class="mt-1 block text-slate-200">{item.doctype_name ?? item.doctype ?? '—'}</span>
                   </div>
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Speicherpfad</span>
-                    <span class="mt-1 block text-slate-200">{item.storage_path ?? '—'}</span>
+                    <span class="mt-1 block text-slate-200">{item.storage_path_name ?? item.storage_path ?? '—'}</span>
                   </div>
                   <div class="rounded-2xl border border-slate-800/80 bg-slate-950/50 px-3 py-2 sm:col-span-2 xl:col-span-3">
                     <span class="block text-[11px] uppercase tracking-wide text-slate-500">Tags</span>
                     <span class="mt-1 flex flex-wrap gap-1.5 text-slate-200">
-                      {#each item.tags as tagId}
-                        <span class="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5">{tagId}</span>
+                      {#each item.tags as tag}
+                        <span class="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5">{tag}</span>
                       {:else}
                         <span>—</span>
                       {/each}

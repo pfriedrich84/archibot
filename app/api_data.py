@@ -252,7 +252,19 @@ def get_tags_snapshot() -> dict[str, Any]:
     }
 
 
-def get_embeddings_snapshot(limit: int = 100) -> dict[str, Any]:
+def get_embeddings_snapshot(
+    limit: int = 100,
+    *,
+    correspondent_names: dict[int, str] | None = None,
+    doctype_names: dict[int, str] | None = None,
+    storage_path_names: dict[int, str] | None = None,
+    tag_names: dict[int, str] | None = None,
+) -> dict[str, Any]:
+    correspondent_names = correspondent_names or {}
+    doctype_names = doctype_names or {}
+    storage_path_names = storage_path_names or {}
+    tag_names = tag_names or {}
+
     with db.get_conn() as conn:
         total = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
         rows = conn.execute(
@@ -271,7 +283,11 @@ def get_embeddings_snapshot(limit: int = 100) -> dict[str, Any]:
             tags = json.loads(item.pop("tags_json") or "[]")
         except json.JSONDecodeError:
             tags = []
-        item["tags"] = tags if isinstance(tags, list) else []
+        tag_ids = tags if isinstance(tags, list) else []
+        item["correspondent_name"] = correspondent_names.get(item["correspondent"])
+        item["doctype_name"] = doctype_names.get(item["doctype"])
+        item["storage_path_name"] = storage_path_names.get(item["storage_path"])
+        item["tags"] = [tag_names.get(tag_id, str(tag_id)) for tag_id in tag_ids]
         items.append(item)
     return {"total_embedded": total, "items": items}
 

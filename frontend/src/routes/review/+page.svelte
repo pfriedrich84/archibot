@@ -9,6 +9,7 @@
     acceptReviewSuggestion,
     bulkAcceptReviewSuggestions,
     bulkRejectReviewSuggestions,
+    apiResourceUrl,
     loadReviewDetail,
     loadReviewQueue,
     rejectReviewSuggestion,
@@ -437,8 +438,8 @@
         </div>
       {/if}
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(19rem,0.9fr)_minmax(0,1.6fr)]">
-        <div class="space-y-6">
+      <div class="grid gap-6 xl:grid-cols-[minmax(22rem,0.78fr)_minmax(0,1.72fr)]">
+        <div class="space-y-6 xl:border-r xl:border-slate-800/80 xl:pr-6">
           <Card size="xl" class="rounded-3xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/20">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -541,33 +542,27 @@
             </div>
           </Card>
 
-          <div class="space-y-3">
+          <div class="space-y-2">
             {#each filteredItems as item}
-              <button type="button" onclick={() => (selectedId = item.id)} class={`block w-full rounded-3xl border p-5 text-left transition ${selectedId === item.id ? 'border-emerald-500/40 bg-emerald-500/10 shadow-lg shadow-emerald-950/20' : 'border-slate-800 bg-slate-900/75 hover:border-slate-700 hover:bg-slate-900'}`}>
+              <button type="button" onclick={() => (selectedId = item.id)} class={`block w-full rounded-2xl border px-3.5 py-3 text-left transition ${selectedId === item.id ? 'border-emerald-500/45 bg-emerald-500/10 shadow-md shadow-emerald-950/20 ring-1 ring-emerald-400/10' : 'border-slate-800/90 bg-slate-900/55 hover:border-slate-700 hover:bg-slate-900/85'}`}>
                 <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <span class="text-sm font-semibold text-white">Dokument #{item.document_id}</span>
-                      <span class="text-xs text-slate-500">Vorschlag #{item.id}</span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span class="text-xs font-semibold uppercase tracking-wide text-slate-300">Dokument #{item.document_id}</span>
+                      <span class="text-[11px] text-slate-600">#{item.id}</span>
+                      {#if item.judge_verdict}
+                        <span class={`text-[11px] font-medium ${judgeTone(item.judge_verdict)}`}>Judge: {item.judge_verdict}</span>
+                      {/if}
                     </div>
-                    <h3 class="mt-3 truncate text-lg font-semibold text-white">{item.proposed_title || 'Ohne Titelvorschlag'}</h3>
-                    <p class="mt-1 text-sm text-slate-400">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
+                    <h3 class="mt-1.5 truncate text-sm font-semibold text-white">{item.proposed_title || 'Ohne Titelvorschlag'}</h3>
+                    <p class="mt-1 truncate text-xs text-slate-400">{item.proposed_correspondent_name || 'Korrespondent offen'}</p>
                   </div>
                   <ConfidenceBadge confidence={item.confidence} compact />
                 </div>
-                <div class="mt-4 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 px-3 py-2">
-                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Dokumenttyp</span>
-                    <span class="mt-1 block text-slate-200">{item.proposed_doctype_name || 'Offen'}</span>
-                  </div>
-                  <div class="rounded-2xl border border-slate-800/80 bg-slate-950/55 px-3 py-2">
-                    <span class="block text-[11px] uppercase tracking-wide text-slate-500">Pfad</span>
-                    <span class="mt-1 block truncate text-slate-200">{item.proposed_storage_path_name || 'Noch nicht gesetzt'}</span>
-                  </div>
+                <div class="mt-2.5 flex min-w-0 flex-wrap gap-1.5 text-[11px] text-slate-300">
+                  <span class="max-w-full truncate rounded-full border border-slate-800/90 bg-slate-950/60 px-2 py-1">Typ: {item.proposed_doctype_name || 'Offen'}</span>
+                  <span class="max-w-full truncate rounded-full border border-slate-800/90 bg-slate-950/60 px-2 py-1">Pfad: {item.proposed_storage_path_name || 'Nicht gesetzt'}</span>
                 </div>
-                {#if item.judge_verdict}
-                  <div class="mt-3 text-xs"><span class={`font-medium ${judgeTone(item.judge_verdict)}`}>Judge: {item.judge_verdict}</span></div>
-                {/if}
               </button>
             {:else}
               <Card size="xl" class="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/20">
@@ -583,7 +578,7 @@
           </div>
         </div>
 
-        <div class="space-y-6">
+        <div class="space-y-6 xl:pl-1">
           {#if loadingDetail}
             <LoadingSkeleton rows={3} />
           {:else if detailError}
@@ -628,9 +623,9 @@
                   <div class="rounded-3xl border border-slate-800 bg-slate-950/60 p-4">
                     <div class="mb-3 flex items-center justify-between gap-2">
                       <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Dokumenten-Preview</p>
-                      <a href={detail.suggestion.preview_url} target="_blank" rel="noreferrer" class="text-xs text-emerald-300">Neu öffnen</a>
+                      <a href={apiResourceUrl(detail.suggestion.preview_url)} target="_blank" rel="noreferrer" class="text-xs text-emerald-300">Neu öffnen</a>
                     </div>
-                    <iframe title={`Preview document ${detail.suggestion.document_id}`} src={detail.suggestion.preview_url} class="h-[80vh] w-full rounded-2xl border border-slate-800 bg-white xl:sticky xl:top-24"></iframe>
+                    <iframe title={`Preview document ${detail.suggestion.document_id}`} src={apiResourceUrl(detail.suggestion.preview_url)} class="h-[80vh] w-full rounded-2xl border border-slate-800 bg-white xl:sticky xl:top-24"></iframe>
                   </div>
                 {/if}
 

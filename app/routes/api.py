@@ -494,6 +494,22 @@ async def review_detail_api(request: Request, suggestion_id: int) -> dict[str, A
     }
 
 
+def _browser_preview_content_type(content: bytes, content_type: str | None) -> str:
+    """Return a browser-renderable content type for document preview bytes."""
+    normalized = (content_type or "").split(";", 1)[0].strip().lower()
+    if normalized and normalized not in {"application/octet-stream", "binary/octet-stream"}:
+        return normalized
+    if content.startswith(b"%PDF"):
+        return "application/pdf"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    return "application/octet-stream"
+
+
 @router.get("/review/{suggestion_id}/preview")
 async def review_preview_api(request: Request, suggestion_id: int):
     with get_conn() as conn:
@@ -503,11 +519,25 @@ async def review_preview_api(request: Request, suggestion_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
-    content, content_type = await request.app.state.paperless.download_document(row["document_id"])
+    document_id = row["document_id"]
+    paperless = request.app.state.paperless
+    try:
+        content, content_type = await paperless.preview_document(document_id)
+    except Exception as exc:
+        log.warning("paperless preview failed, falling back to download", id=document_id, error=str(exc))
+        content, content_type = await paperless.download_document(document_id)
+
+    media_type = _browser_preview_content_type(content, content_type)
+    extension = {
+        "application/pdf": "pdf",
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/gif": "gif",
+    }.get(media_type, "bin")
     return StreamingResponse(
         iter([content]),
-        media_type=content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="document-{row["document_id"]}"'},
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="document-{document_id}.{extension}"'},
     )
 
 
@@ -807,8 +837,29 @@ async def stats_api() -> dict[str, Any]:
 
 
 @router.get("/embeddings")
-async def embeddings_api(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
-    return get_embeddings_snapshot(limit=limit)
+async def embeddings_api(request: Request, limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+    paperless = getattr(request.app.state, "paperless", None)
+    if not paperless:
+        return get_embeddings_snapshot(limit=limit)
+
+    try:
+        correspondents, doctypes, storage_paths, tags = await asyncio.gather(
+            paperless.list_correspondents(),
+            paperless.list_document_types(),
+            paperless.list_storage_paths(),
+            paperless.list_tags(),
+        )
+    except Exception as exc:
+        log.warning("failed to load paperless entity names for embeddings", error=str(exc))
+        return get_embeddings_snapshot(limit=limit)
+
+    return get_embeddings_snapshot(
+        limit=limit,
+        correspondent_names={entity.id: entity.name for entity in correspondents},
+        doctype_names={entity.id: entity.name for entity in doctypes},
+        storage_path_names={entity.id: entity.name for entity in storage_paths},
+        tag_names={entity.id: entity.name for entity in tags},
+    )
 
 
 @router.get("/chat")

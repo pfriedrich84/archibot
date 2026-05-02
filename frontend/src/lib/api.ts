@@ -23,6 +23,8 @@ import type {
 
 const baseUrl = (import.meta.env.PUBLIC_ARCHIBOT_API_BASE_URL as string | undefined) || '';
 
+export const apiResourceUrl = (path: string): string => `${baseUrl}${path}`;
+
 async function apiFetch<T>(path: string, fetcher: typeof fetch): Promise<T> {
   const response = await fetcher(`${baseUrl}${path}`);
   if (!response.ok) {
