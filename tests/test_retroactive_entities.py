@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+from app.config import settings
 from app.models import PaperlessDocument
 from app.pipeline.committer import retroactive_correspondent_apply, retroactive_doctype_apply
 
@@ -46,7 +47,7 @@ async def test_retroactive_correspondent_patches_committed_doc_still_in_inbox(
     conn.close()
 
     mock_paperless.get_document.return_value = PaperlessDocument(
-        id=42, title="Test", tags=[99], correspondent=None
+        id=42, title="Test", tags=[settings.paperless_inbox_tag_id], correspondent=None
     )
 
     patched, pending = await retroactive_correspondent_apply(
@@ -120,7 +121,7 @@ async def test_retroactive_doctype_patches_committed_doc_still_in_inbox(
     conn.close()
 
     mock_paperless.get_document.return_value = PaperlessDocument(
-        id=42, title="Test", tags=[99], document_type=None
+        id=42, title="Test", tags=[settings.paperless_inbox_tag_id], document_type=None
     )
 
     patched, pending = await retroactive_doctype_apply("New Type", 456, mock_paperless)
