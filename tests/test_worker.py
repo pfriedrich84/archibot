@@ -424,7 +424,7 @@ class TestPhaseOcr:
     @pytest.mark.asyncio
     async def test_ocr_modifies_content(self):
         """OCR phase should update document content when corrections are made."""
-        doc = _make_doc(1, content="broken text")
+        doc = _make_doc(1, content="?" * 100)
         mock_ollama = AsyncMock()
         mock_ollama.ocr_model = "qwen3:0.6b"
         mock_ollama.unload_model = AsyncMock()

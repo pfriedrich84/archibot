@@ -32,6 +32,7 @@ from app.pipeline import classifier, context_builder
 from app.pipeline.committer import commit_suggestion
 from app.pipeline.context_builder import SimilarDocument
 from app.pipeline.ocr_correction import (
+    _text_looks_broken,
     cache_ocr_correction,
     effective_ocr_mode,
     maybe_correct_ocr,
@@ -360,7 +361,6 @@ async def phase_ocr(
             eligible, reason = should_run_ocr_for_document(doc, available_tags=tags)
             if not eligible:
                 log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
-                record_phase_timing(cycle_id, doc.id, "ocr", t0, success=True)
                 record_event(
                     job_id,
                     job_type,
@@ -371,7 +371,23 @@ async def phase_ocr(
                     data={"reason": reason},
                 )
                 corrected.append(doc)
+                _advance_poll_phase_progress()
                 continue
+
+            if ocr_mode != "vision_full" and not _text_looks_broken(doc.content or ""):
+                record_event(
+                    job_id,
+                    job_type,
+                    "ocr_skipped_clean",
+                    f"Dokument #{doc.id}: OCR nicht nötig.",
+                    phase="ocr",
+                    document_id=doc.id,
+                    data={"reason": "text_clean"},
+                )
+                corrected.append(doc)
+                _advance_poll_phase_progress()
+                continue
+
             text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
             if num_corrections > 0:
                 doc = doc.model_copy(update={"content": text})
