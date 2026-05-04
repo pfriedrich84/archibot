@@ -4,7 +4,7 @@ Anleitung zur Einrichtung von Webhooks, damit Paperless-NGX den Classifier sofor
 
 ## Ueberblick
 
-Standardmaessig pollt der Worker alle `POLL_INTERVAL_SECONDS` (Default: 300s = 5 Minuten) die Inbox. Mit Webhooks wird die Verarbeitung **sofort** ausgeloest, ohne auf den naechsten Poll zu warten.
+Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig; der Default ist `0`, also kein automatisches Polling. Mit Webhooks wird die Verarbeitung **sofort** ausgeloest, ohne auf einen Poll zu warten.
 
 **Zwei Webhook-Endpoints:**
 

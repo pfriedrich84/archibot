@@ -88,7 +88,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `POLL_INTERVAL_SECONDS` | `300` | Sekunden zwischen Inbox-Polls |
+| `POLL_INTERVAL_SECONDS` | `0` | Sekunden zwischen Inbox-Polls (`0` = automatisches Polling deaktiviert) |
 
 ## GUI
 

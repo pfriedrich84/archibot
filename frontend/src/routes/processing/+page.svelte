@@ -68,10 +68,18 @@
     return total > 0 ? Math.round((done / total) * 100) : 0;
   }
 
-  function readinessTone(ok: boolean) {
+  function trafficLightTone(ok: boolean) {
     return ok
-      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
-      : 'border-amber-500/20 bg-amber-500/10 text-amber-100';
+      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100'
+      : 'border-amber-500/25 bg-amber-500/10 text-amber-100';
+  }
+
+  function trafficLightDot(ok: boolean) {
+    return ok ? 'bg-emerald-400 shadow-emerald-400/50' : 'bg-amber-400 shadow-amber-400/50';
+  }
+
+  function trafficLightLabel(ok: boolean) {
+    return ok ? 'OK' : 'Prüfen';
   }
 
   function jobLabel(jobId: string | null) {
@@ -248,10 +256,34 @@
           <Badge color="gray">{status.app.frontend.mode}</Badge>
         </div>
         <div class="mt-5 space-y-2.5 text-sm">
-          <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.paperless.configured)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Paperless</div><div class="mt-2 font-medium">{status.services.paperless.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
-          <div class={`rounded-2xl border p-3.5 ${readinessTone(status.services.ollama.configured)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Ollama</div><div class="mt-2 font-medium">{status.services.ollama.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
-          <div class={`rounded-2xl border p-3.5 ${readinessTone(dashboard.health.embedding_index_ready)}`}><div class="text-xs uppercase tracking-[0.2em] opacity-70">Embedding-Index</div><div class="mt-2 font-medium">{dashboard.health.embedding_index_ready ? 'Bereit für Suche und Kontext' : 'Index fehlt oder ist noch leer'}</div></div>
-          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5 text-slate-300"><div class="text-xs uppercase tracking-[0.2em] text-slate-500">Logging</div><div class="mt-2 font-medium text-white">{status.logging.level}</div></div>
+          <div class={`rounded-2xl border p-3.5 ${trafficLightTone(status.services.paperless.configured)}`}>
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <span class={`h-3 w-3 rounded-full shadow-lg ${trafficLightDot(status.services.paperless.configured)}`}></span>
+                <div><div class="text-xs uppercase tracking-[0.2em] opacity-70">Paperless</div><div class="mt-1 font-medium">{status.services.paperless.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
+              </div>
+              <span class="rounded-full border border-current/20 px-2.5 py-1 text-xs font-semibold">{trafficLightLabel(status.services.paperless.configured)}</span>
+            </div>
+          </div>
+          <div class={`rounded-2xl border p-3.5 ${trafficLightTone(status.services.ollama.configured)}`}>
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <span class={`h-3 w-3 rounded-full shadow-lg ${trafficLightDot(status.services.ollama.configured)}`}></span>
+                <div><div class="text-xs uppercase tracking-[0.2em] opacity-70">Ollama</div><div class="mt-1 font-medium">{status.services.ollama.configured ? 'Konfiguriert und ansprechbar' : 'Nicht konfiguriert'}</div></div>
+              </div>
+              <span class="rounded-full border border-current/20 px-2.5 py-1 text-xs font-semibold">{trafficLightLabel(status.services.ollama.configured)}</span>
+            </div>
+          </div>
+          <div class={`rounded-2xl border p-3.5 ${trafficLightTone(dashboard.health.embedding_index_ready)}`}>
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <span class={`h-3 w-3 rounded-full shadow-lg ${trafficLightDot(dashboard.health.embedding_index_ready)}`}></span>
+                <div><div class="text-xs uppercase tracking-[0.2em] opacity-70">Embedding-Index</div><div class="mt-1 font-medium">{dashboard.health.embedding_index_ready ? 'Bereit für Suche und Kontext' : 'Index fehlt oder ist noch leer'}</div></div>
+              </div>
+              <span class="rounded-full border border-current/20 px-2.5 py-1 text-xs font-semibold">{trafficLightLabel(dashboard.health.embedding_index_ready)}</span>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3.5 text-slate-300"><div class="flex items-center gap-3"><span class="h-3 w-3 rounded-full bg-slate-400 shadow-lg shadow-slate-400/40"></span><div><div class="text-xs uppercase tracking-[0.2em] text-slate-500">Logging</div><div class="mt-1 font-medium text-white">{status.logging.level}</div></div></div></div>
         </div>
       </Card>
     </div>

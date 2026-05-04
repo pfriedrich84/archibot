@@ -35,7 +35,7 @@ in Paperless-NGX.
 
 ### 1. Dokument wird erkannt
 
-Der Worker pollt alle `POLL_INTERVAL_SECONDS` (Default: 300s) die Paperless-Inbox.
+Der Worker pollt die Paperless-Inbox, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; Verarbeitung kann manuell in der UI gestartet werden.
 Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.

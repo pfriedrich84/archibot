@@ -91,7 +91,7 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Worker-Poll** | APScheduler-Intervall (default: 300s) | `worker.py → poll_inbox()` | Ja, ueberspringt mit Log |
+| **Worker-Poll** | APScheduler-Intervall (default: 0s/deaktiviert) | `worker.py → poll_inbox()` | Ja, ueberspringt mit Log |
 | **Webhook** | POST von Paperless nach Consume | `routes/webhook.py` | Ja, antwortet 503 |
 | **Inbox-GUI** | Button "Reprocess" in `/inbox` | `routes/inbox.py` | Nein (manuell) |
 | **Manueller Poll** | Button "Trigger Poll" in `/settings` | `routes/settings.py → poll_inbox()` | Ja (via poll_inbox Guard) |

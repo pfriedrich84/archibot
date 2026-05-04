@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     ocr_vision_dpi: int = 150
 
     # --- Worker ---
-    poll_interval_seconds: int = 300
+    poll_interval_seconds: int = 0
     context_max_docs: int = 5
     classification_max_tags: int = 4
     context_max_distance: float = 0.5  # 0 = no threshold/unlimited; 0.5 = default relevance cutoff
