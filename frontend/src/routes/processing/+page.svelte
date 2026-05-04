@@ -29,6 +29,10 @@
   let jobEvents = $state<JobEvent[]>([]);
   let latestJobEventId = $state(0);
 
+  let visibleJobEvents = $derived.by(() =>
+    [...jobEvents].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  );
+
   let logEntries = $derived.by(() => {
     const errorRows = errors.items.map((item) => ({
       kind: 'Fehler',
@@ -236,31 +240,35 @@
     </div>
 
     <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Job-Protokoll</p>
           <h2 class="mt-2 text-lg font-semibold text-white">Dokumentgenauer Ablauf</h2>
-          <p class="mt-1.5 text-sm text-slate-400">Sichere, strukturierte Events aus dem Backend. Wird alle 5 Sekunden aktualisiert und bleibt in SQLite gespeichert.</p>
+          <p class="mt-1.5 text-sm text-slate-400">Kompakter Log-Frame mit neuesten Meldungen oben. Wird alle 5 Sekunden aktualisiert und bleibt in SQLite gespeichert.</p>
         </div>
-        <Button color="dark" class="rounded-xl border border-slate-700" onclick={() => void refreshProcessing()} disabled={refreshing}>{refreshing ? 'Aktualisiert …' : 'Aktualisieren'}</Button>
+        <div class="flex shrink-0 items-center gap-2">
+          <span class="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-xs text-slate-400">Neueste zuerst · {visibleJobEvents.length} Events</span>
+          <Button color="dark" class="rounded-xl border border-slate-700" onclick={() => void refreshProcessing()} disabled={refreshing}>{refreshing ? 'Aktualisiert …' : 'Aktualisieren'}</Button>
+        </div>
       </div>
 
-      <div class="mt-5 space-y-2.5">
-        {#each jobEvents as event}
-          <div class={`rounded-2xl border p-3.5 text-sm ${event.level === 'error' ? 'border-rose-500/20 bg-rose-500/10 text-rose-100' : event.level === 'warning' ? 'border-amber-500/20 bg-amber-500/10 text-amber-100' : event.level === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-slate-800 bg-slate-950/60 text-slate-300'}`}>
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
+      <div class="mt-5 max-h-[26rem] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/80 p-2 shadow-inner shadow-slate-950/60">
+        {#each visibleJobEvents as event}
+          <div class={`mb-2 rounded-xl border px-3 py-2 text-xs last:mb-0 ${event.level === 'error' ? 'border-rose-500/20 bg-rose-500/10 text-rose-100' : event.level === 'warning' ? 'border-amber-500/20 bg-amber-500/10 text-amber-100' : event.level === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-slate-800 bg-slate-900/70 text-slate-300'}`}>
+            <div class="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <Badge color={event.level === 'error' ? 'red' : event.level === 'warning' ? 'yellow' : event.level === 'success' ? 'green' : 'gray'}>{event.phase || event.job_type}</Badge>
                   {#if event.document_id}<span class="font-medium text-white">Dokument #{event.document_id}</span>{/if}
+                  <span class="text-slate-500">{event.event}</span>
                 </div>
-                <p class="mt-2 text-slate-200">{event.message}</p>
+                <p class="mt-1.5 break-words text-slate-200">{event.message}</p>
               </div>
-              <span class="shrink-0 text-xs text-slate-500">{formatDateTime(event.created_at)}</span>
+              <span class="shrink-0 font-mono text-[11px] text-slate-500">{formatDateTime(event.created_at)}</span>
             </div>
           </div>
         {:else}
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Noch kein aktives Job-Protokoll. Starte „Posteingang prüfen“, „Alle Dokumente prüfen“ oder „Reindex starten“.</div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400">Noch kein aktives Job-Protokoll. Starte „Posteingang prüfen“, „Alle Dokumente prüfen“ oder „Reindex starten“.</div>
         {/each}
       </div>
     </Card>
