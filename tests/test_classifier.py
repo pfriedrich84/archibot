@@ -179,6 +179,43 @@ class TestBuildUserPrompt:
         assert "Korrespondent:" not in target_section
         assert "Dokumenttyp:" not in target_section
 
+    def test_prompt_includes_blacklists_and_dynamic_tag_limit(
+        self,
+        sample_doc: PaperlessDocument,
+        sample_correspondents: list[PaperlessEntity],
+        sample_doctypes: list[PaperlessEntity],
+        sample_storage_paths: list[PaperlessEntity],
+        sample_tags: list[PaperlessEntity],
+        patch_db,
+        db_conn,
+        tmp_db,
+        monkeypatch,
+    ):
+        from tests.conftest import _mock_get_conn
+
+        monkeypatch.setattr("app.pipeline.classifier.get_conn", lambda: _mock_get_conn(tmp_db))
+        monkeypatch.setattr("app.pipeline.classifier.settings.classification_max_tags", 2)
+        db_conn.execute("INSERT INTO tag_blacklist (name) VALUES ('SpamTag')")
+        db_conn.execute("INSERT INTO correspondent_blacklist (name) VALUES ('Blocked Sender')")
+        db_conn.execute("INSERT INTO doctype_blacklist (name) VALUES ('Blocked Type')")
+        db_conn.commit()
+
+        prompt = build_user_prompt(
+            target=sample_doc,
+            context_docs=[],
+            correspondents=sample_correspondents,
+            doctypes=sample_doctypes,
+            storage_paths=sample_storage_paths,
+            tags=sample_tags,
+        )
+
+        assert "Bevorzuge exakt diese bestehenden Paperless-Namen" in prompt
+        assert "Von ArchiBot abgelehnte Entitaeten" in prompt
+        assert "SpamTag" in prompt
+        assert "Blocked Sender" in prompt
+        assert "Blocked Type" in prompt
+        assert "maximal 2" in prompt
+
     def test_no_context_docs(
         self,
         sample_doc: PaperlessDocument,
@@ -241,6 +278,19 @@ class TestNormalizationHelpers:
         assert norm.tags[0].confidence == 100
         assert norm.confidence == 0
         assert len(norm.reasoning) == 500
+
+    def test_normalize_limits_tags_from_settings(self, monkeypatch):
+        monkeypatch.setattr("app.pipeline.classifier.settings.classification_max_tags", 2)
+        target = PaperlessDocument(id=1, title="Doc", content="x")
+        raw = ClassificationResult(
+            title="Doc",
+            tags=[{"name": "A"}, {"name": "B"}, {"name": "C"}],
+            confidence=80,
+        )
+
+        norm = _normalize_classification_result(raw, target=target)
+
+        assert [tag.name for tag in norm.tags] == ["A", "B"]
 
     def test_normalize_drops_storage_path_when_target_already_has_one(self):
         target = PaperlessDocument(id=1, title="Existing", content="x", storage_path=7)

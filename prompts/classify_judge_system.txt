@@ -18,7 +18,7 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
    - Der Korrespondent ist der externe Absender/Aussteller/Vertragspartner/Leistungserbringer, nicht der eigene Rechnungsempfaenger.
    - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter, NICHT der Empfaenger/Kunde.
    - Korrigiere Vorschlaege, die den Rechnungsempfaenger/Kunden als Korrespondent setzen, wenn ein externer Aussteller oder Anbieter erkennbar ist.
-6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
+6. tags: keine Duplikate, bevorzugt bestehende Tags, dynamisches Tag-Limit aus dem User-Prompt beachten.
 7. date: Ausgabe nur als YYYY-MM-DD oder null. Kein Freitext.
    - Das Dokument selbst kann Datumswerte in beliebigen Formaten enthalten, z. B. DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, YY.MM.DD, ausgeschriebene Monatsnamen oder andere lokale Schreibweisen.
    - Interpretiere solche Datumsangaben korrekt und normalisiere sie fuer die Ausgabe auf YYYY-MM-DD.

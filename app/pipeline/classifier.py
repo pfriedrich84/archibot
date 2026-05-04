@@ -9,6 +9,7 @@ import structlog
 
 from app.clients.ollama import OllamaClient
 from app.config import settings
+from app.db import get_conn
 from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
 from app.prompt_store import load_prompt
 
@@ -103,6 +104,37 @@ def _format_entity_list(label: str, entities: list[PaperlessEntity]) -> str:
     return f"{label}: {names}"
 
 
+def _load_blacklist_names(table: str) -> list[str]:
+    """Load local ArchiBot blacklist names for prompt steering.
+
+    Prompt context is advisory only; DB-side blacklist checks still enforce that
+    rejected entities are not re-staged when the model ignores instructions.
+    """
+    if table not in {"tag_blacklist", "correspondent_blacklist", "doctype_blacklist"}:
+        return []
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(f"SELECT name FROM {table} ORDER BY name LIMIT 100").fetchall()
+    except Exception as exc:  # pragma: no cover - prompt building should not fail on diagnostics
+        log.warning("failed to load entity blacklist for prompt", table=table, error=str(exc))
+        return []
+    return [str(row["name"]).strip() for row in rows if str(row["name"]).strip()]
+
+
+def _format_name_list(label: str, names: list[str]) -> str:
+    if not names:
+        return f"{label}: (keine)"
+    return f"{label}: {', '.join(names)}"
+
+
+def _classification_max_tags() -> int:
+    raw = getattr(settings, "classification_max_tags", 4)
+    try:
+        return max(0, min(20, int(raw)))
+    except Exception:
+        return 4
+
+
 def _normalize_date(value: str | None) -> str | None:
     if value is None:
         return None
@@ -136,6 +168,7 @@ def _normalize_classification_result(
     )
 
     seen: set[str] = set()
+    max_tags = _classification_max_tags()
     norm_tags = []
     for tag in result.tags:
         name = tag.name.strip()
@@ -146,6 +179,8 @@ def _normalize_classification_result(
             continue
         seen.add(key)
         norm_tags.append({"name": name, "confidence": _clamp_confidence(tag.confidence)})
+        if len(norm_tags) >= max_tags:
+            break
 
     reasoning = (result.reasoning or "").strip()
     if len(reasoning) > 500:
@@ -175,12 +210,24 @@ def build_user_prompt(
     system_prompt_chars: int = 0,
 ) -> str:
     # --- Fixed sections (entity lists + task instructions) ---
+    max_tags = _classification_max_tags()
+    blacklisted_correspondents = _load_blacklist_names("correspondent_blacklist")
+    blacklisted_doctypes = _load_blacklist_names("doctype_blacklist")
+    blacklisted_tags = _load_blacklist_names("tag_blacklist")
+
     entity_lines: list[str] = [
         "# Verfuegbare Entitaeten in Paperless",
+        "Bevorzuge exakt diese bestehenden Paperless-Namen, wenn sie fachlich passen.",
+        "Neue Namen nur vorschlagen, wenn keine bestehende Entitaet passt.",
         _format_entity_list("Korrespondenten", correspondents),
         _format_entity_list("Dokumenttypen", doctypes),
         _format_entity_list("Speicherpfade", storage_paths),
         _format_entity_list("Tags", tags),
+        "",
+        "# Von ArchiBot abgelehnte Entitaeten (nicht vorschlagen)",
+        _format_name_list("Abgelehnte Korrespondenten", blacklisted_correspondents),
+        _format_name_list("Abgelehnte Dokumenttypen", blacklisted_doctypes),
+        _format_name_list("Abgelehnte Tags", blacklisted_tags),
     ]
     entity_section = "\n".join(entity_lines)
 
@@ -192,7 +239,7 @@ def build_user_prompt(
         "- correspondent (string, Name)\n"
         "- document_type (string, Name)\n"
         "- storage_path (string, Name oder null)\n"
-        "- tags (liste von objekten {name, confidence})\n"
+        f"- tags (liste von objekten {{name, confidence}}; maximal {max_tags})\n"
         "- confidence (0-100, Gesamtvertrauen)\n"
         "- reasoning (kurze Begruendung in 1-3 Saetzen)\n"
     )

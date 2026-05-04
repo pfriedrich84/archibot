@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # --- Worker ---
     poll_interval_seconds: int = 300
     context_max_docs: int = 5
+    classification_max_tags: int = 4
     context_max_distance: float = 0.5  # 0 = no threshold/unlimited; 0.5 = default relevance cutoff
     hybrid_search_weight: float = 0.7  # 0.0 = FTS only, 1.0 = vector only, 0.7 = default blend
     max_doc_chars: int = 24000
@@ -474,6 +475,12 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Context Max Docs",
         "number",
         help="Max similar documents used as few-shot context",
+    ),
+    "classification_max_tags": _fm(
+        "Phase 3: Klassifikation",
+        "Max Tags",
+        "number",
+        help="Maximum number of tags the classifier may propose per document",
     ),
     "context_max_distance": _fm(
         "Phase 3: Klassifikation",
