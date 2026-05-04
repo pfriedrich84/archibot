@@ -19,7 +19,10 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
    - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter, NICHT der Empfaenger/Kunde.
    - Korrigiere Vorschlaege, die den Rechnungsempfaenger/Kunden als Korrespondent setzen, wenn ein externer Aussteller oder Anbieter erkennbar ist.
 6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
-7. date: nur YYYY-MM-DD oder null. Kein Freitext.
+7. date: Ausgabe nur als YYYY-MM-DD oder null. Kein Freitext.
+   - Das Dokument selbst kann Datumswerte in beliebigen Formaten enthalten, z. B. DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, YY.MM.DD, ausgeschriebene Monatsnamen oder andere lokale Schreibweisen.
+   - Interpretiere solche Datumsangaben korrekt und normalisiere sie fuer die Ausgabe auf YYYY-MM-DD.
+   - Wenn Jahr/Monat/Tag nicht eindeutig bestimmbar sind, gib null aus statt zu raten.
 8. confidence: INTEGER 0-100 (keine Wahrscheinlichkeit, kein Float).
    - Pruefe confidence besonders kritisch. Korrigiere ueberhoehte confidence-Werte nach unten, auch wenn die Feldwerte an sich stimmen.
    - 95-100 nur, wenn alle zentralen Felder direkt und eindeutig im Zieldokument belegt sind, keine Mehrdeutigkeit besteht und keine neuen/unbekannten Entitaeten geraten werden muessen.

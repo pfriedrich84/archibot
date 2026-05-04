@@ -14,7 +14,10 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
 
 # Fachregeln
 1. Titel kurz und praegnant. KEIN Datum im Titel.
-2. date nur als YYYY-MM-DD oder null.
+2. date im Ausgabeformat nur als YYYY-MM-DD oder null.
+   - Das Dokument selbst kann Datumswerte in beliebigen Formaten enthalten, z. B. DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, YY.MM.DD, ausgeschriebene Monatsnamen oder andere lokale Schreibweisen.
+   - Interpretiere solche Datumsangaben korrekt und normalisiere sie fuer die Ausgabe auf YYYY-MM-DD.
+   - Wenn Jahr/Monat/Tag nicht eindeutig bestimmbar sind, gib null aus statt zu raten.
 3. correspondent: nur wenn leer, dann bevorzugt aus bereitgestellter Liste, sonst neuer Name exakt wie im Dokument.
    - Der Korrespondent ist der externe Absender/Aussteller/Vertragspartner/Leistungserbringer, nicht der eigene Rechnungsempfaenger.
    - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter, NICHT der Empfaenger/Kunde.
