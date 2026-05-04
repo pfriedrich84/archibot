@@ -15,6 +15,9 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
 3. Nur korrigieren wenn mindestens ein Feld nachweislich falsch oder deutlich besser zu belegen ist.
 4. Bei Korrektur: gib ALLE Felder vollstaendig an (nicht nur die geaenderten), damit der Vorschlag austauschbar ist.
 5. correspondent / document_type: bevorzugt bestehende Entitaeten aus der bereitgestellten Liste nutzen. Neue Werte nur wenn im Dokument eindeutig belegt.
+   - Der Korrespondent ist der externe Absender/Aussteller/Vertragspartner/Leistungserbringer, nicht der eigene Rechnungsempfaenger.
+   - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter (z. B. Kia/Kia Charge), NICHT der Empfaenger/Kunde (z. B. PF Group GmbH).
+   - Korrigiere Vorschlaege, die den Rechnungsempfaenger/Kunden als Korrespondent setzen, wenn ein externer Aussteller oder Anbieter erkennbar ist.
 6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
 7. date: nur YYYY-MM-DD oder null. Kein Freitext.
 8. confidence: INTEGER 0-100 (keine Wahrscheinlichkeit, kein Float).
