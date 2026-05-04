@@ -14,6 +14,7 @@ import type {
   ReviewBulkMutationResponse,
   ReviewDetailPayload,
   ReviewMutationResponse,
+  JobEventsPayload,
   ReviewQueuePayload,
   SettingsSchemaPayload,
   StatsPayload,
@@ -140,6 +141,9 @@ export const rejectDoctype = (name: string) =>
 export const unblacklistDoctype = (name: string) =>
   apiMutation<ReviewMutationResponse>('/api/v1/doctypes/unblacklist', { name });
 export const startPoll = () => apiMutation<DashboardPayload['pipeline']>('/api/v1/jobs/poll/start', {});
+export const startPollAll = () => apiMutation<DashboardPayload['pipeline']>('/api/v1/jobs/poll/all/start', {});
+export const loadJobEvents = (jobId: string, fetcher: typeof fetch, since = 0) =>
+  apiFetch<JobEventsPayload>(`/api/v1/jobs/${encodeURIComponent(jobId)}/events?since=${since}`, fetcher);
 export const cancelPoll = () => apiMutation<DashboardPayload['pipeline']>('/api/v1/jobs/poll/cancel', {});
 export const startReindex = () => apiMutation<DashboardPayload['reindex']>('/api/v1/jobs/reindex/start', {});
 export const cancelReindexJob = () => apiMutation<DashboardPayload['reindex']>('/api/v1/jobs/reindex/cancel', {});

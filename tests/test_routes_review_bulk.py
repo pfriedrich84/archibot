@@ -128,6 +128,31 @@ class TestBulkApproveApi:
         assert fields_arg["storage_path"] == 30
 
 
+class TestReviewAcceptApi:
+    def test_accept_resolves_just_approved_correspondent_name(self, client, patch_db, db_conn):
+        db_conn.execute(
+            """INSERT INTO suggestions
+               (id, document_id, status, proposed_title, proposed_correspondent_name, proposed_correspondent_id, proposed_tags_json)
+               VALUES (?, ?, 'pending', ?, ?, NULL, ?)""",
+            (1, 100, "ChatGPT Rechnung", "OpenAI Ireland Limited", json.dumps([])),
+        )
+        db_conn.execute(
+            """INSERT INTO correspondent_whitelist (name, approved, paperless_id)
+               VALUES (?, 1, ?)""",
+            ("OpenAI Ireland Limited", 99),
+        )
+        db_conn.commit()
+
+        r = client.post(
+            "/api/v1/review/1/accept",
+            json={"title": "ChatGPT Rechnung", "correspondent_id": None, "tag_ids": []},
+        )
+        assert r.status_code == 200
+
+        fields_arg = app.state.paperless.patch_document.call_args[0][1]
+        assert fields_arg["correspondent"] == 99
+
+
 class TestBulkRejectApi:
     def test_rejects_selected(self, client, patch_db, db_conn):
         _insert_suggestion(db_conn, 1, 100)

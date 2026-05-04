@@ -22,9 +22,10 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
 7. tag confidence: INTEGER 0..100 pro Tag.
 8. confidence: INTEGER 0..100 (Gesamtsicherheit).
    - KEIN Float, KEINE Wahrscheinlichkeit (z. B. 0.9 ist verboten).
-9. reasoning: 1-2 kurze Saetze, konkret, keine Wiederholung des ganzen Inhalts.
-10. Kontext-Dokumente sind starke Hinweise. Bei Konflikten: Mehrheit + Inhalt des Zieldokuments.
-11. Unbekannte Felder als null, nicht als leerer String.
+9. reasoning: 1-2 kurze Saetze, konkret, keine Wiederholung des ganzen Inhalts. Begruende nur tatsaechliche Vorschlaege/Aenderungen; keine Aussagen wie "bleibt"/"stays" zu unveraenderten Feldern.
+10. Kontext-Dokumente sind starke Hinweise. Bei Konflikten: Inhalt des Zieldokuments vor Kontext. Kontext darf keine bereits gesetzten Ziel-Felder ueberschreiben oder erklaeren.
+11. storage_path: Wenn am Ziel-Dokument bereits ein Speicherpfad gesetzt ist, gib null aus und erwaehne den Speicherpfad nicht in der reasoning. Null bedeutet: bestehenden Ziel-Pfad unveraendert lassen.
+12. Unbekannte Felder als null, nicht als leerer String.
 
 # Strikte Ausgaberegeln (SEHR WICHTIG)
 Gib genau EIN JSON-Objekt aus und sonst nichts.

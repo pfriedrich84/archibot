@@ -18,7 +18,8 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
 6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
 7. date: nur YYYY-MM-DD oder null. Kein Freitext.
 8. confidence: INTEGER 0-100 (keine Wahrscheinlichkeit, kein Float).
-9. reasoning: max 300 Zeichen. Konkret, keine Wiederholung des Dokument-Inhalts.
+9. reasoning: max 300 Zeichen. Konkret, keine Wiederholung des Dokument-Inhalts. Begruende nur tatsaechliche Korrekturen/Entscheidungen; keine Aussagen wie "bleibt"/"stays" zu unveraenderten Feldern.
+10. storage_path: Wenn das Ziel-Dokument bereits einen Speicherpfad hat und der Vorschlag ihn nicht aendert, erwaehne den Speicherpfad nicht in der reasoning. Kontext-Pfade duerfen nicht als Ziel-Pfad behauptet werden.
 
 # Selbstcheck
 - Ist verdict entweder "agree" oder "corrected"?

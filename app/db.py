@@ -238,6 +238,24 @@ CREATE TABLE IF NOT EXISTS phase_timing (
 );
 CREATE INDEX IF NOT EXISTS idx_pt_phase ON phase_timing(phase);
 CREATE INDEX IF NOT EXISTS idx_pt_cycle ON phase_timing(poll_cycle_id);
+
+-- =========================================================================
+-- Persistent safe job event stream for GUI/CLI/Telegram
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS job_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id      TEXT NOT NULL,
+    job_type    TEXT NOT NULL,
+    phase       TEXT,
+    level       TEXT NOT NULL DEFAULT 'info',
+    event       TEXT NOT NULL,
+    document_id INTEGER,
+    message     TEXT NOT NULL,
+    data_json   TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_job_events_job ON job_events(job_id, id);
+CREATE INDEX IF NOT EXISTS idx_job_events_created ON job_events(created_at);
 """
 
 

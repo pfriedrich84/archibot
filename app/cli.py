@@ -21,6 +21,7 @@ import logging
 import signal
 import sqlite3
 import sys
+import uuid
 from pathlib import Path
 
 import structlog
@@ -116,6 +117,7 @@ async def cmd_poll(*, force: bool = False) -> None:
 
     With ``force=True`` the idempotency skip check is bypassed.
     """
+    from app.job_events import list_events, record_event
     from app.worker import poll_inbox
 
     paperless = PaperlessClient()
@@ -126,6 +128,15 @@ async def cmd_poll(*, force: bool = False) -> None:
 
     worker._paperless = paperless
     worker._ollama = ollama
+    worker._poll_progress.job_type = "poll"
+    worker._poll_progress.job_id = f"cli-poll-{uuid.uuid4().hex[:12]}"
+    record_event(
+        worker._poll_progress.job_id,
+        "poll",
+        "job_started",
+        "CLI-Posteingang-Prüfung gestartet.",
+        phase="prepare",
+    )
 
     # Wire Ctrl+C to the worker's cooperative cancellation flag
     loop = asyncio.get_running_loop()
@@ -140,6 +151,11 @@ async def cmd_poll(*, force: bool = False) -> None:
 
     try:
         await poll_inbox(force=force)
+        for event in list_events(worker._poll_progress.job_id or "", limit=1000):
+            doc = f" doc=#{event['document_id']}" if event.get("document_id") else ""
+            print(
+                f"[{event['level']}] {event.get('phase') or event['job_type']}{doc}: {event['message']}"
+            )
         if worker._poll_progress.cancelled:
             print("Inbox processing cancelled.")
         else:

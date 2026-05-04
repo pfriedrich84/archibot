@@ -19,6 +19,7 @@ import structlog
 
 from app import db
 from app.config import settings
+from app.job_events import record_event
 from app.models import (
     ClassificationResult,
     JudgeVerdict,
@@ -39,9 +40,12 @@ from app.pipeline.ocr_correction import (
 from app.pipeline.ports import DocumentRepository, LlmGateway
 from app.pipeline.processing_models import (
     BatchProcessResult,
+    ClassificationDraft,
     EmbeddingResult,
+    JudgedDraft,
     JudgeOutcome,
     ProcessResult,
+    StoredSuggestionResult,
 )
 from app.telegram_handler import notify_suggestion
 
@@ -231,9 +235,12 @@ async def maybe_run_judge(
     cycle_id: str | None,
 ) -> JudgeOutcome:
     """Gate + run Judge verification, returning the possibly corrected result."""
-    if not settings.enable_judge_verification:
+    if getattr(settings, "enable_judge_verification", False) is not True:
         return JudgeOutcome(result=initial)
-    if initial.confidence >= settings.judge_confidence_threshold:
+    threshold = getattr(settings, "judge_confidence_threshold", 0)
+    if not isinstance(threshold, int | float):
+        threshold = 0
+    if initial.confidence >= threshold:
         return JudgeOutcome(result=initial, verdict="skipped")
     if not context_docs:
         return JudgeOutcome(result=initial, verdict="skipped")
@@ -321,6 +328,8 @@ async def phase_ocr(
         return docs
 
     log.info("phase ocr started", count=len(docs), mode=ocr_mode)
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
     corrected: list[PaperlessDocument] = []
     for doc in docs:
         if worker._poll_progress.cancelled:
@@ -334,14 +343,53 @@ async def phase_ocr(
             if not eligible:
                 log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
                 record_phase_timing(cycle_id, doc.id, "ocr", t0, success=True)
+                record_event(
+                    job_id,
+                    job_type,
+                    "ocr_skipped",
+                    f"Dokument #{doc.id}: OCR übersprungen.",
+                    phase="ocr",
+                    document_id=doc.id,
+                    data={"reason": reason},
+                )
                 corrected.append(doc)
                 continue
             text, num_corrections = await maybe_correct_ocr(doc, ollama, paperless)
             if num_corrections > 0:
                 doc = doc.model_copy(update={"content": text})
                 cache_ocr_correction(doc.id, text, ocr_mode, num_corrections)
+                record_event(
+                    job_id,
+                    job_type,
+                    "ocr_corrected",
+                    f"Dokument #{doc.id}: OCR korrigiert ({num_corrections} Korrekturen).",
+                    phase="ocr",
+                    level="success",
+                    document_id=doc.id,
+                    data={"corrections": num_corrections},
+                )
+            else:
+                record_event(
+                    job_id,
+                    job_type,
+                    "ocr_done",
+                    f"Dokument #{doc.id}: OCR geprüft.",
+                    phase="ocr",
+                    level="success",
+                    document_id=doc.id,
+                )
         except Exception as exc:
             ok = False
+            record_event(
+                job_id,
+                job_type,
+                "ocr_failed",
+                f"Dokument #{doc.id}: OCR fehlgeschlagen.",
+                phase="ocr",
+                level="warning",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
             log.warning("ocr correction failed", doc_id=doc.id, error=str(exc))
         record_phase_timing(cycle_id, doc.id, "ocr", t0, success=ok)
         corrected.append(doc)
@@ -366,6 +414,8 @@ async def phase_embed(
     from app import worker
 
     log.info("phase embed started", count=len(docs))
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
     results: dict[int, EmbeddingResult] = {}
 
     for doc in docs:
@@ -383,14 +433,373 @@ async def phase_embed(
                 er.similar_results = await context_builder.find_similar_with_precomputed_embedding(
                     doc, vec, paperless
                 )
+                record_event(
+                    job_id,
+                    job_type,
+                    "embed_done",
+                    f"Dokument #{doc.id}: Embedding erstellt ({len(er.similar_results)} ähnliche Dokumente).",
+                    phase="embed",
+                    level="success",
+                    document_id=doc.id,
+                    data={"similar": len(er.similar_results)},
+                )
             except Exception as exc:
                 ok = False
+                record_event(
+                    job_id,
+                    job_type,
+                    "embed_failed",
+                    f"Dokument #{doc.id}: Embedding fehlgeschlagen.",
+                    phase="embed",
+                    level="warning",
+                    document_id=doc.id,
+                    data={"error": str(exc)[:300]},
+                )
                 log.warning("embedding failed", doc_id=doc.id, error=str(exc))
         record_phase_timing(cycle_id, doc.id, "embed", t0, success=ok)
         results[doc.id] = er
 
     await ollama.unload_model(ollama.embed_model, swap=True)
     return results
+
+
+async def phase_classify_only(
+    docs: list[PaperlessDocument],
+    embed_results: dict[int, EmbeddingResult],
+    ollama: LlmGateway,
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    cycle_id: str,
+) -> list[ClassificationDraft]:
+    """Phase 3: classify all documents with the classifier model only."""
+    from app import worker
+
+    log.info("phase classify started", count=len(docs))
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    drafts: list[ClassificationDraft] = []
+
+    for doc in docs:
+        if worker._poll_progress.cancelled:
+            log.info("poll cancelled during classify phase")
+            break
+        er = embed_results.get(doc.id, EmbeddingResult())
+        context_docs = [r.document for r in er.similar_results]
+        record_event(
+            job_id,
+            job_type,
+            "classify_started",
+            f"Dokument #{doc.id}: Klassifizierung gestartet.",
+            phase="classify",
+            document_id=doc.id,
+        )
+        t0 = time.monotonic()
+        try:
+            initial_result, raw_response = await classifier.classify(
+                doc,
+                context_docs,
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+                ollama,
+            )
+            record_phase_timing(cycle_id, doc.id, "classify", t0, success=True)
+            record_event(
+                job_id,
+                job_type,
+                "classify_done",
+                f"Dokument #{doc.id}: klassifiziert ({initial_result.confidence}% Sicherheit).",
+                phase="classify",
+                level="success",
+                document_id=doc.id,
+                data={"confidence": initial_result.confidence},
+            )
+            drafts.append(
+                ClassificationDraft(
+                    doc, context_docs, er.similar_results, initial_result, raw_response
+                )
+            )
+        except Exception as exc:
+            record_phase_timing(cycle_id, doc.id, "classify", t0, success=False)
+            record_event(
+                job_id,
+                job_type,
+                "classify_failed",
+                f"Dokument #{doc.id}: Klassifizierung fehlgeschlagen.",
+                phase="classify",
+                level="error",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
+            log.error("classification failed", doc_id=doc.id, error=repr(exc))
+            worker._write_error("classify", doc.id, exc)
+            drafts.append(
+                ClassificationDraft(doc, context_docs, er.similar_results, error=str(exc)[:300])
+            )
+
+    await ollama.unload_model(ollama.model, swap=True)
+    return drafts
+
+
+async def phase_judge(
+    drafts: list[ClassificationDraft],
+    ollama: LlmGateway,
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    cycle_id: str,
+) -> list[JudgedDraft]:
+    """Phase 4: verify all successful classifier drafts with the judge model."""
+    from app import worker
+
+    log.info("phase judge started", count=len(drafts))
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    judged: list[JudgedDraft] = []
+
+    for draft in drafts:
+        doc = draft.document
+        if draft.error or draft.initial_result is None or draft.raw_response is None:
+            judged.append(
+                JudgedDraft(
+                    doc,
+                    draft.context_docs,
+                    draft.similar_results,
+                    error=draft.error or "classification missing",
+                )
+            )
+            continue
+        if worker._poll_progress.cancelled:
+            log.info("poll cancelled during judge phase")
+            break
+        record_event(
+            job_id,
+            job_type,
+            "judge_started",
+            f"Dokument #{doc.id}: Judge-Prüfung gestartet.",
+            phase="judge",
+            document_id=doc.id,
+        )
+        judge = await maybe_run_judge(
+            doc,
+            draft.initial_result,
+            draft.raw_response,
+            draft.context_docs,
+            correspondents,
+            doctypes,
+            storage_paths,
+            tags,
+            ollama,
+            cycle_id=cycle_id,
+        )
+        level = "warning" if judge.verdict == "error" else "success"
+        event = (
+            "judge_corrected"
+            if judge.verdict == "corrected"
+            else "judge_skipped"
+            if judge.verdict == "skipped"
+            else "judge_agreed"
+            if judge.verdict == "agree"
+            else "judge_failed"
+            if judge.verdict == "error"
+            else "judge_done"
+        )
+        record_event(
+            job_id,
+            job_type,
+            event,
+            f"Dokument #{doc.id}: Judge-Prüfung abgeschlossen ({judge.verdict or 'nicht aktiv'}).",
+            phase="judge",
+            level=level,
+            document_id=doc.id,
+            data={"verdict": judge.verdict},
+        )
+        judged.append(
+            JudgedDraft(
+                doc,
+                draft.context_docs,
+                draft.similar_results,
+                draft.initial_result,
+                draft.raw_response,
+                judge,
+            )
+        )
+
+    return judged
+
+
+async def phase_store_suggestions(
+    judged: list[JudgedDraft],
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+) -> list[StoredSuggestionResult]:
+    """Phase 5: persist all judged suggestions, without notifying or committing."""
+    from app import worker
+
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    stored: list[StoredSuggestionResult] = []
+    for draft in judged:
+        doc = draft.document
+        if draft.error or draft.judge is None or draft.raw_response is None:
+            stored.append(StoredSuggestionResult(doc, error=draft.error or "judge missing"))
+            continue
+        try:
+            result = draft.judge.result
+            suggestion = store_suggestion(
+                doc,
+                result,
+                draft.raw_response,
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+                similar_results=draft.similar_results,
+                judge_verdict=draft.judge.verdict,
+                judge_reasoning=draft.judge.reasoning,
+                original_proposed_json=draft.judge.original_proposed_json,
+            )
+            will_auto_commit = (
+                settings.auto_commit_confidence > 0
+                and result.confidence >= settings.auto_commit_confidence
+            )
+            record_event(
+                job_id,
+                job_type,
+                "suggestion_stored",
+                f"Dokument #{doc.id}: Vorschlag #{suggestion.id} gespeichert ({result.confidence}% Sicherheit).",
+                phase="store",
+                level="success",
+                document_id=doc.id,
+                data={
+                    "suggestion_id": suggestion.id,
+                    "confidence": result.confidence,
+                    "judge": draft.judge.verdict,
+                },
+            )
+            stored.append(StoredSuggestionResult(doc, suggestion, result, will_auto_commit))
+        except Exception as exc:
+            record_event(
+                job_id,
+                job_type,
+                "store_failed",
+                f"Dokument #{doc.id}: Vorschlag konnte nicht gespeichert werden.",
+                phase="store",
+                level="error",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
+            log.error("suggestion storage failed", doc_id=doc.id, error=repr(exc))
+            worker._write_error("store", doc.id, exc)
+            stored.append(StoredSuggestionResult(doc, error=str(exc)[:300]))
+    return stored
+
+
+async def phase_postprocess_suggestions(
+    stored: list[StoredSuggestionResult],
+    paperless: DocumentRepository,
+    tags: list[PaperlessEntity],
+) -> tuple[int, int, int]:
+    """Phase 6: notify or auto-commit stored suggestions. No LLM calls here."""
+    from app import worker
+
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    classified = 0
+    auto_committed = 0
+    errored = 0
+
+    for item in stored:
+        doc = item.document
+        try:
+            if item.error or item.suggestion is None or item.result is None:
+                raise RuntimeError(item.error or "suggestion missing")
+            if item.will_auto_commit:
+                record_event(
+                    job_id,
+                    job_type,
+                    "auto_commit_started",
+                    f"Dokument #{doc.id}: Auto-Commit gestartet.",
+                    phase="postprocess",
+                    document_id=doc.id,
+                    data={"confidence": item.result.confidence},
+                )
+                log.info("auto-committing", doc_id=doc.id, confidence=item.result.confidence)
+                tag_ids = [
+                    tid
+                    for t in item.result.tags
+                    if (tid := resolve_entity(t.name, tags)) is not None
+                ]
+                decision = ReviewDecision(
+                    suggestion_id=item.suggestion.id,
+                    title=item.result.title,
+                    date=item.suggestion.effective_date,
+                    correspondent_id=item.suggestion.effective_correspondent_id,
+                    doctype_id=item.suggestion.effective_doctype_id,
+                    storage_path_id=item.suggestion.effective_storage_path_id,
+                    tag_ids=tag_ids,
+                    action="accept",
+                )
+                await commit_suggestion(item.suggestion, decision, paperless)
+                record_event(
+                    job_id,
+                    job_type,
+                    "auto_committed",
+                    f"Dokument #{doc.id}: automatisch übernommen.",
+                    phase="postprocess",
+                    level="success",
+                    document_id=doc.id,
+                    data={"suggestion_id": item.suggestion.id},
+                )
+                auto_committed += 1
+            else:
+                await notify_suggestion(item.suggestion)
+                record_event(
+                    job_id,
+                    job_type,
+                    "pending_review",
+                    f"Dokument #{doc.id}: Vorschlag wartet auf Review.",
+                    phase="postprocess",
+                    level="success",
+                    document_id=doc.id,
+                    data={"suggestion_id": item.suggestion.id},
+                )
+                classified += 1
+            worker._poll_progress.succeeded += 1
+            record_event(
+                job_id,
+                job_type,
+                "document_done",
+                f"Dokument #{doc.id}: Prüfung abgeschlossen.",
+                phase="postprocess",
+                level="success",
+                document_id=doc.id,
+            )
+        except Exception as exc:
+            errored += 1
+            worker._poll_progress.failed += 1
+            phase = "postprocess" if item.suggestion is not None else "classify"
+            record_event(
+                job_id,
+                job_type,
+                "document_failed",
+                f"Dokument #{doc.id}: Prüfung fehlgeschlagen.",
+                phase=phase,
+                level="error",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
+            log.error("document post-processing failed", doc_id=doc.id, error=repr(exc))
+            worker._write_error(phase, doc.id, exc)
+        finally:
+            worker._poll_progress.done += 1
+    return classified, auto_committed, errored
 
 
 async def phase_classify(
@@ -404,120 +813,154 @@ async def phase_classify(
     tags: list[PaperlessEntity],
     cycle_id: str,
 ) -> tuple[int, int, int]:
-    """Phase 3: Classify all documents and post-process (chat model + DB writes).
+    """Backward-compatible classification entry point.
 
-    Returns ``(classified, auto_committed, errored)`` counts.
+    Internally runs the fully split classify -> judge -> store -> postprocess ->
+    embedding-store phases. New orchestration should call the split phases
+    directly so GUI progress can expose each phase separately.
     """
     from app import worker
 
-    log.info("phase classify started", count=len(docs))
-    classified = 0
-    auto_committed = 0
-    errored = 0
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    if not isinstance(embed_results, dict):
+        embed_results = {}
 
+    drafts = await phase_classify_only(
+        docs,
+        embed_results,
+        ollama,
+        correspondents,
+        doctypes,
+        storage_paths,
+        tags,
+        cycle_id,
+    )
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Klassifizierung abgeschlossen.",
+        phase="classify",
+        level="success",
+    )
+
+    worker._poll_progress.phase = "judge"
+    record_event(
+        job_id,
+        job_type,
+        "phase_started",
+        "Judge-Prüfung gestartet.",
+        phase="judge",
+        data={"documents": len(drafts)},
+    )
+    judged = await phase_judge(
+        drafts, ollama, correspondents, doctypes, storage_paths, tags, cycle_id
+    )
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Judge-Prüfung abgeschlossen.",
+        phase="judge",
+        level="success",
+    )
+
+    worker._poll_progress.phase = "store"
+    record_event(
+        job_id,
+        job_type,
+        "phase_started",
+        "Vorschläge werden gespeichert.",
+        phase="store",
+        data={"documents": len(judged)},
+    )
+    stored = await phase_store_suggestions(judged, correspondents, doctypes, storage_paths, tags)
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Vorschläge gespeichert.",
+        phase="store",
+        level="success",
+    )
+
+    worker._poll_progress.phase = "postprocess"
+    record_event(
+        job_id,
+        job_type,
+        "phase_started",
+        "Nachverarbeitung gestartet.",
+        phase="postprocess",
+        data={"documents": len(stored)},
+    )
+    counts = await phase_postprocess_suggestions(stored, paperless, tags)
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Nachverarbeitung abgeschlossen.",
+        phase="postprocess",
+        level="success",
+    )
+
+    worker._poll_progress.phase = "finalize"
+    record_event(
+        job_id,
+        job_type,
+        "phase_started",
+        "Finalisierung gestartet.",
+        phase="finalize",
+        data={"documents": len(docs)},
+    )
+    phase_store_embeddings(docs, embed_results)
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Finalisierung abgeschlossen.",
+        phase="finalize",
+        level="success",
+    )
+    return counts
+
+
+def phase_store_embeddings(
+    docs: list[PaperlessDocument],
+    embed_results: dict[int, EmbeddingResult],
+) -> None:
+    """Phase 7: index all successfully precomputed embeddings."""
+    from app import worker
+
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
     for doc in docs:
-        if worker._poll_progress.cancelled:
-            log.info("poll cancelled during classify phase")
-            break
-        er = embed_results.get(doc.id, EmbeddingResult())
-        context_docs = [r.document for r in er.similar_results]
-
-        t0 = time.monotonic()
-        classify_recorded = False
+        er = embed_results.get(doc.id)
+        if er is None or er.embedding is None:
+            continue
         try:
-            initial_result, raw_response = await classifier.classify(
-                doc,
-                context_docs,
-                correspondents,
-                doctypes,
-                storage_paths,
-                tags,
-                ollama,
+            context_builder.store_embedding(doc, er.embedding)
+            record_event(
+                job_id,
+                job_type,
+                "embedding_stored",
+                f"Dokument #{doc.id}: Embedding gespeichert.",
+                phase="finalize",
+                level="success",
+                document_id=doc.id,
             )
-            record_phase_timing(cycle_id, doc.id, "classify", t0, success=True)
-            classify_recorded = True
-
-            judge = await maybe_run_judge(
-                doc,
-                initial_result,
-                raw_response,
-                context_docs,
-                correspondents,
-                doctypes,
-                storage_paths,
-                tags,
-                ollama,
-                cycle_id=cycle_id,
-            )
-            result = judge.result
-
-            suggestion = store_suggestion(
-                doc,
-                result,
-                raw_response,
-                correspondents,
-                doctypes,
-                storage_paths,
-                tags,
-                similar_results=er.similar_results,
-                judge_verdict=judge.verdict,
-                judge_reasoning=judge.reasoning,
-                original_proposed_json=judge.original_proposed_json,
-            )
-
-            # Notify via Telegram (only if not auto-committing)
-            will_auto_commit = (
-                settings.auto_commit_confidence > 0
-                and result.confidence >= settings.auto_commit_confidence
-            )
-            if not will_auto_commit:
-                await notify_suggestion(suggestion)
-
-            # Auto-commit if confidence is high enough
-            if will_auto_commit:
-                log.info("auto-committing", doc_id=doc.id, confidence=result.confidence)
-                tag_ids = [
-                    tid for t in result.tags if (tid := resolve_entity(t.name, tags)) is not None
-                ]
-                decision = ReviewDecision(
-                    suggestion_id=suggestion.id,
-                    title=result.title,
-                    date=suggestion.effective_date,
-                    correspondent_id=suggestion.effective_correspondent_id,
-                    doctype_id=suggestion.effective_doctype_id,
-                    storage_path_id=suggestion.effective_storage_path_id,
-                    tag_ids=tag_ids,
-                    action="accept",
-                )
-                await commit_suggestion(suggestion, decision, paperless)
-
-            if will_auto_commit:
-                auto_committed += 1
-            else:
-                classified += 1
-            worker._poll_progress.succeeded += 1
         except Exception as exc:
-            errored += 1
-            worker._poll_progress.failed += 1
-            log.error("classification failed", doc_id=doc.id, error=repr(exc))
-            worker._write_error("classify", doc.id, exc)
-            # Only emit a 'classify' failure row if classify() itself failed.
-            # Errors in judge/store/notify/commit must not masquerade as classify
-            # failures (would inflate phase_timing error-rate for classify).
-            if not classify_recorded:
-                record_phase_timing(cycle_id, doc.id, "classify", t0, success=False)
-        finally:
-            worker._poll_progress.done += 1
-
-        # Index pre-computed embedding regardless of classification outcome
-        if er.embedding is not None:
-            try:
-                context_builder.store_embedding(doc, er.embedding)
-            except Exception as exc:
-                log.warning("indexing failed", doc_id=doc.id, error=str(exc))
-
-    await ollama.unload_model(ollama.model, swap=True)
-    return classified, auto_committed, errored
+            record_event(
+                job_id,
+                job_type,
+                "embedding_store_failed",
+                f"Dokument #{doc.id}: Embedding konnte nicht gespeichert werden.",
+                phase="finalize",
+                level="warning",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
+            log.warning("indexing failed", doc_id=doc.id, error=str(exc))
 
 
 async def process_batch(
@@ -538,13 +981,33 @@ async def process_batch(
     This module owns idempotency filtering, pending status, poll-cycle records,
     phase ordering, and processing counters.
     """
+    job_id = getattr(progress, "job_id", None)
+    job_type = getattr(progress, "job_type", None) or "poll"
     batch: list[PaperlessDocument] = []
     skipped = 0
     for doc in docs:
         if not force and should_skip_document(doc):
             skipped += 1
+            record_event(
+                job_id,
+                job_type,
+                "document_skipped",
+                f"Dokument #{doc.id} übersprungen - unverändert.",
+                phase="prepare",
+                document_id=doc.id,
+                data={"title": doc.title},
+            )
             continue
         log.info("processing document", doc_id=doc.id, title=doc.title[:80])
+        record_event(
+            job_id,
+            job_type,
+            "document_started",
+            f"Dokument #{doc.id} wird geprüft.",
+            phase="prepare",
+            document_id=doc.id,
+            data={"title": doc.title},
+        )
         mark_document_pending(doc)
         batch.append(doc)
 
@@ -553,6 +1016,15 @@ async def process_batch(
         progress.skipped = skipped
 
     if not batch:
+        record_event(
+            job_id,
+            job_type,
+            "job_noop",
+            "Keine neuen oder geänderten Dokumente zu prüfen.",
+            phase="prepare",
+            level="success",
+            data={"skipped": skipped},
+        )
         return BatchProcessResult(total=len(docs), skipped=skipped)
 
     cycle_id = uuid.uuid4().hex[:16]
@@ -570,20 +1042,60 @@ async def process_batch(
     try:
         if progress is not None:
             progress.phase = "ocr"
+        record_event(
+            job_id,
+            job_type,
+            "phase_started",
+            "OCR-Phase gestartet.",
+            phase="ocr",
+            data={"documents": len(batch)},
+        )
         if progress is not None and progress.cancelled:
             log.info("poll cancelled before OCR phase")
             return BatchProcessResult(total=len(docs), skipped=skipped, cycle_id=cycle_id)
         batch = await phase_ocr(batch, ollama, paperless, cycle_id, tags)
+        record_event(
+            job_id,
+            job_type,
+            "phase_finished",
+            "OCR-Phase abgeschlossen.",
+            phase="ocr",
+            level="success",
+        )
 
         if progress is not None:
             progress.phase = "embed"
+        record_event(
+            job_id,
+            job_type,
+            "phase_started",
+            "Embedding-Phase gestartet.",
+            phase="embed",
+            data={"documents": len(batch)},
+        )
         if progress is not None and progress.cancelled:
             log.info("poll cancelled before embed phase")
             return BatchProcessResult(total=len(docs), skipped=skipped, cycle_id=cycle_id)
         embed_results = await phase_embed(batch, paperless, ollama, cycle_id)
+        record_event(
+            job_id,
+            job_type,
+            "phase_finished",
+            "Embedding-Phase abgeschlossen.",
+            phase="embed",
+            level="success",
+        )
 
         if progress is not None:
             progress.phase = "classify"
+        record_event(
+            job_id,
+            job_type,
+            "phase_started",
+            "Klassifizierung gestartet.",
+            phase="classify",
+            data={"documents": len(batch)},
+        )
         if progress is not None and progress.cancelled:
             log.info("poll cancelled before classify phase")
             return BatchProcessResult(total=len(docs), skipped=skipped, cycle_id=cycle_id)

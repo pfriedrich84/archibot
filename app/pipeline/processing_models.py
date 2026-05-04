@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.models import ClassificationResult
+from app.models import ClassificationResult, PaperlessDocument, SuggestionRow
 from app.pipeline.context_builder import SimilarDocument
 
 ProcessResult = Literal["skipped", "classified", "auto_committed"]
@@ -32,6 +32,42 @@ class EmbeddingResult:
 
     embedding: list[float] | None = None
     similar_results: list[SimilarDocument] = field(default_factory=list)
+
+
+@dataclass
+class ClassificationDraft:
+    """Classifier output before judge verification or persistence."""
+
+    document: PaperlessDocument
+    context_docs: list[PaperlessDocument] = field(default_factory=list)
+    similar_results: list[SimilarDocument] = field(default_factory=list)
+    initial_result: ClassificationResult | None = None
+    raw_response: str | None = None
+    error: str | None = None
+
+
+@dataclass
+class JudgedDraft:
+    """Judge-reviewed classifier output before persistence."""
+
+    document: PaperlessDocument
+    context_docs: list[PaperlessDocument] = field(default_factory=list)
+    similar_results: list[SimilarDocument] = field(default_factory=list)
+    initial_result: ClassificationResult | None = None
+    raw_response: str | None = None
+    judge: JudgeOutcome | None = None
+    error: str | None = None
+
+
+@dataclass
+class StoredSuggestionResult:
+    """Stored suggestion plus post-processing decision."""
+
+    document: PaperlessDocument
+    suggestion: SuggestionRow | None = None
+    result: ClassificationResult | None = None
+    will_auto_commit: bool = False
+    error: str | None = None
 
 
 @dataclass

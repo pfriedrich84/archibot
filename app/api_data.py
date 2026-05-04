@@ -173,8 +173,14 @@ def get_review_queue(
                    s.proposed_correspondent_name,
                    s.proposed_doctype_name,
                    s.proposed_storage_path_name,
+                   s.proposed_storage_path_id,
+                   s.original_storage_path,
                    s.judge_verdict,
                    COALESCE(s.proposed_correspondent_id, s.original_correspondent) AS effective_correspondent_id,
+                   CASE
+                       WHEN s.original_storage_path IS NOT NULL THEN s.original_storage_path
+                       ELSE s.proposed_storage_path_id
+                   END AS effective_storage_path_id,
                    pd.status AS document_status
             FROM suggestions s
             LEFT JOIN processed_documents pd ON pd.document_id = s.document_id
@@ -461,6 +467,8 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             if last_poll
             else None,
             "next_run_at": next_run,
+            "job_id": poll.job_id,
+            "job_type": poll.job_type,
         },
         "reindex": {
             "running": reindex.running,

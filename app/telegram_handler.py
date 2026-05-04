@@ -78,6 +78,21 @@ async def notify_suggestion(suggestion: SuggestionRow) -> None:
     log.info("telegram notification sent", suggestion_id=suggestion.id)
 
 
+async def notify_job_summary(job_id: str | None, *, done: int, failed: int, skipped: int) -> None:
+    """Send a compact Telegram summary for a completed processing job."""
+    if not job_id or not _telegram or not _telegram.enabled:
+        return
+    emoji = "✅" if failed == 0 else "⚠️"
+    await _telegram.send_message(
+        f"{emoji} <b>ArchiBot Job abgeschlossen</b>\n"
+        f"<b>Job:</b> {job_id}\n"
+        f"<b>Erledigt:</b> {done}\n"
+        f"<b>Fehler:</b> {failed}\n"
+        f"<b>Übersprungen:</b> {skipped}",
+        parse_mode="HTML",
+    )
+
+
 # ----------------------------------------------------------------------
 # Callback handler: process Accept / Reject button presses
 # ----------------------------------------------------------------------

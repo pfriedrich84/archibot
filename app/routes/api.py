@@ -29,8 +29,14 @@ from app.config import settings
 from app.config_writer import apply_runtime_changes, save_config
 from app.db import get_conn, mark_setup_complete
 from app.indexer import cancel_reindex, get_reindex_progress, start_reindex_task
+from app.job_events import job_summary, list_events, recent_jobs
 from app.models import ReviewDecision, SuggestionRow
-from app.pipeline.committer import commit_suggestion
+from app.pipeline.committer import (
+    commit_suggestion,
+    retroactive_correspondent_apply,
+    retroactive_doctype_apply,
+    retroactive_tag_apply,
+)
 from app.prompt_store import get_prompt_spec, prompt_payload, reset_prompt, save_prompt
 from app.worker import cancel_poll, get_poll_progress, start_poll_task
 
@@ -119,11 +125,50 @@ async def _save_review_payload(
     storage_path_id = _coerce_optional_int(payload.get("storage_path_id"))
     tag_ids = _coerce_tag_ids(payload.get("tag_ids"))
 
-    unresolved_tags = [
-        {"id": None, "name": tag.get("name"), "confidence": tag.get("confidence")}
-        for tag in _json_list(suggestion.proposed_tags_json)
-        if isinstance(tag, dict) and tag.get("id") is None and tag.get("name")
-    ]
+    with get_conn() as conn:
+        approved_correspondent = (
+            conn.execute(
+                "SELECT paperless_id FROM correspondent_whitelist WHERE LOWER(name) = LOWER(?) AND approved = 1",
+                (suggestion.proposed_correspondent_name or "",),
+            ).fetchone()
+            if correspondent_id is None and suggestion.proposed_correspondent_name
+            else None
+        )
+        approved_doctype = (
+            conn.execute(
+                "SELECT paperless_id FROM doctype_whitelist WHERE LOWER(name) = LOWER(?) AND approved = 1",
+                (suggestion.proposed_doctype_name or "",),
+            ).fetchone()
+            if doctype_id is None and suggestion.proposed_doctype_name
+            else None
+        )
+        approved_tags = {
+            row["name"].lower(): row["paperless_id"]
+            for row in conn.execute(
+                "SELECT name, paperless_id FROM tag_whitelist WHERE approved = 1 AND paperless_id IS NOT NULL"
+            ).fetchall()
+        }
+
+    if (
+        correspondent_id is None
+        and approved_correspondent
+        and approved_correspondent["paperless_id"]
+    ):
+        correspondent_id = int(approved_correspondent["paperless_id"])
+    if doctype_id is None and approved_doctype and approved_doctype["paperless_id"]:
+        doctype_id = int(approved_doctype["paperless_id"])
+
+    unresolved_tags = []
+    for tag in _json_list(suggestion.proposed_tags_json):
+        if not isinstance(tag, dict) or tag.get("id") is not None or not tag.get("name"):
+            continue
+        approved_tag_id = approved_tags.get(str(tag.get("name")).lower())
+        if approved_tag_id:
+            tag_ids.append(int(approved_tag_id))
+        else:
+            unresolved_tags.append(
+                {"id": None, "name": tag.get("name"), "confidence": tag.get("confidence")}
+            )
     tag_dicts = [
         {"id": tag_id, "name": tag_lookup.get(tag_id, f"Tag #{tag_id}")} for tag_id in tag_ids
     ] + unresolved_tags
@@ -249,8 +294,14 @@ async def review_queue_api(
         judge_verdict=judge_verdict,
         sort=sort,
     )
+    lookups = await _load_review_lookups(request)
+    storage_lookup = {item["id"]: item["name"] for item in lookups["storage_paths"]}
+    for item in payload["items"]:
+        item["effective_storage_path_name"] = storage_lookup.get(
+            item.get("effective_storage_path_id")
+        )
     payload["filters"] = {
-        "correspondents": (await _load_review_lookups(request))["correspondents"],
+        "correspondents": lookups["correspondents"],
     }
     return payload
 
@@ -524,7 +575,9 @@ async def review_preview_api(request: Request, suggestion_id: int):
     try:
         content, content_type = await paperless.preview_document(document_id)
     except Exception as exc:
-        log.warning("paperless preview failed, falling back to download", id=document_id, error=str(exc))
+        log.warning(
+            "paperless preview failed, falling back to download", id=document_id, error=str(exc)
+        )
         content, content_type = await paperless.download_document(document_id)
 
     media_type = _browser_preview_content_type(content, content_type)
@@ -624,7 +677,13 @@ async def approve_tag_api(
             "UPDATE tag_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
             (entity.id, name),
         )
-    return {"ok": True, "status": "approved", "message": f"Tag '{name}' freigegeben."}
+    patched, pending = await retroactive_tag_apply(name, entity.id, request.app.state.paperless)
+    suffix = (
+        f" ({patched} Dokumente aktualisiert, {pending} offene Vorschläge aufgelöst)"
+        if patched or pending
+        else ""
+    )
+    return {"ok": True, "status": "approved", "message": f"Tag '{name}' freigegeben.{suffix}"}
 
 
 @router.post("/tags/reject")
@@ -669,7 +728,19 @@ async def approve_correspondent_api(
             "UPDATE correspondent_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
             (entity.id, name),
         )
-    return {"ok": True, "status": "approved", "message": f"Korrespondent '{name}' freigegeben."}
+    patched, pending = await retroactive_correspondent_apply(
+        name, entity.id, request.app.state.paperless
+    )
+    suffix = (
+        f" ({patched} Dokumente aktualisiert, {pending} offene Vorschläge aufgelöst)"
+        if patched or pending
+        else ""
+    )
+    return {
+        "ok": True,
+        "status": "approved",
+        "message": f"Korrespondent '{name}' freigegeben.{suffix}",
+    }
 
 
 @router.post("/correspondents/reject")
@@ -718,7 +789,17 @@ async def approve_doctype_api(
             "UPDATE doctype_whitelist SET approved = 1, paperless_id = ? WHERE name = ?",
             (entity.id, name),
         )
-    return {"ok": True, "status": "approved", "message": f"Dokumenttyp '{name}' freigegeben."}
+    patched, pending = await retroactive_doctype_apply(name, entity.id, request.app.state.paperless)
+    suffix = (
+        f" ({patched} Dokumente aktualisiert, {pending} offene Vorschläge aufgelöst)"
+        if patched or pending
+        else ""
+    )
+    return {
+        "ok": True,
+        "status": "approved",
+        "message": f"Dokumenttyp '{name}' freigegeben.{suffix}",
+    }
 
 
 @router.post("/doctypes/reject")
@@ -774,6 +855,52 @@ async def start_poll_api() -> dict[str, Any]:
         "started_at": progress.started_at,
         "last_poll": None,
         "next_run_at": None,
+        "job_id": getattr(progress, "job_id", None),
+        "job_type": getattr(progress, "job_type", None),
+    }
+
+
+@router.post("/jobs/poll/all/start")
+async def start_poll_all_api() -> dict[str, Any]:
+    started = start_poll_task(all_documents=True)
+    progress = get_poll_progress()
+    if not started:
+        reason = (
+            "Bereits aktiv oder Reindex läuft."
+            if progress.running
+            else "Embedding-Index fehlt oder ein Reindex läuft."
+        )
+        return {
+            "running": progress.running,
+            "phase": progress.phase,
+            "done": progress.done,
+            "total": progress.total,
+            "succeeded": progress.succeeded,
+            "failed": progress.failed,
+            "skipped": progress.skipped,
+            "cancelled": progress.cancelled,
+            "error": progress.error or reason,
+            "started_at": progress.started_at,
+            "next_run_at": None,
+            "last_poll": None,
+            "job_id": progress.job_id,
+            "job_type": progress.job_type,
+        }
+    return {
+        "running": progress.running,
+        "phase": progress.phase,
+        "done": progress.done,
+        "total": progress.total,
+        "succeeded": progress.succeeded,
+        "failed": progress.failed,
+        "skipped": progress.skipped,
+        "cancelled": progress.cancelled,
+        "error": progress.error,
+        "started_at": progress.started_at,
+        "next_run_at": None,
+        "last_poll": None,
+        "job_id": getattr(progress, "job_id", None),
+        "job_type": getattr(progress, "job_type", None),
     }
 
 
@@ -794,6 +921,32 @@ async def cancel_poll_api() -> dict[str, Any]:
         "started_at": progress.started_at,
         "last_poll": None,
         "next_run_at": None,
+        "job_id": getattr(progress, "job_id", None),
+        "job_type": getattr(progress, "job_type", None),
+    }
+
+
+@router.get("/jobs/events/recent")
+async def recent_job_events_api(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
+    return {"items": recent_jobs(limit=limit)}
+
+
+@router.get("/jobs/{job_id}/events")
+async def job_events_api(
+    job_id: str,
+    since: int = Query(default=0, ge=0),
+    limit: int = Query(default=250, ge=1, le=1000),
+) -> dict[str, Any]:
+    events = list_events(job_id, since=since, limit=limit)
+    latest = events[-1]["id"] if events else since
+    progress = get_poll_progress()
+    running = progress.running and progress.job_id == job_id
+    return {
+        "job_id": job_id,
+        "events": events,
+        "latest_id": latest,
+        "running": running,
+        "summary": job_summary(job_id),
     }
 
 
@@ -837,7 +990,9 @@ async def stats_api() -> dict[str, Any]:
 
 
 @router.get("/embeddings")
-async def embeddings_api(request: Request, limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+async def embeddings_api(
+    request: Request, limit: int = Query(default=100, ge=1, le=500)
+) -> dict[str, Any]:
     paperless = getattr(request.app.state, "paperless", None)
     if not paperless:
         return get_embeddings_snapshot(limit=limit)

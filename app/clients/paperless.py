@@ -104,7 +104,9 @@ class PaperlessClient:
         )
         r.raise_for_status()
         content_type = r.headers.get("content-type", "application/pdf")
-        log.info("document preview downloaded", id=document_id, size=len(r.content), ct=content_type)
+        log.info(
+            "document preview downloaded", id=document_id, size=len(r.content), ct=content_type
+        )
         return r.content, content_type
 
     async def search_documents(
@@ -171,19 +173,30 @@ class PaperlessClient:
         return await self._list_entity("/storage_paths/")
 
     async def create_tag(self, name: str) -> PaperlessEntity:
-        r = await self._client.post("/tags/", json={"name": name})
+        r = await self._client.post("/tags/", json=self._new_entity_payload(name))
         r.raise_for_status()
         return PaperlessEntity.model_validate(r.json())
 
     async def create_correspondent(self, name: str) -> PaperlessEntity:
-        r = await self._client.post("/correspondents/", json={"name": name})
+        r = await self._client.post("/correspondents/", json=self._new_entity_payload(name))
         r.raise_for_status()
         return PaperlessEntity.model_validate(r.json())
 
     async def create_document_type(self, name: str) -> PaperlessEntity:
-        r = await self._client.post("/document_types/", json={"name": name})
+        r = await self._client.post("/document_types/", json=self._new_entity_payload(name))
         r.raise_for_status()
         return PaperlessEntity.model_validate(r.json())
+
+    @staticmethod
+    def _new_entity_payload(name: str) -> dict[str, object]:
+        """Payload for AI-created Paperless entities.
+
+        Paperless exposes "Zuweisungsalgorithmus"/"Zuweisungsmuster" on tags,
+        correspondents and document types.  Archibot assigns reviewed entities
+        explicitly, so new entities must not start matching future documents on
+        their own just because a name was approved once.
+        """
+        return {"name": name, "matching_algorithm": 0, "match": ""}
 
     async def _list_entity(self, path: str) -> list[PaperlessEntity]:
         out: list[PaperlessEntity] = []

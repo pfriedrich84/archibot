@@ -18,6 +18,8 @@ export type DashboardPayload = {
     error: string | null;
     started_at: string | null;
     next_run_at: string | null;
+    job_id?: string | null;
+    job_type?: string | null;
     last_poll: null | {
       started_at: string;
       finished_at: string;
@@ -53,6 +55,27 @@ export type DashboardPayload = {
     message: string;
     details: string | null;
   }>;
+};
+
+export type JobEvent = {
+  id: number;
+  job_id: string;
+  job_type: string;
+  phase: string | null;
+  level: 'info' | 'warning' | 'error' | 'success';
+  event: string;
+  document_id: number | null;
+  message: string;
+  created_at: string;
+  data: Record<string, unknown>;
+};
+
+export type JobEventsPayload = {
+  job_id: string;
+  events: JobEvent[];
+  latest_id: number;
+  running: boolean;
+  summary: Record<string, unknown>;
 };
 
 export type StatusPayload = {
@@ -150,9 +173,13 @@ export type ReviewQueueItem = {
   proposed_correspondent_name: string | null;
   proposed_doctype_name: string | null;
   proposed_storage_path_name: string | null;
+  proposed_storage_path_id?: number | null;
+  original_storage_path?: number | null;
   judge_verdict: string | null;
   document_status: string | null;
   effective_correspondent_id?: number | null;
+  effective_storage_path_id?: number | null;
+  effective_storage_path_name?: string | null;
 };
 
 export type ReviewQueuePayload = {

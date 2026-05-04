@@ -7,11 +7,13 @@
     loadChat,
     loadDashboard,
     loadErrors,
+    loadJobEvents,
     loadStatus,
     startPoll,
+    startPollAll,
     startReindex
   } from '$lib/api';
-  import type { ChatPayload, DashboardPayload, ErrorsPayload, StatusPayload } from '$lib/types';
+  import type { ChatPayload, DashboardPayload, ErrorsPayload, JobEvent, StatusPayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -21,9 +23,11 @@
   let status = $state<StatusPayload>(initialData().status);
   let errors = $state<ErrorsPayload>(initialData().errors);
   let chat = $state<ChatPayload>(initialData().chat);
-  let actionState = $state<'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | ''>('');
+  let actionState = $state<'poll-start' | 'poll-all-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel' | ''>('');
   let feedback = $state<{ type: 'success' | 'error'; message: string } | null>(null);
   let refreshing = $state(false);
+  let jobEvents = $state<JobEvent[]>([]);
+  let latestJobEventId = $state(0);
 
   let logEntries = $derived.by(() => {
     const errorRows = errors.items.map((item) => ({
@@ -84,13 +88,26 @@
       status = nextStatus;
       errors = nextErrors;
       chat = nextChat;
+
+      const jobId = nextDashboard.pipeline.job_id;
+      if (jobId) {
+        if (jobEvents[0]?.job_id && jobEvents[0].job_id !== jobId) {
+          jobEvents = [];
+          latestJobEventId = 0;
+        }
+        const payload = await loadJobEvents(jobId, fetch, latestJobEventId);
+        if (payload.events.length > 0) {
+          jobEvents = [...jobEvents, ...payload.events].slice(-250);
+          latestJobEventId = payload.latest_id;
+        }
+      }
     } finally {
       refreshing = false;
     }
   }
 
   async function runJobAction(
-    key: 'poll-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel',
+    key: 'poll-start' | 'poll-all-start' | 'poll-cancel' | 'reindex-start' | 'reindex-cancel',
     action: () => Promise<DashboardPayload['pipeline'] | DashboardPayload['reindex']>
   ) {
     actionState = key;
@@ -99,6 +116,8 @@
       const result = await action();
       if (key.startsWith('poll')) {
         dashboard = { ...dashboard, pipeline: result as DashboardPayload['pipeline'] };
+        jobEvents = [];
+        latestJobEventId = 0;
       } else {
         dashboard = { ...dashboard, reindex: result as DashboardPayload['reindex'] };
       }
@@ -107,7 +126,9 @@
         message:
           key === 'poll-start'
             ? 'Polling gestartet.'
-            : key === 'poll-cancel'
+            : key === 'poll-all-start'
+              ? 'Prüfung aller Dokumente gestartet.'
+              : key === 'poll-cancel'
               ? 'Polling-Abbruch angefordert.'
               : key === 'reindex-start'
                 ? 'Reindex gestartet.'
@@ -143,7 +164,7 @@
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Polling</p>
               <h2 class="mt-2 text-lg font-semibold text-white">Dokumente verarbeiten</h2>
-              <p class="mt-1.5 text-sm text-slate-400">Startet den nächsten Erfassungs- und Klassifizierungslauf für neue Dokumente.</p>
+              <p class="mt-1.5 text-sm text-slate-400">Startet den nächsten Erfassungs- und Klassifizierungslauf für neue Dokumente oder prüft optional alle Paperless-Dokumente.</p>
             </div>
             <Badge color={dashboard.pipeline.running ? 'blue' : 'green'}>{dashboard.pipeline.running ? 'Aktiv' : 'Bereit'}</Badge>
           </div>
@@ -155,7 +176,8 @@
           </div>
 
           <div class="mt-5 flex flex-wrap gap-3">
-            <Button color="green" onclick={() => void runJobAction('poll-start', startPoll)} disabled={actionState !== '' || dashboard.pipeline.running}>{actionState === 'poll-start' ? 'Startet …' : 'Polling starten'}</Button>
+            <Button color="green" onclick={() => void runJobAction('poll-start', startPoll)} disabled={actionState !== '' || dashboard.pipeline.running}>{actionState === 'poll-start' ? 'Startet …' : 'Posteingang prüfen'}</Button>
+            <Button color="blue" onclick={() => void runJobAction('poll-all-start', startPollAll)} disabled={actionState !== '' || dashboard.pipeline.running}>{actionState === 'poll-all-start' ? 'Startet …' : 'Alle Dokumente prüfen'}</Button>
             <Button color="alternative" onclick={() => void runJobAction('poll-cancel', cancelPoll)} disabled={actionState !== '' || !dashboard.pipeline.running}>{actionState === 'poll-cancel' ? 'Stoppt …' : 'Polling stoppen'}</Button>
           </div>
         </Card>
@@ -200,11 +222,40 @@
     <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Live Log</p>
-          <h2 class="mt-2 text-lg font-semibold text-white">Aktuelle Ereignisse</h2>
-          <p class="mt-1.5 text-sm text-slate-400">Aktualisiert automatisch alle 5 Sekunden aus Fehlern und Audit-Aktivität.</p>
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Job-Protokoll</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">Dokumentgenauer Ablauf</h2>
+          <p class="mt-1.5 text-sm text-slate-400">Sichere, strukturierte Events aus dem Backend. Wird alle 5 Sekunden aktualisiert und bleibt in SQLite gespeichert.</p>
         </div>
         <Button color="dark" class="rounded-xl border border-slate-700" onclick={() => void refreshProcessing()} disabled={refreshing}>{refreshing ? 'Aktualisiert …' : 'Aktualisieren'}</Button>
+      </div>
+
+      <div class="mt-5 space-y-2.5">
+        {#each jobEvents as event}
+          <div class={`rounded-2xl border p-3.5 text-sm ${event.level === 'error' ? 'border-rose-500/20 bg-rose-500/10 text-rose-100' : event.level === 'warning' ? 'border-amber-500/20 bg-amber-500/10 text-amber-100' : event.level === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100' : 'border-slate-800 bg-slate-950/60 text-slate-300'}`}>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge color={event.level === 'error' ? 'red' : event.level === 'warning' ? 'yellow' : event.level === 'success' ? 'green' : 'gray'}>{event.phase || event.job_type}</Badge>
+                  {#if event.document_id}<span class="font-medium text-white">Dokument #{event.document_id}</span>{/if}
+                </div>
+                <p class="mt-2 text-slate-200">{event.message}</p>
+              </div>
+              <span class="shrink-0 text-xs text-slate-500">{formatDateTime(event.created_at)}</span>
+            </div>
+          </div>
+        {:else}
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Noch kein aktives Job-Protokoll. Starte „Posteingang prüfen“ oder „Alle Dokumente prüfen“.</div>
+        {/each}
+      </div>
+    </Card>
+
+    <Card size="xl" class="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Audit & Fehler</p>
+          <h2 class="mt-2 text-lg font-semibold text-white">Aktuelle Ereignisse</h2>
+          <p class="mt-1.5 text-sm text-slate-400">Kompakte Übersicht aus Fehlern und Audit-Aktivität.</p>
+        </div>
       </div>
 
       <div class="mt-5 space-y-2.5">

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -14,6 +16,7 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
 from app.indexer import is_reindexing
+from app.job_events import record_event
 from app.pipeline.ocr_correction import configured_ocr_tag_exists, ocr_requested_tag_id
 
 log = structlog.get_logger(__name__)
@@ -48,6 +51,8 @@ class PollProgress:
     error: str | None = None
     started_at: str | None = None  # ISO timestamp when this poll started
     cycle_id: str | None = None  # links to poll_cycles table
+    job_id: str | None = None  # links to persistent job_events
+    job_type: str | None = None
 
 
 _poll_progress = PollProgress()
@@ -92,7 +97,7 @@ def _has_embedding_index() -> bool:
     return count["c"] > 0
 
 
-def start_poll_task() -> bool:
+def start_poll_task(*, all_documents: bool = False) -> bool:
     """Launch ``poll_inbox`` as a background asyncio task.
 
     Returns ``True`` if started, ``False`` if already running, reindexing,
@@ -114,14 +119,53 @@ def start_poll_task() -> bool:
     _poll_progress.error = None
     _poll_progress.started_at = datetime.now(tz=UTC).isoformat()
     _poll_progress.cycle_id = None
+    _poll_progress.job_type = "poll_all" if all_documents else "poll"
+    _poll_progress.job_id = f"{_poll_progress.job_type}-{uuid.uuid4().hex[:12]}"
+    record_event(
+        _poll_progress.job_id,
+        _poll_progress.job_type,
+        "job_started",
+        "Prüfung aller Dokumente gestartet." if all_documents else "Posteingang-Prüfung gestartet.",
+        phase="prepare",
+    )
 
     async def _run() -> None:
         try:
-            await poll_inbox()
+            await poll_inbox(all_documents=all_documents)
         except Exception as exc:
             _poll_progress.error = str(exc)
+            record_event(
+                _poll_progress.job_id,
+                _poll_progress.job_type or "poll",
+                "job_failed",
+                "Job fehlgeschlagen.",
+                level="error",
+                data={"error": str(exc)[:300]},
+            )
             log.error("background poll failed", error=str(exc))
         finally:
+            if _poll_progress.error is None:
+                record_event(
+                    _poll_progress.job_id,
+                    _poll_progress.job_type or "poll",
+                    "job_finished",
+                    "Job abgeschlossen.",
+                    level="success",
+                    data={
+                        "done": _poll_progress.done,
+                        "failed": _poll_progress.failed,
+                        "skipped": _poll_progress.skipped,
+                    },
+                )
+                with contextlib.suppress(Exception):
+                    from app.telegram_handler import notify_job_summary
+
+                    await notify_job_summary(
+                        _poll_progress.job_id,
+                        done=_poll_progress.done,
+                        failed=_poll_progress.failed,
+                        skipped=_poll_progress.skipped,
+                    )
             _poll_progress.running = False
 
     global _poll_task
@@ -132,8 +176,8 @@ def start_poll_task() -> bool:
 # ---------------------------------------------------------------------------
 # Main poll loop
 # ---------------------------------------------------------------------------
-async def poll_inbox(*, force: bool = False) -> None:
-    """Fetch inbox documents and run the classification pipeline.
+async def poll_inbox(*, force: bool = False, all_documents: bool = False) -> None:
+    """Fetch inbox or all Paperless documents and run the classification pipeline.
 
     Processing is split into phases to minimise Ollama model swaps:
 
@@ -143,8 +187,10 @@ async def poll_inbox(*, force: bool = False) -> None:
 
     Each phase unloads its model from VRAM before the next phase begins.
 
-    When ``force=True``, the idempotency skip check is bypassed and inbox
-    documents are reprocessed even if their ``modified`` timestamp did not change.
+    When ``force=True``, the idempotency skip check is bypassed and documents
+    are reprocessed even if their ``modified`` timestamp did not change.
+    When ``all_documents=True``, every Paperless document is considered instead
+    of only documents with the configured inbox tag.
     """
     if _paperless is None or _ollama is None:
         log.error("worker not initialised — skipping poll")
@@ -155,20 +201,69 @@ async def poll_inbox(*, force: bool = False) -> None:
         return
 
     if not _has_embedding_index():
+        record_event(
+            _poll_progress.job_id,
+            _poll_progress.job_type or "poll",
+            "job_blocked",
+            "Embedding-Index fehlt. Bitte zuerst Reindex starten.",
+            level="warning",
+            phase="prepare",
+        )
         log.info("no embedding index yet — skipping poll (run reindex first)")
         return
 
-    log.info("polling inbox")
+    source = "all documents" if all_documents else "inbox"
+    record_event(
+        _poll_progress.job_id,
+        _poll_progress.job_type or "poll",
+        "fetch_started",
+        "Dokumente werden aus Paperless geladen.",
+        phase="fetch",
+        data={"source": source},
+    )
+    log.info("polling documents", source=source)
     try:
-        docs = await _paperless.list_inbox_documents(settings.paperless_inbox_tag_id)
+        docs = (
+            await _paperless.list_all_documents()
+            if all_documents
+            else await _paperless.list_inbox_documents(settings.paperless_inbox_tag_id)
+        )
     except Exception as exc:
-        log.error("failed to fetch inbox", error=str(exc))
+        record_event(
+            _poll_progress.job_id,
+            _poll_progress.job_type or "poll",
+            "fetch_failed",
+            "Dokumente konnten nicht geladen werden.",
+            phase="fetch",
+            level="error",
+            data={"error": str(exc)[:300]},
+        )
+        log.error("failed to fetch documents", source=source, error=str(exc))
         _write_error("poll", None, exc)
         return
 
     if not docs:
-        log.info("inbox empty")
+        record_event(
+            _poll_progress.job_id,
+            _poll_progress.job_type or "poll",
+            "fetch_empty",
+            "Keine Dokumente zum Prüfen gefunden.",
+            phase="fetch",
+            level="success",
+            data={"source": source},
+        )
+        log.info("no documents to process", source=source)
         return
+
+    record_event(
+        _poll_progress.job_id,
+        _poll_progress.job_type or "poll",
+        "fetch_done",
+        f"{len(docs)} Dokumente geladen.",
+        phase="fetch",
+        level="success",
+        data={"count": len(docs), "source": source},
+    )
 
     # Cache entity lists once per cycle
     try:
@@ -177,6 +272,15 @@ async def poll_inbox(*, force: bool = False) -> None:
         storage_paths = await _paperless.list_storage_paths()
         tags = await _paperless.list_tags()
     except Exception as exc:
+        record_event(
+            _poll_progress.job_id,
+            _poll_progress.job_type or "poll",
+            "entities_failed",
+            "Paperless-Listen konnten nicht geladen werden.",
+            phase="prepare",
+            level="error",
+            data={"error": str(exc)[:300]},
+        )
         log.error("failed to fetch entity lists", error=str(exc))
         _write_error("poll", None, exc)
         return

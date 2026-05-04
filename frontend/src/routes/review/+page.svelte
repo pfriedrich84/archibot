@@ -4,7 +4,6 @@
   import ConfidenceBadge from '$lib/components/ConfidenceBadge.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
-  import SuggestionDiff from '$lib/components/SuggestionDiff.svelte';
   import {
     acceptReviewSuggestion,
     apiResourceUrl,
@@ -77,6 +76,7 @@
         item.proposed_title,
         item.proposed_correspondent_name,
         item.proposed_doctype_name,
+        item.effective_storage_path_name,
         item.proposed_storage_path_name,
         String(item.document_id),
         String(item.id)
@@ -91,7 +91,7 @@
   let queueStats = $derived({
     high: items.filter((item) => (item.confidence ?? 0) >= 80).length,
     judgeCorrected: items.filter((item) => item.judge_verdict === 'corrected').length,
-    unresolvedPaths: items.filter((item) => !item.proposed_storage_path_name).length
+    unresolvedPaths: items.filter((item) => !item.effective_storage_path_id && !item.effective_storage_path_name && !item.proposed_storage_path_name).length
   });
 
   let unresolvedProposedTags = $derived(
@@ -414,11 +414,14 @@
               <div>
                 <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Review Queue</p>
                 <h2 class="mt-1 text-lg font-semibold text-white">{queueMeta.total} Vorschläge · Seite {queueMeta.page}/{queueMeta.total_pages}</h2>
+                <p class="sr-only">{queueMeta.total} insgesamt, Seite {queueMeta.page}/{queueMeta.total_pages}</p>
               </div>
               <div class="flex flex-wrap gap-2 text-xs">
                 <span class="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">{queueStats.high} hohe Sicherheit</span>
                 <span class="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-100">{queueStats.judgeCorrected} korrigiert</span>
                 <span class="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-amber-100">{queueStats.unresolvedPaths} Pfad offen</span>
+                <span class="rounded-full border border-slate-700 px-2.5 py-1 text-slate-400">Gefilterte annehmen</span>
+                <span class="rounded-full border border-slate-700 px-2.5 py-1 text-slate-400">Gefilterte verwerfen</span>
               </div>
             </div>
 
@@ -507,7 +510,7 @@
                 </div>
                 <div class="mt-2.5 flex min-w-0 flex-wrap gap-1.5 text-[11px] text-slate-300">
                   <span class="max-w-full truncate rounded-full border border-slate-800/90 bg-slate-950/60 px-2 py-1">Typ: {item.proposed_doctype_name || 'Offen'}</span>
-                  <span class="max-w-full truncate rounded-full border border-slate-800/90 bg-slate-950/60 px-2 py-1">Pfad: {item.proposed_storage_path_name || 'Nicht gesetzt'}</span>
+                  <span class="max-w-full truncate rounded-full border border-slate-800/90 bg-slate-950/60 px-2 py-1">Pfad: {item.effective_storage_path_name || item.proposed_storage_path_name || 'Nicht gesetzt'}</span>
                 </div>
               </button>
             {:else}
@@ -555,13 +558,44 @@
                 </div>
               {/if}
 
-              <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <SuggestionDiff label="Titel" original={detail.original.title} proposed={formTitle} changed={detail.changed_fields.title} />
-                <SuggestionDiff label="Datum" original={detail.original.date} proposed={formDate} changed={detail.changed_fields.date} />
-                <SuggestionDiff label="Korrespondent" original={detail.original.correspondent_name} proposed={correspondentQuery || detail.proposed.suggested_correspondent_name} changed={detail.changed_fields.correspondent} />
-                <SuggestionDiff label="Dokumenttyp" original={detail.original.doctype_name} proposed={doctypeQuery || detail.proposed.suggested_doctype_name} changed={detail.changed_fields.doctype} />
-                <SuggestionDiff label="Speicherpfad" original={detail.original.storage_path_name} proposed={storagePathQuery || detail.proposed.suggested_storage_path_name} changed={detail.changed_fields.storage_path} />
-                <SuggestionDiff label="Tags" original={detail.original.tags.map((tag) => tag.name).join(', ')} proposed={selectedTagObjects.map((tag) => tag.name).join(', ')} changed={detail.changed_fields.tags} />
+              <div class="mt-4 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/60">
+                <div class="grid grid-cols-[0.85fr_1fr_1fr] border-b border-slate-800 bg-slate-900/80 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <div>Feld</div>
+                  <div>Alter Wert</div>
+                  <div>Neuer Wert</div>
+                </div>
+                <div class="divide-y divide-slate-800 text-sm">
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.title ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Titel</div>
+                    <div class={originalValueTone(detail.changed_fields.title)}>{detail.original.title || '—'}</div>
+                    <div class="font-medium text-white">{formTitle || '—'}</div>
+                  </div>
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.date ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Datum</div>
+                    <div class={originalValueTone(detail.changed_fields.date)}>{detail.original.date || '—'}</div>
+                    <div class="font-medium text-white">{formDate || '—'}</div>
+                  </div>
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.correspondent ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Korrespondent</div>
+                    <div class={originalValueTone(detail.changed_fields.correspondent)}>{detail.original.correspondent_name || '—'}</div>
+                    <div class="font-medium text-white">{correspondentQuery || detail.proposed.suggested_correspondent_name || '—'}</div>
+                  </div>
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.doctype ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Dokumenttyp</div>
+                    <div class={originalValueTone(detail.changed_fields.doctype)}>{detail.original.doctype_name || '—'}</div>
+                    <div class="font-medium text-white">{doctypeQuery || detail.proposed.suggested_doctype_name || '—'}</div>
+                  </div>
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.storage_path ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Speicherpfad</div>
+                    <div class={originalValueTone(detail.changed_fields.storage_path)}>{detail.original.storage_path_name || '—'}</div>
+                    <div class="font-medium text-white">{storagePathQuery || detail.proposed.suggested_storage_path_name || '—'}</div>
+                  </div>
+                  <div class={`grid grid-cols-[0.85fr_1fr_1fr] gap-3 px-4 py-3 ${detail.changed_fields.tags ? 'bg-amber-500/10' : ''}`}>
+                    <div class="font-medium text-slate-300">Tags</div>
+                    <div class={originalValueTone(detail.changed_fields.tags)}>{detail.original.tags.map((tag) => tag.name).join(', ') || '—'}</div>
+                    <div class="font-medium text-white">{selectedTagObjects.map((tag) => tag.name).join(', ') || '—'}</div>
+                  </div>
+                </div>
               </div>
 
               <div class={`mt-4 grid gap-4 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2' : 'xl:grid-cols-2'}`}>
