@@ -25,6 +25,12 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
 7. tag confidence: INTEGER 0..100 pro Tag.
 8. confidence: INTEGER 0..100 (Gesamtsicherheit).
    - KEIN Float, KEINE Wahrscheinlichkeit (z. B. 0.9 ist verboten).
+   - Bewerte confidence sehr kritisch und konservativ. Hohe Werte sind selten.
+   - 95-100 nur, wenn alle zentralen Felder direkt und eindeutig im Zieldokument belegt sind, keine Mehrdeutigkeit besteht und keine neuen/unbekannten Entitaeten geraten werden muessen.
+   - 85-94 nur bei sehr guter Evidenz mit kleinen Unsicherheiten, z. B. leichte OCR-Artefakte oder ein einzelnes weniger wichtiges Feld unsicher.
+   - 70-84 fuer plausible, aber nicht vollstaendig belegte Vorschlaege.
+   - Unter 70, wenn Korrespondent, Dokumenttyp, Datum oder Speicherpfad unsicher sind.
+   - Senke confidence deutlich, wenn du neue Entitaeten vorschlaegst, statt vorhandene eindeutig zuzuordnen.
 9. reasoning: 1-2 kurze Saetze, konkret, keine Wiederholung des ganzen Inhalts. Begruende nur tatsaechliche Vorschlaege/Aenderungen; keine Aussagen wie "bleibt"/"stays" zu unveraenderten Feldern.
 10. Kontext-Dokumente sind starke Hinweise. Bei Konflikten: Inhalt des Zieldokuments vor Kontext. Kontext darf keine bereits gesetzten Ziel-Felder ueberschreiben oder erklaeren.
 11. storage_path: Wenn am Ziel-Dokument bereits ein Speicherpfad gesetzt ist, gib null aus und erwaehne den Speicherpfad nicht in der reasoning. Null bedeutet: bestehenden Ziel-Pfad unveraendert lassen.

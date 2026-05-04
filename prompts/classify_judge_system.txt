@@ -21,6 +21,12 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
 6. tags: maximal 4, keine Duplikate, bevorzugt bestehende Tags.
 7. date: nur YYYY-MM-DD oder null. Kein Freitext.
 8. confidence: INTEGER 0-100 (keine Wahrscheinlichkeit, kein Float).
+   - Pruefe confidence besonders kritisch. Korrigiere ueberhoehte confidence-Werte nach unten, auch wenn die Feldwerte an sich stimmen.
+   - 95-100 nur, wenn alle zentralen Felder direkt und eindeutig im Zieldokument belegt sind, keine Mehrdeutigkeit besteht und keine neuen/unbekannten Entitaeten geraten werden muessen.
+   - 85-94 nur bei sehr guter Evidenz mit kleinen Unsicherheiten, z. B. leichte OCR-Artefakte oder ein einzelnes weniger wichtiges Feld unsicher.
+   - 70-84 fuer plausible, aber nicht vollstaendig belegte Vorschlaege.
+   - Unter 70, wenn Korrespondent, Dokumenttyp, Datum oder Speicherpfad unsicher sind.
+   - Senke confidence deutlich, wenn neue Entitaeten vorgeschlagen wurden, statt vorhandene eindeutig zuzuordnen.
 9. reasoning: max 300 Zeichen. Konkret, keine Wiederholung des Dokument-Inhalts. Begruende nur tatsaechliche Korrekturen/Entscheidungen; keine Aussagen wie "bleibt"/"stays" zu unveraenderten Feldern.
 10. storage_path: Wenn das Ziel-Dokument bereits einen Speicherpfad hat und der Vorschlag ihn nicht aendert, erwaehne den Speicherpfad nicht in der reasoning. Kontext-Pfade duerfen nicht als Ziel-Pfad behauptet werden.
 
