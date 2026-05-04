@@ -699,23 +699,28 @@ class TestMaybeRunJudge:
         ollama.chat_json.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_skipped_when_no_context_docs(self):
-        from app.models import ClassificationResult
+    async def test_threshold_101_judges_even_without_context_docs(self):
+        from app.models import ClassificationResult, JudgeVerdict
 
-        initial = ClassificationResult(title="T", confidence=40, reasoning="x", tags=[])
+        initial = ClassificationResult(title="T", confidence=100, reasoning="x", tags=[])
         doc = _make_doc(1)
         ollama = AsyncMock()
-        ollama.chat_json = AsyncMock()
 
-        with patch("app.pipeline.document_processing.settings") as mock_settings:
+        with (
+            patch("app.pipeline.document_processing.settings") as mock_settings,
+            patch(
+                "app.pipeline.document_processing.classifier.verify",
+                AsyncMock(return_value=JudgeVerdict(verdict="agree", reasoning="ok")),
+            ) as mock_verify,
+        ):
             mock_settings.enable_judge_verification = True
-            mock_settings.judge_confidence_threshold = 85
-            mock_settings.ollama_judge_model = ""
+            mock_settings.judge_confidence_threshold = 101
+            mock_settings.ollama_judge_model = "qwen3:4b"
             outcome = await maybe_run_judge(
                 doc, initial, "{}", [], [], [], [], [], ollama, cycle_id=None
             )
-        assert outcome.verdict == "skipped"
-        ollama.chat_json.assert_not_called()
+        assert outcome.verdict == "agree"
+        mock_verify.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_corrected_result_replaces_initial(self):

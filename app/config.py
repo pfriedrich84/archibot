@@ -60,8 +60,8 @@ class Settings(BaseSettings):
 
     # --- LLM-as-Judge verification (optional second pass) ---
     enable_judge_verification: bool = False
-    judge_confidence_threshold: int = 85  # skip judge if initial confidence >= threshold
-    ollama_judge_model: str = ""  # empty = reuse ollama_model (no extra GPU swap)
+    judge_confidence_threshold: int = 101  # 101 = judge all results (confidence is 0-100)
+    ollama_judge_model: str = "qwen3:4b"  # empty = reuse ollama_model (no extra GPU swap)
 
     # --- GUI ---
     gui_port: int = 8088
@@ -513,22 +513,22 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Phase 3: Klassifikation",
         "Enable Judge Verification",
         "bool",
-        help="Run a second LLM pass that verifies and optionally corrects each classification. "
-        "Only applied when the initial confidence is below Judge Confidence Threshold.",
+        help="Run a second LLM pass that verifies and optionally corrects classifications. "
+        "Use Judge Confidence Threshold=101 to verify every result.",
     ),
     "judge_confidence_threshold": _fm(
         "Phase 3: Klassifikation",
         "Judge Confidence Threshold",
         "number",
-        help="Skip judge pass when initial confidence is >= this value (0-100). "
-        "Lower = verify more often (higher cost).",
+        help="Skip judge pass when initial confidence is >= this value. 101 = judge every result. "
+        "Lower values verify fewer high-confidence results and reduce cost.",
     ),
     "ollama_judge_model": _fm(
         "Phase 3: Klassifikation",
-        "Judge Model (optional)",
+        "Judge Model",
         "model_select",
         restart="component",
-        help="Ollama model used for judge pass. Empty = reuse Classification Model (no GPU swap).",
+        help="Ollama model used for judge pass. Recommended with gemma4:e4b classifier: qwen3:4b. Empty = reuse Classification Model (no GPU swap).",
     ),
     # --- Worker ---
     "poll_interval_seconds": _fm(

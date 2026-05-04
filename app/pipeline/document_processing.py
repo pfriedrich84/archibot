@@ -238,12 +238,11 @@ async def maybe_run_judge(
     """Gate + run Judge verification, returning the possibly corrected result."""
     if getattr(settings, "enable_judge_verification", False) is not True:
         return JudgeOutcome(result=initial)
-    threshold = getattr(settings, "judge_confidence_threshold", 0)
+    threshold = getattr(settings, "judge_confidence_threshold", 101)
     if not isinstance(threshold, int | float):
-        threshold = 0
+        threshold = 101
+    # Confidence is normalized to 0..100. Use 101 to verify every classification.
     if initial.confidence >= threshold:
-        return JudgeOutcome(result=initial, verdict="skipped")
-    if not context_docs:
         return JudgeOutcome(result=initial, verdict="skipped")
 
     t0 = time.monotonic()
