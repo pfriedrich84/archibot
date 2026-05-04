@@ -845,6 +845,8 @@ async def start_poll_api() -> dict[str, Any]:
     return {
         "running": progress.running,
         "phase": progress.phase,
+        "phase_done": getattr(progress, "phase_done", 0),
+        "phase_total": getattr(progress, "phase_total", 0),
         "done": progress.done,
         "total": progress.total,
         "succeeded": progress.succeeded,
@@ -873,6 +875,8 @@ async def start_poll_all_api() -> dict[str, Any]:
         return {
             "running": progress.running,
             "phase": progress.phase,
+            "phase_done": getattr(progress, "phase_done", 0),
+            "phase_total": getattr(progress, "phase_total", 0),
             "done": progress.done,
             "total": progress.total,
             "succeeded": progress.succeeded,
@@ -889,6 +893,8 @@ async def start_poll_all_api() -> dict[str, Any]:
     return {
         "running": progress.running,
         "phase": progress.phase,
+        "phase_done": getattr(progress, "phase_done", 0),
+        "phase_total": getattr(progress, "phase_total", 0),
         "done": progress.done,
         "total": progress.total,
         "succeeded": progress.succeeded,
@@ -911,6 +917,8 @@ async def cancel_poll_api() -> dict[str, Any]:
     return {
         "running": progress.running,
         "phase": progress.phase,
+        "phase_done": getattr(progress, "phase_done", 0),
+        "phase_total": getattr(progress, "phase_total", 0),
         "done": progress.done,
         "total": progress.total,
         "succeeded": progress.succeeded,
@@ -940,7 +948,10 @@ async def job_events_api(
     events = list_events(job_id, since=since, limit=limit)
     latest = events[-1]["id"] if events else since
     progress = get_poll_progress()
-    running = progress.running and progress.job_id == job_id
+    reindex_progress = get_reindex_progress()
+    running = (progress.running and progress.job_id == job_id) or (
+        reindex_progress.running and reindex_progress.job_id == job_id
+    )
     return {
         "job_id": job_id,
         "events": events,
@@ -965,6 +976,9 @@ async def start_reindex_api(request: Request) -> dict[str, Any]:
         "error": progress.error,
         "started_at": progress.started_at,
         "finished_at": progress.finished_at,
+        "phase": getattr(progress, "phase", None),
+        "job_id": getattr(progress, "job_id", None),
+        "job_type": getattr(progress, "job_type", None),
     }
 
 
@@ -981,6 +995,9 @@ async def cancel_reindex_api() -> dict[str, Any]:
         "error": progress.error,
         "started_at": progress.started_at,
         "finished_at": progress.finished_at,
+        "phase": getattr(progress, "phase", None),
+        "job_id": getattr(progress, "job_id", None),
+        "job_type": getattr(progress, "job_type", None),
     }
 
 

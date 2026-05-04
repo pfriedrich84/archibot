@@ -47,6 +47,8 @@ class PollProgress:
     failed: int = 0
     skipped: int = 0
     phase: str = ""  # "prepare", "ocr", "embed", "classify"
+    phase_done: int = 0
+    phase_total: int = 0
     cancelled: bool = False
     error: str | None = None
     started_at: str | None = None  # ISO timestamp when this poll started
@@ -115,6 +117,8 @@ def start_poll_task(*, all_documents: bool = False) -> bool:
     _poll_progress.failed = 0
     _poll_progress.skipped = 0
     _poll_progress.phase = "prepare"
+    _poll_progress.phase_done = 0
+    _poll_progress.phase_total = 0
     _poll_progress.cancelled = False
     _poll_progress.error = None
     _poll_progress.started_at = datetime.now(tz=UTC).isoformat()
@@ -349,6 +353,8 @@ async def _scheduled_poll() -> None:
     _poll_progress.failed = 0
     _poll_progress.skipped = 0
     _poll_progress.phase = "prepare"
+    _poll_progress.phase_done = 0
+    _poll_progress.phase_total = 0
     _poll_progress.cancelled = False
     _poll_progress.error = None
     _poll_progress.started_at = datetime.now(tz=UTC).isoformat()

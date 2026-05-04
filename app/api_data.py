@@ -230,10 +230,23 @@ def get_inbox_snapshot(limit: int = 100) -> dict[str, Any]:
         ).fetchall()
 
     counts: dict[str, int] = {}
+    items: list[dict[str, Any]] = []
     for row in rows:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        item = dict(row)
+        document_status = item["status"]
+        suggestion_status = item.get("suggestion_status")
+        item["document_status"] = document_status
+        item["status"] = (
+            "pending"
+            if suggestion_status == "pending"
+            else "processing"
+            if document_status == "pending"
+            else document_status
+        )
+        counts[item["status"]] = counts.get(item["status"], 0) + 1
+        items.append(item)
 
-    return {"items": [dict(row) for row in rows], "counts": counts, "total": len(rows)}
+    return {"items": items, "counts": counts, "total": len(rows)}
 
 
 def _approval_snapshot(kind: str) -> dict[str, Any]:
@@ -450,6 +463,8 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
         "pipeline": {
             "running": poll.running,
             "phase": poll.phase,
+            "phase_done": getattr(poll, "phase_done", 0),
+            "phase_total": getattr(poll, "phase_total", 0),
             "done": poll.done,
             "total": poll.total,
             "succeeded": poll.succeeded,
@@ -479,6 +494,9 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "error": reindex.error,
             "started_at": reindex.started_at,
             "finished_at": reindex.finished_at,
+            "phase": getattr(reindex, "phase", None),
+            "job_id": getattr(reindex, "job_id", None),
+            "job_type": getattr(reindex, "job_type", None),
         },
         "health": {
             "setup_complete": not needs_setup(),

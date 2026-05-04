@@ -309,6 +309,23 @@ def record_phase_timing(
 # ---------------------------------------------------------------------------
 # Phased pipeline for batched processing
 # ---------------------------------------------------------------------------
+def _set_poll_phase_progress(phase: str, total: int) -> None:
+    """Update the user-facing per-phase progress counters for poll jobs."""
+    from app import worker
+
+    worker._poll_progress.phase = phase
+    worker._poll_progress.phase_total = total
+    worker._poll_progress.phase_done = 0
+
+
+def _advance_poll_phase_progress() -> None:
+    """Advance the current user-facing per-phase counter by one item."""
+    from app import worker
+
+    if worker._poll_progress.running:
+        worker._poll_progress.phase_done += 1
+
+
 async def phase_ocr(
     docs: list[PaperlessDocument],
     ollama: LlmGateway,
@@ -325,6 +342,7 @@ async def phase_ocr(
 
     ocr_mode = effective_ocr_mode()
     if ocr_mode == "off":
+        worker._poll_progress.phase_done = len(docs)
         return docs
 
     log.info("phase ocr started", count=len(docs), mode=ocr_mode)
@@ -393,6 +411,7 @@ async def phase_ocr(
             log.warning("ocr correction failed", doc_id=doc.id, error=str(exc))
         record_phase_timing(cycle_id, doc.id, "ocr", t0, success=ok)
         corrected.append(doc)
+        _advance_poll_phase_progress()
 
     # Unload the OCR model from VRAM if we used a separate one
     if ocr_mode == "text":
@@ -458,6 +477,7 @@ async def phase_embed(
                 log.warning("embedding failed", doc_id=doc.id, error=str(exc))
         record_phase_timing(cycle_id, doc.id, "embed", t0, success=ok)
         results[doc.id] = er
+        _advance_poll_phase_progress()
 
     await ollama.unload_model(ollama.embed_model, swap=True)
     return results
@@ -539,6 +559,7 @@ async def phase_classify_only(
             drafts.append(
                 ClassificationDraft(doc, context_docs, er.similar_results, error=str(exc)[:300])
             )
+        _advance_poll_phase_progress()
 
     await ollama.unload_model(ollama.model, swap=True)
     return drafts
@@ -572,6 +593,7 @@ async def phase_judge(
                     error=draft.error or "classification missing",
                 )
             )
+            _advance_poll_phase_progress()
             continue
         if worker._poll_progress.cancelled:
             log.info("poll cancelled during judge phase")
@@ -628,6 +650,7 @@ async def phase_judge(
                 judge,
             )
         )
+        _advance_poll_phase_progress()
 
     return judged
 
@@ -649,6 +672,7 @@ async def phase_store_suggestions(
         doc = draft.document
         if draft.error or draft.judge is None or draft.raw_response is None:
             stored.append(StoredSuggestionResult(doc, error=draft.error or "judge missing"))
+            _advance_poll_phase_progress()
             continue
         try:
             result = draft.judge.result
@@ -698,6 +722,8 @@ async def phase_store_suggestions(
             log.error("suggestion storage failed", doc_id=doc.id, error=repr(exc))
             worker._write_error("store", doc.id, exc)
             stored.append(StoredSuggestionResult(doc, error=str(exc)[:300]))
+        finally:
+            _advance_poll_phase_progress()
     return stored
 
 
@@ -799,6 +825,7 @@ async def phase_postprocess_suggestions(
             worker._write_error(phase, doc.id, exc)
         finally:
             worker._poll_progress.done += 1
+            _advance_poll_phase_progress()
     return classified, auto_committed, errored
 
 
@@ -845,7 +872,7 @@ async def phase_classify(
         level="success",
     )
 
-    worker._poll_progress.phase = "judge"
+    _set_poll_phase_progress("judge", len(drafts))
     record_event(
         job_id,
         job_type,
@@ -866,7 +893,7 @@ async def phase_classify(
         level="success",
     )
 
-    worker._poll_progress.phase = "store"
+    _set_poll_phase_progress("store", len(judged))
     record_event(
         job_id,
         job_type,
@@ -885,7 +912,7 @@ async def phase_classify(
         level="success",
     )
 
-    worker._poll_progress.phase = "postprocess"
+    _set_poll_phase_progress("postprocess", len(stored))
     record_event(
         job_id,
         job_type,
@@ -904,7 +931,7 @@ async def phase_classify(
         level="success",
     )
 
-    worker._poll_progress.phase = "finalize"
+    _set_poll_phase_progress("finalize", len(docs))
     record_event(
         job_id,
         job_type,
@@ -937,6 +964,7 @@ def phase_store_embeddings(
     for doc in docs:
         er = embed_results.get(doc.id)
         if er is None or er.embedding is None:
+            _advance_poll_phase_progress()
             continue
         try:
             context_builder.store_embedding(doc, er.embedding)
@@ -961,6 +989,8 @@ def phase_store_embeddings(
                 data={"error": str(exc)[:300]},
             )
             log.warning("indexing failed", doc_id=doc.id, error=str(exc))
+        finally:
+            _advance_poll_phase_progress()
 
 
 async def process_batch(
@@ -985,6 +1015,8 @@ async def process_batch(
     job_type = getattr(progress, "job_type", None) or "poll"
     batch: list[PaperlessDocument] = []
     skipped = 0
+    if progress is not None:
+        _set_poll_phase_progress("prepare", len(docs))
     for doc in docs:
         if not force and should_skip_document(doc):
             skipped += 1
@@ -997,6 +1029,7 @@ async def process_batch(
                 document_id=doc.id,
                 data={"title": doc.title},
             )
+            _advance_poll_phase_progress()
             continue
         log.info("processing document", doc_id=doc.id, title=doc.title[:80])
         record_event(
@@ -1010,6 +1043,7 @@ async def process_batch(
         )
         mark_document_pending(doc)
         batch.append(doc)
+        _advance_poll_phase_progress()
 
     if progress is not None:
         progress.total = len(batch)
@@ -1041,7 +1075,7 @@ async def process_batch(
     errored = 0
     try:
         if progress is not None:
-            progress.phase = "ocr"
+            _set_poll_phase_progress("ocr", len(batch))
         record_event(
             job_id,
             job_type,
@@ -1064,7 +1098,7 @@ async def process_batch(
         )
 
         if progress is not None:
-            progress.phase = "embed"
+            _set_poll_phase_progress("embed", len(batch))
         record_event(
             job_id,
             job_type,
@@ -1087,7 +1121,7 @@ async def process_batch(
         )
 
         if progress is not None:
-            progress.phase = "classify"
+            _set_poll_phase_progress("classify", len(batch))
         record_event(
             job_id,
             job_type,

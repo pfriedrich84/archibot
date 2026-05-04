@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -12,6 +13,7 @@ from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import EMBED_DIM, get_conn
+from app.job_events import record_event
 from app.pipeline.context_builder import index_document
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
@@ -39,6 +41,9 @@ class ReindexProgress:
     finished_at: str | None = None
     error: str | None = None
     cancelled: bool = False
+    phase: str = "idle"
+    job_id: str | None = None
+    job_type: str | None = None
 
 
 _reindex_progress = ReindexProgress()
@@ -93,12 +98,30 @@ async def initial_index(
 
     # Update progress tracking with total count
     _reindex_progress.total = len(new_docs)
+    _reindex_progress.phase = "embedding"
+    record_event(
+        _reindex_progress.job_id,
+        _reindex_progress.job_type or "reindex",
+        "phase_started",
+        f"Embedding-Index wird für {len(new_docs)} Dokumente aufgebaut.",
+        phase="embedding",
+        data={"total": len(new_docs), "already_indexed": len(indexed_ids)},
+    )
 
     ollama.embed_retry_count = 0
     count = 0
     for i, doc in enumerate(new_docs, 1):
         if _reindex_progress.cancelled:
             log.info("reindex cancelled by user", done=i - 1, total=len(new_docs))
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "job_cancelled",
+                "Reindex wurde abgebrochen.",
+                phase="embedding",
+                level="warning",
+                data={"done": i - 1, "total": len(new_docs)},
+            )
             break
         try:
             # Use cached OCR-corrected text if available
@@ -107,19 +130,59 @@ async def initial_index(
                 doc = doc.model_copy(update={"content": cached})
             await index_document(doc, ollama)
             count += 1
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "document_done",
+                "Dokument wurde in den Embedding-Index aufgenommen.",
+                phase="embedding",
+                document_id=doc.id,
+                data={"done": i, "total": len(new_docs)},
+            )
         except Exception as exc:
             _reindex_progress.failed += 1
             log.warning("failed to index document", doc_id=doc.id, error=str(exc))
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "document_failed",
+                "Dokument konnte nicht indexiert werden.",
+                phase="embedding",
+                level="error",
+                document_id=doc.id,
+                data={"error": str(exc), "done": i, "total": len(new_docs)},
+            )
         finally:
             _reindex_progress.done = i
             if i % 50 == 0:
                 log.info("index progress", done=i, total=len(new_docs))
+                record_event(
+                    _reindex_progress.job_id,
+                    _reindex_progress.job_type or "reindex",
+                    "progress",
+                    f"{i}/{len(new_docs)} Dokumente indexiert.",
+                    phase="embedding",
+                    data={"done": i, "total": len(new_docs)},
+                )
 
     log.info(
         "initial index complete",
         indexed=count,
         skipped=len(new_docs) - count,
         embed_retries=ollama.embed_retry_count,
+    )
+    record_event(
+        _reindex_progress.job_id,
+        _reindex_progress.job_type or "reindex",
+        "phase_finished",
+        f"Embedding-Phase abgeschlossen: {count} Dokumente indexiert, {_reindex_progress.failed} Fehler.",
+        phase="embedding",
+        level="success" if _reindex_progress.failed == 0 else "warning",
+        data={
+            "indexed": count,
+            "failed": _reindex_progress.failed,
+            "embed_retries": ollama.embed_retry_count,
+        },
     )
     if ollama.embed_retry_count > 0:
         log.warning(
@@ -149,6 +212,14 @@ async def reindex_all(
     """
     try:
         log.info("starting full reindex — clearing existing embeddings and FTS index")
+        _reindex_progress.phase = "prepare"
+        record_event(
+            _reindex_progress.job_id,
+            _reindex_progress.job_type or "reindex",
+            "job_started",
+            "Reindex gestartet.",
+            phase="prepare",
+        )
         with get_conn() as conn:
             conn.execute("DELETE FROM doc_embedding_meta")
             # Drop + recreate vec0 table so dimension changes take effect
@@ -165,12 +236,29 @@ async def reindex_all(
         ocr_mode = effective_ocr_mode()
         if ocr_mode != "off":
             log.info("reindex phase ocr — correcting documents", mode=ocr_mode)
+            _reindex_progress.phase = "ocr"
             docs = await paperless.list_all_documents()
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "phase_started",
+                f"OCR-Phase gestartet ({ocr_mode}) für {len(docs)} Dokumente.",
+                phase="ocr",
+                data={"mode": ocr_mode, "total": len(docs)},
+            )
             available_tags = await paperless.list_tags()
             corrected = 0
             for doc in docs:
                 if _reindex_progress.cancelled:
                     log.info("reindex cancelled during OCR phase")
+                    record_event(
+                        _reindex_progress.job_id,
+                        _reindex_progress.job_type or "reindex",
+                        "job_cancelled",
+                        "Reindex wurde während der OCR-Phase abgebrochen.",
+                        phase="ocr",
+                        level="warning",
+                    )
                     break
                 try:
                     eligible, reason = should_run_ocr_for_document(
@@ -187,9 +275,37 @@ async def reindex_all(
                     if num > 0 or ocr_mode.startswith("vision"):
                         cache_ocr_correction(doc.id, text, ocr_mode, num)
                         corrected += 1
+                        record_event(
+                            _reindex_progress.job_id,
+                            _reindex_progress.job_type or "reindex",
+                            "document_done",
+                            "OCR-Korrektur wurde gespeichert.",
+                            phase="ocr",
+                            document_id=doc.id,
+                            data={"corrections": num, "mode": ocr_mode},
+                        )
                 except Exception as exc:
                     log.warning("reindex ocr failed", doc_id=doc.id, error=str(exc))
+                    record_event(
+                        _reindex_progress.job_id,
+                        _reindex_progress.job_type or "reindex",
+                        "document_failed",
+                        "OCR-Korrektur ist fehlgeschlagen.",
+                        phase="ocr",
+                        level="error",
+                        document_id=doc.id,
+                        data={"error": str(exc)},
+                    )
             log.info("reindex phase ocr complete", corrected=corrected, total=len(docs))
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "phase_finished",
+                f"OCR-Phase abgeschlossen: {corrected} Dokumente korrigiert.",
+                phase="ocr",
+                level="success",
+                data={"corrected": corrected, "total": len(docs)},
+            )
 
             # Unload OCR/vision model before embedding phase
             if ocr_mode == "text":
@@ -201,9 +317,28 @@ async def reindex_all(
         # --- Phase 1: Embedding (uses cached OCR text if available) ---
         result = await initial_index(paperless, ollama)
         _reindex_progress.finished_at = datetime.now(tz=UTC).isoformat()
+        _reindex_progress.phase = "finished"
+        record_event(
+            _reindex_progress.job_id,
+            _reindex_progress.job_type or "reindex",
+            "job_finished",
+            f"Reindex abgeschlossen: {result} Dokumente indexiert.",
+            phase="finished",
+            level="success" if _reindex_progress.failed == 0 else "warning",
+            data={"indexed": result, "failed": _reindex_progress.failed},
+        )
         return result
     except Exception as exc:
         _reindex_progress.error = str(exc)
+        record_event(
+            _reindex_progress.job_id,
+            _reindex_progress.job_type or "reindex",
+            "job_failed",
+            "Reindex ist fehlgeschlagen.",
+            phase=_reindex_progress.phase,
+            level="error",
+            data={"error": str(exc)},
+        )
         raise
     finally:
         _reindex_progress.running = False
@@ -230,6 +365,9 @@ def start_reindex_task(
     _reindex_progress.finished_at = None
     _reindex_progress.error = None
     _reindex_progress.cancelled = False
+    _reindex_progress.phase = "prepare"
+    _reindex_progress.job_type = "reindex"
+    _reindex_progress.job_id = f"reindex-{uuid.uuid4().hex[:12]}"
 
     async def _run() -> None:
         try:

@@ -8,6 +8,11 @@
     dashboard.pipeline.total > 0 ? Math.round((dashboard.pipeline.done / dashboard.pipeline.total) * 100) : 0;
   const reindexPct = () =>
     dashboard.reindex.total > 0 ? Math.round((dashboard.reindex.done / dashboard.reindex.total) * 100) : 0;
+  const phasePct = () => {
+    const total = dashboard.pipeline.phase_total ?? 0;
+    const done = dashboard.pipeline.phase_done ?? 0;
+    return total > 0 ? Math.round((done / total) * 100) : 0;
+  };
 
   function formatDateTime(value: string | null) {
     if (!value) return 'nicht geplant';
@@ -54,6 +59,16 @@
         </div>
         <Progressbar progress={pollPct()} color="blue" />
       </div>
+
+      {#if (dashboard.pipeline.phase_total ?? 0) > 0}
+        <div class="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3.5">
+          <div class="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Aktuelle Phase: {phaseLabel(dashboard.pipeline.phase)}</span>
+            <span>{progressLabel(dashboard.pipeline.phase_done ?? 0, dashboard.pipeline.phase_total ?? 0)}</span>
+          </div>
+          <Progressbar progress={phasePct()} color="green" />
+        </div>
+      {/if}
 
       <div class="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3.5">
         <div class="mb-2 flex justify-between text-sm text-slate-300">

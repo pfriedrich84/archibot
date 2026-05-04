@@ -136,6 +136,26 @@ def test_inbox_api_returns_status_counts(client):
     assert payload["items"][0]["proposed_title"] == "Rechnung April"
 
 
+def test_inbox_api_counts_processing_documents_separately_from_review_pending(client):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO processed_documents (document_id, last_updated_at, last_processed, status) VALUES (?,?,?,?)",
+            (2, "2026-01-01T00:00:00", "2026-01-01T00:00:00", "pending"),
+        )
+
+    response = client.get("/api/v1/inbox")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["total"] == 2
+    assert payload["counts"]["pending"] == 1
+    assert payload["counts"]["processing"] == 1
+    processing_item = next(item for item in payload["items"] if item["document_id"] == 2)
+    assert processing_item["status"] == "processing"
+    assert processing_item["document_status"] == "pending"
+    assert processing_item["suggestion_id"] is None
+
+
 def test_tags_api_returns_whitelist_and_blacklist(client):
     response = client.get("/api/v1/tags")
     assert response.status_code == 200

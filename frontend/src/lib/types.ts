@@ -9,6 +9,8 @@ export type DashboardPayload = {
   pipeline: {
     running: boolean;
     phase: string;
+    phase_done?: number;
+    phase_total?: number;
     done: number;
     total: number;
     succeeded: number;
@@ -37,6 +39,11 @@ export type DashboardPayload = {
     failed: number;
     cancelled: boolean;
     error: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+    phase?: string | null;
+    job_id?: string | null;
+    job_type?: string | null;
   };
   health: {
     setup_complete: boolean;

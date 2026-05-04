@@ -15,6 +15,26 @@ from app.models import ReviewDecision, SuggestionRow
 log = structlog.get_logger(__name__)
 
 
+def _document_has_inbox_tag(doc) -> bool:
+    """Return True while a document is still part of the Paperless inbox flow."""
+    inbox_tag_id = settings.paperless_inbox_tag_id
+    return inbox_tag_id != 0 and inbox_tag_id in set(doc.tags)
+
+
+def _audit_retroactive_skip(action: str, doc_id: int, details: dict[str, object]) -> None:
+    """Persist a clear audit record for skipped retroactive alignment."""
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO audit_log (action, document_id, actor, details)
+               VALUES (?, ?, 'system', ?)""",
+            (
+                action,
+                doc_id,
+                json.dumps({"skipped": True, **details}, ensure_ascii=False),
+            ),
+        )
+
+
 async def commit_suggestion(
     suggestion: SuggestionRow,
     decision: ReviewDecision,
@@ -149,6 +169,24 @@ async def retroactive_tag_apply(
         doc_id = row["document_id"]
         try:
             doc = await paperless.get_document(doc_id)
+            if not _document_has_inbox_tag(doc):
+                _audit_retroactive_skip(
+                    "retroactive_tag",
+                    doc_id,
+                    {
+                        "reason": "document_not_in_inbox",
+                        "tag_name": tag_name,
+                        "paperless_id": paperless_id,
+                        "inbox_tag_id": settings.paperless_inbox_tag_id,
+                    },
+                )
+                log.info(
+                    "retroactive tag skipped because document is no longer in inbox",
+                    doc_id=doc_id,
+                    tag=tag_name,
+                    paperless_id=paperless_id,
+                )
+                continue
             if paperless_id in doc.tags:
                 continue  # already has the tag
             new_tags = sorted(set(doc.tags) | {paperless_id})
@@ -231,6 +269,24 @@ async def retroactive_correspondent_apply(
         doc_id = row["document_id"]
         try:
             doc = await paperless.get_document(doc_id)
+            if not _document_has_inbox_tag(doc):
+                _audit_retroactive_skip(
+                    "retroactive_correspondent",
+                    doc_id,
+                    {
+                        "reason": "document_not_in_inbox",
+                        "correspondent_name": corr_name,
+                        "paperless_id": paperless_id,
+                        "inbox_tag_id": settings.paperless_inbox_tag_id,
+                    },
+                )
+                log.info(
+                    "retroactive correspondent skipped because document is no longer in inbox",
+                    doc_id=doc_id,
+                    correspondent=corr_name,
+                    paperless_id=paperless_id,
+                )
+                continue
             if doc.correspondent == paperless_id:
                 continue  # already has this correspondent
             await paperless.patch_document(doc_id, {"correspondent": paperless_id})
@@ -310,6 +366,24 @@ async def retroactive_doctype_apply(
         doc_id = row["document_id"]
         try:
             doc = await paperless.get_document(doc_id)
+            if not _document_has_inbox_tag(doc):
+                _audit_retroactive_skip(
+                    "retroactive_doctype",
+                    doc_id,
+                    {
+                        "reason": "document_not_in_inbox",
+                        "doctype_name": doctype_name,
+                        "paperless_id": paperless_id,
+                        "inbox_tag_id": settings.paperless_inbox_tag_id,
+                    },
+                )
+                log.info(
+                    "retroactive doctype skipped because document is no longer in inbox",
+                    doc_id=doc_id,
+                    doctype=doctype_name,
+                    paperless_id=paperless_id,
+                )
+                continue
             if doc.document_type == paperless_id:
                 continue
             await paperless.patch_document(doc_id, {"document_type": paperless_id})

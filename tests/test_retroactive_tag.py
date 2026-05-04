@@ -42,7 +42,7 @@ async def test_retroactive_patches_committed_doc(mock_paperless, patch_db, tmp_d
     _insert_suggestion(conn, document_id=42, status="committed")
     conn.close()
 
-    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[20])
+    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[99, 20])
 
     patched, pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)
 
@@ -55,6 +55,32 @@ async def test_retroactive_patches_committed_doc(mock_paperless, patch_db, tmp_d
     assert call_args[0] == 42
     assert 50 in call_args[1]["tags"]
     assert 20 in call_args[1]["tags"]
+
+
+@pytest.mark.asyncio
+async def test_retroactive_skips_committed_doc_without_inbox_tag(mock_paperless, patch_db, tmp_db):
+    """Committed documents are only patched while they still carry the inbox tag."""
+    conn = sqlite3.connect(str(tmp_db))
+    conn.row_factory = sqlite3.Row
+    _insert_suggestion(conn, document_id=42, status="committed")
+    conn.close()
+
+    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[20])
+
+    patched, pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)
+
+    assert patched == 0
+    assert pending == 0
+    mock_paperless.patch_document.assert_not_called()
+
+    conn = sqlite3.connect(str(tmp_db))
+    conn.row_factory = sqlite3.Row
+    log = conn.execute("SELECT * FROM audit_log WHERE action = 'retroactive_tag'").fetchone()
+    conn.close()
+    assert log is not None
+    details = json.loads(log["details"])
+    assert details["skipped"] is True
+    assert details["reason"] == "document_not_in_inbox"
 
 
 @pytest.mark.asyncio
@@ -95,7 +121,7 @@ async def test_retroactive_skips_already_tagged_doc(mock_paperless, patch_db, tm
     conn.close()
 
     # Document already has tag 50
-    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[20, 50])
+    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[99, 20, 50])
 
     patched, _pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)
 
@@ -133,7 +159,7 @@ async def test_retroactive_case_insensitive(mock_paperless, patch_db, tmp_db):
     )
     conn.close()
 
-    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[20])
+    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[99, 20])
 
     patched, _pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)
 
@@ -168,7 +194,7 @@ async def test_retroactive_creates_audit_log(mock_paperless, patch_db, tmp_db):
     _insert_suggestion(conn, document_id=42, status="committed")
     conn.close()
 
-    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[20])
+    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[99, 20])
 
     await retroactive_tag_apply("NewTag", 50, mock_paperless)
 
@@ -193,8 +219,8 @@ async def test_retroactive_multiple_suggestions(mock_paperless, patch_db, tmp_db
     conn.close()
 
     mock_paperless.get_document.side_effect = [
-        PaperlessDocument(id=10, title="A", tags=[]),
-        PaperlessDocument(id=20, title="B", tags=[]),
+        PaperlessDocument(id=10, title="A", tags=[99]),
+        PaperlessDocument(id=20, title="B", tags=[99]),
     ]
 
     patched, pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)

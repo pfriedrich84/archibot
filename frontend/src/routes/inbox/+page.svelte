@@ -11,6 +11,7 @@
   function statusColor(status: string) {
     if (status === 'error') return 'red';
     if (status === 'pending') return 'yellow';
+    if (status === 'processing') return 'blue';
     if (status === 'committed') return 'green';
     return 'gray';
   }
@@ -20,7 +21,7 @@
   {#snippet children()}
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       <StatCard title="Dokumente" value={data.inbox.total} hint="Geladene Inbox-Einträge" accent="blue" />
-      <StatCard title="Pending" value={data.inbox.counts.pending ?? 0} hint="Warten auf Review" accent="emerald" />
+      <StatCard title="Review" value={data.inbox.counts.pending ?? 0} hint="Warten auf Review" accent="emerald" />
       <StatCard title="Fehler" value={data.inbox.counts.error ?? 0} hint="Erfordern Aufmerksamkeit" accent="red" />
       <StatCard title="Committed" value={data.inbox.counts.committed ?? 0} hint="Bereits bestätigt" accent="purple" />
     </div>

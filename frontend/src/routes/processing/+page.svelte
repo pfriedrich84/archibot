@@ -57,6 +57,12 @@
     return dashboard.reindex.total > 0 ? Math.round((dashboard.reindex.done / dashboard.reindex.total) * 100) : 0;
   }
 
+  function phasePct() {
+    const total = dashboard.pipeline.phase_total ?? 0;
+    const done = dashboard.pipeline.phase_done ?? 0;
+    return total > 0 ? Math.round((done / total) * 100) : 0;
+  }
+
   function readinessTone(ok: boolean) {
     return ok
       ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
@@ -89,7 +95,9 @@
       errors = nextErrors;
       chat = nextChat;
 
-      const jobId = nextDashboard.pipeline.job_id;
+      const jobId = nextDashboard.reindex.running
+        ? nextDashboard.reindex.job_id
+        : nextDashboard.pipeline.job_id ?? nextDashboard.reindex.job_id;
       if (jobId) {
         if (jobEvents[0]?.job_id && jobEvents[0].job_id !== jobId) {
           jobEvents = [];
@@ -120,6 +128,8 @@
         latestJobEventId = 0;
       } else {
         dashboard = { ...dashboard, reindex: result as DashboardPayload['reindex'] };
+        jobEvents = [];
+        latestJobEventId = 0;
       }
       feedback = {
         type: 'success',
@@ -173,6 +183,12 @@
             <div class="mb-2 flex items-center justify-between text-sm text-slate-300"><span>Fortschritt</span><span>{dashboard.pipeline.total > 0 ? `${dashboard.pipeline.done}/${dashboard.pipeline.total}` : 'Kein aktiver Lauf'}</span></div>
             <Progressbar progress={pollPct()} color="blue" />
             <div class="mt-3 grid gap-3 text-sm text-slate-400 sm:grid-cols-2"><div>Phase: <span class="text-slate-200">{dashboard.pipeline.phase || 'prepare'}</span></div><div>Fehler: <span class="text-slate-200">{dashboard.pipeline.failed}</span></div></div>
+            {#if (dashboard.pipeline.phase_total ?? 0) > 0}
+              <div class="mt-3 border-t border-slate-800 pt-3">
+                <div class="mb-2 flex items-center justify-between text-xs text-slate-400"><span>Phasenfortschritt</span><span>{dashboard.pipeline.phase_done ?? 0}/{dashboard.pipeline.phase_total ?? 0}</span></div>
+                <Progressbar progress={phasePct()} color="green" />
+              </div>
+            {/if}
           </div>
 
           <div class="mt-5 flex flex-wrap gap-3">
@@ -244,7 +260,7 @@
             </div>
           </div>
         {:else}
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Noch kein aktives Job-Protokoll. Starte „Posteingang prüfen“ oder „Alle Dokumente prüfen“.</div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">Noch kein aktives Job-Protokoll. Starte „Posteingang prüfen“, „Alle Dokumente prüfen“ oder „Reindex starten“.</div>
         {/each}
       </div>
     </Card>
