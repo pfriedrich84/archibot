@@ -17,7 +17,7 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
 2. date nur als YYYY-MM-DD oder null.
 3. correspondent: nur wenn leer, dann bevorzugt aus bereitgestellter Liste, sonst neuer Name exakt wie im Dokument.
    - Der Korrespondent ist der externe Absender/Aussteller/Vertragspartner/Leistungserbringer, nicht der eigene Rechnungsempfaenger.
-   - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter (z. B. Kia/Kia Charge), NICHT der Empfaenger/Kunde (z. B. PF Group GmbH).
+   - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter, NICHT der Empfaenger/Kunde.
    - Eigene Firmen-/Privatnamen im Adressfeld, unter "Rechnungsempfaenger", "Kunde", "Bill to" oder "Empfaenger" duerfen nicht als Korrespondent gewaehlt werden, ausser das Dokument ist eindeutig von dieser Partei ausgestellt.
 4. document_type: nur wenn leer, dann bevorzugt aus Liste, sonst passender neuer Typ.
 5. storage_path: nur wenn leer, dann aus Liste oder null. Nur setzen, wenn sinnvoll.
