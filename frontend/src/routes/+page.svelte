@@ -87,7 +87,7 @@
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Pipeline</p>
-              <h2 class="mt-2 text-lg font-semibold text-white">Dokumentverarbeitung</h2>
+              <h2 class="mt-2 text-lg font-semibold text-white">{data.dashboard.pipeline.running ? 'Polling aktiv' : 'Pipeline bereit'}</h2>
               <p class="mt-1.5 text-sm text-slate-400">Status des aktuellen Polling-Laufs. Start, Stopp und Job-Protokoll liegen unter Verarbeitung.</p>
             </div>
             <Badge color={data.dashboard.pipeline.running ? 'blue' : 'green'}>{data.dashboard.pipeline.running ? phaseLabel(data.dashboard.pipeline.phase) : 'Bereit'}</Badge>
@@ -115,7 +115,7 @@
           </div>
 
           <div class="mt-5 flex flex-wrap gap-3">
-            <a href="/app/processing" class="inline-flex"><Button color="blue">Verarbeitung öffnen</Button></a>
+            <a href="/app/processing" class="inline-flex"><Button color="blue">Jobs öffnen</Button></a>
             <a href="/app/review" class="inline-flex"><Button color="dark" class="rounded-xl border border-slate-700">Review Queue</Button></a>
           </div>
         </Card>
