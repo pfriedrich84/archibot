@@ -28,6 +28,7 @@
   let refreshing = $state(false);
   let jobEvents = $state<JobEvent[]>([]);
   let latestJobEventId = $state(0);
+  let selectedJobId = $state<string | null>(null);
 
   let visibleJobEvents = $derived.by(() =>
     [...jobEvents].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -73,6 +74,14 @@
       : 'border-amber-500/20 bg-amber-500/10 text-amber-100';
   }
 
+  function jobLabel(jobId: string | null) {
+    if (!jobId) return 'Noch kein Job ausgewählt';
+    if (jobId.startsWith('reindex-')) return 'Reindex';
+    if (jobId.startsWith('poll_all-')) return 'Alle Dokumente prüfen';
+    if (jobId.startsWith('poll-')) return 'Posteingang prüfen';
+    return jobId;
+  }
+
   function formatDateTime(value: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -99,11 +108,15 @@
       errors = nextErrors;
       chat = nextChat;
 
-      const jobId = nextDashboard.reindex.running
+      const runningJobId = nextDashboard.reindex.running
         ? nextDashboard.reindex.job_id
-        : nextDashboard.pipeline.job_id ?? nextDashboard.reindex.job_id;
+        : nextDashboard.pipeline.running
+          ? nextDashboard.pipeline.job_id
+          : null;
+      const jobId = runningJobId ?? selectedJobId ?? nextDashboard.pipeline.job_id ?? nextDashboard.reindex.job_id;
       if (jobId) {
-        if (jobEvents[0]?.job_id && jobEvents[0].job_id !== jobId) {
+        if (selectedJobId !== jobId || (jobEvents[0]?.job_id && jobEvents[0].job_id !== jobId)) {
+          selectedJobId = jobId;
           jobEvents = [];
           latestJobEventId = 0;
         }
@@ -127,11 +140,15 @@
     try {
       const result = await action();
       if (key.startsWith('poll')) {
-        dashboard = { ...dashboard, pipeline: result as DashboardPayload['pipeline'] };
+        const pipeline = result as DashboardPayload['pipeline'];
+        dashboard = { ...dashboard, pipeline };
+        selectedJobId = pipeline.job_id ?? null;
         jobEvents = [];
         latestJobEventId = 0;
       } else {
-        dashboard = { ...dashboard, reindex: result as DashboardPayload['reindex'] };
+        const reindex = result as DashboardPayload['reindex'];
+        dashboard = { ...dashboard, reindex };
+        selectedJobId = reindex.job_id ?? null;
         jobEvents = [];
         latestJobEventId = 0;
       }
@@ -244,9 +261,10 @@
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Job-Protokoll</p>
           <h2 class="mt-2 text-lg font-semibold text-white">Dokumentgenauer Ablauf</h2>
-          <p class="mt-1.5 text-sm text-slate-400">Kompakter Log-Frame mit neuesten Meldungen oben. Wird alle 5 Sekunden aktualisiert und bleibt in SQLite gespeichert.</p>
+          <p class="mt-1.5 text-sm text-slate-400">Kompakter Log-Frame für Polling und Reindex, mit neuesten Meldungen oben. Wird alle 5 Sekunden aktualisiert und bleibt in SQLite gespeichert.</p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
+          <span class="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-xs text-slate-400">{jobLabel(selectedJobId)}</span>
           <span class="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-xs text-slate-400">Neueste zuerst · {visibleJobEvents.length} Events</span>
           <Button color="dark" class="rounded-xl border border-slate-700" onclick={() => void refreshProcessing()} disabled={refreshing}>{refreshing ? 'Aktualisiert …' : 'Aktualisieren'}</Button>
         </div>
