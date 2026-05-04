@@ -121,7 +121,9 @@ async def test_retroactive_skips_already_tagged_doc(mock_paperless, patch_db, tm
     conn.close()
 
     # Document already has tag 50
-    mock_paperless.get_document.return_value = PaperlessDocument(id=42, title="Test", tags=[99, 20, 50])
+    mock_paperless.get_document.return_value = PaperlessDocument(
+        id=42, title="Test", tags=[99, 20, 50]
+    )
 
     patched, _pending = await retroactive_tag_apply("NewTag", 50, mock_paperless)
 

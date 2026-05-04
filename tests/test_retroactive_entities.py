@@ -81,7 +81,9 @@ async def test_retroactive_correspondent_skips_committed_doc_without_inbox_tag(
 
     conn = sqlite3.connect(str(tmp_db))
     conn.row_factory = sqlite3.Row
-    log = conn.execute("SELECT * FROM audit_log WHERE action = 'retroactive_correspondent'").fetchone()
+    log = conn.execute(
+        "SELECT * FROM audit_log WHERE action = 'retroactive_correspondent'"
+    ).fetchone()
     conn.close()
     assert log is not None
     details = json.loads(log["details"])
