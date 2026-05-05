@@ -3,10 +3,13 @@
     import BookOpen from 'lucide-svelte/icons/book-open';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
     import Inbox from 'lucide-svelte/icons/inbox';
+    import FileType from 'lucide-svelte/icons/file-type';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
     import Settings from 'lucide-svelte/icons/settings';
+    import Tag from 'lucide-svelte/icons/tag';
+    import UserRound from 'lucide-svelte/icons/user-round';
     import Workflow from 'lucide-svelte/icons/workflow';
     import type { Snippet } from 'svelte';
     import AppLogo from '@/components/AppLogo.svelte';
@@ -54,6 +57,21 @@
             title: 'Review',
             href: reviewIndex(),
             icon: ClipboardCheck,
+        },
+        {
+            title: 'Tags',
+            href: '/tags',
+            icon: Tag,
+        },
+        {
+            title: 'Correspondents',
+            href: '/correspondents',
+            icon: UserRound,
+        },
+        {
+            title: 'Document types',
+            href: '/doctypes',
+            icon: FileType,
         },
         {
             title: 'Worker jobs',

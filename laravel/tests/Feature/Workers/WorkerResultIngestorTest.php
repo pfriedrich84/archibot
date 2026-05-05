@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use App\Services\Workers\WorkerResultIngestor;
@@ -42,7 +43,7 @@ class WorkerResultIngestorTest extends TestCase
 
         $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
 
-        $this->assertSame(['review_suggestions_imported' => 1], $summary);
+        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 2], $summary);
         $suggestion = ReviewSuggestion::query()->firstOrFail();
         $this->assertSame($workerJob->id, $suggestion->worker_job_id);
         $this->assertSame(456, $suggestion->source_suggestion_id);
@@ -52,6 +53,16 @@ class WorkerResultIngestorTest extends TestCase
         $this->assertSame('Invoice May', $suggestion->proposed_title);
         $this->assertSame('ACME', $suggestion->proposed_correspondent_name);
         $this->assertSame([['id' => 2, 'name' => 'Accounting']], $suggestion->proposed_tags);
+        $this->assertDatabaseHas('entity_approvals', [
+            'type' => EntityApproval::TYPE_CORRESPONDENT,
+            'name' => 'ACME',
+            'status' => EntityApproval::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('entity_approvals', [
+            'type' => EntityApproval::TYPE_DOCUMENT_TYPE,
+            'name' => 'Invoice',
+            'status' => EntityApproval::STATUS_PENDING,
+        ]);
     }
 
     public function test_ignores_invalid_review_suggestion_items(): void
@@ -62,7 +73,7 @@ class WorkerResultIngestorTest extends TestCase
 
         $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
 
-        $this->assertSame(['review_suggestions_imported' => 0], $summary);
+        $this->assertSame(['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0], $summary);
         $this->assertDatabaseCount('review_suggestions', 0);
     }
 }

@@ -94,6 +94,21 @@ class PaperlessClient
             ->get("/api/documents/{$documentId}/preview/");
     }
 
+    public function createTag(string $token, string $name): int
+    {
+        return $this->createEntity($token, '/api/tags/', $name, 'tag');
+    }
+
+    public function createCorrespondent(string $token, string $name): int
+    {
+        return $this->createEntity($token, '/api/correspondents/', $name, 'correspondent');
+    }
+
+    public function createDocumentType(string $token, string $name): int
+    {
+        return $this->createEntity($token, '/api/document_types/', $name, 'document type');
+    }
+
     public function currentUser(string $token, ?string $fallbackUsername = null): PaperlessUser
     {
         $response = $this->request($token)->get('/api/users/me/');
@@ -123,6 +138,23 @@ class PaperlessClient
         }
 
         return PaperlessUser::fromPayload($payload, $fallbackUsername);
+    }
+
+    private function createEntity(string $token, string $endpoint, string $name, string $label): int
+    {
+        $response = $this->request($token)->post($endpoint, ['name' => $name]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException("Could not create Paperless {$label}.");
+        }
+
+        $id = $response->json('id');
+
+        if (! is_numeric($id)) {
+            throw new RuntimeException("Paperless {$label} response did not include an id.");
+        }
+
+        return (int) $id;
     }
 
     private function request(?string $token = null): PendingRequest

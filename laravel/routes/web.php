@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
@@ -35,6 +36,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
+
+    Route::get('{segment}', [EntityApprovalController::class, 'index'])
+        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+        ->name('entities.index');
+    Route::post('{segment}/entity-approvals/{entityApproval}/approve', [EntityApprovalController::class, 'approve'])
+        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+        ->name('entities.approve');
+    Route::post('{segment}/entity-approvals/{entityApproval}/reject', [EntityApprovalController::class, 'reject'])
+        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+        ->name('entities.reject');
+    Route::post('{segment}/entity-approvals/{entityApproval}/unblacklist', [EntityApprovalController::class, 'unblacklist'])
+        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+        ->name('entities.unblacklist');
 
     Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
     Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');

@@ -2,6 +2,7 @@
 
 namespace App\Services\Workers;
 
+use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use Illuminate\Support\Arr;
@@ -17,7 +18,7 @@ class WorkerResultIngestor
      *
      * {"review_suggestions": [{"paperless_document_id": 123, ...}]}
      *
-     * @return array{review_suggestions_imported: int}
+     * @return array{review_suggestions_imported: int, entity_approvals_upserted: int}
      */
     public function ingest(WorkerJob $workerJob): array
     {
@@ -25,10 +26,11 @@ class WorkerResultIngestor
         $items = Arr::get($result, 'review_suggestions', []);
 
         if (! is_array($items)) {
-            return ['review_suggestions_imported' => 0];
+            return ['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0];
         }
 
         $imported = 0;
+        $entityApprovalsUpserted = 0;
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -41,7 +43,7 @@ class WorkerResultIngestor
                 continue;
             }
 
-            ReviewSuggestion::query()->create([
+            $suggestion = ReviewSuggestion::query()->create([
                 'worker_job_id' => $workerJob->id,
                 'source_suggestion_id' => Arr::get($item, 'source_suggestion_id', Arr::get($item, 'python_suggestion_id')),
                 'paperless_document_id' => (int) $documentId,
@@ -70,9 +72,40 @@ class WorkerResultIngestor
                 'original_proposed_snapshot' => Arr::get($item, 'original_proposed_snapshot'),
             ]);
 
+            $entityApprovalsUpserted += $this->upsertEntityApprovals($suggestion);
             $imported++;
         }
 
-        return ['review_suggestions_imported' => $imported];
+        return ['review_suggestions_imported' => $imported, 'entity_approvals_upserted' => $entityApprovalsUpserted];
+    }
+
+    private function upsertEntityApprovals(ReviewSuggestion $suggestion): int
+    {
+        $upserted = 0;
+
+        $upserted += $this->upsertEntity($suggestion, EntityApproval::TYPE_CORRESPONDENT, $suggestion->proposed_correspondent_name, $suggestion->proposed_correspondent_id);
+        $upserted += $this->upsertEntity($suggestion, EntityApproval::TYPE_DOCUMENT_TYPE, $suggestion->proposed_document_type_name, $suggestion->proposed_document_type_id);
+
+        foreach ($suggestion->proposed_tags ?? [] as $tag) {
+            $name = is_array($tag) ? ($tag['name'] ?? null) : $tag;
+            $id = is_array($tag) ? ($tag['id'] ?? $tag['paperless_id'] ?? null) : null;
+            $upserted += $this->upsertEntity($suggestion, EntityApproval::TYPE_TAG, $name, $id);
+        }
+
+        return $upserted;
+    }
+
+    private function upsertEntity(ReviewSuggestion $suggestion, string $type, mixed $name, mixed $paperlessId): int
+    {
+        if (! is_string($name) || trim($name) === '' || is_numeric($paperlessId)) {
+            return 0;
+        }
+
+        $entity = EntityApproval::query()->firstOrCreate(
+            ['type' => $type, 'name' => trim($name)],
+            ['source_review_suggestion_id' => $suggestion->id]
+        );
+
+        return $entity->wasRecentlyCreated ? 1 : 0;
     }
 }
