@@ -17,3 +17,12 @@ build
 LICENSE
 .github
 tests
+laravel/.env
+laravel/.env.*
+!laravel/.env.example
+laravel/vendor
+laravel/node_modules
+laravel/public/build
+laravel/storage/framework/views
+laravel/.phpunit.cache
+laravel/.phpunit.result.cache
