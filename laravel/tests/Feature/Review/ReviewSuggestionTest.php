@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Review;
 
+use App\Jobs\RunPythonWorkerJob;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
+use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -53,6 +56,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_accepting_a_pending_suggestion_records_decision_and_audit_log(): void
     {
+        Queue::fake();
         $user = User::factory()->create();
         $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 789]);
 
@@ -69,6 +73,35 @@ class ReviewSuggestionTest extends TestCase
             'event' => 'review_suggestion.accepted',
             'target_type' => 'review_suggestion',
             'target_id' => (string) $suggestion->id,
+        ]);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_accepting_python_origin_suggestion_queues_commit_worker_job(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 789,
+            'source_suggestion_id' => 321,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $workerJob = WorkerJob::query()->firstOrFail();
+        $this->assertSame(WorkerJob::TYPE_COMMIT_REVIEW, $workerJob->type);
+        $this->assertSame(WorkerJob::STATUS_QUEUED, $workerJob->status);
+        $this->assertSame([
+            'review_suggestion_id' => $suggestion->id,
+            'source_suggestion_id' => 321,
+            'paperless_document_id' => 789,
+        ], $workerJob->payload);
+        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $workerJob->id);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'worker_job.queued',
+            'target_id' => (string) $workerJob->id,
         ]);
     }
 

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'worker_job_id',
+    'source_suggestion_id',
     'paperless_document_id',
     'status',
     'confidence',

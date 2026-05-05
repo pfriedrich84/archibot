@@ -168,6 +168,17 @@ async def cmd_poll(*, force: bool = False) -> None:
         await ollama.aclose()
 
 
+def _coerce_tag_ids(values: list[object]) -> list[int]:
+    tag_ids: list[int] = []
+    for value in values:
+        try:
+            if value is not None:
+                tag_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return tag_ids
+
+
 async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
     """Process exactly one document by ID (OCR + embed + classify)."""
     from app.db import get_conn
@@ -202,6 +213,57 @@ async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
     finally:
         await paperless.aclose()
         await ollama.aclose()
+
+
+async def cmd_commit_review(suggestion_id: int) -> dict[str, object]:
+    """Commit an accepted Python-origin review suggestion to Paperless."""
+    from app.db import get_conn
+    from app.models import ReviewDecision, SuggestionRow
+    from app.pipeline.committer import commit_suggestion
+
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+
+    if row is None:
+        raise ValueError(f"Suggestion #{suggestion_id} not found")
+
+    suggestion = SuggestionRow(**dict(row))
+    proposed_tags = _decode_json_value(suggestion.proposed_tags_json, [])
+    tag_ids = _coerce_tag_ids(
+        [tag.get("id") for tag in proposed_tags if isinstance(tag, dict)]
+        if isinstance(proposed_tags, list)
+        else []
+    )
+    decision = ReviewDecision(
+        suggestion_id=suggestion.id,
+        title=suggestion.proposed_title or suggestion.original_title or "",
+        date=suggestion.effective_date,
+        correspondent_id=suggestion.effective_correspondent_id,
+        doctype_id=suggestion.effective_doctype_id,
+        storage_path_id=suggestion.effective_storage_path_id,
+        tag_ids=tag_ids,
+        action="accept",
+    )
+
+    paperless = PaperlessClient()
+    try:
+        await commit_suggestion(suggestion, decision, paperless)
+    finally:
+        await paperless.aclose()
+
+    with get_conn() as conn:
+        updated = conn.execute(
+            "SELECT status FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
+
+    status = updated["status"] if updated else "error"
+    result = {
+        "source_suggestion_id": suggestion_id,
+        "status": status,
+        "committed": status == "committed",
+    }
+    print(f"Suggestion #{suggestion_id} commit complete: {result}")
+    return result
 
 
 def cmd_reset(include_config: bool = False) -> None:
@@ -254,6 +316,10 @@ COMMANDS = {
     "process-document": (
         "Process a single document by ID via Laravel worker contract",
         cmd_process_doc,
+    ),
+    "commit-review": (
+        "Commit an accepted review suggestion by Python suggestion ID",
+        cmd_commit_review,
     ),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
@@ -309,6 +375,8 @@ def _decode_json_value(value: str | None, default: Any = None) -> Any:
 def _suggestion_row_to_review_suggestion(row: Any) -> dict[str, object]:
     """Map a Python suggestion row to Laravel's stable review ingestion shape."""
     return {
+        "source_suggestion_id": row.id,
+        "python_suggestion_id": row.id,
         "paperless_document_id": row.document_id,
         "status": row.status,
         "confidence": row.confidence,
@@ -378,6 +446,17 @@ def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
 def _contract_document_id(input_payload: dict[str, object]) -> int | None:
     payload = _contract_payload(input_payload)
     raw = payload.get("paperless_document_id") or payload.get("document_id")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _contract_source_suggestion_id(input_payload: dict[str, object]) -> int | None:
+    payload = _contract_payload(input_payload)
+    raw = payload.get("source_suggestion_id") or payload.get("suggestion_id")
     if raw is None:
         return None
     try:
@@ -464,6 +543,13 @@ def main() -> None:
                     )
                     if review_suggestions:
                         output_payload["review_suggestions"] = review_suggestions
+            elif cmd_name == "commit-review":
+                suggestion_id = _contract_source_suggestion_id(input_payload)
+                if suggestion_id is None:
+                    raise ValueError(
+                        "Worker payload requires source_suggestion_id for commit-review"
+                    )
+                output_payload["result"] = asyncio.run(cmd_func(suggestion_id))
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)
@@ -480,6 +566,17 @@ def main() -> None:
                 print(f"Invalid document_id: {doc_arg}")
                 sys.exit(1)
             asyncio.run(cmd_func(document_id, force=force))
+        elif cmd_name == "commit-review":
+            suggestion_arg = next((a for a in extra_args if not a.startswith("-")), None)
+            if suggestion_arg is None:
+                print("Usage: archibot commit-review <source_suggestion_id>")
+                sys.exit(1)
+            try:
+                suggestion_id = int(suggestion_arg)
+            except ValueError:
+                print(f"Invalid source_suggestion_id: {suggestion_arg}")
+                sys.exit(1)
+            asyncio.run(cmd_func(suggestion_id))
         else:
             asyncio.run(cmd_func())
     except KeyboardInterrupt:

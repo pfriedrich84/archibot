@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\ReviewSuggestion;
+use App\Models\WorkerJob;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -34,6 +36,35 @@ class ReviewSuggestionController extends Controller
     public function accept(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
+
+        if ($reviewSuggestion->source_suggestion_id !== null) {
+            $workerJob = WorkerJob::query()->create([
+                'type' => WorkerJob::TYPE_COMMIT_REVIEW,
+                'status' => WorkerJob::STATUS_QUEUED,
+                'payload' => [
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
+                    'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                ],
+                'created_by_user_id' => $request->user()->id,
+            ]);
+
+            AuditLog::query()->create([
+                'actor_user_id' => $request->user()->id,
+                'event' => 'worker_job.queued',
+                'target_type' => 'worker_job',
+                'target_id' => (string) $workerJob->id,
+                'metadata' => [
+                    'type' => $workerJob->type,
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
+                ],
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
+            RunPythonWorkerJob::dispatch($workerJob->id);
+        }
 
         return redirect()->route('review.index');
     }
@@ -72,6 +103,7 @@ class ReviewSuggestionController extends Controller
     {
         return [
             'id' => $suggestion->id,
+            'source_suggestion_id' => $suggestion->source_suggestion_id,
             'paperless_document_id' => $suggestion->paperless_document_id,
             'status' => $suggestion->status,
             'confidence' => $suggestion->confidence,

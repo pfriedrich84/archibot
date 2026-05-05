@@ -18,6 +18,7 @@ class WorkerResultIngestorTest extends TestCase
             'result' => [
                 'review_suggestions' => [
                     [
+                        'source_suggestion_id' => 456,
                         'paperless_document_id' => 123,
                         'confidence' => 91,
                         'reasoning' => 'Looks like an invoice.',
@@ -44,6 +45,7 @@ class WorkerResultIngestorTest extends TestCase
         $this->assertSame(['review_suggestions_imported' => 1], $summary);
         $suggestion = ReviewSuggestion::query()->firstOrFail();
         $this->assertSame($workerJob->id, $suggestion->worker_job_id);
+        $this->assertSame(456, $suggestion->source_suggestion_id);
         $this->assertSame(123, $suggestion->paperless_document_id);
         $this->assertSame(91, $suggestion->confidence);
         $this->assertSame('Scan 123', $suggestion->original_title);

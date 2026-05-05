@@ -39,6 +39,8 @@ class WorkerJob extends Model
 
     public const TYPE_PROCESS_DOCUMENT = 'process_document';
 
+    public const TYPE_COMMIT_REVIEW = 'commit_review';
+
     protected function casts(): array
     {
         return [
@@ -53,6 +55,19 @@ class WorkerJob extends Model
      * @return array<int, string>
      */
     public static function allowedTypes(): array
+    {
+        return [
+            self::TYPE_POLL,
+            self::TYPE_REINDEX,
+            self::TYPE_PROCESS_DOCUMENT,
+            self::TYPE_COMMIT_REVIEW,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function userQueueableTypes(): array
     {
         return [self::TYPE_POLL, self::TYPE_REINDEX, self::TYPE_PROCESS_DOCUMENT];
     }

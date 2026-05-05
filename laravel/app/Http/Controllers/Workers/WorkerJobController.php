@@ -44,14 +44,14 @@ class WorkerJobController extends Controller
 
         return Inertia::render('worker/Index', [
             'jobs' => $jobs,
-            'allowedTypes' => WorkerJob::allowedTypes(),
+            'allowedTypes' => WorkerJob::userQueueableTypes(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'type' => ['required', Rule::in(WorkerJob::allowedTypes())],
+            'type' => ['required', Rule::in(WorkerJob::userQueueableTypes())],
             'paperless_document_id' => ['nullable', 'integer', 'min:1'],
         ]);
 

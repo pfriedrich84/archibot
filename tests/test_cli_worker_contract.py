@@ -156,6 +156,35 @@ def test_poll_worker_output_includes_new_review_suggestions(
     assert payload["review_suggestions"] == [mock_suggestion]
 
 
+def test_commit_review_worker_contract_reads_source_suggestion_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps({"id": 17, "type": "commit_review", "payload": {"source_suggestion_id": 7}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cli", "commit-review", "--input", str(input_path), "--output", str(output_path)],
+    )
+
+    mock_cmd = AsyncMock(return_value={"source_suggestion_id": 7, "committed": True})
+
+    with patch("app.cli.COMMANDS", {"commit-review": ("desc", mock_cmd)}):
+        from app.cli import main
+
+        main()
+
+    mock_cmd.assert_called_once_with(7)
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["command"] == "commit-review"
+    assert payload["result"] == {"source_suggestion_id": 7, "committed": True}
+
+
 def test_suggestion_row_maps_to_laravel_review_ingestion_shape() -> None:
     from app.cli import _suggestion_row_to_review_suggestion
 
@@ -191,6 +220,8 @@ def test_suggestion_row_maps_to_laravel_review_ingestion_shape() -> None:
     payload = _suggestion_row_to_review_suggestion(row)
 
     assert payload == {
+        "source_suggestion_id": 7,
+        "python_suggestion_id": 7,
         "paperless_document_id": 224,
         "status": "pending",
         "confidence": 91,

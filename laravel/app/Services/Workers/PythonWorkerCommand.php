@@ -84,6 +84,7 @@ class PythonWorkerCommand
             WorkerJob::TYPE_POLL => [$python, '-m', 'app.cli', 'poll', '--input', $input, '--output', $output],
             WorkerJob::TYPE_REINDEX => [$python, '-m', 'app.cli', 'reindex', '--input', $input, '--output', $output],
             WorkerJob::TYPE_PROCESS_DOCUMENT => [$python, '-m', 'app.cli', 'process-document', '--input', $input, '--output', $output],
+            WorkerJob::TYPE_COMMIT_REVIEW => [$python, '-m', 'app.cli', 'commit-review', '--input', $input, '--output', $output],
             default => throw new RuntimeException("Unsupported worker job type [{$workerJob->type}]."),
         };
     }
