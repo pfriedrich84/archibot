@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonWorkerJob;
+use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
+use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -81,6 +83,30 @@ class ReviewSuggestionController extends Controller
         return redirect()->route('review.index');
     }
 
+    public function preview(Request $request, ReviewSuggestion $reviewSuggestion)
+    {
+        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $token = $request->user()->paperless_token;
+
+        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+
+        $client = new PaperlessClient($paperlessUrl);
+
+        try {
+            $client->document($token, $reviewSuggestion->paperless_document_id);
+            $preview = $client->documentPreview($token, $reviewSuggestion->paperless_document_id);
+        } catch (\Throwable) {
+            abort(403, 'Paperless document is not accessible.');
+        }
+
+        abort_unless($preview->successful(), $preview->status(), 'Paperless preview is not available.');
+
+        return response($preview->body(), 200, [
+            'Content-Type' => $preview->header('Content-Type', 'application/pdf'),
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING, 409);
@@ -112,6 +138,7 @@ class ReviewSuggestionController extends Controller
             'paperless_document_id' => $suggestion->paperless_document_id,
             'commit_status' => $suggestion->commit_status,
             'commit_worker_job_id' => $suggestion->commit_worker_job_id,
+            'preview_url' => route('review.preview', $suggestion),
             'status' => $suggestion->status,
             'confidence' => $suggestion->confidence,
             'original_title' => $suggestion->original_title,

@@ -3,10 +3,12 @@
 namespace Tests\Feature\Review;
 
 use App\Jobs\RunPythonWorkerJob;
+use App\Models\AppSetting;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -106,6 +108,43 @@ class ReviewSuggestionTest extends TestCase
             'event' => 'worker_job.queued',
             'target_id' => (string) $workerJob->id,
         ]);
+    }
+
+    public function test_review_preview_checks_document_access_and_proxies_paperless_preview(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response(['id' => 456], 200),
+            'paperless.example/api/documents/456/preview/' => Http::response('%PDF', 200, [
+                'Content-Type' => 'application/pdf',
+            ]),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($user)
+            ->get(route('review.preview', $suggestion))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertSee('%PDF', false);
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_review_preview_denies_when_paperless_document_check_fails(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response([], 403),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($user)
+            ->get(route('review.preview', $suggestion))
+            ->assertForbidden();
     }
 
     public function test_rejecting_a_pending_suggestion_records_decision_and_audit_log(): void

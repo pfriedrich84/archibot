@@ -13,6 +13,7 @@
         reasoning: string | null;
         commit_status: string | null;
         commit_worker_job_id: number | null;
+        preview_url: string;
         judge_verdict: string | null;
         judge_reasoning: string | null;
         original: Record<string, unknown>;
@@ -66,6 +67,25 @@
             </span>
         {/if}
     </div>
+
+    <section class="rounded-xl border p-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="font-semibold">Document preview</h2>
+            <a
+                class="text-sm text-muted-foreground underline"
+                href={suggestion.preview_url}
+                target="_blank"
+                rel="noreferrer"
+            >
+                Open preview
+            </a>
+        </div>
+        <iframe
+            title={`Preview document ${suggestion.paperless_document_id}`}
+            src={suggestion.preview_url}
+            class="h-[70vh] w-full rounded-md border bg-white"
+        ></iframe>
+    </section>
 
     <div class="grid gap-4 md:grid-cols-2">
         <section class="rounded-xl border p-4">
