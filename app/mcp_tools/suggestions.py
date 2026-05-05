@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 
 from app.config import settings
 from app.db import get_conn
-from app.mcp_tools._auth import check_api_key
+from app.mcp_tools._auth import check_api_key, require_mcp_write
 from app.mcp_tools._deps import get_deps
 
 log = structlog.get_logger(__name__)
@@ -112,7 +112,7 @@ def register(mcp: FastMCP) -> None:
             ),
         )
         async def approve_suggestion(suggestion_id: int, ctx: Context = None) -> str:
-            check_api_key(ctx)
+            require_mcp_write(ctx)
             deps = get_deps(ctx)
 
             from app.models import ReviewDecision, SuggestionRow
@@ -170,7 +170,7 @@ def register(mcp: FastMCP) -> None:
             ),
         )
         async def reject_suggestion(suggestion_id: int, ctx: Context = None) -> str:
-            check_api_key(ctx)
+            require_mcp_write(ctx)
 
             with get_conn() as conn:
                 row = conn.execute(

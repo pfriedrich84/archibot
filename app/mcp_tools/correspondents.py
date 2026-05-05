@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 
 from app.config import settings
 from app.db import get_conn
-from app.mcp_tools._auth import check_api_key
+from app.mcp_tools._auth import check_api_key, require_mcp_write
 from app.mcp_tools._deps import get_deps
 from app.pipeline.committer import retroactive_correspondent_apply
 
@@ -95,7 +95,7 @@ def register(mcp: FastMCP) -> None:
             ),
         )
         async def approve_correspondent(name: str, ctx: Context = None) -> str:
-            check_api_key(ctx)
+            require_mcp_write(ctx)
             deps = get_deps(ctx)
 
             with get_conn() as conn:
@@ -160,7 +160,7 @@ def register(mcp: FastMCP) -> None:
             ),
         )
         async def unblacklist_correspondent(name: str, ctx: Context = None) -> str:
-            check_api_key(ctx)
+            require_mcp_write(ctx)
             with get_conn() as conn:
                 row = conn.execute(
                     "SELECT 1 FROM correspondent_blacklist WHERE name = ?", (name,)

@@ -41,7 +41,9 @@ def test_legacy_static_api_key_still_works_from_header(monkeypatch):
         _auth.check_api_key(make_ctx(headers={"x-api-key": "wrong"}))
 
 
-def test_laravel_mcp_token_verifier_accepts_bearer_token(monkeypatch, tmp_path):
+def test_laravel_mcp_token_verifier_accepts_bearer_token_and_attaches_identity(
+    monkeypatch, tmp_path
+):
     laravel_path = tmp_path / "laravel"
     laravel_path.mkdir()
     calls = []
@@ -59,7 +61,8 @@ def test_laravel_mcp_token_verifier_accepts_bearer_token(monkeypatch, tmp_path):
         )
         return DummyCompletedProcess(
             0,
-            '{"ok":true,"user":{"id":1,"paperless_username":"ada"},'
+            '{"ok":true,"user":{"id":1,"paperless_user_id":42,"paperless_username":"ada",'
+            '"is_admin":true},"token":{"id":5,"name":"Claude Desktop"},'
             '"permissions":{"mcp_write_enabled":false}}\n',
         )
 
@@ -68,10 +71,15 @@ def test_laravel_mcp_token_verifier_accepts_bearer_token(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "mcp_laravel_php_binary", "php8.4")
     monkeypatch.setattr(_auth.subprocess, "run", fake_run)
 
-    payload = _auth.check_api_key(make_ctx(headers={"Authorization": "Bearer abmcp_plain"}))
+    ctx = make_ctx(headers={"Authorization": "Bearer abmcp_plain"})
+    identity = _auth.check_api_key(ctx)
 
-    assert payload is not None
-    assert payload["user"]["paperless_username"] == "ada"
+    assert identity is not None
+    assert identity.paperless_username == "ada"
+    assert identity.paperless_user_id == 42
+    assert identity.is_admin is True
+    assert identity.token_name == "Claude Desktop"
+    assert _auth.get_mcp_identity(ctx) == identity
     assert calls == [
         {
             "command": ["php8.4", "artisan", "archibot:mcp-token-verify", "abmcp_plain"],
@@ -100,3 +108,35 @@ def test_laravel_mcp_auth_requires_token(monkeypatch):
 
     with pytest.raises(ValueError, match="Invalid or missing MCP token"):
         _auth.check_api_key(make_ctx())
+
+
+def test_laravel_write_permission_uses_verified_identity(monkeypatch):
+    def fake_run(command, cwd, check, capture_output, text, timeout):
+        return DummyCompletedProcess(
+            0,
+            '{"ok":true,"user":{"id":1,"paperless_username":"ada"},'
+            '"permissions":{"mcp_write_enabled":true}}\n',
+        )
+
+    monkeypatch.setattr(settings, "mcp_laravel_auth_enabled", True)
+    monkeypatch.setattr(_auth.subprocess, "run", fake_run)
+
+    identity = _auth.require_mcp_write(make_ctx(headers={"x-api-key": "abmcp_write"}))
+
+    assert identity is not None
+    assert identity.mcp_write_enabled is True
+
+
+def test_laravel_write_permission_rejects_read_only_token(monkeypatch):
+    def fake_run(command, cwd, check, capture_output, text, timeout):
+        return DummyCompletedProcess(
+            0,
+            '{"ok":true,"user":{"id":1,"paperless_username":"ada"},'
+            '"permissions":{"mcp_write_enabled":false}}\n',
+        )
+
+    monkeypatch.setattr(settings, "mcp_laravel_auth_enabled", True)
+    monkeypatch.setattr(_auth.subprocess, "run", fake_run)
+
+    with pytest.raises(ValueError, match="MCP write tools are disabled for this token"):
+        _auth.require_mcp_write(make_ctx(headers={"x-api-key": "abmcp_readonly"}))

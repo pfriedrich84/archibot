@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,34 @@ from mcp.server.fastmcp import Context
 from app.config import settings
 
 log = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class McpIdentity:
+    """Verified MCP caller identity returned by Laravel."""
+
+    user_id: int | None
+    paperless_user_id: int | None
+    paperless_username: str | None
+    is_admin: bool
+    token_id: int | None
+    token_name: str | None
+    mcp_write_enabled: bool
+
+    @classmethod
+    def from_laravel_payload(cls, payload: dict[str, Any]) -> McpIdentity:
+        user = payload.get("user") or {}
+        token = payload.get("token") or {}
+        permissions = payload.get("permissions") or {}
+        return cls(
+            user_id=user.get("id"),
+            paperless_user_id=user.get("paperless_user_id"),
+            paperless_username=user.get("paperless_username"),
+            is_admin=bool(user.get("is_admin")),
+            token_id=token.get("id"),
+            token_name=token.get("name"),
+            mcp_write_enabled=bool(permissions.get("mcp_write_enabled")),
+        )
 
 
 class RateLimiter:
@@ -131,7 +160,18 @@ def _verify_laravel_mcp_token(token: str) -> dict[str, Any]:
     return payload
 
 
-def check_api_key(ctx: Context) -> dict[str, Any] | None:
+def _set_mcp_identity(ctx: Context, identity: McpIdentity | None) -> None:
+    request_context = getattr(ctx, "request_context", None)
+    if request_context is not None:
+        request_context.mcp_identity = identity
+
+
+def get_mcp_identity(ctx: Context) -> McpIdentity | None:
+    """Return the verified Laravel MCP identity for this request, if any."""
+    return getattr(getattr(ctx, "request_context", None), "mcp_identity", None)
+
+
+def check_api_key(ctx: Context) -> McpIdentity | None:
     """Validate MCP credentials for a tool call.
 
     On the Laravel migration branch, enable ``MCP_LARAVEL_AUTH_ENABLED`` so
@@ -146,14 +186,30 @@ def check_api_key(ctx: Context) -> dict[str, Any] | None:
     if settings.mcp_laravel_auth_enabled:
         if not provided:
             raise ValueError("Invalid or missing MCP token.")
-        return _verify_laravel_mcp_token(provided)
+        identity = McpIdentity.from_laravel_payload(_verify_laravel_mcp_token(provided))
+        _set_mcp_identity(ctx, identity)
+        return identity
 
     expected = settings.mcp_api_key
     if not expected:
+        _set_mcp_identity(ctx, None)
         return None  # no auth configured
 
     if provided != expected:
         log.warning("api key mismatch")
         raise ValueError("Invalid or missing API key.")
 
+    _set_mcp_identity(ctx, None)
     return None
+
+
+def require_mcp_write(ctx: Context) -> McpIdentity | None:
+    """Validate auth and require write permission for a mutating MCP tool."""
+    identity = check_api_key(ctx)
+    if settings.mcp_laravel_auth_enabled:
+        if not identity or not identity.mcp_write_enabled:
+            raise ValueError("MCP write tools are disabled for this token.")
+        return identity
+    if not settings.mcp_enable_write:
+        raise ValueError("MCP write tools are disabled.")
+    return identity
