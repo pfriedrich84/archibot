@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
 import sqlite3
@@ -247,8 +248,76 @@ COMMANDS = {
     "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
     "poll": ("Process inbox (OCR + embed + classify, --force to reprocess)", cmd_poll),
     "process-doc": ("Process a single document by ID (optional --force)", cmd_process_doc),
+    "process-document": (
+        "Process a single document by ID via Laravel worker contract",
+        cmd_process_doc,
+    ),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
+
+
+def _arg_value(args: list[str], name: str) -> str | None:
+    """Return the value following *name* in CLI args, if present."""
+    if name not in args:
+        return None
+    idx = args.index(name)
+    if idx + 1 >= len(args):
+        return None
+    return args[idx + 1]
+
+
+def _load_worker_contract(extra_args: list[str]) -> tuple[dict[str, object], Path] | None:
+    """Load Laravel worker JSON contract input/output paths from CLI args."""
+    input_path = _arg_value(extra_args, "--input")
+    output_path = _arg_value(extra_args, "--output")
+
+    if input_path is None and output_path is None:
+        return None
+    if not input_path or not output_path:
+        print("Worker JSON contract requires both --input and --output")
+        sys.exit(1)
+
+    with Path(input_path).open("r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+
+    if not isinstance(payload, dict):
+        print("Worker JSON contract input must be a JSON object")
+        sys.exit(1)
+
+    return payload, Path(output_path)
+
+
+def _write_worker_output(output_path: Path, payload: dict[str, object]) -> None:
+    """Write a JSON result for Laravel worker job ingestion."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
+
+
+def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
+    payload = input_payload.get("payload", {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def _contract_document_id(input_payload: dict[str, object]) -> int | None:
+    payload = _contract_payload(input_payload)
+    raw = payload.get("paperless_document_id") or payload.get("document_id")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _contract_force(input_payload: dict[str, object], cli_force: bool) -> bool:
+    payload = _contract_payload(input_payload)
+    raw = payload.get("force")
+    if isinstance(raw, bool):
+        return cli_force or raw
+    if isinstance(raw, str):
+        return cli_force or raw.lower() in {"1", "true", "yes"}
+    return cli_force
 
 
 def main() -> None:
@@ -284,10 +353,35 @@ def main() -> None:
     force = "--force" in extra_args
 
     _, cmd_func = COMMANDS[cmd_name]
+    contract = _load_worker_contract(extra_args)
     try:
-        if cmd_name in {"reindex-ocr", "poll"}:
+        if contract is not None:
+            input_payload, output_path = contract
+            if cmd_name == "poll":
+                asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
+            elif cmd_name == "reindex":
+                asyncio.run(cmd_func())
+            elif cmd_name in {"process-doc", "process-document"}:
+                document_id = _contract_document_id(input_payload)
+                if document_id is None:
+                    raise ValueError(
+                        "Worker payload requires paperless_document_id for process-document"
+                    )
+                asyncio.run(cmd_func(document_id, force=_contract_force(input_payload, force)))
+            else:
+                asyncio.run(cmd_func())
+            _write_worker_output(
+                output_path,
+                {
+                    "ok": True,
+                    "command": cmd_name,
+                    "job_id": input_payload.get("id"),
+                    "type": input_payload.get("type", cmd_name),
+                },
+            )
+        elif cmd_name in {"reindex-ocr", "poll"}:
             asyncio.run(cmd_func(force=force))
-        elif cmd_name == "process-doc":
+        elif cmd_name in {"process-doc", "process-document"}:
             doc_arg = next((a for a in extra_args if not a.startswith("-")), None)
             if doc_arg is None:
                 print("Usage: archibot process-doc <document_id> [--force]")
@@ -303,6 +397,11 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nAborted.")
         sys.exit(130)
+    except Exception as exc:
+        if contract is not None:
+            _, output_path = contract
+            _write_worker_output(output_path, {"ok": False, "command": cmd_name, "error": str(exc)})
+        raise
 
 
 if __name__ == "__main__":
