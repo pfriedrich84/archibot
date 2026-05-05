@@ -33,7 +33,11 @@ def test_main_poll_reads_worker_contract_and_writes_output(
 
     mock_cmd = AsyncMock()
 
-    with patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}):
+    with (
+        patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}),
+        patch("app.cli._latest_suggestion_id", return_value=0),
+        patch("app.cli._review_suggestion_payloads_since", return_value=[]),
+    ):
         from app.cli import main
 
         main()
@@ -66,7 +70,11 @@ def test_main_process_document_reads_document_id_from_worker_payload(
 
     mock_cmd = AsyncMock()
 
-    with patch("app.cli.COMMANDS", {"process-document": ("desc", mock_cmd)}):
+    with (
+        patch("app.cli.COMMANDS", {"process-document": ("desc", mock_cmd)}),
+        patch("app.cli._latest_suggestion_id", return_value=0),
+        patch("app.cli._review_suggestion_payloads_since", return_value=[]),
+    ):
         from app.cli import main
 
         main()
@@ -103,7 +111,8 @@ def test_process_document_worker_output_includes_review_suggestions(
 
     with (
         patch("app.cli.COMMANDS", {"process-doc": ("desc", mock_cmd)}),
-        patch("app.cli._latest_review_suggestion_payload", return_value=mock_suggestion),
+        patch("app.cli._latest_suggestion_id", return_value=4),
+        patch("app.cli._review_suggestion_payloads_since", return_value=[mock_suggestion]),
     ):
         from app.cli import main
 
@@ -111,6 +120,39 @@ def test_process_document_worker_output_includes_review_suggestions(
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["result"] == "classified"
+    assert payload["review_suggestions"] == [mock_suggestion]
+
+
+def test_poll_worker_output_includes_new_review_suggestions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps({"id": 16, "type": "poll", "payload": {}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["cli", "poll", "--input", str(input_path), "--output", str(output_path)]
+    )
+
+    mock_cmd = AsyncMock()
+    mock_suggestion = {"paperless_document_id": 225, "proposed": {"title": "Batch doc"}}
+
+    with (
+        patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}),
+        patch("app.cli._latest_suggestion_id", return_value=8),
+        patch(
+            "app.cli._review_suggestion_payloads_since", return_value=[mock_suggestion]
+        ) as mapper,
+    ):
+        from app.cli import main
+
+        main()
+
+    mapper.assert_called_once_with(8)
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
     assert payload["review_suggestions"] == [mock_suggestion]
 
 
@@ -192,7 +234,10 @@ def test_main_worker_contract_writes_failure_output(
 
     mock_cmd = AsyncMock(side_effect=RuntimeError("boom"))
 
-    with patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}):
+    with (
+        patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}),
+        patch("app.cli._latest_suggestion_id", return_value=0),
+    ):
         from app.cli import main
 
         with pytest.raises(RuntimeError, match="boom"):

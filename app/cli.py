@@ -340,21 +340,34 @@ def _suggestion_row_to_review_suggestion(row: Any) -> dict[str, object]:
     }
 
 
-def _latest_review_suggestion_payload(document_id: int) -> dict[str, object] | None:
-    """Return the most recent Python suggestion for a document in Laravel ingest format."""
+def _latest_suggestion_id() -> int:
+    """Return the current highest Python suggestion id for delta-based worker output."""
+    from app.db import get_conn
+
+    with get_conn() as conn:
+        row = conn.execute("SELECT COALESCE(MAX(id), 0) AS max_id FROM suggestions").fetchone()
+
+    return int(row["max_id"] or 0)
+
+
+def _review_suggestion_payloads_since(
+    suggestion_id: int, *, document_id: int | None = None
+) -> list[dict[str, object]]:
+    """Return Python suggestions created after *suggestion_id* in Laravel ingest format."""
     from app.db import get_conn
     from app.models import SuggestionRow
 
+    sql = "SELECT * FROM suggestions WHERE id > ?"
+    params: list[object] = [suggestion_id]
+    if document_id is not None:
+        sql += " AND document_id = ?"
+        params.append(document_id)
+    sql += " ORDER BY id ASC"
+
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM suggestions WHERE document_id = ? ORDER BY id DESC LIMIT 1",
-            (document_id,),
-        ).fetchone()
+        rows = conn.execute(sql, params).fetchall()
 
-    if row is None:
-        return None
-
-    return _suggestion_row_to_review_suggestion(SuggestionRow(**dict(row)))
+    return [_suggestion_row_to_review_suggestion(SuggestionRow(**dict(row))) for row in rows]
 
 
 def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
@@ -427,7 +440,11 @@ def main() -> None:
                 "type": input_payload.get("type", cmd_name),
             }
             if cmd_name == "poll":
+                before_suggestion_id = _latest_suggestion_id()
                 asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
+                review_suggestions = _review_suggestion_payloads_since(before_suggestion_id)
+                if review_suggestions:
+                    output_payload["review_suggestions"] = review_suggestions
             elif cmd_name == "reindex":
                 asyncio.run(cmd_func())
             elif cmd_name in {"process-doc", "process-document"}:
@@ -436,14 +453,17 @@ def main() -> None:
                     raise ValueError(
                         "Worker payload requires paperless_document_id for process-document"
                     )
+                before_suggestion_id = _latest_suggestion_id()
                 result = asyncio.run(
                     cmd_func(document_id, force=_contract_force(input_payload, force))
                 )
                 output_payload["result"] = result
                 if result in {"classified", "auto_committed"}:
-                    suggestion_payload = _latest_review_suggestion_payload(document_id)
-                    if suggestion_payload is not None:
-                        output_payload["review_suggestions"] = [suggestion_payload]
+                    review_suggestions = _review_suggestion_payloads_since(
+                        before_suggestion_id, document_id=document_id
+                    )
+                    if review_suggestions:
+                        output_payload["review_suggestions"] = review_suggestions
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)
