@@ -40,6 +40,11 @@ class PaperlessClient
      *
      * @return array<string, mixed>
      */
+    public function ping(string $token): bool
+    {
+        return $this->request($token)->get('/api/ui_settings/')->status() < 500;
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
