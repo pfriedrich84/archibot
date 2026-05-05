@@ -8,8 +8,11 @@
     type Suggestion = {
         id: number;
         paperless_document_id: number;
+        status: string;
         confidence: number | null;
         reasoning: string | null;
+        commit_status: string | null;
+        commit_worker_job_id: number | null;
         judge_verdict: string | null;
         judge_reasoning: string | null;
         original: Record<string, unknown>;
@@ -37,10 +40,21 @@
 <div class="space-y-6">
     <Heading
         title={`Review document #${suggestion.paperless_document_id}`}
-        description="Laravel owns this review state. Accept/reject currently records the review decision; worker commit wiring comes next."
+        description="Laravel owns this review state. Accepting Python-origin suggestions queues a Python worker commit back to Paperless."
     />
 
     <div class="flex flex-wrap items-center gap-3">
+        <span class="rounded-full bg-muted px-3 py-1 text-sm">
+            Status: {suggestion.status}
+        </span>
+        {#if suggestion.commit_status}
+            <span class="rounded-full bg-muted px-3 py-1 text-sm">
+                Commit: {suggestion.commit_status}
+                {#if suggestion.commit_worker_job_id}
+                    via worker #{suggestion.commit_worker_job_id}
+                {/if}
+            </span>
+        {/if}
         {#if suggestion.confidence !== null}
             <span class="rounded-full bg-muted px-3 py-1 text-sm">
                 {suggestion.confidence}% confidence
@@ -95,18 +109,24 @@
         </section>
     {/if}
 
-    <div class="flex gap-3">
-        <Form {...accept.form(suggestion.id)}>
-            {#snippet children({ processing })}
-                <Button type="submit" disabled={processing}>Accept</Button>
-            {/snippet}
-        </Form>
-        <Form {...reject.form(suggestion.id)}>
-            {#snippet children({ processing })}
-                <Button type="submit" variant="outline" disabled={processing}>
-                    Reject
-                </Button>
-            {/snippet}
-        </Form>
-    </div>
+    {#if suggestion.status === 'pending'}
+        <div class="flex gap-3">
+            <Form {...accept.form(suggestion.id)}>
+                {#snippet children({ processing })}
+                    <Button type="submit" disabled={processing}>Accept</Button>
+                {/snippet}
+            </Form>
+            <Form {...reject.form(suggestion.id)}>
+                {#snippet children({ processing })}
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                    >
+                        Reject
+                    </Button>
+                {/snippet}
+            </Form>
+        </div>
+    {/if}
 </div>

@@ -93,6 +93,9 @@ class ReviewSuggestionTest extends TestCase
         $workerJob = WorkerJob::query()->firstOrFail();
         $this->assertSame(WorkerJob::TYPE_COMMIT_REVIEW, $workerJob->type);
         $this->assertSame(WorkerJob::STATUS_QUEUED, $workerJob->status);
+        $suggestion->refresh();
+        $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
+        $this->assertSame($workerJob->id, $suggestion->commit_worker_job_id);
         $this->assertSame([
             'review_suggestion_id' => $suggestion->id,
             'source_suggestion_id' => 321,

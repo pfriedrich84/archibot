@@ -63,6 +63,11 @@ class ReviewSuggestionController extends Controller
                 'user_agent' => $request->userAgent(),
             ]);
 
+            $reviewSuggestion->forceFill([
+                'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+                'commit_worker_job_id' => $workerJob->id,
+            ])->save();
+
             RunPythonWorkerJob::dispatch($workerJob->id);
         }
 
@@ -105,6 +110,8 @@ class ReviewSuggestionController extends Controller
             'id' => $suggestion->id,
             'source_suggestion_id' => $suggestion->source_suggestion_id,
             'paperless_document_id' => $suggestion->paperless_document_id,
+            'commit_status' => $suggestion->commit_status,
+            'commit_worker_job_id' => $suggestion->commit_worker_job_id,
             'status' => $suggestion->status,
             'confidence' => $suggestion->confidence,
             'original_title' => $suggestion->original_title,

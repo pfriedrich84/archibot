@@ -83,6 +83,64 @@ PHP);
         @unlink($script);
     }
 
+    public function test_commit_review_worker_updates_review_commit_status(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode([
+    'ok' => true,
+    'result' => ['source_suggestion_id' => 321, 'status' => 'committed', 'committed' => true],
+]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $suggestion = ReviewSuggestion::factory()->create([
+            'source_suggestion_id' => 321,
+            'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+        ]);
+        $workerJob = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_COMMIT_REVIEW,
+            'payload' => ['review_suggestion_id' => $suggestion->id, 'source_suggestion_id' => 321],
+        ]);
+
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $this->assertSame(ReviewSuggestion::COMMIT_STATUS_COMMITTED, $suggestion->refresh()->commit_status);
+        $this->assertSame($workerJob->id, $suggestion->commit_worker_job_id);
+
+        @unlink($script);
+    }
+
+    public function test_commit_review_worker_marks_review_commit_failed_when_python_does_not_commit(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode([
+    'ok' => true,
+    'result' => ['source_suggestion_id' => 321, 'status' => 'error', 'committed' => false],
+]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $suggestion = ReviewSuggestion::factory()->create([
+            'source_suggestion_id' => 321,
+            'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+        ]);
+        $workerJob = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_COMMIT_REVIEW,
+            'payload' => ['review_suggestion_id' => $suggestion->id, 'source_suggestion_id' => 321],
+        ]);
+
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $this->assertSame(ReviewSuggestion::COMMIT_STATUS_FAILED, $suggestion->refresh()->commit_status);
+        $this->assertSame($workerJob->id, $suggestion->commit_worker_job_id);
+
+        @unlink($script);
+    }
+
     private function writeWorkerStub(string $body): string
     {
         $script = tempnam(sys_get_temp_dir(), 'archibot-worker-');

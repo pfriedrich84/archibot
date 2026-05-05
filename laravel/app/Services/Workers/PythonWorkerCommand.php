@@ -2,6 +2,7 @@
 
 namespace App\Services\Workers;
 
+use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -41,6 +42,10 @@ class PythonWorkerCommand
             'finished_at' => now(),
         ])->save();
 
+        if ($workerJob->type === WorkerJob::TYPE_COMMIT_REVIEW) {
+            $this->updateReviewCommitStatus($workerJob, $process->isSuccessful(), is_array($result) ? $result : []);
+        }
+
         if ($process->isSuccessful() && is_array($result)) {
             $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
 
@@ -52,6 +57,29 @@ class PythonWorkerCommand
         }
 
         return $workerJob;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function updateReviewCommitStatus(WorkerJob $workerJob, bool $processSucceeded, array $result): void
+    {
+        $reviewSuggestionId = data_get($workerJob->payload, 'review_suggestion_id');
+
+        if (! is_numeric($reviewSuggestionId)) {
+            return;
+        }
+
+        $committed = $processSucceeded && data_get($result, 'result.committed') === true;
+
+        ReviewSuggestion::query()
+            ->whereKey((int) $reviewSuggestionId)
+            ->update([
+                'commit_worker_job_id' => $workerJob->id,
+                'commit_status' => $committed
+                    ? ReviewSuggestion::COMMIT_STATUS_COMMITTED
+                    : ReviewSuggestion::COMMIT_STATUS_FAILED,
+            ]);
     }
 
     /**

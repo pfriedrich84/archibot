@@ -37,6 +37,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'created_by_user_id',
     'reviewed_by_user_id',
     'reviewed_at',
+    'commit_status',
+    'commit_worker_job_id',
 ])]
 class ReviewSuggestion extends Model
 {
@@ -47,6 +49,12 @@ class ReviewSuggestion extends Model
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
+
+    public const COMMIT_STATUS_QUEUED = 'queued';
+
+    public const COMMIT_STATUS_COMMITTED = 'committed';
+
+    public const COMMIT_STATUS_FAILED = 'failed';
 
     protected function casts(): array
     {
@@ -65,6 +73,11 @@ class ReviewSuggestion extends Model
     public function workerJob(): BelongsTo
     {
         return $this->belongsTo(WorkerJob::class);
+    }
+
+    public function commitWorkerJob(): BelongsTo
+    {
+        return $this->belongsTo(WorkerJob::class, 'commit_worker_job_id');
     }
 
     public function createdBy(): BelongsTo
