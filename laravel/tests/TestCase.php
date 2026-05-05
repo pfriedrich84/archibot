@@ -2,11 +2,34 @@
 
 namespace Tests;
 
+use App\Models\AppSetting;
+use App\Models\SetupState;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Fortify\Features;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected bool $completeSetupByDefault = true;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if ($this->completeSetupByDefault && Schema::hasTable('app_settings') && Schema::hasTable('setup_states')) {
+            $this->markArchiBotSetupComplete();
+        }
+    }
+
+    protected function markArchiBotSetupComplete(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.test');
+        SetupState::current()->forceFill([
+            'is_complete' => true,
+            'completed_at' => now(),
+        ])->save();
+    }
+
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
     {
         if (! Features::enabled($feature)) {

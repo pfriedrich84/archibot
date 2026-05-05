@@ -14,6 +14,8 @@ class FirstRunSetupTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected bool $completeSetupByDefault = false;
+
     public function test_setup_page_is_available_before_setup_is_complete(): void
     {
         $this->get('/setup')->assertOk();

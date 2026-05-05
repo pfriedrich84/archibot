@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Auth;
 
-use App\Models\AppSetting;
 use App\Models\SetupState;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,6 +55,11 @@ class AuthenticationTest extends TestCase
 
     public function test_users_can_not_authenticate_before_setup_is_complete(): void
     {
+        SetupState::current()->forceFill([
+            'is_complete' => false,
+            'completed_at' => null,
+        ])->save();
+
         $this->post(route('login.store'), [
             'username' => 'paperless-admin',
             'password' => 'paperless-password',
@@ -107,10 +111,6 @@ class AuthenticationTest extends TestCase
 
     private function markSetupComplete(): void
     {
-        AppSetting::put('paperless.url', 'https://paperless.test');
-        SetupState::current()->forceFill([
-            'is_complete' => true,
-            'completed_at' => now(),
-        ])->save();
+        $this->markArchiBotSetupComplete();
     }
 }
