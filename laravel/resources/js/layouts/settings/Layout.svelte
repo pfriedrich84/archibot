@@ -7,8 +7,6 @@
     import { currentUrlState } from '@/lib/currentUrl.svelte';
     import { toUrl } from '@/lib/utils';
     import { edit as editAppearance } from '@/routes/appearance';
-    import { edit as editProfile } from '@/routes/profile';
-    import { edit as editSecurity } from '@/routes/security';
     import type { NavItem } from '@/types';
 
     let {
@@ -18,14 +16,6 @@
     } = $props();
 
     const sidebarNavItems: NavItem[] = [
-        {
-            title: 'Profile',
-            href: editProfile(),
-        },
-        {
-            title: 'Security',
-            href: editSecurity(),
-        },
         {
             title: 'Appearance',
             href: editAppearance(),
@@ -38,7 +28,7 @@
 <div class="px-4 py-6">
     <Heading
         title="Settings"
-        description="Manage your profile and account settings"
+        description="Manage ArchiBot preferences. Paperless account security is managed in Paperless-NGX."
     />
 
     <div class="flex flex-col lg:flex-row lg:space-x-12">

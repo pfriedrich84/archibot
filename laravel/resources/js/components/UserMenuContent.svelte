@@ -11,7 +11,7 @@
     import UserInfo from '@/components/UserInfo.svelte';
     import { toUrl } from '@/lib/utils';
     import { logout } from '@/routes';
-    import { edit } from '@/routes/profile';
+    import { edit } from '@/routes/appearance';
     import type { User } from '@/types';
 
     let {

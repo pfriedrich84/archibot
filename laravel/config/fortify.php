@@ -1,7 +1,5 @@
 <?php
 
-use Laravel\Fortify\Features;
-
 return [
 
     /*
@@ -144,15 +142,9 @@ return [
     */
 
     'features' => [
-        // TODO: remove local account-management routes after replacing the starter auth pages.
-        Features::registration(),
-        Features::resetPasswords(),
-        Features::emailVerification(),
-        Features::twoFactorAuthentication([
-            'confirm' => true,
-            'confirmPassword' => true,
-            // 'window' => 0
-        ]),
+        // ArchiBot authenticates directly against Paperless-NGX. Do not expose
+        // starter-kit local registration, password reset, email verification,
+        // or two-factor account-management routes.
     ],
 
 ];
