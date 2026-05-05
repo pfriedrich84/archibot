@@ -13,7 +13,7 @@ class PythonWorkerCommand
     /**
      * Execute the JSON-file based Python CLI contract for a worker job.
      */
-    public function run(WorkerJob $workerJob): WorkerJob
+    public function run(WorkerJob $workerJob, ?WorkerResultIngestor $ingestor = null): WorkerJob
     {
         $workerJob->forceFill([
             'status' => WorkerJob::STATUS_RUNNING,
@@ -40,6 +40,16 @@ class PythonWorkerCommand
             'error' => $process->isSuccessful() ? null : trim($process->getErrorOutput() ?: $process->getOutput()),
             'finished_at' => now(),
         ])->save();
+
+        if ($process->isSuccessful() && is_array($result)) {
+            $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
+
+            if ($ingestSummary !== []) {
+                $workerJob->forceFill([
+                    'result' => array_merge($workerJob->result ?? [], ['ingest' => $ingestSummary]),
+                ])->save();
+            }
+        }
 
         return $workerJob;
     }

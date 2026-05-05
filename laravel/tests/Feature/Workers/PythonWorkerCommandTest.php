@@ -33,7 +33,11 @@ PHP);
         $workerJob->refresh();
         $this->assertSame(WorkerJob::STATUS_SUCCEEDED, $workerJob->status);
         $this->assertSame(0, $workerJob->exit_code);
-        $this->assertSame(['ok' => true, 'type' => WorkerJob::TYPE_POLL], $workerJob->result);
+        $this->assertSame([
+            'ok' => true,
+            'type' => WorkerJob::TYPE_POLL,
+            'ingest' => ['review_suggestions_imported' => 0],
+        ], $workerJob->result);
         $this->assertFileExists($workerJob->input_path);
         $this->assertFileExists($workerJob->output_path);
 
