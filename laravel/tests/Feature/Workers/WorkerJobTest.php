@@ -3,6 +3,7 @@
 namespace Tests\Feature\Workers;
 
 use App\Jobs\RunPythonWorkerJob;
+use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,7 +18,15 @@ class WorkerJobTest extends TestCase
     public function test_authenticated_users_can_view_worker_jobs(): void
     {
         $user = User::factory()->create();
-        $job = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX]);
+        $job = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_REINDEX,
+            'result' => ['ingest' => ['review_suggestions_imported' => 1]],
+        ]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'worker_job_id' => $job->id,
+            'paperless_document_id' => 123,
+            'proposed_title' => 'Imported invoice',
+        ]);
 
         $this->actingAs($user)
             ->get(route('worker-jobs.index'))
@@ -26,6 +35,10 @@ class WorkerJobTest extends TestCase
                 ->component('worker/Index')
                 ->where('jobs.data.0.id', $job->id)
                 ->where('jobs.data.0.type', WorkerJob::TYPE_REINDEX)
+                ->where('jobs.data.0.ingest.review_suggestions_imported', 1)
+                ->where('jobs.data.0.review_suggestions_count', 1)
+                ->where('jobs.data.0.review_suggestions.0.id', $suggestion->id)
+                ->where('jobs.data.0.review_suggestions.0.proposed_title', 'Imported invoice')
                 ->where('allowedTypes.0', WorkerJob::TYPE_POLL)
             );
     }

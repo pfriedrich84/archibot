@@ -42,6 +42,7 @@ class WorkerResultIngestor
             }
 
             ReviewSuggestion::query()->create([
+                'worker_job_id' => $workerJob->id,
                 'paperless_document_id' => (int) $documentId,
                 'status' => (string) Arr::get($item, 'status', ReviewSuggestion::STATUS_PENDING),
                 'confidence' => Arr::get($item, 'confidence'),

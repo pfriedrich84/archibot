@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
+    'worker_job_id',
     'paperless_document_id',
     'status',
     'confidence',
@@ -58,6 +59,11 @@ class ReviewSuggestion extends Model
             'original_proposed_snapshot' => 'array',
             'reviewed_at' => 'datetime',
         ];
+    }
+
+    public function workerJob(): BelongsTo
+    {
+        return $this->belongsTo(WorkerJob::class);
     }
 
     public function createdBy(): BelongsTo

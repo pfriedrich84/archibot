@@ -20,13 +20,25 @@
     import { Input } from '@/components/ui/input';
     import { Label } from '@/components/ui/label';
     import { Spinner } from '@/components/ui/spinner';
+    import { show as reviewShow } from '@/routes/review';
     import { store } from '@/routes/worker-jobs';
+
+    type ReviewSuggestionLink = {
+        id: number;
+        paperless_document_id: number;
+        proposed_title: string | null;
+        status: string;
+    };
 
     type WorkerJob = {
         id: number;
         type: string;
         status: string;
         payload: Record<string, unknown>;
+        result: Record<string, unknown>;
+        ingest: Record<string, unknown>;
+        review_suggestions_count: number;
+        review_suggestions: ReviewSuggestionLink[];
         exit_code: number | null;
         error: string | null;
         created_at: string | null;
@@ -113,6 +125,35 @@
                 <code class="break-all text-xs text-muted-foreground">
                     {JSON.stringify(job.payload)}
                 </code>
+                {#if Object.keys(job.ingest).length > 0}
+                    <div class="text-xs text-muted-foreground">
+                        Ingest: {JSON.stringify(job.ingest)}
+                    </div>
+                {/if}
+                {#if job.review_suggestions_count > 0}
+                    <div class="space-y-1 rounded-md bg-muted/50 p-3">
+                        <div class="text-xs font-medium text-muted-foreground">
+                            {job.review_suggestions_count} review suggestion{job.review_suggestions_count ===
+                            1
+                                ? ''
+                                : 's'} imported
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            {#each job.review_suggestions as suggestion (suggestion.id)}
+                                <a
+                                    class="rounded-md border bg-background px-2 py-1 text-xs hover:underline"
+                                    href={reviewShow(suggestion.id).url}
+                                >
+                                    Suggestion #{suggestion.id} · Document #{suggestion.paperless_document_id}
+                                    {#if suggestion.proposed_title}
+                                        · {suggestion.proposed_title}
+                                    {/if}
+                                    · {suggestion.status}
+                                </a>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
                 {#if job.error}
                     <div class="text-destructive">{job.error}</div>
                 {/if}

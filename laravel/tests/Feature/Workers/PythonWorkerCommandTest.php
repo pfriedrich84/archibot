@@ -74,6 +74,7 @@ PHP);
         $this->assertSame(['review_suggestions_imported' => 1], $workerJob->result['ingest']);
 
         $suggestion = ReviewSuggestion::query()->firstOrFail();
+        $this->assertSame($workerJob->id, $suggestion->worker_job_id);
         $this->assertSame(500, $suggestion->paperless_document_id);
         $this->assertSame('Scan 500', $suggestion->original_title);
         $this->assertSame('Invoice 500', $suggestion->proposed_title);

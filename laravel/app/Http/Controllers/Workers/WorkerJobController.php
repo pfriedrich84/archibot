@@ -17,6 +17,8 @@ class WorkerJobController extends Controller
     public function index(Request $request): Response
     {
         $jobs = WorkerJob::query()
+            ->with(['reviewSuggestions' => fn ($query) => $query->latest()])
+            ->withCount('reviewSuggestions')
             ->latest()
             ->paginate(25)
             ->through(fn (WorkerJob $job) => [
@@ -24,6 +26,15 @@ class WorkerJobController extends Controller
                 'type' => $job->type,
                 'status' => $job->status,
                 'payload' => $job->payload ?? [],
+                'result' => $job->result ?? [],
+                'ingest' => data_get($job->result, 'ingest', []),
+                'review_suggestions_count' => $job->review_suggestions_count,
+                'review_suggestions' => $job->reviewSuggestions->map(fn ($suggestion) => [
+                    'id' => $suggestion->id,
+                    'paperless_document_id' => $suggestion->paperless_document_id,
+                    'proposed_title' => $suggestion->proposed_title,
+                    'status' => $suggestion->status,
+                ])->values(),
                 'exit_code' => $job->exit_code,
                 'error' => $job->error,
                 'created_at' => $job->created_at?->toISOString(),
