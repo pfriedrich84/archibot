@@ -131,7 +131,9 @@ def test_review_queue_api_filters_by_storage_path(client):
         return_value=[SimpleNamespace(id=10, name="Inbox"), SimpleNamespace(id=20, name="Archiv")]
     )
     with get_conn() as conn:
-        conn.execute("UPDATE suggestions SET proposed_storage_path_id = ? WHERE document_id = ?", (20, 1))
+        conn.execute(
+            "UPDATE suggestions SET proposed_storage_path_id = ? WHERE document_id = ?", (20, 1)
+        )
 
     response = client.get("/api/v1/review/queue?storage_path_id=20")
     assert response.status_code == 200
@@ -139,7 +141,10 @@ def test_review_queue_api_filters_by_storage_path(client):
     assert payload["total"] == 1
     assert payload["items"][0]["effective_storage_path_id"] == 20
     assert payload["items"][0]["effective_storage_path_name"] == "Archiv"
-    assert payload["filters"]["storage_paths"] == [{"id": 10, "name": "Inbox"}, {"id": 20, "name": "Archiv"}]
+    assert payload["filters"]["storage_paths"] == [
+        {"id": 10, "name": "Inbox"},
+        {"id": 20, "name": "Archiv"},
+    ]
 
     response = client.get("/api/v1/review/queue?storage_path_id=10")
     assert response.status_code == 200

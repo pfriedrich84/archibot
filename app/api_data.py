@@ -148,7 +148,9 @@ def get_review_queue(
         filters.append("COALESCE(s.proposed_correspondent_id, s.original_correspondent) = ?")
         params.append(correspondent_id)
     if storage_path_id is not None:
-        filters.append("CASE WHEN s.original_storage_path IS NOT NULL THEN s.original_storage_path ELSE s.proposed_storage_path_id END = ?")
+        filters.append(
+            "CASE WHEN s.original_storage_path IS NOT NULL THEN s.original_storage_path ELSE s.proposed_storage_path_id END = ?"
+        )
         params.append(storage_path_id)
     if judge_verdict:
         filters.append("s.judge_verdict = ?")
