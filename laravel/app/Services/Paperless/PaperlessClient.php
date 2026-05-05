@@ -40,6 +40,30 @@ class PaperlessClient
      *
      * @return array<string, mixed>
      */
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function documents(string $token, int $inboxTagId, int $pageSize = 25): array
+    {
+        $response = $this->request($token)->get('/api/documents/', [
+            'tags__id__all' => $inboxTagId,
+            'page_size' => $pageSize,
+        ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not fetch Paperless documents.');
+        }
+
+        $payload = $response->json();
+        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+
+        if (! is_array($items)) {
+            throw new RuntimeException('Paperless documents response was not JSON.');
+        }
+
+        return array_values(array_filter($items, fn ($item) => is_array($item)));
+    }
+
     public function document(string $token, int $documentId): array
     {
         $response = $this->request($token)->get("/api/documents/{$documentId}/");

@@ -2,6 +2,7 @@
     import { Link, page } from '@inertiajs/svelte';
     import BookOpen from 'lucide-svelte/icons/book-open';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
+    import Inbox from 'lucide-svelte/icons/inbox';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
@@ -23,6 +24,7 @@
     } from '@/components/ui/sidebar';
     import { toUrl } from '@/lib/utils';
     import { dashboard } from '@/routes';
+    import { index as inboxIndex } from '@/routes/inbox';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as reviewIndex } from '@/routes/review';
@@ -42,6 +44,11 @@
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutGrid,
+        },
+        {
+            title: 'Inbox',
+            href: inboxIndex(),
+            icon: Inbox,
         },
         {
             title: 'Review',

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\InboxController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\Workers\WorkerJobController;
@@ -31,6 +32,8 @@ Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+
+    Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
 
     Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
     Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');
