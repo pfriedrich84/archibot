@@ -57,6 +57,9 @@ services:
       MCP_HOST: ${MCP_HOST:-0.0.0.0}
       MCP_ENABLE_WRITE: ${MCP_ENABLE_WRITE:-false}
       MCP_API_KEY: ${MCP_API_KEY:-}
+      MCP_LARAVEL_AUTH_ENABLED: ${MCP_LARAVEL_AUTH_ENABLED:-false}
+      MCP_LARAVEL_PATH: ${MCP_LARAVEL_PATH:-/app/laravel}
+      MCP_LARAVEL_PHP_BINARY: ${MCP_LARAVEL_PHP_BINARY:-php}
       MCP_CLASSIFY_RATE_LIMIT: ${MCP_CLASSIFY_RATE_LIMIT:-10}
 
       # --- Storage / Logging ---

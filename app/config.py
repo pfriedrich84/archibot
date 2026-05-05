@@ -86,7 +86,10 @@ class Settings(BaseSettings):
     mcp_port: int = 3001
     mcp_host: str = "0.0.0.0"
     mcp_enable_write: bool = False  # write tools only registered when True
-    mcp_api_key: str = ""  # empty = no auth (ok for stdio)
+    mcp_api_key: str = ""  # legacy static key; empty = no legacy auth
+    mcp_laravel_auth_enabled: bool = False
+    mcp_laravel_path: str = "laravel"
+    mcp_laravel_php_binary: str = "php"
     mcp_classify_rate_limit: int = 10  # max classifications per hour, 0 = unlimited
 
     # --- State ---
@@ -615,11 +618,30 @@ FIELD_META: dict[str, dict[str, Any]] = {
     ),
     "mcp_api_key": _fm(
         "MCP",
-        "API Key",
+        "Legacy API Key",
         "password",
         restart="app",
-        help="API key for MCP auth (recommended for SSE)",
+        help="Legacy static MCP auth key. Prefer Laravel-managed per-user MCP tokens on the Laravel migration branch.",
         sensitive=True,
+    ),
+    "mcp_laravel_auth_enabled": _fm(
+        "MCP",
+        "Use Laravel MCP Tokens",
+        "bool",
+        restart="app",
+        help="Validate MCP tool tokens through Laravel's archibot:mcp-token-verify command.",
+    ),
+    "mcp_laravel_path": _fm(
+        "MCP",
+        "Laravel App Path",
+        restart="app",
+        help="Path to the Laravel app used for MCP token verification.",
+    ),
+    "mcp_laravel_php_binary": _fm(
+        "MCP",
+        "Laravel PHP Binary",
+        restart="app",
+        help="PHP executable used to run Laravel MCP token verification.",
     ),
     "mcp_classify_rate_limit": _fm(
         "MCP",

@@ -1,8 +1,12 @@
-"""API-key validation and rate limiting for MCP tools."""
+"""Authentication and rate limiting for MCP tools."""
 
 from __future__ import annotations
 
+import json
+import subprocess
 import time
+from pathlib import Path
+from typing import Any
 
 import structlog
 from mcp.server.fastmcp import Context
@@ -40,25 +44,116 @@ class RateLimiter:
         stamps.append(now)
 
 
-def check_api_key(ctx: Context) -> None:
-    """Validate the MCP API key if one is configured.
+def _extract_token(ctx: Context) -> str | None:
+    """Extract an MCP bearer token from HTTP headers or tool metadata.
 
-    When ``MCP_API_KEY`` is set, every tool call must include a matching
-    ``x-api-key`` header (for HTTP transports) **or** a matching
-    ``_api_key`` parameter.  For stdio transport with no key configured
-    this is a no-op.
+    FastMCP exposes transport metadata slightly differently across transports,
+    so this helper accepts the shapes used by HTTP headers and by explicit
+    ``_api_key`` / ``api_key`` tool metadata.
     """
+    meta = getattr(getattr(ctx, "request_context", None), "meta", None)
+    headers = getattr(meta, "headers", None) if meta else None
+    if headers:
+        provided = headers.get("x-api-key") or headers.get("X-API-Key")
+        authorization = headers.get("authorization") or headers.get("Authorization")
+        if authorization and authorization.lower().startswith("bearer "):
+            provided = authorization[7:].strip()
+        if provided:
+            return provided
+
+    for source in (
+        meta,
+        getattr(getattr(ctx, "request_context", None), "request", None),
+        getattr(getattr(ctx, "request_context", None), "params", None),
+    ):
+        token = _find_token(source)
+        if token:
+            return token
+
+    return None
+
+
+def _find_token(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("_api_key", "api_key", "token"):
+            token = value.get(key)
+            if isinstance(token, str) and token:
+                return token
+        for nested_key in ("arguments", "params", "metadata"):
+            token = _find_token(value.get(nested_key))
+            if token:
+                return token
+        return None
+    for attr in ("_api_key", "api_key", "token", "arguments", "params", "metadata"):
+        token = _find_token(getattr(value, attr, None))
+        if token:
+            return token
+    return None
+
+
+def _verify_laravel_mcp_token(token: str) -> dict[str, Any]:
+    laravel_path = Path(settings.mcp_laravel_path)
+    if not laravel_path.is_absolute():
+        laravel_path = Path.cwd() / laravel_path
+
+    command = [
+        settings.mcp_laravel_php_binary,
+        "artisan",
+        "archibot:mcp-token-verify",
+        token,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=laravel_path,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("laravel mcp token verifier unavailable", error=str(exc))
+        raise ValueError("MCP token verifier unavailable.") from exc
+
+    output = (result.stdout or "").strip().splitlines()[-1:] or [""]
+    try:
+        payload = json.loads(output[0])
+    except json.JSONDecodeError as exc:
+        log.warning("laravel mcp token verifier returned invalid json", stderr=result.stderr)
+        raise ValueError("MCP token verifier returned an invalid response.") from exc
+
+    if result.returncode != 0 or not payload.get("ok"):
+        log.warning("laravel mcp token rejected", error=payload.get("error"))
+        raise ValueError("Invalid or revoked MCP token.")
+
+    return payload
+
+
+def check_api_key(ctx: Context) -> dict[str, Any] | None:
+    """Validate MCP credentials for a tool call.
+
+    On the Laravel migration branch, enable ``MCP_LARAVEL_AUTH_ENABLED`` so
+    every tool call is checked against Laravel-managed, per-user MCP tokens via
+    ``php artisan archibot:mcp-token-verify``.  The legacy static
+    ``MCP_API_KEY`` path remains available for the unchanged FastAPI runtime and
+    local stdio development; when neither auth mechanism is configured this is a
+    no-op for backward compatibility.
+    """
+    provided = _extract_token(ctx)
+
+    if settings.mcp_laravel_auth_enabled:
+        if not provided:
+            raise ValueError("Invalid or missing MCP token.")
+        return _verify_laravel_mcp_token(provided)
+
     expected = settings.mcp_api_key
     if not expected:
-        return  # no auth configured
-
-    # Try to extract key from request metadata
-    meta = getattr(ctx.request_context, "meta", None)
-    provided = None
-    if meta and hasattr(meta, "headers"):
-        headers = meta.headers or {}
-        provided = headers.get("x-api-key")
+        return None  # no auth configured
 
     if provided != expected:
         log.warning("api key mismatch")
         raise ValueError("Invalid or missing API key.")
+
+    return None
