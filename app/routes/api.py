@@ -282,6 +282,7 @@ async def review_queue_api(
     min_conf: int | None = Query(default=None, ge=0, le=100),
     max_conf: int | None = Query(default=None, ge=0, le=100),
     correspondent_id: int | None = Query(default=None, ge=1),
+    storage_path_id: int | None = Query(default=None, ge=1),
     judge_verdict: str | None = Query(default=None),
     sort: str = Query(default="created_desc"),
 ) -> dict[str, Any]:
@@ -291,6 +292,7 @@ async def review_queue_api(
         min_conf=min_conf,
         max_conf=max_conf,
         correspondent_id=correspondent_id,
+        storage_path_id=storage_path_id,
         judge_verdict=judge_verdict,
         sort=sort,
     )
@@ -302,6 +304,7 @@ async def review_queue_api(
         )
     payload["filters"] = {
         "correspondents": lookups["correspondents"],
+        "storage_paths": lookups["storage_paths"],
     }
     return payload
 
@@ -561,16 +564,7 @@ def _browser_preview_content_type(content: bytes, content_type: str | None) -> s
     return "application/octet-stream"
 
 
-@router.get("/review/{suggestion_id}/preview")
-async def review_preview_api(request: Request, suggestion_id: int):
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT document_id FROM suggestions WHERE id = ?", (suggestion_id,)
-        ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
-
-    document_id = row["document_id"]
+async def _stream_paperless_document_preview(request: Request, document_id: int):
     paperless = request.app.state.paperless
     try:
         content, content_type = await paperless.preview_document(document_id)
@@ -592,6 +586,23 @@ async def review_preview_api(request: Request, suggestion_id: int):
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="document-{document_id}.{extension}"'},
     )
+
+
+@router.get("/documents/{document_id}/preview")
+async def document_preview_api(request: Request, document_id: int):
+    return await _stream_paperless_document_preview(request, document_id)
+
+
+@router.get("/review/{suggestion_id}/preview")
+async def review_preview_api(request: Request, suggestion_id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT document_id FROM suggestions WHERE id = ?", (suggestion_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    return await _stream_paperless_document_preview(request, row["document_id"])
 
 
 @router.post("/review/{suggestion_id}/save")

@@ -12,7 +12,7 @@
     rejectReviewSuggestion,
     saveReviewSuggestion
   } from '$lib/api';
-  import type { ReviewDetailPayload, ReviewEntityOption, ReviewQueueItem, ReviewQueuePayload } from '$lib/types';
+  import type { ReviewContextDocument, ReviewDetailPayload, ReviewEntityOption, ReviewQueueItem, ReviewQueuePayload } from '$lib/types';
   import type { PageData } from './$types';
 
   let { data } = $props<{ data: PageData }>();
@@ -40,6 +40,7 @@
   let sort = $state<'created_desc' | 'confidence_asc' | 'confidence_desc'>((initialUrlState().sort as 'created_desc' | 'confidence_asc' | 'confidence_desc') || 'created_desc');
   let judgeVerdict = $state(initialUrlState().judgeVerdict);
   let correspondentId = $state(initialUrlState().correspondentId);
+  let storagePathFilterId = $state(initialUrlState().storagePathId);
 
   let formTitle = $state('');
   let formDate = $state('');
@@ -66,6 +67,7 @@
     params.set('sort', sort);
     if (judgeVerdict) params.set('judge_verdict', judgeVerdict);
     if (correspondentId) params.set('correspondent_id', correspondentId);
+    if (storagePathFilterId) params.set('storage_path_id', storagePathFilterId);
     return params;
   }
 
@@ -140,6 +142,36 @@
 
   function fieldWrap(changed: boolean) {
     return changed ? 'rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3' : '';
+  }
+
+  function contextDocTitle(doc: ReviewContextDocument) {
+    const title = typeof doc.title === 'string' && doc.title.trim() ? doc.title.trim() : '';
+    return title || `Dokument #${doc.id ?? 'unbekannt'}`;
+  }
+
+  function contextDocDistance(doc: ReviewContextDocument) {
+    const value = typeof doc.distance === 'number' ? doc.distance : Number(doc.distance);
+    if (!Number.isFinite(value)) return null;
+    return `${(value * 100).toFixed(value < 0.1 ? 1 : 0)}% Distanz`;
+  }
+
+  function contextDocUrl(doc: ReviewContextDocument) {
+    const directUrl = typeof doc.preview_url === 'string' ? doc.preview_url : typeof doc.url === 'string' ? doc.url : '';
+    if (directUrl) return apiResourceUrl(directUrl);
+    const id = Number(doc.id);
+    return Number.isFinite(id) ? apiResourceUrl(`/api/v1/documents/${id}/preview`) : '#';
+  }
+
+  function currentProposalPayload(payload: ReviewDetailPayload) {
+    return {
+      title: payload.proposed.title,
+      date: payload.proposed.date,
+      correspondent: payload.proposed.correspondent_name ?? payload.proposed.suggested_correspondent_name,
+      document_type: payload.proposed.doctype_name ?? payload.proposed.suggested_doctype_name,
+      storage_path: payload.proposed.storage_path_name ?? payload.proposed.suggested_storage_path_name,
+      confidence: payload.suggestion.confidence,
+      tags: payload.proposed.tags
+    };
   }
 
   function originalValueTone(changed: boolean) {
@@ -468,6 +500,15 @@
                     {/each}
                   </select>
                 </label>
+                <label class="block">
+                  <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-500">Speicherpfad</span>
+                  <select bind:value={storagePathFilterId} class="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500/40">
+                    <option value="">Alle</option>
+                    {#each queueMeta.filters?.storage_paths ?? [] as option}
+                      <option value={String(option.id)}>{option.name}</option>
+                    {/each}
+                  </select>
+                </label>
               </div>
 
               <div class="mt-4 flex flex-wrap gap-2">
@@ -481,6 +522,7 @@
                     sort = 'created_desc';
                     judgeVerdict = '';
                     correspondentId = '';
+                    storagePathFilterId = '';
                     search = '';
                     void applyQueueFilters(true);
                   }}
@@ -551,10 +593,23 @@
                 </div>
               </div>
 
-              {#if detail.suggestion.reasoning}
-                <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Modellbegründung</p>
-                  <p class="mt-2 text-sm text-slate-300">{detail.suggestion.reasoning}</p>
+              {#if detail.suggestion.reasoning || detail.suggestion.judge_reasoning}
+                <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                  {#if detail.suggestion.reasoning}
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Classify-Run · Modellbegründung</p>
+                      <p class="mt-2 text-sm text-slate-300">{detail.suggestion.reasoning}</p>
+                    </div>
+                  {/if}
+                  {#if detail.suggestion.judge_reasoning}
+                    <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
+                      <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Judge-Run · Begründung{detail.suggestion.judge_verdict ? ` (${detail.suggestion.judge_verdict})` : ''}</p>
+                      <p class="mt-2 text-sm text-sky-50/90">{detail.suggestion.judge_reasoning}</p>
+                      {#if detail.suggestion.judge_verdict === 'corrected'}
+                        <p class="mt-3 rounded-xl border border-sky-400/20 bg-sky-950/30 px-3 py-2 text-xs text-sky-100">Der Judge hat den ersten Vorschlag korrigiert. Die aktuell editierbaren Werte entsprechen der Judge-Korrektur.</p>
+                      {/if}
+                    </div>
+                  {/if}
                 </div>
               {/if}
 
@@ -598,7 +653,7 @@
                 </div>
               </div>
 
-              <div class={`mt-4 grid gap-4 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2' : 'xl:grid-cols-2'}`}>
+              <div class={`mt-4 grid gap-4 ${previewVisible ? 'xl:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.35fr)] lg:grid-cols-2' : 'xl:grid-cols-1'}`}>
                 {#if previewVisible}
                   <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                     <div class="mb-3 flex items-center justify-between gap-2">
@@ -609,26 +664,6 @@
                   </div>
                 {/if}
 
-                <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Bestehende Metadaten</p>
-                  <dl class="mt-4 space-y-4 text-sm">
-                    <div class={fieldWrap(detail.changed_fields.title)}><dt class="text-slate-500">Titel</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.title)}`}>{detail.original.title || '—'}</dd></div>
-                    <div class={fieldWrap(detail.changed_fields.date)}><dt class="text-slate-500">Datum</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.date)}`}>{detail.original.date || '—'}</dd></div>
-                    <div class={fieldWrap(detail.changed_fields.correspondent)}><dt class="text-slate-500">Korrespondent</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.correspondent)}`}>{detail.original.correspondent_name || '—'}</dd></div>
-                    <div class={fieldWrap(detail.changed_fields.doctype)}><dt class="text-slate-500">Dokumenttyp</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.doctype)}`}>{detail.original.doctype_name || '—'}</dd></div>
-                    <div class={fieldWrap(detail.changed_fields.storage_path)}><dt class="text-slate-500">Speicherpfad</dt><dd class={`mt-1 ${originalValueTone(detail.changed_fields.storage_path)}`}>{detail.original.storage_path_name || '—'}</dd></div>
-                    <div class={fieldWrap(detail.changed_fields.tags)}>
-                      <dt class="text-slate-500">Tags</dt>
-                      <dd class="mt-2 flex flex-wrap gap-2">
-                        {#each detail.original.tags as tag}
-                          <span class={`rounded-full border px-2.5 py-1 text-xs ${detail.changed_fields.tags ? 'border-slate-700 bg-slate-900 text-slate-500 line-through' : 'border-slate-700 bg-slate-900 text-slate-300'}`}>{tag.name}</span>
-                        {:else}
-                          <span class="text-slate-400">—</span>
-                        {/each}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
 
                 <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                   <p class="text-xs uppercase tracking-[0.2em] text-emerald-300/70">Bearbeitbarer Vorschlag</p>
@@ -689,13 +724,41 @@
                 <div class="mt-3 flex max-h-52 flex-wrap gap-2 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/70 p-3">{#each filteredTagOptions as option}<button type="button" class="rounded-xl border border-slate-700 px-3 py-1.5 text-xs text-slate-200 transition hover:border-emerald-500/30 hover:bg-slate-900" onclick={() => addTag(option.id)}>{option.name}</button>{:else}<span class="text-sm text-slate-500">Keine weiteren Tags passend zur Suche.</span>{/each}</div>
               </div>
 
-              {#if detail.context_docs.length > 0 || detail.original_proposal}
+              {#if detail.context_docs.length > 0 || detail.original_proposal || detail.suggestion.judge_verdict}
                 <div class="mt-4 grid gap-4 xl:grid-cols-2">
-                  {#if detail.original_proposal}
-                    <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-5"><p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Erster Modellstand</p><pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(detail.original_proposal, null, 2)}</pre></div>
+                  <div class="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-5">
+                    <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">Classify-Run Ergebnis</p>
+                    {#if detail.original_proposal}
+                      <pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(detail.original_proposal, null, 2)}</pre>
+                    {:else}
+                      <pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-sky-50/90">{JSON.stringify(currentProposalPayload(detail), null, 2)}</pre>
+                    {/if}
+                  </div>
+                  {#if detail.suggestion.judge_verdict}
+                    <div class="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 p-5">
+                      <p class="text-xs uppercase tracking-[0.2em] text-indigo-200/70">Judge-Run Ergebnis</p>
+                      <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span class={`rounded-full border px-2.5 py-1 ${detail.suggestion.judge_verdict === 'corrected' ? 'border-sky-400/30 bg-sky-400/10 text-sky-100' : 'border-indigo-400/30 bg-indigo-400/10 text-indigo-100'}`}>Verdikt: {detail.suggestion.judge_verdict}</span>
+                        {#if detail.suggestion.judge_verdict === 'corrected'}<span class="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-amber-100">Korrektur angewendet</span>{/if}
+                      </div>
+                      <pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-indigo-50/90">{JSON.stringify(currentProposalPayload(detail), null, 2)}</pre>
+                    </div>
                   {/if}
                   {#if detail.context_docs.length > 0}
-                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5"><p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kontextdokumente</p><div class="mt-3 space-y-2">{#each detail.context_docs as doc}<div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-300"><pre class="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(doc, null, 2)}</pre></div>{/each}</div></div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 xl:col-span-2">
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Kontextdokumente</p>
+                      <div class="mt-3 grid gap-2 md:grid-cols-2">
+                        {#each detail.context_docs as doc}
+                          <a href={contextDocUrl(doc)} target="_blank" rel="noreferrer" class="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 text-sm text-slate-200 transition hover:border-emerald-500/30 hover:bg-slate-900">
+                            <span class="block truncate font-medium text-emerald-100">{contextDocTitle(doc)}</span>
+                            <span class="mt-1 flex flex-wrap gap-2 text-xs text-slate-400">
+                              {#if doc.id !== undefined && doc.id !== null}<span>Dokument #{doc.id}</span>{/if}
+                              {#if contextDocDistance(doc)}<span>{contextDocDistance(doc)}</span>{/if}
+                            </span>
+                          </a>
+                        {/each}
+                      </div>
+                    </div>
                   {/if}
                 </div>
               {/if}

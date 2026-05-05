@@ -197,6 +197,7 @@ export type ReviewQueuePayload = {
   items: ReviewQueueItem[];
   filters?: {
     correspondents: ReviewEntityOption[];
+    storage_paths?: ReviewEntityOption[];
   };
 };
 
@@ -209,6 +210,15 @@ export type ReviewTagValue = {
   id: number | null;
   name: string;
   confidence?: number | null;
+};
+
+export type ReviewContextDocument = {
+  id?: number | string | null;
+  title?: string | null;
+  distance?: number | string | null;
+  url?: string | null;
+  preview_url?: string | null;
+  [key: string]: unknown;
 };
 
 export type ReviewDetailPayload = {
@@ -256,7 +266,7 @@ export type ReviewDetailPayload = {
     storage_paths: ReviewEntityOption[];
     tags: ReviewEntityOption[];
   };
-  context_docs: Array<Record<string, unknown>>;
+  context_docs: ReviewContextDocument[];
   original_proposal: Record<string, unknown> | null;
   changed_fields: Record<string, boolean>;
 };

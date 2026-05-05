@@ -12,7 +12,8 @@ export const load: PageLoad = async ({ fetch, url }) => {
       maxConfidence: Number(url.searchParams.get('max_conf') || '100'),
       sort: url.searchParams.get('sort') || 'created_desc',
       judgeVerdict: url.searchParams.get('judge_verdict') || '',
-      correspondentId: url.searchParams.get('correspondent_id') || ''
+      correspondentId: url.searchParams.get('correspondent_id') || '',
+      storagePathId: url.searchParams.get('storage_path_id') || ''
     }
   };
 };
