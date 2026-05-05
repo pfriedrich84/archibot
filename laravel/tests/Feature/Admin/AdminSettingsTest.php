@@ -1,0 +1,62 @@
+<?php
+
+namespace Tests\Feature\Admin;
+
+use App\Models\AppSetting;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\TestCase;
+
+class AdminSettingsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_only_admins_can_view_admin_settings(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)->get(route('admin.settings.edit'))->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/Settings')
+                ->where('settings.paperless_url', 'https://paperless.test')
+                ->where('settings.audit_retention_days', 7)
+            );
+    }
+
+    public function test_admin_can_update_global_settings_and_write_audit_log(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
+            'paperless_url' => 'https://paperless-updated.test',
+            'audit_retention_days' => 14,
+        ]);
+
+        $response->assertRedirect();
+        $this->assertSame('https://paperless-updated.test', AppSetting::getValue('paperless.url'));
+        $this->assertSame('14', AppSetting::getValue('audit.retention_days'));
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'event' => 'admin_settings.updated',
+            'target_type' => 'app_settings',
+        ]);
+    }
+
+    public function test_non_admin_can_not_update_global_settings(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)->patch(route('admin.settings.update'), [
+            'paperless_url' => 'https://blocked.test',
+            'audit_retention_days' => 30,
+        ])->assertForbidden();
+
+        $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
+    }
+}

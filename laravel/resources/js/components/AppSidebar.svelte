@@ -1,8 +1,10 @@
 <script lang="ts">
-    import { Link } from '@inertiajs/svelte';
+    import { Link, page } from '@inertiajs/svelte';
     import BookOpen from 'lucide-svelte/icons/book-open';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
+    import ScrollText from 'lucide-svelte/icons/scroll-text';
+    import Settings from 'lucide-svelte/icons/settings';
     import type { Snippet } from 'svelte';
     import AppLogo from '@/components/AppLogo.svelte';
     import NavFooter from '@/components/NavFooter.svelte';
@@ -19,6 +21,8 @@
     } from '@/components/ui/sidebar';
     import { toUrl } from '@/lib/utils';
     import { dashboard } from '@/routes';
+    import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
+    import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import type { NavItem } from '@/types';
 
     let {
@@ -27,13 +31,29 @@
         children?: Snippet;
     } = $props();
 
-    const mainNavItems: NavItem[] = [
+    const user = $derived(page.props.auth.user);
+
+    const mainNavItems: NavItem[] = $derived([
         {
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutGrid,
         },
-    ];
+        ...(user?.is_admin
+            ? [
+                  {
+                      title: 'Admin settings',
+                      href: adminSettingsEdit(),
+                      icon: Settings,
+                  },
+                  {
+                      title: 'Audit logs',
+                      href: auditLogsIndex(),
+                      icon: ScrollText,
+                  },
+              ]
+            : []),
+    ]);
 
     const footerNavItems: NavItem[] = [
         {

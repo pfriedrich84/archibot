@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\SetupController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
@@ -27,6 +29,10 @@ Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+
+    Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
+    Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
+    Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
 });
 
 require __DIR__.'/settings.php';

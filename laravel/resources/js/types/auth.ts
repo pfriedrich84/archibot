@@ -3,6 +3,8 @@ export type User = {
     name: string;
     email: string;
     avatar?: string;
+    is_admin: boolean;
+    paperless_username?: string | null;
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
@@ -11,10 +13,4 @@ export type User = {
 
 export type Auth = {
     user: User;
-};
-
-export type TwoFactorConfigContent = {
-    title: string;
-    description: string;
-    buttonText: string;
 };
