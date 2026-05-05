@@ -24,8 +24,10 @@ class AdminSettingsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/Settings')
-                ->where('settings.paperless_url', 'https://paperless.test')
-                ->where('settings.audit_retention_days', 7)
+                ->has('groups')
+                ->where('groups.0.name', 'Paperless')
+                ->where('groups.0.settings.0.key', 'paperless.url')
+                ->where('groups.0.settings.0.value', 'https://paperless.test')
             );
     }
 

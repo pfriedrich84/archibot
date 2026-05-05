@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\SetupState;
 use App\Models\User;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Settings\LegacySettingsImporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,8 @@ class CompleteSetup
         }
 
         return DB::transaction(function () use ($paperlessUrl, $token, $paperlessUser, $state, $request): User {
+            $importedKeys = app(LegacySettingsImporter::class)->importMissing();
+
             AppSetting::put('paperless.url', $paperlessUrl);
 
             $email = $paperlessUser->email ?: $paperlessUser->username.'@paperless.local';
@@ -71,6 +74,7 @@ class CompleteSetup
                     'paperless_url' => $paperlessUrl,
                     'paperless_username' => $paperlessUser->username,
                     'paperless_user_id' => $paperlessUser->id,
+                    'imported_setting_keys' => $importedKeys,
                 ],
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),

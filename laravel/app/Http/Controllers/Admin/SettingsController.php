@@ -5,48 +5,71 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Services\Settings\SettingsCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function edit(Request $request): Response
+    public function edit(Request $request, SettingsCatalog $catalog): Response
     {
         $this->authorizeAdmin($request);
 
         return Inertia::render('admin/Settings', [
-            'settings' => [
-                'paperless_url' => AppSetting::getValue('paperless.url', ''),
-                'audit_retention_days' => (int) AppSetting::getValue('audit.retention_days', '7'),
-            ],
+            'groups' => $catalog->groupedForDisplay(),
         ]);
     }
 
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request, SettingsCatalog $catalog): RedirectResponse
     {
         $this->authorizeAdmin($request);
 
-        $validated = $request->validate([
-            'paperless_url' => ['required', 'url:http,https', 'max:2048'],
-            'audit_retention_days' => ['required', 'integer', 'min:1', 'max:365'],
-        ]);
+        $definitions = $catalog->definitions();
+        $rules = [];
 
+        foreach ($definitions as $key => $definition) {
+            $inputName = $catalog->inputNameForKey($key);
+            $type = $definition['type'] ?? 'text';
+            $fieldRules = [(bool) ($definition['required'] ?? false) ? 'required' : 'nullable'];
+
+            if ($type === 'url') {
+                $fieldRules[] = 'url:http,https';
+            } elseif ($type === 'number') {
+                $fieldRules[] = 'numeric';
+            } elseif ($type === 'bool') {
+                $fieldRules[] = 'boolean';
+            } elseif ($type === 'select') {
+                $fieldRules[] = Rule::in($definition['options'] ?? []);
+            } else {
+                $fieldRules[] = 'string';
+            }
+
+            $rules[$inputName] = $fieldRules;
+        }
+
+        $validated = $request->validate($rules);
         $changes = [];
-        $settingMap = [
-            'paperless_url' => 'paperless.url',
-            'audit_retention_days' => 'audit.retention_days',
-        ];
 
-        foreach ($settingMap as $inputKey => $settingKey) {
-            $oldValue = AppSetting::getValue($settingKey);
-            $newValue = (string) Arr::get($validated, $inputKey);
+        foreach ($definitions as $key => $definition) {
+            $inputName = $catalog->inputNameForKey($key);
+            $sensitive = (bool) Arr::get($definition, 'sensitive', false);
+            $oldValue = AppSetting::getValue($key);
+            $newValue = $this->normalizeValue($validated[$inputName] ?? null, (string) ($definition['type'] ?? 'text'));
+
+            if ($sensitive && ($newValue === null || $newValue === '')) {
+                continue;
+            }
 
             if ($oldValue !== $newValue) {
-                $changes[$settingKey] = ['old' => $oldValue, 'new' => $newValue];
-                AppSetting::put($settingKey, $newValue);
+                $changes[$key] = [
+                    'old' => $sensitive ? '[masked]' : $oldValue,
+                    'new' => $sensitive ? '[masked]' : $newValue,
+                ];
+                AppSetting::put($key, $newValue, $sensitive);
             }
         }
 
@@ -65,6 +88,19 @@ class SettingsController extends Controller
         }
 
         return back()->with('status', 'settings-updated');
+    }
+
+    private function normalizeValue(mixed $value, string $type): ?string
+    {
+        if ($value === null) {
+            return $type === 'bool' ? '0' : null;
+        }
+
+        if ($type === 'bool') {
+            return filter_var($value, FILTER_VALIDATE_BOOL) ? '1' : '0';
+        }
+
+        return (string) $value;
     }
 
     private function authorizeAdmin(Request $request): void
