@@ -6,6 +6,7 @@
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
     import Settings from 'lucide-svelte/icons/settings';
+    import Workflow from 'lucide-svelte/icons/workflow';
     import type { Snippet } from 'svelte';
     import AppLogo from '@/components/AppLogo.svelte';
     import NavFooter from '@/components/NavFooter.svelte';
@@ -25,6 +26,7 @@
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as reviewIndex } from '@/routes/review';
+    import { index as workerJobsIndex } from '@/routes/worker-jobs';
     import type { NavItem } from '@/types';
 
     let {
@@ -45,6 +47,11 @@
             title: 'Review',
             href: reviewIndex(),
             icon: ClipboardCheck,
+        },
+        {
+            title: 'Worker jobs',
+            href: workerJobsIndex(),
+            icon: Workflow,
         },
         ...(user?.is_admin
             ? [
