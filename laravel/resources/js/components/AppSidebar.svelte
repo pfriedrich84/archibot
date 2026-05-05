@@ -8,6 +8,7 @@
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
     import Settings from 'lucide-svelte/icons/settings';
+    import KeyRound from 'lucide-svelte/icons/key-round';
     import Tag from 'lucide-svelte/icons/tag';
     import UserRound from 'lucide-svelte/icons/user-round';
     import Workflow from 'lucide-svelte/icons/workflow';
@@ -77,6 +78,11 @@
             title: 'Worker jobs',
             href: workerJobsIndex(),
             icon: Workflow,
+        },
+        {
+            title: 'MCP tokens',
+            href: '/settings/mcp-tokens',
+            icon: KeyRound,
         },
         ...(user?.is_admin
             ? [
