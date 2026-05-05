@@ -17,6 +17,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import signal
@@ -24,6 +25,7 @@ import sqlite3
 import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -166,7 +168,7 @@ async def cmd_poll(*, force: bool = False) -> None:
         await ollama.aclose()
 
 
-async def cmd_process_doc(document_id: int, *, force: bool = False) -> None:
+async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
     """Process exactly one document by ID (OCR + embed + classify)."""
     from app.db import get_conn
     from app.pipeline.document_processing import process_document
@@ -196,6 +198,7 @@ async def cmd_process_doc(document_id: int, *, force: bool = False) -> None:
             tags,
         )
         print(f"Document #{document_id} processing complete: {result}")
+        return result
     finally:
         await paperless.aclose()
         await ollama.aclose()
@@ -294,6 +297,66 @@ def _write_worker_output(output_path: Path, payload: dict[str, object]) -> None:
         json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
 
 
+def _decode_json_value(value: str | None, default: Any = None) -> Any:
+    """Decode a JSON string from the legacy Python DB, falling back safely."""
+    if value is None or value == "":
+        return default
+    with contextlib.suppress(json.JSONDecodeError, TypeError):
+        return json.loads(value)
+    return {"text": value}
+
+
+def _suggestion_row_to_review_suggestion(row: Any) -> dict[str, object]:
+    """Map a Python suggestion row to Laravel's stable review ingestion shape."""
+    return {
+        "paperless_document_id": row.document_id,
+        "status": row.status,
+        "confidence": row.confidence,
+        "reasoning": row.reasoning,
+        "original": {
+            "title": row.original_title,
+            "date": row.original_date,
+            "correspondent_id": row.original_correspondent,
+            "document_type_id": row.original_doctype,
+            "storage_path_id": row.original_storage_path,
+            "tags": _decode_json_value(row.original_tags_json, []),
+        },
+        "proposed": {
+            "title": row.proposed_title,
+            "date": row.proposed_date,
+            "correspondent_name": row.proposed_correspondent_name,
+            "correspondent_id": row.proposed_correspondent_id,
+            "document_type_name": row.proposed_doctype_name,
+            "document_type_id": row.proposed_doctype_id,
+            "storage_path_name": row.proposed_storage_path_name,
+            "storage_path_id": row.proposed_storage_path_id,
+            "tags": _decode_json_value(row.proposed_tags_json, []),
+        },
+        "context_documents": _decode_json_value(row.context_docs_json, []),
+        "raw_response": _decode_json_value(row.raw_response),
+        "judge_verdict": row.judge_verdict,
+        "judge_reasoning": row.judge_reasoning,
+        "original_proposed_snapshot": _decode_json_value(row.original_proposed_json),
+    }
+
+
+def _latest_review_suggestion_payload(document_id: int) -> dict[str, object] | None:
+    """Return the most recent Python suggestion for a document in Laravel ingest format."""
+    from app.db import get_conn
+    from app.models import SuggestionRow
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM suggestions WHERE document_id = ? ORDER BY id DESC LIMIT 1",
+            (document_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return _suggestion_row_to_review_suggestion(SuggestionRow(**dict(row)))
+
+
 def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
     payload = input_payload.get("payload", {})
     return payload if isinstance(payload, dict) else {}
@@ -357,6 +420,12 @@ def main() -> None:
     try:
         if contract is not None:
             input_payload, output_path = contract
+            output_payload: dict[str, object] = {
+                "ok": True,
+                "command": cmd_name,
+                "job_id": input_payload.get("id"),
+                "type": input_payload.get("type", cmd_name),
+            }
             if cmd_name == "poll":
                 asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
             elif cmd_name == "reindex":
@@ -367,18 +436,17 @@ def main() -> None:
                     raise ValueError(
                         "Worker payload requires paperless_document_id for process-document"
                     )
-                asyncio.run(cmd_func(document_id, force=_contract_force(input_payload, force)))
+                result = asyncio.run(
+                    cmd_func(document_id, force=_contract_force(input_payload, force))
+                )
+                output_payload["result"] = result
+                if result in {"classified", "auto_committed"}:
+                    suggestion_payload = _latest_review_suggestion_payload(document_id)
+                    if suggestion_payload is not None:
+                        output_payload["review_suggestions"] = [suggestion_payload]
             else:
                 asyncio.run(cmd_func())
-            _write_worker_output(
-                output_path,
-                {
-                    "ok": True,
-                    "command": cmd_name,
-                    "job_id": input_payload.get("id"),
-                    "type": input_payload.get("type", cmd_name),
-                },
-            )
+            _write_worker_output(output_path, output_payload)
         elif cmd_name in {"reindex-ocr", "poll"}:
             asyncio.run(cmd_func(force=force))
         elif cmd_name in {"process-doc", "process-document"}:

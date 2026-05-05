@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models import SuggestionRow
+
 
 @pytest.fixture(autouse=True)
 def _mock_cli_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,6 +75,109 @@ def test_main_process_document_reads_document_id_from_worker_payload(
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["ok"] is True
     assert payload["command"] == "process-document"
+
+
+def test_process_document_worker_output_includes_review_suggestions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps(
+            {"id": 15, "type": "process_document", "payload": {"paperless_document_id": 224}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["cli", "process-doc", "--input", str(input_path), "--output", str(output_path)],
+    )
+
+    mock_cmd = AsyncMock(return_value="classified")
+    mock_suggestion = {
+        "paperless_document_id": 224,
+        "status": "pending",
+        "proposed": {"title": "Invoice May"},
+    }
+
+    with (
+        patch("app.cli.COMMANDS", {"process-doc": ("desc", mock_cmd)}),
+        patch("app.cli._latest_review_suggestion_payload", return_value=mock_suggestion),
+    ):
+        from app.cli import main
+
+        main()
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["result"] == "classified"
+    assert payload["review_suggestions"] == [mock_suggestion]
+
+
+def test_suggestion_row_maps_to_laravel_review_ingestion_shape() -> None:
+    from app.cli import _suggestion_row_to_review_suggestion
+
+    row = SuggestionRow(
+        id=7,
+        document_id=224,
+        created_at="2026-05-05T10:00:00Z",
+        status="pending",
+        confidence=91,
+        reasoning="Looks like an invoice.",
+        original_title="Scan 224",
+        original_date="2026-05-01",
+        original_correspondent=1,
+        original_doctype=2,
+        original_storage_path=3,
+        original_tags_json="[4, 5]",
+        proposed_title="Invoice May",
+        proposed_date="2026-05-02",
+        proposed_correspondent_name="ACME",
+        proposed_correspondent_id=10,
+        proposed_doctype_name="Invoice",
+        proposed_doctype_id=11,
+        proposed_storage_path_name="Archive",
+        proposed_storage_path_id=12,
+        proposed_tags_json='[{"id": 6, "name": "Accounting", "confidence": 88}]',
+        raw_response='{"title": "Invoice May"}',
+        context_docs_json='[{"id": 99, "title": "Old invoice", "distance": 0.1}]',
+        judge_verdict="agree",
+        judge_reasoning="Consistent.",
+        original_proposed_json='{"title": "Scan 224"}',
+    )
+
+    payload = _suggestion_row_to_review_suggestion(row)
+
+    assert payload == {
+        "paperless_document_id": 224,
+        "status": "pending",
+        "confidence": 91,
+        "reasoning": "Looks like an invoice.",
+        "original": {
+            "title": "Scan 224",
+            "date": "2026-05-01",
+            "correspondent_id": 1,
+            "document_type_id": 2,
+            "storage_path_id": 3,
+            "tags": [4, 5],
+        },
+        "proposed": {
+            "title": "Invoice May",
+            "date": "2026-05-02",
+            "correspondent_name": "ACME",
+            "correspondent_id": 10,
+            "document_type_name": "Invoice",
+            "document_type_id": 11,
+            "storage_path_name": "Archive",
+            "storage_path_id": 12,
+            "tags": [{"id": 6, "name": "Accounting", "confidence": 88}],
+        },
+        "context_documents": [{"id": 99, "title": "Old invoice", "distance": 0.1}],
+        "raw_response": {"title": "Invoice May"},
+        "judge_verdict": "agree",
+        "judge_reasoning": "Consistent.",
+        "original_proposed_snapshot": {"title": "Scan 224"},
+    }
 
 
 def test_main_worker_contract_writes_failure_output(
