@@ -41,6 +41,8 @@ class WorkerJob extends Model
 
     public const TYPE_COMMIT_REVIEW = 'commit_review';
 
+    public const TYPE_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
+
     protected function casts(): array
     {
         return [
@@ -61,6 +63,7 @@ class WorkerJob extends Model
             self::TYPE_REINDEX,
             self::TYPE_PROCESS_DOCUMENT,
             self::TYPE_COMMIT_REVIEW,
+            self::TYPE_SYNC_ENTITY_APPROVAL,
         ];
     }
 

@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\EntityApproval;
+use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,6 +58,7 @@ class EntityApprovalController extends Controller
 
         $entityApproval->mark(EntityApproval::STATUS_APPROVED, $request->user(), $paperlessId);
         $this->audit($request, $entityApproval, 'approved', ['paperless_id' => $paperlessId]);
+        $this->queueSync($request, $entityApproval, 'approved');
 
         return back();
     }
@@ -69,6 +72,7 @@ class EntityApprovalController extends Controller
 
         $entityApproval->mark(EntityApproval::STATUS_REJECTED, $request->user());
         $this->audit($request, $entityApproval, 'rejected');
+        $this->queueSync($request, $entityApproval, 'rejected');
 
         return back();
     }
@@ -82,6 +86,7 @@ class EntityApprovalController extends Controller
 
         $entityApproval->mark(EntityApproval::STATUS_PENDING, $request->user());
         $this->audit($request, $entityApproval, 'unblacklisted');
+        $this->queueSync($request, $entityApproval, 'unblacklisted');
 
         return back();
     }
@@ -101,6 +106,8 @@ class EntityApprovalController extends Controller
                 'status' => $entity->status,
                 'paperless_id' => $entity->paperless_id,
                 'source_review_suggestion_id' => $entity->source_review_suggestion_id,
+                'sync_status' => $entity->sync_status,
+                'sync_worker_job_id' => $entity->sync_worker_job_id,
                 'created_at' => $entity->created_at?->toISOString(),
             ])
             ->all();
@@ -122,6 +129,44 @@ class EntityApprovalController extends Controller
     private function authorizeAdmin(Request $request): void
     {
         abort_unless((bool) $request->user()->is_admin, 403);
+    }
+
+    private function queueSync(Request $request, EntityApproval $entityApproval, string $action): void
+    {
+        $workerJob = WorkerJob::query()->create([
+            'type' => WorkerJob::TYPE_SYNC_ENTITY_APPROVAL,
+            'status' => WorkerJob::STATUS_QUEUED,
+            'payload' => [
+                'entity_approval_id' => $entityApproval->id,
+                'action' => $action,
+                'type' => $entityApproval->type,
+                'name' => $entityApproval->name,
+                'paperless_id' => $entityApproval->paperless_id,
+            ],
+            'created_by_user_id' => $request->user()->id,
+        ]);
+
+        $entityApproval->forceFill([
+            'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
+            'sync_worker_job_id' => $workerJob->id,
+        ])->save();
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'worker_job.queued',
+            'target_type' => 'worker_job',
+            'target_id' => (string) $workerJob->id,
+            'metadata' => [
+                'type' => $workerJob->type,
+                'entity_approval_id' => $entityApproval->id,
+                'entity_type' => $entityApproval->type,
+                'action' => $action,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        RunPythonWorkerJob::dispatch($workerJob->id);
     }
 
     /** @param array<string, mixed> $metadata */

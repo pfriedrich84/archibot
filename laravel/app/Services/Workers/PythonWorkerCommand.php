@@ -2,6 +2,7 @@
 
 namespace App\Services\Workers;
 
+use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use Illuminate\Support\Facades\File;
@@ -46,6 +47,10 @@ class PythonWorkerCommand
             $this->updateReviewCommitStatus($workerJob, $process->isSuccessful(), is_array($result) ? $result : []);
         }
 
+        if ($workerJob->type === WorkerJob::TYPE_SYNC_ENTITY_APPROVAL) {
+            $this->updateEntityApprovalSyncStatus($workerJob, $process->isSuccessful(), is_array($result) ? $result : []);
+        }
+
         if ($process->isSuccessful() && is_array($result)) {
             $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
 
@@ -83,6 +88,29 @@ class PythonWorkerCommand
     }
 
     /**
+     * @param  array<string, mixed>  $result
+     */
+    private function updateEntityApprovalSyncStatus(WorkerJob $workerJob, bool $processSucceeded, array $result): void
+    {
+        $entityApprovalId = data_get($workerJob->payload, 'entity_approval_id');
+
+        if (! is_numeric($entityApprovalId)) {
+            return;
+        }
+
+        $synced = $processSucceeded && data_get($result, 'result.synced') === true;
+
+        EntityApproval::query()
+            ->whereKey((int) $entityApprovalId)
+            ->update([
+                'sync_worker_job_id' => $workerJob->id,
+                'sync_status' => $synced
+                    ? EntityApproval::SYNC_STATUS_SYNCED
+                    : EntityApproval::SYNC_STATUS_FAILED,
+            ]);
+    }
+
+    /**
      * @return array{input: string, output: string}
      */
     private function writeInput(WorkerJob $workerJob): array
@@ -113,6 +141,7 @@ class PythonWorkerCommand
             WorkerJob::TYPE_REINDEX => [$python, '-m', 'app.cli', 'reindex', '--input', $input, '--output', $output],
             WorkerJob::TYPE_PROCESS_DOCUMENT => [$python, '-m', 'app.cli', 'process-document', '--input', $input, '--output', $output],
             WorkerJob::TYPE_COMMIT_REVIEW => [$python, '-m', 'app.cli', 'commit-review', '--input', $input, '--output', $output],
+            WorkerJob::TYPE_SYNC_ENTITY_APPROVAL => [$python, '-m', 'app.cli', 'sync-entity-approval', '--input', $input, '--output', $output],
             default => throw new RuntimeException("Unsupported worker job type [{$workerJob->type}]."),
         };
     }

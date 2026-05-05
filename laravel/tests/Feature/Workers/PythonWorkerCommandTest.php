@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use App\Services\Workers\PythonWorkerCommand;
@@ -108,6 +109,34 @@ PHP);
 
         $this->assertSame(ReviewSuggestion::COMMIT_STATUS_COMMITTED, $suggestion->refresh()->commit_status);
         $this->assertSame($workerJob->id, $suggestion->commit_worker_job_id);
+
+        @unlink($script);
+    }
+
+    public function test_sync_entity_approval_worker_updates_sync_status(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode([
+    'ok' => true,
+    'result' => ['synced' => true, 'patched_docs' => 2, 'updated_pending' => 1],
+]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $entity = EntityApproval::factory()->create([
+            'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
+        ]);
+        $workerJob = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_SYNC_ENTITY_APPROVAL,
+            'payload' => ['entity_approval_id' => $entity->id, 'action' => 'approved'],
+        ]);
+
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $this->assertSame(EntityApproval::SYNC_STATUS_SYNCED, $entity->refresh()->sync_status);
+        $this->assertSame($workerJob->id, $entity->sync_worker_job_id);
 
         @unlink($script);
     }

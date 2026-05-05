@@ -156,6 +156,53 @@ def test_poll_worker_output_includes_new_review_suggestions(
     assert payload["review_suggestions"] == [mock_suggestion]
 
 
+def test_sync_entity_approval_worker_contract_reads_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps(
+            {
+                "id": 18,
+                "type": "sync_entity_approval",
+                "payload": {
+                    "action": "approved",
+                    "type": "tag",
+                    "name": "Accounting",
+                    "paperless_id": 77,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "cli",
+            "sync-entity-approval",
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    mock_cmd = AsyncMock(return_value={"synced": True, "patched_docs": 2})
+
+    with patch("app.cli.COMMANDS", {"sync-entity-approval": ("desc", mock_cmd)}):
+        from app.cli import main
+
+        main()
+
+    mock_cmd.assert_called_once_with("approved", "tag", "Accounting", 77)
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["command"] == "sync-entity-approval"
+    assert payload["result"] == {"synced": True, "patched_docs": 2}
+
+
 def test_commit_review_worker_contract_reads_source_suggestion_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

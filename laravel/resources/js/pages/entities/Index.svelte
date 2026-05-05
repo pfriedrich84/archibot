@@ -22,6 +22,8 @@
         status: string;
         paperless_id: number | null;
         source_review_suggestion_id: number | null;
+        sync_status: string | null;
+        sync_worker_job_id: number | null;
         created_at: string | null;
     };
 
@@ -92,6 +94,12 @@
                         {:else}
                             Imported proposal
                         {/if}
+                        {#if entity.sync_status}
+                            · Python sync: {entity.sync_status}
+                            {#if entity.sync_worker_job_id}
+                                via worker #{entity.sync_worker_job_id}
+                            {/if}
+                        {/if}
                     </div>
                 </div>
                 {#if isAdmin}
@@ -137,7 +145,8 @@
             <div class="border-b p-4 text-sm last:border-b-0">
                 <span class="font-medium">{entity.name}</span>
                 <span class="text-muted-foreground">
-                    · Paperless #{entity.paperless_id ?? '—'}</span
+                    · Paperless #{entity.paperless_id ?? '—'} · Python sync {entity.sync_status ??
+                        '—'}</span
                 >
             </div>
         {:else}

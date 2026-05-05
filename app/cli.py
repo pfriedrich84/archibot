@@ -215,6 +215,96 @@ async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
         await ollama.aclose()
 
 
+async def cmd_sync_entity_approval(
+    action: str, entity_type: str, name: str, paperless_id: int | None = None
+) -> dict[str, object]:
+    """Synchronize a Laravel-owned entity approval decision into the Python worker DB."""
+    from app.db import get_conn
+    from app.pipeline.committer import (
+        retroactive_correspondent_apply,
+        retroactive_doctype_apply,
+        retroactive_tag_apply,
+    )
+
+    tables = {
+        "tag": ("tag_whitelist", "tag_blacklist", retroactive_tag_apply),
+        "correspondent": (
+            "correspondent_whitelist",
+            "correspondent_blacklist",
+            retroactive_correspondent_apply,
+        ),
+        "document_type": ("doctype_whitelist", "doctype_blacklist", retroactive_doctype_apply),
+    }
+    if entity_type not in tables:
+        raise ValueError(f"Unsupported entity approval type: {entity_type}")
+    if action not in {"approved", "rejected", "unblacklisted"}:
+        raise ValueError(f"Unsupported entity approval action: {action}")
+
+    whitelist_table, blacklist_table, retroactive_apply = tables[entity_type]
+    result: dict[str, object] = {
+        "action": action,
+        "type": entity_type,
+        "name": name,
+        "synced": True,
+    }
+
+    if action == "approved":
+        if paperless_id is None:
+            raise ValueError("Approved entity sync requires paperless_id")
+        with get_conn() as conn:
+            conn.execute(f"DELETE FROM {blacklist_table} WHERE name = ?", (name,))
+            conn.execute(
+                f"""
+                INSERT INTO {whitelist_table} (name, paperless_id, approved)
+                VALUES (?, ?, 1)
+                ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id, approved = 1
+                """,
+                (name, paperless_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO audit_log (action, document_id, actor, details)
+                VALUES ('laravel_entity_approval_synced', NULL, 'laravel', ?)
+                """,
+                (
+                    json.dumps(
+                        {
+                            "action": action,
+                            "type": entity_type,
+                            "name": name,
+                            "paperless_id": paperless_id,
+                        }
+                    ),
+                ),
+            )
+
+        paperless = PaperlessClient()
+        try:
+            patched, pending = await retroactive_apply(name, paperless_id, paperless)
+        finally:
+            await paperless.aclose()
+        result.update(
+            {"paperless_id": paperless_id, "patched_docs": patched, "updated_pending": pending}
+        )
+    elif action == "rejected":
+        with get_conn() as conn:
+            row = conn.execute(
+                f"SELECT times_seen FROM {whitelist_table} WHERE name = ?", (name,)
+            ).fetchone()
+            times_seen = row["times_seen"] if row else 1
+            conn.execute(f"DELETE FROM {whitelist_table} WHERE name = ?", (name,))
+            conn.execute(
+                f"INSERT OR REPLACE INTO {blacklist_table} (name, times_seen) VALUES (?, ?)",
+                (name, times_seen),
+            )
+    else:
+        with get_conn() as conn:
+            conn.execute(f"DELETE FROM {blacklist_table} WHERE name = ?", (name,))
+
+    print(f"Entity approval sync complete: {result}")
+    return result
+
+
 async def cmd_commit_review(suggestion_id: int) -> dict[str, object]:
     """Commit an accepted Python-origin review suggestion to Paperless."""
     from app.db import get_conn
@@ -320,6 +410,10 @@ COMMANDS = {
     "commit-review": (
         "Commit an accepted review suggestion by Python suggestion ID",
         cmd_commit_review,
+    ),
+    "sync-entity-approval": (
+        "Synchronize a Laravel entity approval decision into the Python worker DB",
+        cmd_sync_entity_approval,
     ),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
@@ -454,6 +548,26 @@ def _contract_document_id(input_payload: dict[str, object]) -> int | None:
         return None
 
 
+def _contract_entity_approval(input_payload: dict[str, object]) -> tuple[str, str, str, int | None]:
+    payload = _contract_payload(input_payload)
+    action = payload.get("action")
+    entity_type = payload.get("type")
+    name = payload.get("name")
+    raw_paperless_id = payload.get("paperless_id")
+
+    if not isinstance(action, str) or not isinstance(entity_type, str) or not isinstance(name, str):
+        raise ValueError("Worker payload requires action, type, and name for sync-entity-approval")
+
+    paperless_id = None
+    if raw_paperless_id is not None:
+        try:
+            paperless_id = int(raw_paperless_id)
+        except (TypeError, ValueError):
+            raise ValueError("paperless_id must be numeric when provided") from None
+
+    return action, entity_type, name, paperless_id
+
+
 def _contract_source_suggestion_id(input_payload: dict[str, object]) -> int | None:
     payload = _contract_payload(input_payload)
     raw = payload.get("source_suggestion_id") or payload.get("suggestion_id")
@@ -550,6 +664,10 @@ def main() -> None:
                         "Worker payload requires source_suggestion_id for commit-review"
                     )
                 output_payload["result"] = asyncio.run(cmd_func(suggestion_id))
+            elif cmd_name == "sync-entity-approval":
+                output_payload["result"] = asyncio.run(
+                    cmd_func(*_contract_entity_approval(input_payload))
+                )
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)
@@ -577,6 +695,9 @@ def main() -> None:
                 print(f"Invalid source_suggestion_id: {suggestion_arg}")
                 sys.exit(1)
             asyncio.run(cmd_func(suggestion_id))
+        elif cmd_name == "sync-entity-approval":
+            print("Usage: archibot sync-entity-approval --input <path> --output <path>")
+            sys.exit(1)
         else:
             asyncio.run(cmd_func())
     except KeyboardInterrupt:
