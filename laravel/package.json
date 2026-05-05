@@ -9,8 +9,8 @@
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
-        "lint:check": "eslint .",
-        "types:check": "svelte-check --tsconfig ./tsconfig.json"
+        "lint:check": "php artisan wayfinder:generate --with-form && eslint .",
+        "types:check": "php artisan wayfinder:generate --with-form && svelte-check --tsconfig ./tsconfig.json"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",

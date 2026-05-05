@@ -1,7 +1,8 @@
 <script module lang="ts">
     export const layout = {
-        title: 'Log in to your account',
-        description: 'Enter your email and password below to log in',
+        title: 'Log in with Paperless-NGX',
+        description:
+            'Enter your Paperless username and password below to log in',
     };
 </script>
 
@@ -10,15 +11,12 @@
     import AppHead from '@/components/AppHead.svelte';
     import InputError from '@/components/InputError.svelte';
     import PasswordInput from '@/components/PasswordInput.svelte';
-    import TextLink from '@/components/TextLink.svelte';
     import { Button } from '@/components/ui/button';
     import { Checkbox } from '@/components/ui/checkbox';
     import { Input } from '@/components/ui/input';
     import { Label } from '@/components/ui/label';
     import { Spinner } from '@/components/ui/spinner';
-    import { register } from '@/routes';
     import { store } from '@/routes/login';
-    import { request } from '@/routes/password';
 
     let {
         status = '',
@@ -31,7 +29,7 @@
     } = $props();
 </script>
 
-<AppHead title="Log in" />
+<AppHead title="Log in with Paperless-NGX" />
 
 {#if status}
     <div class="mb-4 text-center text-sm font-medium text-green-600">
@@ -47,26 +45,20 @@
     {#snippet children({ errors, processing })}
         <div class="grid gap-6">
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="username">Paperless username</Label>
                 <Input
-                    id="email"
-                    type="email"
-                    name="email"
+                    id="username"
+                    name="username"
                     required
-                    autocomplete="email"
-                    placeholder="email@example.com"
+                    autocomplete="username"
+                    placeholder="paperless-user"
                 />
-                <InputError message={errors.email} />
+                <InputError message={errors.username} />
             </div>
 
             <div class="grid gap-2">
                 <div class="flex items-center justify-between">
-                    <Label for="password">Password</Label>
-                    {#if canResetPassword}
-                        <TextLink href={request()} class="text-sm">
-                            Forgot password?
-                        </TextLink>
-                    {/if}
+                    <Label for="password">Paperless password</Label>
                 </div>
                 <PasswordInput
                     id="password"
@@ -92,14 +84,13 @@
                 data-test="login-button"
             >
                 {#if processing}<Spinner />{/if}
-                Log in
+                Log in with Paperless
             </Button>
         </div>
 
-        {#if canRegister}
+        {#if canRegister || canResetPassword}
             <div class="text-center text-sm text-muted-foreground">
-                Don't have an account?
-                <TextLink href={register()}>Sign up</TextLink>
+                User management is handled in Paperless-NGX.
             </div>
         {/if}
     {/snippet}

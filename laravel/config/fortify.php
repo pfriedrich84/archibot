@@ -45,7 +45,7 @@ return [
     |
     */
 
-    'username' => 'email',
+    'username' => 'username',
 
     'email' => 'email',
 
@@ -60,7 +60,7 @@ return [
     |
     */
 
-    'lowercase_usernames' => true,
+    'lowercase_usernames' => false,
 
     /*
     |--------------------------------------------------------------------------
@@ -144,6 +144,7 @@ return [
     */
 
     'features' => [
+        // TODO: remove local account-management routes after replacing the starter auth pages.
         Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
