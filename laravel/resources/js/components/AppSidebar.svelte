@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Link, page } from '@inertiajs/svelte';
     import BookOpen from 'lucide-svelte/icons/book-open';
+    import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
@@ -23,6 +24,7 @@
     import { dashboard } from '@/routes';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
+    import { index as reviewIndex } from '@/routes/review';
     import type { NavItem } from '@/types';
 
     let {
@@ -38,6 +40,11 @@
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutGrid,
+        },
+        {
+            title: 'Review',
+            href: reviewIndex(),
+            icon: ClipboardCheck,
         },
         ...(user?.is_admin
             ? [
