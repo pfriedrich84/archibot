@@ -42,6 +42,32 @@ PHP);
         @unlink($script);
     }
 
+    public function test_captures_worker_progress_lines(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+echo 'PROGRESS '.json_encode([
+    'phase' => 'embedding',
+    'done' => 1,
+    'total' => 3,
+    'document_id' => 123,
+    'message' => 'Document embedded',
+]).PHP_EOL;
+file_put_contents($output, json_encode(['ok' => true, 'progress' => ['phase' => 'finished', 'done' => 3, 'total' => 3]]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX]);
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $workerJob->refresh();
+        $this->assertSame(WorkerJob::STATUS_SUCCEEDED, $workerJob->status);
+        $this->assertSame(['phase' => 'finished', 'done' => 3, 'total' => 3], $workerJob->progress);
+
+        @unlink($script);
+    }
+
     public function test_ingests_python_emitted_review_suggestions_after_worker_success(): void
     {
         $script = $this->writeWorkerStub(<<<'PHP'

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,6 +50,33 @@ class ReindexProgress:
 
 _reindex_progress = ReindexProgress()
 _reindex_task: asyncio.Task | None = None
+_reindex_progress_stdout_enabled = False
+
+
+def enable_reindex_progress_stdout(enabled: bool = True) -> None:
+    """Emit machine-readable progress lines for Laravel worker jobs."""
+    global _reindex_progress_stdout_enabled
+    _reindex_progress_stdout_enabled = enabled
+
+
+def _emit_reindex_progress(**extra: object) -> None:
+    if not _reindex_progress_stdout_enabled:
+        return
+
+    payload = {
+        "running": _reindex_progress.running,
+        "phase": _reindex_progress.phase,
+        "done": _reindex_progress.done,
+        "total": _reindex_progress.total,
+        "failed": _reindex_progress.failed,
+        "cancelled": _reindex_progress.cancelled,
+        "error": _reindex_progress.error,
+        "started_at": _reindex_progress.started_at,
+        "finished_at": _reindex_progress.finished_at,
+        **extra,
+    }
+    print("PROGRESS "+json.dumps(payload, ensure_ascii=False, default=str), flush=True)
+    sys.stdout.flush()
 
 
 def get_reindex_progress() -> ReindexProgress:
@@ -99,6 +128,7 @@ async def initial_index(
     # Update progress tracking with total count
     _reindex_progress.total = len(new_docs)
     _reindex_progress.phase = "embedding"
+    _emit_reindex_progress(event="phase_started", message="Embedding phase started")
     record_event(
         _reindex_progress.job_id,
         _reindex_progress.job_type or "reindex",
@@ -130,6 +160,12 @@ async def initial_index(
                 doc = doc.model_copy(update={"content": cached})
             await index_document(doc, ollama)
             count += 1
+            _emit_reindex_progress(
+                event="document_done",
+                document_id=doc.id,
+                document_title=getattr(doc, "title", None),
+                message="Document embedded",
+            )
             record_event(
                 _reindex_progress.job_id,
                 _reindex_progress.job_type or "reindex",
@@ -142,6 +178,13 @@ async def initial_index(
         except Exception as exc:
             _reindex_progress.failed += 1
             log.warning("failed to index document", doc_id=doc.id, error=str(exc))
+            _emit_reindex_progress(
+                event="document_failed",
+                document_id=doc.id,
+                document_title=getattr(doc, "title", None),
+                message="Document embedding failed",
+                error=str(exc),
+            )
             record_event(
                 _reindex_progress.job_id,
                 _reindex_progress.job_type or "reindex",
@@ -154,6 +197,7 @@ async def initial_index(
             )
         finally:
             _reindex_progress.done = i
+            _emit_reindex_progress(event="progress", document_id=doc.id)
             if i % 50 == 0:
                 log.info("index progress", done=i, total=len(new_docs))
                 record_event(
@@ -275,6 +319,13 @@ async def reindex_all(
                     if num > 0 or ocr_mode.startswith("vision"):
                         cache_ocr_correction(doc.id, text, ocr_mode, num)
                         corrected += 1
+                        _emit_reindex_progress(
+                            event="document_done",
+                            phase="ocr",
+                            document_id=doc.id,
+                            document_title=getattr(doc, "title", None),
+                            message="OCR correction saved",
+                        )
                         record_event(
                             _reindex_progress.job_id,
                             _reindex_progress.job_type or "reindex",
@@ -286,6 +337,14 @@ async def reindex_all(
                         )
                 except Exception as exc:
                     log.warning("reindex ocr failed", doc_id=doc.id, error=str(exc))
+                    _emit_reindex_progress(
+                        event="document_failed",
+                        phase="ocr",
+                        document_id=doc.id,
+                        document_title=getattr(doc, "title", None),
+                        message="OCR correction failed",
+                        error=str(exc),
+                    )
                     record_event(
                         _reindex_progress.job_id,
                         _reindex_progress.job_type or "reindex",
@@ -318,6 +377,7 @@ async def reindex_all(
         result = await initial_index(paperless, ollama)
         _reindex_progress.finished_at = datetime.now(tz=UTC).isoformat()
         _reindex_progress.phase = "finished"
+        _emit_reindex_progress(event="job_finished", message="Reindex finished", indexed=result)
         record_event(
             _reindex_progress.job_id,
             _reindex_progress.job_type or "reindex",
@@ -330,6 +390,7 @@ async def reindex_all(
         return result
     except Exception as exc:
         _reindex_progress.error = str(exc)
+        _emit_reindex_progress(event="job_failed", message="Reindex failed", error=str(exc))
         record_event(
             _reindex_progress.job_id,
             _reindex_progress.job_type or "reindex",

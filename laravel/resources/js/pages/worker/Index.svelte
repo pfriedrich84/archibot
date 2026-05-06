@@ -36,6 +36,16 @@
         status: string;
         payload: Record<string, unknown>;
         result: Record<string, unknown>;
+        progress: {
+            phase?: string;
+            done?: number;
+            total?: number;
+            failed?: number;
+            document_id?: number;
+            document_title?: string | null;
+            message?: string;
+            event?: string;
+        };
         ingest: Record<string, unknown>;
         review_suggestions_count: number;
         review_suggestions: ReviewSuggestionLink[];
@@ -125,6 +135,42 @@
                 <code class="break-all text-xs text-muted-foreground">
                     {JSON.stringify(job.payload)}
                 </code>
+                {#if job.type === 'reindex' && Object.keys(job.progress).length > 0}
+                    <div class="space-y-2 rounded-md bg-muted/50 p-3 text-xs">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-medium">Embedding progress</span>
+                            <span class="text-muted-foreground">
+                                Phase: {job.progress.phase ?? '—'} · {job
+                                    .progress.done ?? 0}/{job.progress.total ??
+                                    0}
+                                {#if job.progress.failed}
+                                    · {job.progress.failed} failed
+                                {/if}
+                            </span>
+                        </div>
+                        {#if (job.progress.total ?? 0) > 0}
+                            <div
+                                class="h-2 overflow-hidden rounded-full bg-background"
+                            >
+                                <div
+                                    class="h-full bg-primary"
+                                    style={`width: ${Math.min(100, Math.round(((job.progress.done ?? 0) / (job.progress.total ?? 1)) * 100))}%`}
+                                ></div>
+                            </div>
+                        {/if}
+                        {#if job.progress.document_id || job.progress.message}
+                            <div class="text-muted-foreground">
+                                {job.progress.message ?? 'Last update'}
+                                {#if job.progress.document_id}
+                                    · Document #{job.progress.document_id}
+                                {/if}
+                                {#if job.progress.document_title}
+                                    · {job.progress.document_title}
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
                 {#if Object.keys(job.ingest).length > 0}
                     <div class="text-xs text-muted-foreground">
                         Ingest: {JSON.stringify(job.ingest)}

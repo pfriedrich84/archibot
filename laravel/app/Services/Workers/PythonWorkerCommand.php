@@ -5,6 +5,7 @@ namespace App\Services\Workers;
 use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -27,7 +28,9 @@ class PythonWorkerCommand
         $command = $this->commandFor($workerJob, $paths['input'], $paths['output']);
 
         $process = new Process($command, base_path('..'), timeout: null);
-        $process->run();
+        $process->run(function (string $type, string $buffer) use ($workerJob): void {
+            $this->captureProgress($workerJob, $buffer);
+        });
 
         $result = is_file($paths['output'])
             ? json_decode((string) file_get_contents($paths['output']), true)
@@ -38,6 +41,7 @@ class PythonWorkerCommand
             'input_path' => $paths['input'],
             'output_path' => $paths['output'],
             'result' => is_array($result) ? $result : null,
+            'progress' => $this->finalProgress($workerJob, is_array($result) ? $result : null),
             'exit_code' => $process->getExitCode(),
             'error' => $process->isSuccessful() ? null : trim($process->getErrorOutput() ?: $process->getOutput()),
             'finished_at' => now(),
@@ -62,6 +66,40 @@ class PythonWorkerCommand
         }
 
         return $workerJob;
+    }
+
+    private function captureProgress(WorkerJob $workerJob, string $buffer): void
+    {
+        foreach (preg_split('/\R/', $buffer) ?: [] as $line) {
+            $line = trim($line);
+
+            if (! str_starts_with($line, 'PROGRESS ')) {
+                continue;
+            }
+
+            $payload = json_decode(substr($line, 9), true);
+
+            if (! is_array($payload)) {
+                continue;
+            }
+
+            $workerJob->forceFill(['progress' => $payload])->save();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $result
+     * @return array<string, mixed>|null
+     */
+    private function finalProgress(WorkerJob $workerJob, ?array $result): ?array
+    {
+        $progress = $workerJob->progress;
+
+        if (is_array($result) && is_array(Arr::get($result, 'progress'))) {
+            $progress = Arr::get($result, 'progress');
+        }
+
+        return is_array($progress) ? $progress : null;
     }
 
     /**

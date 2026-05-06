@@ -27,6 +27,7 @@ class WorkerJobController extends Controller
                 'status' => $job->status,
                 'payload' => $job->payload ?? [],
                 'result' => $job->result ?? [],
+                'progress' => $job->progress ?? [],
                 'ingest' => data_get($job->result, 'ingest', []),
                 'review_suggestions_count' => $job->review_suggestions_count,
                 'review_suggestions' => $job->reviewSuggestions->map(fn ($suggestion) => [

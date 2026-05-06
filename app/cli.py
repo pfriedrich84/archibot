@@ -54,15 +54,32 @@ def _configure_logging() -> None:
     )
 
 
-async def cmd_reindex() -> None:
+async def cmd_reindex(*, emit_progress: bool = False) -> dict[str, object]:
     """Full reindex: OCR correction (if enabled) + embedding."""
-    from app.indexer import reindex_all
+    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress, reindex_all
+
+    enable_reindex_progress_stdout(emit_progress)
 
     paperless = PaperlessClient()
     ollama = OllamaClient()
     try:
         count = await reindex_all(paperless, ollama)
         print(f"Reindex complete: {count} documents indexed.")
+        progress = get_reindex_progress()
+        return {
+            "indexed": count,
+            "progress": {
+                "running": progress.running,
+                "phase": progress.phase,
+                "done": progress.done,
+                "total": progress.total,
+                "failed": progress.failed,
+                "cancelled": progress.cancelled,
+                "error": progress.error,
+                "started_at": progress.started_at,
+                "finished_at": progress.finished_at,
+            },
+        }
     finally:
         await paperless.aclose()
         await ollama.aclose()
@@ -639,7 +656,8 @@ def main() -> None:
                 if review_suggestions:
                     output_payload["review_suggestions"] = review_suggestions
             elif cmd_name == "reindex":
-                asyncio.run(cmd_func())
+                result = asyncio.run(cmd_func(emit_progress=True))
+                output_payload.update(result)
             elif cmd_name in {"process-doc", "process-document"}:
                 document_id = _contract_document_id(input_payload)
                 if document_id is None:

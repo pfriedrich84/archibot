@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'input_path',
     'output_path',
     'result',
+    'progress',
     'exit_code',
     'error',
     'created_by_user_id',
@@ -48,6 +49,7 @@ class WorkerJob extends Model
         return [
             'payload' => 'array',
             'result' => 'array',
+            'progress' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
