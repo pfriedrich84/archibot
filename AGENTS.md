@@ -2,8 +2,19 @@
 
 Zentrale Einstiegsdatei fuer Coding-Agents in diesem Repository.
 
-## Schnellstart
+## Purpose
+ArchiBot is a self-hosted AI classifier for Paperless-NGX documents.
+It proposes metadata, stores suggestions in a review queue, and only writes to Paperless after approval or explicit auto-commit.
 
+## Read first
+Before larger changes, read:
+
+- `docs/agent/PROJECT_BRIEF.md`
+- `docs/agent/ARCHITECTURE_RULES.md`
+- `docs/agent/WORKFLOW.md`
+- `docs/agent/CHECKS.md`
+- `docs/architecture.md`
+- `docs/workflow.md`
 - Ausfuehrlicher Projektkontext: [`docs/agent/project-guide.md`](docs/agent/project-guide.md)
 - Architektur und Datenfluss: [`docs/architecture.md`](docs/architecture.md)
 - Review- und Freigabe-Workflow: [`docs/workflow.md`](docs/workflow.md)
@@ -21,6 +32,13 @@ Zentrale Einstiegsdatei fuer Coding-Agents in diesem Repository.
 - Dokumentation aktualisieren, wenn sich Verhalten aendert.
 - Vor Abschluss mindestens die betroffenen Tests ausfuehren; fuer Python-Aenderungen normalerweise `ruff check app/ tests/` und `pytest`.
 - Keine Secrets aus `.env` ausgeben oder veraendern.
+- Keep ArchiBot single-container and Docker-first.
+- Do not overwrite existing Paperless storage paths.
+- Do not create new Paperless entities without approval/whitelist flow.
+- Keep manual review as the default safety path.
+- Do not use inbox/unreviewed documents as trusted classification context.
+- Prefer small, reviewable changes.
+- Update docs when behavior changes.
 
 ## Tech stack
 
@@ -29,7 +47,16 @@ Zentrale Einstiegsdatei fuer Coding-Agents in diesem Repository.
 - SQLite + sqlite-vec fuer State und Similarity Search.
 - Paperless-NGX REST API als externe DMS-Quelle.
 - Ollama fuer lokale LLMs und Embeddings.
+- Python worker/CLI for Paperless, Ollama, embeddings, MCP
+- Laravel + Inertia/Svelte for UI/API
+- SQLite + sqlite-vec for state and similarity search
+- Ollama for local LLM and embeddings 
 
 ## Validation
 
+Before finishing code changes, run the relevant checks from:
+
+`docs/agent/CHECKS.md`
+
+If checks cannot be run, clearly state why.
 Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md).
