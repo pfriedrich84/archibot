@@ -4,6 +4,12 @@ Der Classifier stellt CLI-Befehle bereit, die im laufenden Container oder lokal
 ausgefuehrt werden koennen. Sie sind nuetzlich fuer Wartung, Debugging und
 manuelles Ausloesen der Pipeline-Phasen.
 
+Worker-Jobs, die ueber Laravel (`/worker-jobs`, Scheduler oder Webhooks) laufen,
+werden in der Tabelle `worker_jobs` persistiert. Die JSON-Worker-Ausfuehrung
+schreibt Status, Fortschritt und strukturierte Logs; aktive Reindex-Jobs blockieren
+andere Jobs, waehrend `poll` und mehrere `process-doc` Jobs parallel laufen koennen,
+solange nicht dieselbe Paperless-Dokument-ID aktiv ist.
+
 ## Aufruf
 
 ```bash
@@ -133,6 +139,40 @@ archibot process-doc 224 --force
 
 **Wann nutzen:** Ideal fuer Debugging einzelner Faelle (z. B. fehlerhafte
 Klassifikation oder Ollama-Probleme), ohne die gesamte Inbox zu starten.
+
+---
+
+### `jobs` — Persistente Worker-Jobs beobachten
+
+```bash
+archibot jobs list
+archibot jobs status <job_id>
+archibot jobs stop <job_id>
+archibot jobs retry <job_id>
+```
+
+Diese Befehle lesen bzw. aktualisieren die Laravel-Worker-Job-Datenbank. `stop`
+setzt laufende Jobs auf `cancelling` bzw. noch nicht gestartete Jobs direkt auf
+`cancelled`; `retry` legt einen neuen `queued` Job mit derselben Payload an.
+
+---
+
+### Worker-Job Lifecycle
+
+Die Admin-UI unter `/worker-jobs` kann folgende persistente Jobs starten:
+
+- `poll`
+- `process_document` mit Paperless-Dokument-ID
+- `reindex`
+- `reindex_ocr`
+- `reindex_embed`
+
+Statuswerte sind `queued`, `running`, `cancelling` (UI: „wird abgebrochen“),
+`cancelled`, `succeeded`, `failed` und `partially_failed`. Stop ist kooperativ:
+bei laufenden Jobs wird zuerst `cancelling` gespeichert und der Python-Prozess
+per Interrupt aufgefordert, an vorhandenen Checkpoints sauber abzubrechen. Retry
+legt einen neuen Job mit gleicher Payload an; wenn persistierte Dokumentfehler
+vorhanden sind, wird die Retry-Payload auf diese Paperless-IDs eingeschraenkt.
 
 ---
 

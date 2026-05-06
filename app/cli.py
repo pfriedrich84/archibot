@@ -10,6 +10,10 @@ Usage::
     python -m app.cli poll --force     # Reprocess inbox docs (ignore idempotency skip)
     python -m app.cli process-doc 224  # Process one document by ID
     python -m app.cli process-doc 224 --force  # Reprocess one document
+    python -m app.cli jobs list        # List Laravel worker jobs
+    python -m app.cli jobs status 12   # Show one Laravel worker job
+    python -m app.cli jobs stop 12     # Request cooperative stop/cancel
+    python -m app.cli jobs retry 12    # Queue a retry row for a job
     python -m app.cli reset --yes      # Delete DB and recreate clean schema
     python -m app.cli reset --yes --include-config  # Also delete config.env
 """
@@ -54,11 +58,23 @@ def _configure_logging() -> None:
     )
 
 
-async def cmd_reindex(*, emit_progress: bool = False) -> dict[str, object]:
+async def cmd_reindex(
+    *, emit_progress: bool = False, job_id: str | None = None, job_type: str = "reindex"
+) -> dict[str, object]:
     """Full reindex: OCR correction (if enabled) + embedding."""
+    from datetime import UTC, datetime
+
+    import app.indexer as indexer
     from app.indexer import enable_reindex_progress_stdout, get_reindex_progress, reindex_all
 
     enable_reindex_progress_stdout(emit_progress)
+    indexer._reindex_progress.running = True
+    indexer._reindex_progress.cancelled = False
+    indexer._reindex_progress.error = None
+    indexer._reindex_progress.started_at = datetime.now(tz=UTC).isoformat()
+    indexer._reindex_progress.finished_at = None
+    indexer._reindex_progress.job_id = job_id
+    indexer._reindex_progress.job_type = job_type
 
     paperless = PaperlessClient()
     ollama = OllamaClient()
@@ -66,6 +82,7 @@ async def cmd_reindex(*, emit_progress: bool = False) -> dict[str, object]:
         count = await reindex_all(paperless, ollama)
         print(f"Reindex complete: {count} documents indexed.")
         progress = get_reindex_progress()
+        progress.running = False
         return {
             "indexed": count,
             "progress": {
@@ -81,30 +98,32 @@ async def cmd_reindex(*, emit_progress: bool = False) -> dict[str, object]:
             },
         }
     finally:
+        indexer._reindex_progress.running = False
         await paperless.aclose()
         await ollama.aclose()
 
 
-async def cmd_reindex_ocr(*, force: bool = False) -> None:
+async def cmd_reindex_ocr(*, force: bool = False) -> dict[str, object]:
     """Run OCR correction on all Paperless documents (respects OCR_MODE)."""
     from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
     mode = effective_ocr_mode()
     if mode == "off":
         print("OCR_MODE is 'off' — nothing to do. Set OCR_MODE to text/vision_light/vision_full.")
-        return
+        return {"corrected": 0, "mode": mode}
 
     paperless = PaperlessClient()
     ollama = OllamaClient()
     try:
         corrected = await batch_correct_documents(paperless, ollama, force=force)
         print(f"OCR correction complete: {corrected} documents corrected (mode={mode}).")
+        return {"corrected": corrected, "mode": mode}
     finally:
         await paperless.aclose()
         await ollama.aclose()
 
 
-async def cmd_reindex_embed() -> None:
+async def cmd_reindex_embed() -> dict[str, object]:
     """Rebuild embeddings only (skip OCR, use cached OCR text if available)."""
     from app.db import EMBED_DIM, get_conn
     from app.indexer import initial_index
@@ -127,12 +146,13 @@ async def cmd_reindex_embed() -> None:
     try:
         count = await initial_index(paperless, ollama)
         print(f"Embedding complete: {count} documents indexed.")
+        return {"indexed": count}
     finally:
         await paperless.aclose()
         await ollama.aclose()
 
 
-async def cmd_poll(*, force: bool = False) -> None:
+async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
     """Process inbox: OCR + embed + classify (same as scheduled poll).
 
     With ``force=True`` the idempotency skip check is bypassed.
@@ -148,8 +168,9 @@ async def cmd_poll(*, force: bool = False) -> None:
 
     worker._paperless = paperless
     worker._ollama = ollama
+    worker._poll_progress.running = True
     worker._poll_progress.job_type = "poll"
-    worker._poll_progress.job_id = f"cli-poll-{uuid.uuid4().hex[:12]}"
+    worker._poll_progress.job_id = job_id or f"cli-poll-{uuid.uuid4().hex[:12]}"
     record_event(
         worker._poll_progress.job_id,
         "poll",
@@ -181,6 +202,7 @@ async def cmd_poll(*, force: bool = False) -> None:
         else:
             print("Inbox processing complete.")
     finally:
+        worker._poll_progress.running = False
         await paperless.aclose()
         await ollama.aclose()
 
@@ -414,6 +436,127 @@ def cmd_reset(include_config: bool = False) -> None:
     print(f"Reset complete. Clean database created at {db_path}")
 
 
+def _laravel_db_path() -> Path:
+    env_path = None
+    with contextlib.suppress(Exception):
+        from os import environ
+
+        env_path = environ.get("DB_DATABASE")
+    raw = env_path
+    if raw:
+        path = Path(raw)
+        if path.exists():
+            return path
+    return Path(__file__).resolve().parents[1] / "laravel" / "database" / "database.sqlite"
+
+
+def cmd_jobs(args: list[str]) -> None:
+    """Inspect and update Laravel worker_jobs from the Python CLI."""
+    if not args or args[0] in {"-h", "--help"}:
+        print("Usage: archibot jobs <list|status|stop|retry> [job_id]")
+        return
+
+    db_path = _laravel_db_path()
+    if not db_path.exists():
+        print(f"Laravel worker DB not found: {db_path}")
+        sys.exit(1)
+
+    action = args[0]
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        if action == "list":
+            rows = conn.execute(
+                """
+                SELECT id, type, status, created_at, started_at, finished_at, error
+                FROM worker_jobs
+                ORDER BY id DESC
+                LIMIT 25
+                """
+            ).fetchall()
+            for row in rows:
+                print(
+                    f"#{row['id']} {row['type']} {row['status']} "
+                    f"created={row['created_at']} started={row['started_at'] or '-'} "
+                    f"finished={row['finished_at'] or '-'}"
+                )
+            return
+
+        if len(args) < 2:
+            print(f"Usage: archibot jobs {action} <job_id>")
+            sys.exit(1)
+        try:
+            job_id = int(args[1])
+        except ValueError:
+            print(f"Invalid job_id: {args[1]}")
+            sys.exit(1)
+
+        row = conn.execute("SELECT * FROM worker_jobs WHERE id = ?", (job_id,)).fetchone()
+        if row is None:
+            print(f"Worker job #{job_id} not found")
+            sys.exit(1)
+
+        if action == "status":
+            print(json.dumps(dict(row), ensure_ascii=False, indent=2, default=str))
+            logs = conn.execute(
+                """
+                SELECT level, phase, event, paperless_document_id, message, created_at
+                FROM worker_job_logs
+                WHERE worker_job_id = ?
+                ORDER BY id ASC
+                LIMIT 100
+                """,
+                (job_id,),
+            ).fetchall()
+            for log_row in logs:
+                doc = (
+                    f" doc=#{log_row['paperless_document_id']}"
+                    if log_row["paperless_document_id"]
+                    else ""
+                )
+                print(
+                    f"[{log_row['level']}] {log_row['created_at']} "
+                    f"{log_row['phase'] or log_row['event'] or 'log'}{doc}: {log_row['message']}"
+                )
+            return
+
+        if action == "stop":
+            if row["status"] == "queued":
+                conn.execute(
+                    """
+                    UPDATE worker_jobs
+                    SET status = 'cancelled', cancellation_requested_at = datetime('now'),
+                        finished_at = datetime('now'), error = 'Cancelled from CLI.'
+                    WHERE id = ?
+                    """,
+                    (job_id,),
+                )
+            elif row["status"] == "running":
+                conn.execute(
+                    """
+                    UPDATE worker_jobs
+                    SET status = 'cancelling', cancellation_requested_at = datetime('now')
+                    WHERE id = ?
+                    """,
+                    (job_id,),
+                )
+            print(f"Stop requested for worker job #{job_id}; current status was {row['status']}.")
+            return
+
+        if action == "retry":
+            cur = conn.execute(
+                """
+                INSERT INTO worker_jobs (type, status, payload, retry_of_worker_job_id, created_at, updated_at)
+                VALUES (?, 'queued', ?, ?, datetime('now'), datetime('now'))
+                """,
+                (row["type"], row["payload"], job_id),
+            )
+            print(f"Queued retry worker job #{cur.lastrowid} for #{job_id}.")
+            return
+
+        print(f"Unknown jobs action: {action}")
+        sys.exit(1)
+
+
 COMMANDS = {
     "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
     "reindex-ocr": ("OCR correction only (--force to ignore cache)", cmd_reindex_ocr),
@@ -432,6 +575,7 @@ COMMANDS = {
         "Synchronize a Laravel entity approval decision into the Python worker DB",
         cmd_sync_entity_approval,
     ),
+    "jobs": ("List/status/stop/retry persistent Laravel worker jobs", None),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
 }
 
@@ -622,6 +766,10 @@ def main() -> None:
 
     _configure_logging()
 
+    if cmd_name == "jobs":
+        cmd_jobs(sys.argv[2:])
+        return
+
     # reset is synchronous and must NOT call init_db() before deletion
     if cmd_name == "reset":
         extra_args = sys.argv[2:]
@@ -651,13 +799,28 @@ def main() -> None:
             }
             if cmd_name == "poll":
                 before_suggestion_id = _latest_suggestion_id()
-                asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
+                asyncio.run(
+                    cmd_func(
+                        force=_contract_force(input_payload, force),
+                        job_id=str(input_payload.get("id")),
+                    )
+                )
                 review_suggestions = _review_suggestion_payloads_since(before_suggestion_id)
                 if review_suggestions:
                     output_payload["review_suggestions"] = review_suggestions
             elif cmd_name == "reindex":
-                result = asyncio.run(cmd_func(emit_progress=True))
+                result = asyncio.run(
+                    cmd_func(
+                        emit_progress=True, job_id=str(input_payload.get("id")), job_type="reindex"
+                    )
+                )
                 output_payload.update(result)
+            elif cmd_name == "reindex-ocr":
+                result = asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
+                output_payload["result"] = result
+            elif cmd_name == "reindex-embed":
+                result = asyncio.run(cmd_func())
+                output_payload["result"] = result
             elif cmd_name in {"process-doc", "process-document"}:
                 document_id = _contract_document_id(input_payload)
                 if document_id is None:

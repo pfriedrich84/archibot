@@ -46,7 +46,7 @@ class WorkerJobTest extends TestCase
     public function test_queueing_worker_job_creates_record_dispatches_laravel_job_and_audit_log(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($user)
             ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL])
@@ -67,7 +67,7 @@ class WorkerJobTest extends TestCase
     public function test_process_document_requires_document_id(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($user)
             ->from(route('worker-jobs.index'))

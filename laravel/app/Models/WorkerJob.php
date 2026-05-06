@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,8 +20,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'exit_code',
     'error',
     'created_by_user_id',
+    'retry_of_worker_job_id',
     'started_at',
     'finished_at',
+    'cancellation_requested_at',
 ])]
 class WorkerJob extends Model
 {
@@ -30,13 +33,23 @@ class WorkerJob extends Model
 
     public const STATUS_RUNNING = 'running';
 
+    public const STATUS_CANCELLING = 'cancelling';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_SUCCEEDED = 'succeeded';
 
     public const STATUS_FAILED = 'failed';
 
+    public const STATUS_PARTIALLY_FAILED = 'partially_failed';
+
     public const TYPE_POLL = 'poll';
 
     public const TYPE_REINDEX = 'reindex';
+
+    public const TYPE_REINDEX_OCR = 'reindex_ocr';
+
+    public const TYPE_REINDEX_EMBED = 'reindex_embed';
 
     public const TYPE_PROCESS_DOCUMENT = 'process_document';
 
@@ -52,6 +65,7 @@ class WorkerJob extends Model
             'progress' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'cancellation_requested_at' => 'datetime',
         ];
     }
 
@@ -63,6 +77,8 @@ class WorkerJob extends Model
         return [
             self::TYPE_POLL,
             self::TYPE_REINDEX,
+            self::TYPE_REINDEX_OCR,
+            self::TYPE_REINDEX_EMBED,
             self::TYPE_PROCESS_DOCUMENT,
             self::TYPE_COMMIT_REVIEW,
             self::TYPE_SYNC_ENTITY_APPROVAL,
@@ -74,7 +90,67 @@ class WorkerJob extends Model
      */
     public static function userQueueableTypes(): array
     {
-        return [self::TYPE_POLL, self::TYPE_REINDEX, self::TYPE_PROCESS_DOCUMENT];
+        return [
+            self::TYPE_POLL,
+            self::TYPE_PROCESS_DOCUMENT,
+            self::TYPE_REINDEX,
+            self::TYPE_REINDEX_OCR,
+            self::TYPE_REINDEX_EMBED,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function activeStatuses(): array
+    {
+        return [self::STATUS_QUEUED, self::STATUS_RUNNING, self::STATUS_CANCELLING];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function runningStatuses(): array
+    {
+        return [self::STATUS_RUNNING, self::STATUS_CANCELLING];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function blockingTypes(): array
+    {
+        return [self::TYPE_REINDEX, self::TYPE_REINDEX_OCR, self::TYPE_REINDEX_EMBED];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function documentProcessingTypes(): array
+    {
+        return [self::TYPE_POLL, self::TYPE_PROCESS_DOCUMENT];
+    }
+
+    public function scopeRunningOrCancelling(Builder $query): Builder
+    {
+        return $query->whereIn('status', self::runningStatuses());
+    }
+
+    public function isBlockingType(): bool
+    {
+        return in_array($this->type, self::blockingTypes(), true);
+    }
+
+    public function isDocumentProcessingType(): bool
+    {
+        return in_array($this->type, self::documentProcessingTypes(), true);
+    }
+
+    public function paperlessDocumentId(): ?int
+    {
+        $value = data_get($this->payload, 'paperless_document_id') ?? data_get($this->payload, 'document_id');
+
+        return is_numeric($value) ? (int) $value : null;
     }
 
     public function createdBy(): BelongsTo
@@ -85,5 +161,10 @@ class WorkerJob extends Model
     public function reviewSuggestions(): HasMany
     {
         return $this->hasMany(ReviewSuggestion::class);
+    }
+
+    public function logs(): HasMany
+    {
+        return $this->hasMany(WorkerJobLog::class);
     }
 }

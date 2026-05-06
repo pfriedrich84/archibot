@@ -35,11 +35,11 @@ in Paperless-NGX.
 
 ### 1. Dokument wird erkannt
 
-Der Worker pollt die Paperless-Inbox, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; Verarbeitung kann manuell in der UI gestartet werden.
-Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen.
+Der Worker pollt die Paperless-Inbox, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; Verarbeitung kann manuell in der UI unter `/worker-jobs` gestartet werden.
+Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam in der Worker-Job-Historie mit Status, Fortschritt und Logs.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.
-Bereits verarbeitete Dokumente (gleicher `updated_at`-Timestamp) werden uebersprungen.
+Bereits verarbeitete Dokumente (gleicher `updated_at`-Timestamp) werden uebersprungen. Ein laufender `process_document` Job sperrt seine Paperless-Dokument-ID, damit kein anderer aktiver Job dieselbe ID parallel verarbeitet. Reindex-Jobs sind exklusiv; andere Jobs warten, bis der Reindex abgeschlossen oder abgebrochen ist.
 
 ### 2. Kontext-basierte Klassifikation
 

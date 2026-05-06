@@ -12,7 +12,8 @@
 </script>
 
 <script lang="ts">
-    import { Form } from '@inertiajs/svelte';
+    import { Form, router } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import InputError from '@/components/InputError.svelte';
@@ -21,7 +22,7 @@
     import { Label } from '@/components/ui/label';
     import { Spinner } from '@/components/ui/spinner';
     import { show as reviewShow } from '@/routes/review';
-    import { store } from '@/routes/worker-jobs';
+    import { retry, stop, store } from '@/routes/worker-jobs';
 
     type ReviewSuggestionLink = {
         id: number;
@@ -54,6 +55,17 @@
         created_at: string | null;
         started_at: string | null;
         finished_at: string | null;
+        logs: {
+            id: number;
+            stream: string;
+            level: string;
+            event: string | null;
+            paperless_document_id: number | null;
+            phase: string | null;
+            message: string;
+            context: Record<string, unknown>;
+            created_at: string | null;
+        }[];
     };
 
     type Paginator<T> = {
@@ -64,10 +76,28 @@
     let {
         jobs,
         allowedTypes,
+        isAdmin,
     }: {
         jobs: Paginator<WorkerJob>;
         allowedTypes: string[];
+        isAdmin: boolean;
     } = $props();
+
+    const labelForStatus = (status: string) =>
+        status === 'cancelling' ? 'wird abgebrochen' : status;
+
+    const actionUrl = (job: WorkerJob, action: 'stop' | 'retry') =>
+        action === 'stop' ? stop(job.id).url : retry(job.id).url;
+
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            router.reload({
+                only: ['jobs'],
+            });
+        }, 5000);
+
+        return () => window.clearInterval(interval);
+    });
 </script>
 
 <AppHead title="Worker jobs" />
@@ -78,41 +108,54 @@
         description="Queue ArchiBot worker commands and inspect their results."
     />
 
-    <Form {...store.form()} class="grid max-w-2xl gap-4 rounded-xl border p-4">
-        {#snippet children({ errors, processing })}
-            <div class="grid gap-2">
-                <Label for="type">Job type</Label>
-                <select
-                    id="type"
-                    name="type"
-                    required
-                    class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
-                >
-                    {#each allowedTypes as type (type)}
-                        <option value={type}>{type}</option>
-                    {/each}
-                </select>
-                <InputError message={errors.type} />
-            </div>
+    {#if isAdmin}
+        <Form
+            {...store.form()}
+            class="grid max-w-2xl gap-4 rounded-xl border p-4"
+        >
+            {#snippet children({ errors, processing })}
+                <div class="grid gap-2">
+                    <Label for="type">Job type</Label>
+                    <select
+                        id="type"
+                        name="type"
+                        required
+                        class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
+                    >
+                        {#each allowedTypes as type (type)}
+                            <option value={type}>{type}</option>
+                        {/each}
+                    </select>
+                    <InputError message={errors.type} />
+                </div>
 
-            <div class="grid gap-2">
-                <Label for="paperless_document_id">Paperless document ID</Label>
-                <Input
-                    id="paperless_document_id"
-                    name="paperless_document_id"
-                    type="number"
-                    min="1"
-                    placeholder="Required only for process_document"
-                />
-                <InputError message={errors.paperless_document_id} />
-            </div>
+                <div class="grid gap-2">
+                    <Label for="paperless_document_id"
+                        >Paperless document ID</Label
+                    >
+                    <Input
+                        id="paperless_document_id"
+                        name="paperless_document_id"
+                        type="number"
+                        min="1"
+                        placeholder="Required only for process_document"
+                    />
+                    <InputError message={errors.paperless_document_id} />
+                </div>
 
-            <Button type="submit" disabled={processing} class="w-fit">
-                {#if processing}<Spinner />{/if}
-                Queue worker job
-            </Button>
-        {/snippet}
-    </Form>
+                <Button type="submit" disabled={processing} class="w-fit">
+                    {#if processing}<Spinner />{/if}
+                    Queue worker job
+                </Button>
+            {/snippet}
+        </Form>
+    {:else}
+        <div
+            class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground"
+        >
+            Worker controls are available to administrators only.
+        </div>
+    {/if}
 
     <div class="rounded-xl border">
         <div class="border-b px-4 py-3 text-sm text-muted-foreground">
@@ -124,21 +167,45 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium">#{job.id} {job.type}</span>
                     <span class="rounded-full bg-muted px-2 py-0.5"
-                        >{job.status}</span
+                        >{labelForStatus(job.status)}</span
                     >
                     {#if job.exit_code !== null}
                         <span class="text-muted-foreground"
                             >exit {job.exit_code}</span
                         >
                     {/if}
+                    {#if isAdmin && ['queued', 'running'].includes(job.status)}
+                        <Form method="post" action={actionUrl(job, 'stop')}>
+                            {#snippet children({ processing })}
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processing}>Stop</Button
+                                >
+                            {/snippet}
+                        </Form>
+                    {/if}
+                    {#if isAdmin && ['failed', 'partially_failed', 'cancelled'].includes(job.status)}
+                        <Form method="post" action={actionUrl(job, 'retry')}>
+                            {#snippet children({ processing })}
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processing}>Retry</Button
+                                >
+                            {/snippet}
+                        </Form>
+                    {/if}
                 </div>
                 <code class="break-all text-xs text-muted-foreground">
                     {JSON.stringify(job.payload)}
                 </code>
-                {#if job.type === 'reindex' && Object.keys(job.progress).length > 0}
+                {#if Object.keys(job.progress).length > 0}
                     <div class="space-y-2 rounded-md bg-muted/50 p-3 text-xs">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="font-medium">Embedding progress</span>
+                            <span class="font-medium">Progress</span>
                             <span class="text-muted-foreground">
                                 Phase: {job.progress.phase ?? '—'} · {job
                                     .progress.done ?? 0}/{job.progress.total ??
@@ -202,6 +269,29 @@
                 {/if}
                 {#if job.error}
                     <div class="text-destructive">{job.error}</div>
+                {/if}
+                {#if job.logs.length > 0}
+                    <details class="rounded-md bg-muted/40 p-3 text-xs">
+                        <summary class="cursor-pointer font-medium"
+                            >Logs ({job.logs.length})</summary
+                        >
+                        <div class="mt-2 max-h-72 space-y-1 overflow-auto">
+                            {#each job.logs as log (log.id)}
+                                <div class="break-words">
+                                    <span class="text-muted-foreground"
+                                        >{log.created_at ?? ''} [{log.level}] {log.phase ??
+                                            log.stream}</span
+                                    >
+                                    {#if log.paperless_document_id}
+                                        <span class="text-muted-foreground">
+                                            doc #{log.paperless_document_id}</span
+                                        >
+                                    {/if}
+                                    <span> · {log.message}</span>
+                                </div>
+                            {/each}
+                        </div>
+                    </details>
                 {/if}
             </div>
         {:else}

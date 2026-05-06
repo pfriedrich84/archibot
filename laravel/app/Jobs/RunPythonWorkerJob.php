@@ -17,6 +17,10 @@ class RunPythonWorkerJob implements ShouldQueue
     {
         $workerJob = WorkerJob::query()->findOrFail($this->workerJobId);
 
+        if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+            return;
+        }
+
         $command->run($workerJob);
     }
 }

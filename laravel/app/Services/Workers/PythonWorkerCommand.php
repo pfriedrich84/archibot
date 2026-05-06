@@ -9,6 +9,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\Process;
 
 class PythonWorkerCommand
@@ -18,6 +19,17 @@ class PythonWorkerCommand
      */
     public function run(WorkerJob $workerJob, ?WorkerResultIngestor $ingestor = null): WorkerJob
     {
+        if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+            return $workerJob;
+        }
+
+        $this->waitForCompatibleJobs($workerJob);
+        $workerJob->refresh();
+
+        if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+            return $workerJob;
+        }
+
         $workerJob->forceFill([
             'status' => WorkerJob::STATUS_RUNNING,
             'started_at' => now(),
@@ -28,34 +40,51 @@ class PythonWorkerCommand
         $command = $this->commandFor($workerJob, $paths['input'], $paths['output']);
 
         $process = new Process($command, base_path('..'), timeout: null);
-        $process->run(function (string $type, string $buffer) use ($workerJob): void {
-            $this->captureProgress($workerJob, $buffer);
+        $process->start(function (string $type, string $buffer) use ($workerJob, $process): void {
+            $this->captureOutput($workerJob, $type, $buffer);
+            $this->signalIfCancelling($workerJob, $process);
         });
 
+        while ($process->isRunning()) {
+            $this->signalIfCancelling($workerJob, $process);
+            usleep(250_000);
+        }
+
+        try {
+            $process->wait();
+        } catch (ProcessSignaledException) {
+            // The final status below will persist the cooperative cancellation result.
+        }
+
+        $workerJob->refresh();
         $result = is_file($paths['output'])
             ? json_decode((string) file_get_contents($paths['output']), true)
             : null;
+        $processSucceeded = $process->isSuccessful();
+        $status = $this->terminalStatus($workerJob, $processSucceeded, is_array($result) ? $result : null);
 
         $workerJob->forceFill([
-            'status' => $process->isSuccessful() ? WorkerJob::STATUS_SUCCEEDED : WorkerJob::STATUS_FAILED,
+            'status' => $status,
             'input_path' => $paths['input'],
             'output_path' => $paths['output'],
             'result' => is_array($result) ? $result : null,
             'progress' => $this->finalProgress($workerJob, is_array($result) ? $result : null),
             'exit_code' => $process->getExitCode(),
-            'error' => $process->isSuccessful() ? null : trim($process->getErrorOutput() ?: $process->getOutput()),
+            'error' => in_array($status, [WorkerJob::STATUS_SUCCEEDED, WorkerJob::STATUS_PARTIALLY_FAILED], true)
+                ? null
+                : trim($process->getErrorOutput() ?: $process->getOutput() ?: ($status === WorkerJob::STATUS_CANCELLED ? 'Cancelled.' : '')),
             'finished_at' => now(),
         ])->save();
 
         if ($workerJob->type === WorkerJob::TYPE_COMMIT_REVIEW) {
-            $this->updateReviewCommitStatus($workerJob, $process->isSuccessful(), is_array($result) ? $result : []);
+            $this->updateReviewCommitStatus($workerJob, $processSucceeded, is_array($result) ? $result : []);
         }
 
         if ($workerJob->type === WorkerJob::TYPE_SYNC_ENTITY_APPROVAL) {
-            $this->updateEntityApprovalSyncStatus($workerJob, $process->isSuccessful(), is_array($result) ? $result : []);
+            $this->updateEntityApprovalSyncStatus($workerJob, $processSucceeded, is_array($result) ? $result : []);
         }
 
-        if ($process->isSuccessful() && is_array($result)) {
+        if ($processSucceeded && is_array($result)) {
             $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
 
             if ($ingestSummary !== []) {
@@ -68,23 +97,121 @@ class PythonWorkerCommand
         return $workerJob;
     }
 
-    private function captureProgress(WorkerJob $workerJob, string $buffer): void
+    private function waitForCompatibleJobs(WorkerJob $workerJob): void
+    {
+        while ($this->hasIncompatibleRunningJob($workerJob)) {
+            $workerJob->refresh();
+            if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+                return;
+            }
+            sleep(1);
+        }
+    }
+
+    private function hasIncompatibleRunningJob(WorkerJob $workerJob): bool
+    {
+        if ($workerJob->isBlockingType()) {
+            return WorkerJob::query()
+                ->whereKeyNot($workerJob->id)
+                ->runningOrCancelling()
+                ->exists();
+        }
+
+        if ($workerJob->isDocumentProcessingType()) {
+            $blocking = WorkerJob::query()
+                ->whereKeyNot($workerJob->id)
+                ->whereIn('type', WorkerJob::blockingTypes())
+                ->runningOrCancelling()
+                ->exists();
+
+            if ($blocking) {
+                return true;
+            }
+
+            $documentId = $workerJob->paperlessDocumentId();
+            if ($documentId !== null) {
+                return WorkerJob::query()
+                    ->whereKeyNot($workerJob->id)
+                    ->where('type', WorkerJob::TYPE_PROCESS_DOCUMENT)
+                    ->runningOrCancelling()
+                    ->where('payload->paperless_document_id', $documentId)
+                    ->exists();
+            }
+        }
+
+        return false;
+    }
+
+    private function captureOutput(WorkerJob $workerJob, string $type, string $buffer): void
     {
         foreach (preg_split('/\R/', $buffer) ?: [] as $line) {
             $line = trim($line);
 
-            if (! str_starts_with($line, 'PROGRESS ')) {
+            if ($line === '') {
                 continue;
             }
 
-            $payload = json_decode(substr($line, 9), true);
+            if (str_starts_with($line, 'PROGRESS ')) {
+                $payload = json_decode(substr($line, 9), true);
 
-            if (! is_array($payload)) {
+                if (is_array($payload)) {
+                    $workerJob->forceFill(['progress' => $payload])->save();
+                    $this->persistLog($workerJob, $type, $payload['message'] ?? $payload['event'] ?? 'Progress update', $payload);
+                }
+
                 continue;
             }
 
-            $workerJob->forceFill(['progress' => $payload])->save();
+            $this->persistLog($workerJob, $type, $line);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function persistLog(WorkerJob $workerJob, string $stream, string $message, array $context = []): void
+    {
+        $workerJob->logs()->create([
+            'stream' => $stream === Process::ERR ? 'stderr' : 'stdout',
+            'level' => (string) ($context['level'] ?? ($stream === Process::ERR ? 'error' : 'info')),
+            'event' => is_scalar($context['event'] ?? null) ? (string) $context['event'] : null,
+            'paperless_document_id' => is_numeric($context['document_id'] ?? null) ? (int) $context['document_id'] : null,
+            'phase' => is_scalar($context['phase'] ?? null) ? (string) $context['phase'] : null,
+            'message' => $message,
+            'context' => $context,
+        ]);
+    }
+
+    private function signalIfCancelling(WorkerJob $workerJob, Process $process): void
+    {
+        $workerJob->refresh();
+
+        if ($workerJob->status !== WorkerJob::STATUS_CANCELLING || ! $process->isRunning()) {
+            return;
+        }
+
+        try {
+            $process->signal(2);
+        } catch (RuntimeException) {
+            // Process may have exited between isRunning() and signal().
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $result
+     */
+    private function terminalStatus(WorkerJob $workerJob, bool $processSucceeded, ?array $result): string
+    {
+        if ($workerJob->status === WorkerJob::STATUS_CANCELLING || data_get($result, 'cancelled') === true) {
+            return WorkerJob::STATUS_CANCELLED;
+        }
+
+        $failed = data_get($result, 'progress.failed') ?? data_get($result, 'failed');
+        if ($processSucceeded && is_numeric($failed) && (int) $failed > 0) {
+            return WorkerJob::STATUS_PARTIALLY_FAILED;
+        }
+
+        return $processSucceeded ? WorkerJob::STATUS_SUCCEEDED : WorkerJob::STATUS_FAILED;
     }
 
     /**
@@ -177,6 +304,8 @@ class PythonWorkerCommand
         return match ($workerJob->type) {
             WorkerJob::TYPE_POLL => [$python, '-m', 'app.cli', 'poll', '--input', $input, '--output', $output],
             WorkerJob::TYPE_REINDEX => [$python, '-m', 'app.cli', 'reindex', '--input', $input, '--output', $output],
+            WorkerJob::TYPE_REINDEX_OCR => [$python, '-m', 'app.cli', 'reindex-ocr', '--input', $input, '--output', $output],
+            WorkerJob::TYPE_REINDEX_EMBED => [$python, '-m', 'app.cli', 'reindex-embed', '--input', $input, '--output', $output],
             WorkerJob::TYPE_PROCESS_DOCUMENT => [$python, '-m', 'app.cli', 'process-document', '--input', $input, '--output', $output],
             WorkerJob::TYPE_COMMIT_REVIEW => [$python, '-m', 'app.cli', 'commit-review', '--input', $input, '--output', $output],
             WorkerJob::TYPE_SYNC_ENTITY_APPROVAL => [$python, '-m', 'app.cli', 'sync-entity-approval', '--input', $input, '--output', $output],

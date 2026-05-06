@@ -42,7 +42,7 @@ def test_main_poll_reads_worker_contract_and_writes_output(
 
         main()
 
-    mock_cmd.assert_called_once_with(force=True)
+    mock_cmd.assert_called_once_with(force=True, job_id="12")
     assert json.loads(output_path.read_text(encoding="utf-8")) == {
         "ok": True,
         "command": "poll",
