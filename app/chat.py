@@ -1,6 +1,6 @@
 """Shared RAG chat core — session management and ask() pipeline.
 
-Used by both the web route (``app.routes.chat``) and the Telegram handler
+Used by the Telegram handler and legacy-compatible callers
 (``app.telegram_handler``) so the RAG logic lives in one place.
 """
 

@@ -481,8 +481,7 @@ Die CI-Pipeline (`lint-and-verify` Job) fuehrt zusaetzlich aus:
 - `pip check` (Dependency-Kompatibilitaet)
 - `pip-audit` (CVE-Scan)
 - `python scripts/check_dependency_age.py --min-days 3` (Supply-Chain)
-- Template-Syntax-Check (alle Jinja2-Templates werden geladen)
-- `python -c "import app.main"` (Import-Check)
+- `python -c "import app.cli; import app.mcp_server"` (Import-Check)
 - DB-Schema-Check, Prompt-File-Check
 
 ## Telegram-Bot (optional)
@@ -553,7 +552,7 @@ Typische Angriffsvektoren:
 - **Dependency Confusion:** Ein internes Paket wird durch ein gleichnamiges
   oeffentliches Paket mit hoeherer Versionsnummer ersetzt.
 
-Das Problem: `pip install fastapi>=0.115.0` installiert *immer die neueste Version*.
+Das Problem: `pip install httpx>=0.27.0` installiert *immer die neueste Version*.
 Wird diese Version Minuten nach der Veroeffentlichung kompromittiert, sind alle
 Installationen betroffen — bevor die Community den Angriff bemerkt.
 
@@ -582,8 +581,8 @@ als sicher bekannte Version zeigt:
 
 ```toml
 dependencies = [
-    "fastapi>=0.115.0,<=0.135.2",    # Untergrenze = Mindestfeature, Obergrenze = geprueft
-    "uvicorn[standard]>=0.32.0,<=0.42.0",
+    "httpx>=0.27.0",                 # Untergrenze = Mindestfeature
+    "pydantic>=2.9.0,<=2.12.5",      # Obergrenze = geprueft
     ...
 ]
 ```

@@ -22,15 +22,6 @@ from app.db import EMBED_DIM, SCHEMA
 from app.models import PaperlessDocument, PaperlessEntity
 
 
-def bootstrap_csrf_client(client, path: str = "/healthz"):
-    """Prime the CSRF cookie and default header for a TestClient."""
-    client.get(path)
-    token = client.cookies.get("csrf_token")
-    if token:
-        client.headers.update({"X-CSRF-Token": token})
-    return client
-
-
 @pytest.fixture()
 def tmp_db(tmp_path: Path) -> Path:
     """Create a temporary SQLite DB with the full schema applied (without sqlite-vec)."""
@@ -87,14 +78,6 @@ def patch_db(tmp_db: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(tmp_db))
     # Also patch wherever get_conn is imported directly
     monkeypatch.setattr("app.pipeline.committer.get_conn", lambda: _mock_get_conn(tmp_db))
-    monkeypatch.setattr("app.routes.api.get_conn", lambda: _mock_get_conn(tmp_db), raising=False)
-    monkeypatch.setattr("app.routes.review.get_conn", lambda: _mock_get_conn(tmp_db), raising=False)
-    monkeypatch.setattr(
-        "app.routes.correspondents.get_conn", lambda: _mock_get_conn(tmp_db), raising=False
-    )
-    monkeypatch.setattr(
-        "app.routes.doctypes.get_conn", lambda: _mock_get_conn(tmp_db), raising=False
-    )
 
 
 @pytest.fixture()

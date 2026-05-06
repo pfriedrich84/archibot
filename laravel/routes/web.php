@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\InboxController;
+use App\Http\Controllers\PaperlessWebhookController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\Workers\WorkerJobController;
@@ -17,6 +18,9 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         'status' => 'ok',
         'app' => 'archibot',
     ]))->name('healthz');
+
+    Route::post('/webhook/new', [PaperlessWebhookController::class, 'new'])->name('webhook.new');
+    Route::post('/webhook/edit', [PaperlessWebhookController::class, 'edit'])->name('webhook.edit');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
     Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])->name('setup.paperless-tags');

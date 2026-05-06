@@ -9,11 +9,14 @@ rich<=14.3.3
 markdown-it-py<=4.0.0
 click<=8.3.1
 typer<=0.24.1
-# Keep the FastAPI/Starlette/Uvicorn/MCP stack on a known-compatible set.
-fastapi<=0.136.1
+# Keep MCP and its declared transport dependencies on a known-compatible set.
+# ArchiBot no longer imports these web transport packages directly, but the
+# upstream mcp package currently declares them even when using stdio transport.
+mcp<=1.27.0
 starlette<=1.0.0
 uvicorn<=0.46.0
-mcp<=1.27.0
+sse-starlette<=3.3.4
+python-multipart<=0.0.27
 # Keep pip-audit and key transitive deps stable in CI.
 pip-audit<=2.10.0
 cyclonedx-python-lib<=11.7.0
@@ -23,11 +26,9 @@ cryptography<=46.0.7
 charset-normalizer<=3.4.6
 platformdirs<=4.9.4
 requests<=2.33.0
-sse-starlette<=3.3.4
 pydantic<=2.12.5
 pydantic-core<=2.41.5
 pydantic-settings<=2.14.0
-python-multipart<=0.0.27
 sqlite-vec<=0.1.9
 pymupdf<=1.27.2.3
 ruff<=0.15.12

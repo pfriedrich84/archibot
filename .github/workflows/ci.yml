@@ -36,7 +36,7 @@ jobs:
           which archibot || true
           python - <<'PY'
           import importlib.metadata as m
-          for pkg in ["archibot", "fastapi", "starlette", "uvicorn", "mcp", "sse-starlette", "pytest", "ruff"]:
+          for pkg in ["archibot", "mcp", "pytest", "ruff"]:
               try:
                   print(f"{pkg}=={m.version(pkg)}")
               except Exception as exc:
@@ -79,23 +79,6 @@ jobs:
       - name: Dependency age check (supply-chain protection)
         run: python scripts/check_dependency_age.py --min-days 3
 
-      - name: Template syntax check
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          template_dir = Path('app/templates')
-          template_files = [p for p in template_dir.rglob('*') if p.is_file() and p.name != '.gitkeep'] if template_dir.exists() else []
-          if not template_files:
-              print('No server-rendered Jinja templates to check')
-              raise SystemExit(0)
-          from jinja2 import Environment, FileSystemLoader
-          env = Environment(loader=FileSystemLoader(str(template_dir)))
-          templates = env.list_templates()
-          for t in templates:
-              env.get_template(t)
-          print(f'All {len(templates)} templates OK')
-          PY
-
       - name: Console script check
         run: |
           archibot --help
@@ -122,7 +105,7 @@ jobs:
           echo "=== import metadata ==="
           python - <<'PY'
           import importlib.metadata as m
-          for pkg in ["archibot", "fastapi", "starlette", "uvicorn", "mcp", "sse-starlette", "pytest", "ruff"]:
+          for pkg in ["archibot", "mcp", "pytest", "ruff"]:
               try:
                   print(f"{pkg}=={m.version(pkg)}")
               except Exception as exc:

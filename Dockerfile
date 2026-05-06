@@ -61,20 +61,13 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies are kept for CLI workers and MCP runtime. FastAPI/uvicorn
-# remain installed only for legacy imports/tests during the switch-over, not as
-# the container entrypoint.
+# Python dependencies are kept for CLI workers and MCP runtime.
 COPY pyproject.toml constraints.txt ./
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -c constraints.txt \
-        "fastapi>=0.121.0,<=0.135.2" \
-        "starlette>=0.49.1,<0.50.0" \
-        "uvicorn[standard]>=0.31.1,<=0.42.0" \
         "httpx>=0.27.0" \
         "pydantic>=2.9.0,<=2.12.5" \
         "pydantic-settings>=2.5.0" \
-        "jinja2>=3.1.4" \
-        "python-multipart>=0.0.12,<=0.0.26" \
         "apscheduler>=3.10.4" \
         "structlog>=24.4.0" \
         "sqlite-vec>=0.1.3,<=0.1.7" \

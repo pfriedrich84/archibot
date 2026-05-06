@@ -11,7 +11,7 @@ Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig; der Def
 | Endpoint | Zweck |
 |----------|-------|
 | `POST /webhook/new` | Volle Pipeline: OCR + Embedding + Klassifikation + Suggestion |
-| `POST /webhook/edit` | Nur Embedding-Update (keine Klassifikation) |
+| `POST /webhook/edit` | Dokument erneut ueber den `process-document` Worker verarbeiten |
 
 **Polling und Webhooks koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
 
@@ -42,7 +42,7 @@ und keine Datei-Mounts noetig.
 | Workflow | Trigger | Webhook-URL | Zweck |
 |----------|---------|-------------|-------|
 | 1 | Dokument hinzugefuegt | `http://<host>:8088/webhook/new` | Volle Verarbeitung (OCR + Embedding + Klassifikation) |
-| 2 | Dokument geaendert | `http://<host>:8088/webhook/edit` | Nur Embedding-Update (keine Klassifikation) |
+| 2 | Dokument geaendert | `http://<host>:8088/webhook/edit` | Dokument erneut ueber den `process-document` Worker verarbeiten |
 
 **Einstellungen pro Workflow:**
 
@@ -144,16 +144,15 @@ Klassifikation, Suggestion-Erstellung, optional Auto-Commit und Telegram.
 
 | Status | Bedeutung |
 |---|---|
-| `200` | Verarbeitung erfolgreich (oder Fehler im Body) |
+| `200` | Worker-Job wurde erfolgreich in Laravel eingereiht |
 | `403` | Webhook-Secret ungueltig |
 | `422` | Body ungueltig (fehlende/falsche `document_id`) |
-| `503` | Reindex laeuft gerade — spaeter erneut versuchen |
 
-### POST /webhook/edit — Nur Embedding-Update
+### POST /webhook/edit — Erneute Dokumentverarbeitung
 
-Berechnet nur das Embedding eines Dokuments neu (mit optionaler OCR-Korrektur).
-Keine Klassifikation, keine Suggestion, kein Telegram. Nutzen: wenn ein Dokument
-in Paperless geaendert wurde und der Embedding-Index aktualisiert werden soll.
+Reiht wie `/webhook/new` einen Laravel Worker-Job ein, der das Dokument ueber den
+bestehenden Python-CLI-Vertrag `process-document` verarbeitet. Nutzen: wenn ein
+Dokument in Paperless geaendert wurde und ArchiBot es erneut betrachten soll.
 
 **Header und Body:** Identisch zu `/webhook/new`.
 
@@ -161,12 +160,9 @@ in Paperless geaendert wurde und der Embedding-Index aktualisiert werden soll.
 
 | Status | Bedeutung |
 |---|---|
-| `200` | `{"status": "ok", "document_id": 123, "action": "reembedded"}` |
-| `200` | `{"status": "ok", "document_id": 123, "action": "skipped_empty"}` (leerer Content) |
+| `200` | Worker-Job wurde erfolgreich in Laravel eingereiht |
 | `403` | Webhook-Secret ungueltig |
 | `422` | Body ungueltig |
-| `500` | Embedding-Fehler (z.B. Ollama nicht erreichbar) |
-| `503` | Reindex laeuft gerade |
 
 ## Fehlerbehebung
 
@@ -190,10 +186,6 @@ Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 - `WEBHOOK_SECRET` in der Classifier `.env`
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
-
-### 503 Service Unavailable
-
-Ein Reindex laeuft gerade. Das Dokument wird beim naechsten regulaeren Poll verarbeitet, sobald der Reindex abgeschlossen ist.
 
 ### Dokument wird nicht verarbeitet
 
