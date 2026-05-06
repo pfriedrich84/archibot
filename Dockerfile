@@ -38,6 +38,7 @@ COPY laravel/package.json laravel/package-lock.json ./
 RUN npm ci
 COPY laravel ./
 COPY --from=laravel-vendor /laravel/vendor ./vendor
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/testing storage/framework/views bootstrap/cache
 ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
     APP_PATH_PREFIX=laravel \
     WAYFINDER_GENERATE=false
