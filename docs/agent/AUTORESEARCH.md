@@ -2,6 +2,15 @@
 
 Optional workflow for autonomous, metric-driven experiment loops. Use it only when the task has a measurable target and repeated iterations are useful.
 
+This repository includes a ready-to-run harness:
+
+```bash
+./autoresearch.sh
+./autoresearch.checks.sh
+```
+
+Harness details live in [`../../tools/autoresearch/autoresearch.md`](../../tools/autoresearch/autoresearch.md).
+
 ## Good fits
 
 - Performance optimization: pipeline latency, embedding throughput, OCR/rendering speed, Laravel/frontend build time.
