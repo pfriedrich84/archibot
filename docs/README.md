@@ -24,3 +24,4 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`agent/CHECKS.md`](agent/CHECKS.md) — Validierungsbefehle.
 - [`agent/WORKFLOWS.md`](agent/WORKFLOWS.md) — Wiederverwendbare Workflows.
 - [`agent/SAFETY.md`](agent/SAFETY.md) — Sicherheitsregeln fuer Agenten.
+- [`agent/AUTORESEARCH.md`](agent/AUTORESEARCH.md) — Metrikgetriebene Experiment-Workflows.

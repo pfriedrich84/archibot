@@ -60,3 +60,4 @@ Read these instead of expanding this file with duplicate details:
 - [`CHECKS.md`](CHECKS.md) — validation commands.
 - [`WORKFLOWS.md`](WORKFLOWS.md) — reusable maintenance workflows.
 - [`SAFETY.md`](SAFETY.md) — safe/unsafe operations.
+- [`AUTORESEARCH.md`](AUTORESEARCH.md) — optional metric-driven experiment workflow.
