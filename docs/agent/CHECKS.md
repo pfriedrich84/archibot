@@ -39,6 +39,19 @@ Use the relevant workflow from [`WORKFLOWS.md`](WORKFLOWS.md) when changing:
 - `pyproject.toml`, `constraints.txt`, Composer dependencies, or npm dependencies
 - security/audit policy files
 
+Dependency changes must include the 3-day supply-chain age check:
+
+```bash
+python scripts/check_dependency_age.py --min-days 3
+```
+
+Docker/runtime image changes should include a local build and Grype scan when available:
+
+```bash
+docker build -t archibot-local-check .
+grype archibot-local-check --only-fixed --fail-on high
+```
+
 ## Documentation-only changes
 
 Usually no test suite is required. Still verify that links, command examples, and referenced paths are correct.

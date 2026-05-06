@@ -90,6 +90,42 @@ jobs:
       - name: DB schema check
         run: python -c "from app.db import init_db; init_db()"
 
+      - name: Agent docs link check
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          files = [
+              Path("AGENTS.md"),
+              Path("CLAUDE.md"),
+              *Path("docs/agent").glob("*.md"),
+          ]
+          missing = []
+          for file in files:
+              if not file.exists():
+                  continue
+              text = file.read_text(encoding="utf-8")
+              for match in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text):
+                  target = match.group(1)
+                  if "://" in target or target.startswith("#") or target.startswith("mailto:"):
+                      continue
+                  target_path = target.split("#", 1)[0]
+                  if not target_path:
+                      continue
+                  path = (file.parent / target_path).resolve()
+                  if not path.exists():
+                      missing.append((str(file), target))
+
+          if missing:
+              print("Missing agent doc links:")
+              for file, target in missing:
+                  print(f"  {file}: {target}")
+              sys.exit(1)
+          print("All agent doc links OK")
+          PY
+
       - name: Prompt file check
         run: python -c "from app.pipeline.classifier import _load_system_prompt; assert len(_load_system_prompt()) > 100"
 

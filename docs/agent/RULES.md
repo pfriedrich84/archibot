@@ -17,6 +17,8 @@ Core rules for coding agents working on ArchiBot.
 - Prefer small, reviewable changes.
 - Update docs when behavior changes.
 - Run relevant checks before finishing code changes; see [`CHECKS.md`](CHECKS.md).
+- For dependency changes, enforce the 3-day supply-chain age check.
+- For Docker/runtime image changes, run a local build and Grype scan when available.
 - Do not expose or modify secrets from `.env`.
 
 ## Domain invariants

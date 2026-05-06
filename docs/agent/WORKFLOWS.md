@@ -40,11 +40,20 @@ From `laravel/`:
 4. `npm run types:check`
 5. `npm run build`
 
+### Docker image security
+
+When Docker/runtime dependencies change, mirror the CI intent locally when possible:
+
+1. `docker build -t archibot-local-check .`
+2. `grype archibot-local-check --only-fixed --fail-on high`
+
+If Grype is not installed locally, state that and rely on CI for the container scan.
+
 If one check fails, continue with independent checks where practical so the final report is complete.
 
 ## Dependency update workflow
 
-Use the 3-day supply-chain rule for Python dependencies.
+Use the 3-day supply-chain rule for Python dependencies. This is a hard check for dependency changes, not just a CI detail.
 
 1. Determine the target version if none was provided:
 
@@ -67,7 +76,9 @@ Use the 3-day supply-chain rule for Python dependencies.
    - `ruff check app/ tests/`
    - `ruff format --check app/ tests/`
    - `pytest tests/ -v`
+   - `pip check`
    - `python scripts/check_dependency_age.py --min-days 3`
-7. Summarize changed dependency files and validation results.
+7. For Docker/runtime dependency impact, also run the Docker build + Grype scan above when available.
+8. Summarize changed dependency files and validation results.
 
 Do not commit or push unless the user explicitly asks.
