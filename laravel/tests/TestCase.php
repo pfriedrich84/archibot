@@ -16,6 +16,8 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        $this->withoutVite();
+
         if ($this->completeSetupByDefault && Schema::hasTable('app_settings') && Schema::hasTable('setup_states')) {
             $this->markArchiBotSetupComplete();
         }
