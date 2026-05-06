@@ -145,6 +145,32 @@ class FirstRunSetupTest extends TestCase
         $this->assertSame('Paperless Admin', $user->name);
     }
 
+    public function test_setup_accepts_is_admin_flag_from_paperless_ui_settings_profile(): void
+    {
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'user' => [
+                    'id' => 7,
+                    'username' => 'admin',
+                    'name' => 'Paperless Admin',
+                    'is_admin' => true,
+                    'groups' => [],
+                ],
+                'permissions' => [],
+            ]),
+        ]);
+
+        $response = $this->post('/setup', [
+            'paperless_url' => 'https://paperless.test/',
+            'username' => 'admin',
+            'password' => 'secret',
+        ]);
+
+        $response->assertRedirect('/dashboard');
+        $this->assertTrue(User::query()->firstOrFail()->is_admin);
+    }
+
     public function test_setup_accepts_admin_when_users_me_omits_admin_flags_but_users_endpoint_has_them(): void
     {
         Http::fake([

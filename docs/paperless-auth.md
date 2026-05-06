@@ -22,7 +22,7 @@ Paperless-NGX's documented/frontend-backed profile source is `GET /api/ui_settin
 }
 ```
 
-`currentUser()` therefore checks `/api/ui_settings/` first and parses `user.is_staff` / `user.is_superuser` from that payload. Older experimental fallbacks remain in place: `/api/users/me/`, then `/api/users/?username=...` if `/users/me/` is unavailable or omits admin flags.
+`currentUser()` therefore checks `/api/ui_settings/` first and parses admin flags from that payload. Upstream Paperless-NGX currently emits Django-style `user.is_staff` and `user.is_superuser` there; ArchiBot also accepts `user.is_admin` for deployments or adapters that expose that name. Older experimental fallbacks remain in place: `/api/users/me/`, then `/api/users/?username=...` if `/users/me/` is unavailable or omits admin flags.
 
 ## Admin detection helper
 
