@@ -75,7 +75,7 @@ def _emit_reindex_progress(**extra: object) -> None:
         "finished_at": _reindex_progress.finished_at,
         **extra,
     }
-    print("PROGRESS "+json.dumps(payload, ensure_ascii=False, default=str), flush=True)
+    print("PROGRESS " + json.dumps(payload, ensure_ascii=False, default=str), flush=True)
     sys.stdout.flush()
 
 
