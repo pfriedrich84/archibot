@@ -71,7 +71,7 @@ return [
     |
     */
 
-    'home' => '/dashboard',
+    'home' => env('APP_PATH_PREFIX') ? '/'.trim((string) env('APP_PATH_PREFIX'), '/').'/dashboard' : '/dashboard',
 
     /*
     |--------------------------------------------------------------------------

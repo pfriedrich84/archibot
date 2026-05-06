@@ -11,57 +11,59 @@ use App\Http\Controllers\Workers\WorkerJobController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
-Route::get('/healthz', fn () => response()->json([
-    'status' => 'ok',
-    'app' => 'archibot-laravel',
-]))->name('healthz');
+Route::prefix(config('archibot.path_prefix'))->group(function () {
+    Route::get('/healthz', fn () => response()->json([
+        'status' => 'ok',
+        'app' => 'archibot-laravel',
+    ]))->name('healthz');
 
-Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
-Route::post('/setup', [SetupController::class, 'store'])->name('setup.store');
+    Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
+    Route::post('/setup', [SetupController::class, 'store'])->name('setup.store');
 
-Route::middleware('guest')->group(function () {
-    Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
-    Route::post('/login', [AuthenticatedSessionController::class, 'store'])
-        ->middleware('throttle:login')
-        ->name('login.store');
+    Route::middleware('guest')->group(function () {
+        Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
+        Route::post('/login', [AuthenticatedSessionController::class, 'store'])
+            ->middleware('throttle:login')
+            ->name('login.store');
+    });
+
+    Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->middleware('auth')
+        ->name('logout');
+
+    Route::inertia('/', 'Welcome')->name('home');
+
+    Route::middleware(['auth', 'verified'])->group(function () {
+        Route::get('dashboard', DashboardController::class)->name('dashboard');
+
+        Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
+
+        Route::get('{segment}', [EntityApprovalController::class, 'index'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('entities.index');
+        Route::post('{segment}/entity-approvals/{entityApproval}/approve', [EntityApprovalController::class, 'approve'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('entities.approve');
+        Route::post('{segment}/entity-approvals/{entityApproval}/reject', [EntityApprovalController::class, 'reject'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('entities.reject');
+        Route::post('{segment}/entity-approvals/{entityApproval}/unblacklist', [EntityApprovalController::class, 'unblacklist'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('entities.unblacklist');
+
+        Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
+        Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');
+        Route::get('review/{reviewSuggestion}/preview', [ReviewSuggestionController::class, 'preview'])->name('review.preview');
+        Route::post('review/{reviewSuggestion}/accept', [ReviewSuggestionController::class, 'accept'])->name('review.accept');
+        Route::post('review/{reviewSuggestion}/reject', [ReviewSuggestionController::class, 'reject'])->name('review.reject');
+
+        Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
+        Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
+
+        Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
+        Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
+        Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
+    });
+
+    require __DIR__.'/settings.php';
 });
-
-Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
-    ->middleware('auth')
-    ->name('logout');
-
-Route::inertia('/', 'Welcome')->name('home');
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('dashboard', DashboardController::class)->name('dashboard');
-
-    Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
-
-    Route::get('{segment}', [EntityApprovalController::class, 'index'])
-        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
-        ->name('entities.index');
-    Route::post('{segment}/entity-approvals/{entityApproval}/approve', [EntityApprovalController::class, 'approve'])
-        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
-        ->name('entities.approve');
-    Route::post('{segment}/entity-approvals/{entityApproval}/reject', [EntityApprovalController::class, 'reject'])
-        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
-        ->name('entities.reject');
-    Route::post('{segment}/entity-approvals/{entityApproval}/unblacklist', [EntityApprovalController::class, 'unblacklist'])
-        ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
-        ->name('entities.unblacklist');
-
-    Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
-    Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');
-    Route::get('review/{reviewSuggestion}/preview', [ReviewSuggestionController::class, 'preview'])->name('review.preview');
-    Route::post('review/{reviewSuggestion}/accept', [ReviewSuggestionController::class, 'accept'])->name('review.accept');
-    Route::post('review/{reviewSuggestion}/reject', [ReviewSuggestionController::class, 'reject'])->name('review.reject');
-
-    Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
-    Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
-
-    Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
-    Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
-    Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
-});
-
-require __DIR__.'/settings.php';

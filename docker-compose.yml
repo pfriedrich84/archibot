@@ -41,6 +41,14 @@ services:
       GUI_USERNAME: ${GUI_USERNAME:-}
       GUI_PASSWORD: ${GUI_PASSWORD:-}
 
+      # --- Laravel UI (/laravel) ---
+      ENABLE_LARAVEL: ${ENABLE_LARAVEL:-true}
+      APP_PATH_PREFIX: ${APP_PATH_PREFIX:-laravel}
+      APP_KEY: ${APP_KEY:-}
+      APP_URL: ${APP_URL:-}
+      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      DB_DATABASE: ${DB_DATABASE:-/data/laravel/database.sqlite}
+
       # --- Telegram ---
       ENABLE_TELEGRAM: ${ENABLE_TELEGRAM:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

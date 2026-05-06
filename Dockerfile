@@ -1,4 +1,4 @@
-FROM node:20-slim AS frontend-build
+FROM node:20-trixie-slim AS frontend-build
 
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -7,7 +7,43 @@ COPY frontend ./
 RUN npm run build
 
 
-FROM python:3.12-slim AS base
+FROM composer:2 AS laravel-vendor
+
+WORKDIR /laravel
+COPY laravel/composer.json laravel/composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --prefer-dist \
+    --no-progress \
+    --optimize-autoloader \
+    --no-scripts \
+    --ignore-platform-req=php+
+COPY laravel ./
+ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+RUN composer dump-autoload --optimize --no-dev --no-interaction
+
+
+FROM node:20-trixie-slim AS laravel-build
+
+WORKDIR /laravel
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        php-cli \
+        php-mbstring \
+        php-xml \
+        php-sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY laravel/package.json laravel/package-lock.json ./
+RUN npm ci
+COPY laravel ./
+COPY --from=laravel-vendor /laravel/vendor ./vendor
+ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+    APP_PATH_PREFIX=laravel
+RUN npm run build
+
+
+FROM python:3.12-slim-trixie AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -23,6 +59,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini \
         curl \
+        php-cli \
+        php-curl \
+        php-mbstring \
+        php-sqlite3 \
+        php-xml \
+        php-zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,9 +91,12 @@ COPY app ./app
 COPY prompts ./prompts
 COPY entrypoint.sh ./
 COPY --from=frontend-build /frontend/build ./frontend/build
+COPY --from=laravel-vendor /laravel ./laravel
+COPY --from=laravel-build /laravel/public/build ./laravel/public/build
 
 # Register console script entry point (deps already installed above)
-RUN pip install --no-deps .
+RUN pip install --no-deps . \
+    && chmod +x /app/entrypoint.sh
 
 # Persistent state
 RUN mkdir -p /data
