@@ -2,13 +2,13 @@
     import { Link, page } from '@inertiajs/svelte';
     import BookOpen from 'lucide-svelte/icons/book-open';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
-    import Inbox from 'lucide-svelte/icons/inbox';
     import FileType from 'lucide-svelte/icons/file-type';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
+    import Inbox from 'lucide-svelte/icons/inbox';
+    import KeyRound from 'lucide-svelte/icons/key-round';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
     import Settings from 'lucide-svelte/icons/settings';
-    import KeyRound from 'lucide-svelte/icons/key-round';
     import Tag from 'lucide-svelte/icons/tag';
     import UserRound from 'lucide-svelte/icons/user-round';
     import Workflow from 'lucide-svelte/icons/workflow';
@@ -28,9 +28,9 @@
     } from '@/components/ui/sidebar';
     import { toUrl } from '@/lib/utils';
     import { dashboard } from '@/routes';
-    import { index as inboxIndex } from '@/routes/inbox';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
+    import { index as inboxIndex } from '@/routes/inbox';
     import { index as reviewIndex } from '@/routes/review';
     import { index as workerJobsIndex } from '@/routes/worker-jobs';
     import type { NavItem } from '@/types';
