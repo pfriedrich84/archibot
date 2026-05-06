@@ -91,14 +91,15 @@ Der Kontext allein genuegt nicht — zusaetzlich greifen mehrere Sicherheitsnetz
 - **Kein Re-OCR durch Paperless.** Wir nutzen den Volltext, den Paperless bereits extrahiert hat, als Basis. Optional kann ein Vision-LLM die OCR-Qualitaet verbessern, indem es den Text gegen die Originaldokument-Bilder vergleicht (konfigurierbar via `OCR_MODE`). Korrigierter Text wird nur lokal in `doc_ocr_cache` gespeichert, nie zurueck nach Paperless geschrieben.
 - **Keine Content-Modifikation.** Wir aendern nur Metadaten.
 - **Keine Auto-Tag-Erstellung.** Neue Tags, die das LLM vorschlaegt, muessen explizit in der Whitelist freigegeben werden.
-- **Keine Multi-User-Auth.** Single-Deployment, optional Basic-Auth-Schutz.
+- **Keine eigenstaendige lokale Benutzerverwaltung.** Benutzer melden sich ueber Paperless-NGX an; Laravel speichert pro Benutzer den Paperless-Kontext verschluesselt.
 
 ## Stack
 
-- Python 3.12, FastAPI + Uvicorn
-- SvelteKit + Flowbite Svelte fuer die Admin-App unter `/app`; FastAPI liefert die statische Build-Ausgabe aus
-- SQLite mit sqlite-vec fuer Embedding-Similarity-Kontext
-- APScheduler fuer den Worker-Loop
+- Laravel 13 + Inertia/Svelte als primaere Web-App/API auf Port `8088`
+- Python 3.12 fuer CLI-Worker, Ollama/Paperless-Ausfuehrung und MCP Runtime
+- SQLite mit sqlite-vec fuer Python-Worker-Embedding-Similarity-Kontext
+- Laravel SQLite unter `/data/laravel/database.sqlite` fuer Sessions, Settings, Review Queue, Audit und MCP Tokens
+- Laravel database queue fuer Worker-Jobs und Laravel→Python CLI-Hand-offs
 - httpx fuer alle HTTP-Calls (Paperless, Ollama)
 - structlog fuer strukturierte Logs
 - Single Docker Container, Dockhand-kompatibel
@@ -107,8 +108,8 @@ Der Kontext allein genuegt nicht — zusaetzlich greifen mehrere Sicherheitsnetz
 
 ```
 app/
-  main.py              FastAPI-App, Lifespan startet Worker + Telegram + DB-Init
-  config.py            pydantic-settings, alles aus .env
+  main.py              Legacy FastAPI-App fuer Tests/Kompatibilitaet; nicht mehr Docker-Entrypoint
+  config.py            pydantic-settings fuer Python Worker/MCP Runtime
   db.py                SQLite-Setup, Schema-Migration, sqlite-vec laden
   models.py            Pydantic-Modelle (Suggestion, TagProposal, etc.)
   worker.py            APScheduler-Job: poll_inbox() mit Phasen-Pipeline
@@ -150,21 +151,21 @@ app/
     ocr.py             OCR-Korrektur-Vorschlaege (optional)
     errors.py          Fehlerliste + Retry
     stats.py           Counters, Phasen-Dauer-Metriken, Trend-Chart, Fehlerrate, Auto-Commit-Rate
-    settings.py        Legacy-Redirect nach /app/settings (alte HTMX-Settings entfernt)
+    settings.py        Legacy-Redirect/JSON-Kompatibilitaet; Laravel ist Settings-Owner
     webhook.py         Webhook-Endpoints: /webhook/new (volle Pipeline) + /webhook/edit (Embedding-Update)
     inbox.py           Inbox-Ansicht: Dokumenten-Karten + Bulk-Aktionen
     embeddings.py      Vektor-DB Dashboard + Similarity-Search
-    setup.py           Legacy-Redirect nach /app/setup
+    setup.py           Legacy-Setup-Kompatibilitaet; Laravel `/setup` ist primaer
   templates/           Legacy/Jinja-Reste und Platzhalter
   static/              Statische Assets (Logo etc.)
-frontend/              SvelteKit Admin UI (/app): Dashboard, Review, Setup, Settings, Chat, Inbox, Tags, ...
+laravel/               Primaere Laravel/Inertia/Svelte App: Setup, Login, Dashboard, Review, Inbox, Worker Jobs, Entity Approvals, Admin Settings, Audit, MCP Tokens
 prompts/
   classify_system.txt          System-Prompt fuer Klassifikation (Deutsch)
   ocr_correction_system.txt    System-Prompt fuer Text-Only OCR-Correction
   ocr_vision_light_system.txt  System-Prompt fuer Vision-OCR (Bild + Text vergleichen)
   ocr_vision_full_system.txt   System-Prompt fuer Vision-OCR (Seite-fuer-Seite)
   chat_system.txt              System-Prompt fuer RAG-Chat (Deutsch)
-entrypoint.sh            Startet Uvicorn + optional MCP-Server (ENABLE_MCP=true)
+entrypoint.sh            Startet Laravel, Laravel Queue Worker und optional Python MCP-Server (ENABLE_MCP=true)
 docs/
   architecture.md        Gesamtarchitektur + Datenfluss-Diagramme
   webhooks.md            Webhook-Konfigurationsanleitung
@@ -390,10 +391,10 @@ Embedding trotzdem indexiert (falls vorhanden).
 10. **Embedding-Deduplizierung:** Pro Dokument wird `ollama.embed()` genau einmal aufgerufen. Das Ergebnis wird sowohl fuer die KNN-Kontext-Suche als auch fuer die Indexierung wiederverwendet (`_EmbeddingResult`-Dataclass traegt den Vektor zwischen den Phasen).
 11. **OCR-Cache:** Korrigierter Text landet in `doc_ocr_cache`, nie in Paperless. Sowohl `poll_inbox()` als auch `reindex_all()` nutzen gecachte Korrekturen. Beim Reindex wird OCR vor dem Embedding als Phase 0 ausgefuehrt — gecachte Eintraege werden uebersprungen.
 12. **Embedding-Text-Limit:** `document_summary()` begrenzt den **Gesamttext** (Titel + Content) auf `EMBED_MAX_CHARS` (Default 6000). Die Truncation greift auf die kombinierte Laenge, nicht nur auf den Content-Teil — damit kann ein langer Titel das Limit nicht sprengen.
-13. **Settings/Setup-Auswahlfelder:** `/app/settings` und `/app/setup` muessen gespeicherte Paperless-Tag-IDs als ausgewaehlte Dropdown-Werte anzeigen. `/app/setup` laedt zusaetzlich Ollama-Modelle ueber `GET /api/v1/ollama/models` (Ollama `/api/tags`) und waehlt die gespeicherten Modelle vor; der aktuelle Wert bleibt als Option erhalten, auch wenn Ollama ihn nicht zurueckliefert.
+13. **Laravel Settings/Setup-Auswahlfelder:** `/admin/settings` und `/setup` muessen gespeicherte Paperless-/Ollama-/Worker-Settings korrekt anzeigen. Laravel importiert Legacy-Env/`/data/config.env` beim ersten Setup einmalig; Setup-Werte gewinnen bei Konflikten.
 14. **Settings-Gruppierung:** Die Settings-Seite gruppiert Ollama-Settings nach Pipeline-Phase: "Ollama" (shared: URL, Timeout), "Phase 1: OCR", "Phase 2: Embedding", "Phase 3: Klassifikation". Jede Phase zeigt Modell, Context Window und Text-Limits.
 15. **Phasen-Timing:** Jede Phase misst die Verarbeitungsdauer pro Dokument (`time.monotonic()`) und speichert sie in `phase_timing`. `_record_timing()` faengt alle Fehler ab und blockiert nie die Pipeline. `poll_cycles` gruppiert Timing-Daten pro `poll_inbox()`-Aufruf (`cycle_id`). Die `classify`-Zeile wird nur durch `classifier.classify()` selbst erzeugt — spaetere Fehler (Judge/Store/Notify/Commit) fuehren nicht zu einem zweiten `classify`-Eintrag mit `success=0`.
-16. **Dashboard Pipeline-Status:** Die Svelte-Dashboard-Seite zeigt den Pipeline-Status ueber `/api/v1/dashboard` und Job-Control ueber `/api/v1/jobs/*`.
+16. **Dashboard Pipeline-Status:** Die Laravel/Svelte-Dashboard-Seite zeigt Setup-/Paperless-/Worker-/Review-Status; Worker-Steuerung laeuft ueber Laravel `worker_jobs` und die Python CLI-JSON-Grenze.
 17. **LLM-as-Judge (optional):** Bei `ENABLE_JUDGE_VERIFICATION=true` laeuft nach `classify()` ein zweiter LLM-Pass (`classifier.verify()`). Gate: nur wenn Erst-Confidence `< JUDGE_CONFIDENCE_THRESHOLD` UND Kontext-Docs vorhanden. Verdikte: `agree` / `corrected` / `skipped` / `error`. Bei `corrected` ersetzt das neue Ergebnis die Erst-Klassifikation; der Erst-Vorschlag (raw JSON) wird als `suggestions.original_proposed_json` persistiert. Judge nutzt per Default dasselbe Modell wie die Klassifikation — kein zusaetzlicher GPU-Swap. Transport-/Parse-Fehler werden zu `verdict="error"` herabgestuft und halten die Pipeline nicht auf.
 
 ## Deployment (Dockhand)
@@ -418,13 +419,13 @@ source .venv/bin/activate
 pip install -c constraints.txt -e ".[dev]"
 cp .env.example .env
 # Werte eintragen
-uvicorn app.main:app --reload --port 8088
+cd laravel && php artisan serve --host=0.0.0.0 --port=8088
 ```
 
 ## CLI Commands (fuer manuelles Testen)
 
 Pipeline-Phasen koennen einzeln via CLI ausgeloest werden — als Alternative
-zu den GUI-Buttons in `/app/settings`.
+zu den Laravel Worker-Job-Aktionen (`/worker-jobs`) oder Admin-Settings (`/admin/settings`).
 
 ```bash
 # Voller Reindex: OCR-Korrektur (wenn aktiviert) + Embedding
@@ -462,14 +463,15 @@ ruff format --check app/ tests/ # Formatting
 pytest tests/ -v                # Tests
 ```
 
-**Wenn Frontend-Dateien (`frontend/`) geaendert wurden, muessen zusaetzlich bestanden werden:**
+**Wenn Laravel/PHP/Svelte-Dateien (`laravel/`) geaendert wurden, muessen zusaetzlich bestanden werden:**
 
 ```bash
-cd frontend
-npm run check
-npm run test:unit
-# Bei UI-/Routing-Aenderungen auch den passenden Playwright-Scope ausfuehren,
-# z.B. npm run test:e2e -- --grep "settings route|setup route"
+cd laravel
+COMPOSER_ALLOW_SUPERUSER=1 composer test
+npm run lint:check
+npm run format:check
+npm run types:check
+npm run build
 ```
 
 Bei Fehlern: `ruff format app/ tests/` und `ruff check --fix app/ tests/` ausfuehren,
