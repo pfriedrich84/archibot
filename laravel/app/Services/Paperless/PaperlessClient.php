@@ -95,6 +95,35 @@ class PaperlessClient
             ->get("/api/documents/{$documentId}/preview/");
     }
 
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function tags(string $token): array
+    {
+        $response = $this->request($token)->get('/api/tags/', ['page_size' => 200]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not fetch Paperless tags.');
+        }
+
+        $payload = $response->json();
+        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+
+        if (! is_array($items)) {
+            throw new RuntimeException('Paperless tags response was not JSON.');
+        }
+
+        return collect($items)
+            ->filter(fn ($item) => is_array($item) && isset($item['id'], $item['name']))
+            ->map(fn (array $item): array => [
+                'id' => (int) $item['id'],
+                'name' => (string) $item['name'],
+            ])
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+    }
+
     public function createTag(string $token, string $name): int
     {
         return $this->createEntity($token, '/api/tags/', $name, 'tag');

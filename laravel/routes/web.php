@@ -18,6 +18,8 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
     ]))->name('healthz');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
+    Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])->name('setup.paperless-tags');
+    Route::post('/setup/ollama-models', [SetupController::class, 'ollamaModels'])->name('setup.ollama-models');
     Route::post('/setup', [SetupController::class, 'store'])->name('setup.store');
 
     Route::middleware('guest')->group(function () {

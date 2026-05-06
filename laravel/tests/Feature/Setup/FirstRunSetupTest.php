@@ -67,11 +67,9 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post('/setup', [
-            'paperless_url' => 'https://paperless.test',
+        $response = $this->post('/setup', $this->setupPayload([
             'username' => 'regular-user',
-            'password' => 'secret',
-        ]);
+        ]));
 
         $response->assertSessionHasErrors('paperless_url');
         $this->assertFalse(SetupState::current()->is_complete);
@@ -91,16 +89,19 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post('/setup', [
+        $response = $this->post('/setup', $this->setupPayload([
             'paperless_url' => 'https://paperless.test/',
-            'username' => 'admin',
-            'password' => 'secret',
-        ]);
+        ]));
 
         $response->assertRedirect('/dashboard');
         $this->assertAuthenticated();
         $this->assertTrue(SetupState::current()->is_complete);
         $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
+        $this->assertSame('1', AppSetting::getValue('paperless.inbox_tag_id'));
+        $this->assertSame('2', AppSetting::getValue('paperless.processed_tag_id'));
+        $this->assertSame('http://ollama.test:11434', AppSetting::getValue('ollama.url'));
+        $this->assertSame('llama3.2:latest', AppSetting::getValue('classification.model'));
+        $this->assertSame('nomic-embed-text:latest', AppSetting::getValue('embedding.model'));
 
         $user = User::query()->firstOrFail();
         $this->assertSame('admin', $user->paperless_username);
@@ -132,11 +133,9 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post('/setup', [
+        $response = $this->post('/setup', $this->setupPayload([
             'paperless_url' => 'https://paperless.test/',
-            'username' => 'admin',
-            'password' => 'secret',
-        ]);
+        ]));
 
         $response->assertRedirect('/dashboard');
 
@@ -161,11 +160,9 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post('/setup', [
+        $response = $this->post('/setup', $this->setupPayload([
             'paperless_url' => 'https://paperless.test/',
-            'username' => 'admin',
-            'password' => 'secret',
-        ]);
+        ]));
 
         $response->assertRedirect('/dashboard');
         $this->assertTrue(User::query()->firstOrFail()->is_admin);
@@ -193,14 +190,58 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
-        $response = $this->post('/setup', [
+        $response = $this->post('/setup', $this->setupPayload([
             'paperless_url' => 'https://paperless.test/',
-            'username' => 'admin',
-            'password' => 'secret',
-        ]);
+        ]));
 
         $response->assertRedirect('/dashboard');
         $this->assertTrue(User::query()->firstOrFail()->is_admin);
+    }
+
+    public function test_setup_can_load_paperless_tags_with_admin_credentials(): void
+    {
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'user' => [
+                    'id' => 7,
+                    'username' => 'admin',
+                    'is_admin' => true,
+                ],
+            ]),
+            'https://paperless.test/api/tags/*' => Http::response([
+                'results' => [
+                    ['id' => 2, 'name' => 'Archiviert'],
+                    ['id' => 1, 'name' => 'Posteingang'],
+                ],
+            ]),
+        ]);
+
+        $this->postJson('/setup/paperless-tags', [
+            'paperless_url' => 'https://paperless.test',
+            'username' => 'admin',
+            'password' => 'secret',
+        ])->assertOk()
+            ->assertJsonPath('items.0.name', 'Archiviert')
+            ->assertJsonPath('items.1.name', 'Posteingang');
+    }
+
+    public function test_setup_can_load_ollama_models(): void
+    {
+        Http::fake([
+            '*ollama.test:11434/api/tags' => Http::response([
+                'models' => [
+                    ['name' => 'qwen3:4b'],
+                    ['name' => 'nomic-embed-text:latest'],
+                ],
+            ]),
+        ]);
+
+        $this->postJson('/setup/ollama-models', [
+            'ollama_url' => 'http://ollama.test:11434',
+        ])->assertOk()
+            ->assertJsonPath('items.0', 'nomic-embed-text:latest')
+            ->assertJsonPath('items.1', 'qwen3:4b');
     }
 
     public function test_setup_routes_are_disabled_after_setup_is_complete(): void
@@ -212,6 +253,8 @@ class FirstRunSetupTest extends TestCase
 
         $this->get('/setup')->assertNotFound();
         $this->post('/setup', [])->assertNotFound();
+        $this->postJson('/setup/paperless-tags', [])->assertNotFound();
+        $this->postJson('/setup/ollama-models', [])->assertNotFound();
     }
 
     public function test_setup_reset_command_reopens_setup_with_ten_minute_token(): void
@@ -242,12 +285,9 @@ class FirstRunSetupTest extends TestCase
             'reset_token_expires_at' => now()->addMinutes(10),
         ])->save();
 
-        $response = $this->post('/setup', [
-            'paperless_url' => 'https://paperless.test',
-            'username' => 'admin',
-            'password' => 'secret',
+        $response = $this->post('/setup', $this->setupPayload([
             'setup_token' => 'wrong-token',
-        ]);
+        ]));
 
         $response->assertSessionHasErrors('setup_token');
     }
@@ -263,11 +303,7 @@ class FirstRunSetupTest extends TestCase
             'reset_token_expires_at' => now()->subMinute(),
         ])->save();
 
-        $response = $this->post('/setup', [
-            'paperless_url' => 'https://paperless.test',
-            'username' => 'admin',
-            'password' => 'secret',
-        ]);
+        $response = $this->post('/setup', $this->setupPayload());
 
         $response->assertSessionHasErrors('setup_token');
         $this->assertFalse(SetupState::current()->is_complete);
@@ -285,15 +321,34 @@ class FirstRunSetupTest extends TestCase
             'reset_token_expires_at' => now()->subMinute(),
         ])->save();
 
-        $response = $this->post('/setup', [
-            'paperless_url' => 'https://paperless.test',
-            'username' => 'admin',
-            'password' => 'secret',
+        $response = $this->post('/setup', $this->setupPayload([
             'setup_token' => 'expired-token',
-        ]);
+        ]));
 
         $response->assertSessionHasErrors('setup_token');
         $this->assertFalse(SetupState::current()->is_complete);
         Http::assertNothingSent();
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function setupPayload(array $overrides = []): array
+    {
+        return array_merge([
+            'paperless_url' => 'https://paperless.test',
+            'username' => 'admin',
+            'password' => 'secret',
+            'paperless_inbox_tag_id' => 1,
+            'paperless_processed_tag_id' => 2,
+            'ocr_requested_tag_id' => 3,
+            'ollama_url' => 'http://ollama.test:11434',
+            'classification_model' => 'llama3.2:latest',
+            'embedding_model' => 'nomic-embed-text:latest',
+            'ocr_text_model' => 'qwen3:4b',
+            'classification_judge_model' => 'qwen3:4b',
+            'ocr_mode' => 'off',
+        ], $overrides);
     }
 }

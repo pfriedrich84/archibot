@@ -18,7 +18,7 @@ use RuntimeException;
 class CompleteSetup
 {
     /**
-     * @param  array{paperless_url: string, username: string, password: string}  $data
+     * @param  array<string, mixed>  $data
      */
     public function handle(array $data, ?Request $request = null): User
     {
@@ -37,10 +37,19 @@ class CompleteSetup
             throw new RuntimeException('Setup must be completed by a Paperless superuser/admin.');
         }
 
-        return DB::transaction(function () use ($paperlessUrl, $token, $paperlessUser, $state, $request): User {
+        return DB::transaction(function () use ($data, $paperlessUrl, $token, $paperlessUser, $state, $request): User {
             $importedKeys = app(LegacySettingsImporter::class)->importMissing();
 
             AppSetting::put('paperless.url', $paperlessUrl);
+            AppSetting::put('paperless.inbox_tag_id', (string) $data['paperless_inbox_tag_id']);
+            AppSetting::put('paperless.processed_tag_id', (string) ($data['paperless_processed_tag_id'] ?? ''));
+            AppSetting::put('ocr.requested_tag_id', (string) ($data['ocr_requested_tag_id'] ?? ''));
+            AppSetting::put('ocr.mode', (string) $data['ocr_mode']);
+            AppSetting::put('ollama.url', rtrim((string) $data['ollama_url'], '/'));
+            AppSetting::put('classification.model', (string) $data['classification_model']);
+            AppSetting::put('embedding.model', (string) $data['embedding_model']);
+            AppSetting::put('ocr.text_model', (string) ($data['ocr_text_model'] ?? ''));
+            AppSetting::put('classification.judge_model', (string) ($data['classification_judge_model'] ?? ''));
 
             $email = $paperlessUser->email ?: $paperlessUser->username.'@paperless.local';
 
@@ -75,6 +84,10 @@ class CompleteSetup
                     'paperless_username' => $paperlessUser->username,
                     'paperless_user_id' => $paperlessUser->id,
                     'imported_setting_keys' => $importedKeys,
+                    'paperless_inbox_tag_id' => (int) $data['paperless_inbox_tag_id'],
+                    'ollama_url' => rtrim((string) $data['ollama_url'], '/'),
+                    'classification_model' => (string) $data['classification_model'],
+                    'embedding_model' => (string) $data['embedding_model'],
                 ],
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
