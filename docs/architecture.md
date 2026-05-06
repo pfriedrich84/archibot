@@ -12,9 +12,9 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          ▼
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
 │ Paperless-NGX  │◀──▶│   ArchiBot                      │◀──▶│    Ollama     │
-│                │    │   (FastAPI + Uvicorn)            │    │              │
+│                │    │   (Laravel + Inertia/Svelte)     │    │              │
 │ - Dokumente    │    │                                  │    │ - Chat (LLM) │
-│ - Metadaten    │    │   Port 8088  (GUI)               │    │ - Embeddings │
+│ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
 └────────────────┘    └─────────────────────────────────┘    └──────────────┘
                                      │
@@ -39,7 +39,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │                                              │
 │  1. Worker-Poll  (alle N Sekunden)           │
 │  2. Webhook      (POST /webhook/paperless)   │
-│  3. Inbox-GUI    (Button "Reprocess")        │
+│  3. Laravel-GUI  (Worker Job / Reprocess)     │
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
@@ -91,25 +91,20 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Worker-Poll** | APScheduler-Intervall (default: 0s/deaktiviert) | `worker.py → poll_inbox()` | Ja, ueberspringt mit Log |
-| **Webhook** | POST von Paperless nach Consume | `routes/webhook.py` | Ja, antwortet 503 |
-| **Inbox-GUI** | Button "Reprocess" in `/inbox` | `routes/inbox.py` | Nein (manuell) |
-| **Manueller Poll** | Button "Trigger Poll" in `/settings` | `routes/settings.py → poll_inbox()` | Ja (via poll_inbox Guard) |
-| **CLI** | `archibot <cmd>` | `app/cli.py` | Nein (manuell, blockiert bis fertig) |
+| **Laravel Worker Job** | UI-Aktion, Queue, Scheduler | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
+| **Worker-Poll** | Python CLI/Worker-Kontrakt `poll` | `app/cli.py` → `poll_inbox()` | Ja, ueberspringt mit Log |
+| **Webhook** | POST von Paperless nach Consume | Laravel-Orchestrierung bzw. Python-Kompatibilitaet | Ja, antwortet 503 |
+| **Inbox-GUI** | Aktion in `/inbox` oder `/worker-jobs` | Laravel `worker_jobs` → Python CLI | Nein (manuell) |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` | Nein (manuell, blockiert bis fertig) |
 
 ## Inbox-Seite (`/inbox`)
 
-Die Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-Tag tragen:
+Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-Tag tragen:
 
-- **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless
-- **Status-Anreicherung:** Fuer jedes Dokument wird der lokale Verarbeitungsstatus aus `processed_documents` abgefragt
-- **Status-Badges:**
-  - `unprocessed` — Noch nie verarbeitet (grau)
-  - `pending` — Klassifiziert, wartet auf Review (gelb)
-  - `committed` — Angenommen und geschrieben (gruen)
-  - `rejected` — Manuell abgelehnt (rot)
-  - `error` — Verarbeitung fehlgeschlagen (rot)
-- **Reprocess-Button:** Loescht den bisherigen Verarbeitungsstatus und startet die Pipeline fuer dieses Dokument neu
+- **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless mit dem Token des angemeldeten Paperless-Benutzers
+- **Status-Anreicherung:** Fuer jedes Dokument wird der aktuelle Laravel-Review-Status aus `review_suggestions` eingeblendet
+- **Fehlerzustand:** Ist Paperless nicht erreichbar oder fehlt die Konfiguration, zeigt Laravel einen expliziten Fehler statt stale Berechtigungen zu erlauben
+- **Verarbeitung:** Manuelle Jobs laufen ueber `/worker-jobs`, Laravel `worker_jobs` und den Python CLI-JSON-Kontrakt
 
 ## Pipeline-Stufen im Detail
 
@@ -159,13 +154,15 @@ Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert mel
 
 ## Reindex
 
-Der Embedding-Index kann ueber die Settings-Seite komplett neu aufgebaut werden ("Trigger Reindex"):
+Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komplett neu aufgebaut werden:
 
-1. Alle Embeddings werden geloescht (`doc_embeddings` + `doc_embedding_meta`)
-2. Alle Dokumente werden aus Paperless geladen
-3. Fuer jedes Dokument wird ein neues Embedding berechnet und gespeichert
-4. **Fortschritt:** Progress-Bar auf der Settings-Seite (pollt alle 2s), globaler Banner auf allen Seiten
-5. **Inbox-Blockade:** Waehrend des Reindex werden Worker-Poll und Webhook blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
+1. Laravel legt einen `worker_jobs`-Eintrag vom Typ `reindex` an
+2. Der Laravel Queue Worker ruft `python -m app.cli reindex --input <json> --output <json>` auf
+3. Python loescht `doc_embeddings` + `doc_embedding_meta`
+4. Alle Dokumente werden aus Paperless geladen
+5. Fuer jedes Dokument wird ein neues Embedding berechnet und gespeichert
+6. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in die Worker-Daten; Laravel zeigt Jobstatus und Ergebnis an
+7. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
 
 ## Datenbank-Schema
 
@@ -186,7 +183,8 @@ Der Embedding-Index kann ueber die Settings-Seite komplett neu aufgebaut werden 
 
 ## Docker-Deployment
 
-- **Ein Container:** GUI + Worker + optional MCP Server
-- **Ports:** 8088 (GUI), 3001 (MCP, optional)
-- **Volume:** `/data` fuer SQLite-DB, Logs, Custom Prompt
+- **Ein Container:** Laravel/Svelte GUI/API + Laravel Queue Worker + Python Worker/MCP Runtime
+- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
+- **Volume:** `/data` fuer Laravel SQLite (`/data/laravel/database.sqlite`), Python Worker-DB, Logs, Custom Prompts und importierte Legacy-Konfiguration
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet die Laravel Queue und optional den Python MCP-Server
 - **Netzwerk:** Muss Paperless und Ollama erreichen koennen. Bei separaten Compose-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
