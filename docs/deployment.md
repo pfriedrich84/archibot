@@ -43,7 +43,7 @@ Fuer Dockhand-basierte Setups (z.B. Homelab mit zentraler Stack-Verwaltung):
 Der Classifier laeuft hinter Zoraxy (oder einem anderen Reverse Proxy).
 Keine Ports direkt gegen das Internet freigeben.
 
-Die Web-GUI wird von Laravel/Svelte direkt auf Port `8088` ausgeliefert. Authentifizierung erfolgt ueber Paperless-NGX-Login und Laravel-Sessions; die alten `GUI_USERNAME`/`GUI_PASSWORD` Basic-Auth-Variablen werden nicht mehr verwendet.
+Die Web-GUI wird von Laravel/Svelte direkt auf Port `8088` ausgeliefert. Authentifizierung erfolgt ueber Paperless-NGX-Login und Laravel-Sessions; die fruehere globale GUI-Basic-Auth gibt es nicht mehr.
 
 ## Persistente Daten
 

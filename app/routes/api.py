@@ -1,4 +1,4 @@
-"""JSON API routes used by the new SvelteKit admin frontend."""
+"""Legacy JSON API routes kept for Python compatibility tests and tools."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Shared JSON-facing data builders for the new SvelteKit frontend."""
+"""Shared JSON-facing data builders for legacy Python API compatibility."""
 
 from __future__ import annotations
 

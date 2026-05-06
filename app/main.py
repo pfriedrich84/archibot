@@ -1,9 +1,8 @@
-"""FastAPI application entry point with lifespan, routing, and auth."""
+"""Legacy FastAPI compatibility app for Python worker routes and tests."""
 
 from __future__ import annotations
 
 import logging
-import secrets
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -12,8 +11,6 @@ from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBasic
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
@@ -155,45 +152,6 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
-# Optional Basic Auth
-# ---------------------------------------------------------------------------
-security = HTTPBasic(auto_error=False)
-
-
-class BasicAuthMiddleware(BaseHTTPMiddleware):
-    """Simple HTTP Basic Auth protecting all routes except /healthz and /static."""
-
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if path in ("/healthz",) or path.startswith("/static"):
-            return await call_next(request)
-
-        # Webhook has its own auth via WEBHOOK_SECRET
-        if path.startswith("/webhook"):
-            return await call_next(request)
-
-        auth = request.headers.get("Authorization")
-        if auth and auth.startswith("Basic "):
-            import base64
-
-            try:
-                decoded = base64.b64decode(auth[6:]).decode("utf-8")
-                username, password = decoded.split(":", 1)
-                correct_user = secrets.compare_digest(username, settings.gui_username)
-                correct_pass = secrets.compare_digest(password, settings.gui_password)
-                if correct_user and correct_pass:
-                    return await call_next(request)
-            except Exception as exc:
-                log.warning("basic auth decode error", error=str(exc), path=path)
-
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized"},
-            headers={"WWW-Authenticate": 'Basic realm="archibot"'},
-        )
-
-
-# ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
 @asynccontextmanager
@@ -258,9 +216,6 @@ if settings.cors_allowed_origins_list:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-if settings.gui_username and settings.gui_password:
-    app.add_middleware(BasicAuthMiddleware)
-
 # Static files
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 

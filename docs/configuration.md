@@ -99,7 +99,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | `QUEUE_CONNECTION` | `database` | Laravel Queue Backend |
 | `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
 
-Die alten `GUI_USERNAME`/`GUI_PASSWORD` Basic-Auth-Variablen werden nicht mehr verwendet. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
+Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 
 ## Telegram (optional)
 

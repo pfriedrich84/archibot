@@ -180,12 +180,12 @@ def get_mcp_identity(ctx: Context) -> McpIdentity | None:
 def check_api_key(ctx: Context) -> McpIdentity | None:
     """Validate MCP credentials for a tool call.
 
-    On the Laravel migration branch, enable ``MCP_LARAVEL_AUTH_ENABLED`` so
-    every tool call is checked against Laravel-managed, per-user MCP tokens via
-    ``php artisan archibot:mcp-token-verify``.  The legacy static
-    ``MCP_API_KEY`` path remains available for the unchanged FastAPI runtime and
-    local stdio development; when neither auth mechanism is configured this is a
-    no-op for backward compatibility.
+    Enable ``MCP_LARAVEL_AUTH_ENABLED`` so every tool call is checked against
+    Laravel-managed, per-user MCP tokens via
+    ``php artisan archibot:mcp-token-verify``. The legacy static ``MCP_API_KEY``
+    path remains available for local stdio development and non-Laravel MCP
+    deployments; when neither auth mechanism is configured this is a no-op for
+    backward compatibility.
     """
     provided = _extract_token(ctx)
 
