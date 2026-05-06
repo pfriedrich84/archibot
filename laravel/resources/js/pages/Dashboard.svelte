@@ -61,10 +61,7 @@
 <AppHead title="Dashboard" />
 
 <div class="space-y-6">
-    <Heading
-        title="Dashboard"
-        description="Laravel-owned application status for the migration branch."
-    />
+    <Heading title="Dashboard" description="ArchiBot application status." />
 
     <div class="grid gap-4 md:grid-cols-3">
         <a

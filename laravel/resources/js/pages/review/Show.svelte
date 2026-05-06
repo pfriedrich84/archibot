@@ -41,7 +41,7 @@
 <div class="space-y-6">
     <Heading
         title={`Review document #${suggestion.paperless_document_id}`}
-        description="Laravel owns this review state. Accepting Python-origin suggestions queues a Python worker commit back to Paperless."
+        description="ArchiBot owns this review state. Accepting suggestions queues a worker commit back to Paperless."
     />
 
     <div class="flex flex-wrap items-center gap-3">

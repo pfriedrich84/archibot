@@ -13,7 +13,7 @@ class HealthCheckTest extends TestCase
         $response->assertOk()
             ->assertJson([
                 'status' => 'ok',
-                'app' => 'archibot-laravel',
+                'app' => 'archibot',
             ]);
     }
 }

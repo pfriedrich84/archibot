@@ -53,7 +53,7 @@
 <div class="space-y-6">
     <Heading
         {title}
-        description="Laravel-owned approval state for AI-proposed Paperless entities. Approvals create the Paperless entity with the current admin's token; retroactive application remains a Python worker follow-up."
+        description="ArchiBot approval state for AI-proposed Paperless entities. Approvals create the Paperless entity with the current admin's token; retroactive application remains a worker follow-up."
     />
 
     {#if !isAdmin}

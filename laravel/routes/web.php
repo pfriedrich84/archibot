@@ -14,7 +14,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::prefix(config('archibot.path_prefix'))->group(function () {
     Route::get('/healthz', fn () => response()->json([
         'status' => 'ok',
-        'app' => 'archibot-laravel',
+        'app' => 'archibot',
     ]))->name('healthz');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');

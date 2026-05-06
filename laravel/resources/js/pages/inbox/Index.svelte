@@ -99,7 +99,7 @@
                     </div>
                 {:else}
                     <div class="text-xs text-muted-foreground">
-                        No Laravel review suggestion yet.
+                        No ArchiBot review suggestion yet.
                     </div>
                 {/if}
             </div>

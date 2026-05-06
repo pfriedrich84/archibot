@@ -65,7 +65,7 @@
 <div class="space-y-6">
     <Heading
         title="Worker jobs"
-        description="Queue Python worker commands through Laravel's database queue and JSON-file CLI contract."
+        description="Queue ArchiBot worker commands and inspect their results."
     />
 
     <Form {...store.form()} class="grid max-w-2xl gap-4 rounded-xl border p-4">
