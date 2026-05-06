@@ -1,8 +1,10 @@
 # Agent Checks
 
-Relevante Checks vor Abschluss von Code-Aenderungen.
+Validation commands for agents. Run the smallest relevant set before finishing code changes, and report what passed or failed.
 
-## Python
+## Python worker / CLI / MCP
+
+From the repository root:
 
 ```bash
 ruff check app/ tests/
@@ -10,9 +12,11 @@ ruff format --check app/ tests/
 pytest tests/ -v
 ```
 
-## Laravel / Frontend
+Use when changing `app/`, `tests/`, Python packaging, prompts used by Python code, or Python-facing configuration.
 
-Im Ordner `laravel/`:
+## Laravel / Inertia / Svelte
+
+From `laravel/`:
 
 ```bash
 COMPOSER_ALLOW_SUPERUSER=1 composer test
@@ -22,11 +26,19 @@ npm run types:check
 npm run build
 ```
 
-Wenn du nicht als root arbeitest, nutze `composer test` ohne `COMPOSER_ALLOW_SUPERUSER=1`.
+If not running as root, use `composer test` instead of `COMPOSER_ALLOW_SUPERUSER=1 composer test`.
 
-## Auswahlregel
+Use when changing Laravel, PHP, Svelte, TypeScript, frontend assets, routes, migrations, or Laravel configuration.
 
-- Python-Code geaendert: Python-Checks ausfuehren.
-- Laravel/PHP/Svelte/TypeScript geaendert: Laravel-/Frontend-Checks ausfuehren.
-- Docker/CI/Dependencies geaendert: passende CI-/Dependency-Checks aus [`commands.md`](commands.md) ergaenzen.
-- Nur Dokumentation geaendert: normalerweise keine Tests noetig; trotzdem Links und betroffene Beispiele pruefen.
+## Docker / CI / dependencies
+
+Use the relevant workflow from [`WORKFLOWS.md`](WORKFLOWS.md) when changing:
+
+- `Dockerfile`, `docker-compose.yml`, or `entrypoint.sh`
+- `.github/workflows/*`
+- `pyproject.toml`, `constraints.txt`, Composer dependencies, or npm dependencies
+- security/audit policy files
+
+## Documentation-only changes
+
+Usually no test suite is required. Still verify that links, command examples, and referenced paths are correct.

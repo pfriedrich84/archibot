@@ -158,16 +158,18 @@ docs/
   workflow.md            Review-Workflow, Tag-Management
   mcp.md                 MCP-Server-Dokumentation (Tools, Auth, Integration)
   deployment.md          Dockhand, Reverse Proxy, Backup, Netzwerk
-tests/                   pytest-Tests (conftest + 14 test_*.py)
+tests/                   pytest-Tests fuer Python Worker/CLI/MCP
 scripts/
   check_dependency_age.py  CI-Check: 3-Tage-Mindestalter fuer Dependencies
 .github/workflows/
   ci.yml                 Lint, Tests, Audit, Docker Build
   docker-publish.yml     GHCR Image Publish bei Release/Push
 docs/agent/
-  project-guide.md       Ausfuehrlicher Projektkontext fuer Coding-Agents
-  commands.md            Wiederverwendbare Agent-Workflows fuer Checks und Dependency-Updates
-  permissions.md         Tool- und Sicherheitsregeln fuer Agenten
+  RULES.md           Nicht verhandelbare Projektregeln und Domain-Invarianten
+  PROJECT.md         Ausfuehrlicher Projektkontext fuer Coding-Agents
+  CHECKS.md          Validierungsbefehle nach Aenderungstyp
+  WORKFLOWS.md       Wiederverwendbare Agent-Workflows fuer Checks und Dependency-Updates
+  SAFETY.md          Tool-neutrale Sicherheitsregeln fuer Agenten
 ```
 
 ## Paperless-API-Reference (nur was wir brauchen)
