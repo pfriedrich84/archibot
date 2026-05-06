@@ -12,10 +12,10 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 ## Project docs
 
-- [`docs/architecture.md`](docs/architecture.md) — architecture and data flow.
-- [`docs/workflow.md`](docs/workflow.md) — review, approval, and whitelist workflow.
-- [`docs/configuration.md`](docs/configuration.md) — environment and runtime configuration.
-- [`docs/installation.md`](docs/installation.md) — Docker-first installation and local development.
+- [`docs/developer/architecture.md`](docs/developer/architecture.md) — architecture and data flow.
+- [`docs/user/workflow.md`](docs/user/workflow.md) — review, approval, and whitelist workflow.
+- [`docs/user/configuration.md`](docs/user/configuration.md) — environment and runtime configuration.
+- [`docs/user/installation.md`](docs/user/installation.md) — Docker-first installation and local development.
 
 ## Quick summary
 

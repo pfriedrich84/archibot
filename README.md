@@ -92,7 +92,7 @@ docker compose up -d
 open http://localhost:8088
 ```
 
-Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/installation.md](./docs/installation.md)**
+Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.md](./docs/user/installation.md)**
 
 ## Modell-Empfehlungen (6GB VRAM)
 
@@ -114,14 +114,28 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/installation.md](./
 
 | Dokument | Beschreibung |
 |---|---|
-| **[Installation](./docs/installation.md)** | Quickstart, Docker-Setup, lokale Entwicklung |
-| **[Konfiguration](./docs/configuration.md)** | Alle Umgebungsvariablen im Detail |
-| **[Review-Workflow](./docs/workflow.md)** | Klassifikation, Review, Tag-Management |
-| **[CLI Commands](./docs/cli.md)** | Manuelle Pipeline-Steuerung und Container-Reset |
-| **[MCP Server](./docs/mcp.md)** | KI-Tools für Claude Code und andere Assistenten |
-| **[Deployment](./docs/deployment.md)** | Dockhand, Reverse Proxy, Backup |
-| **[Architektur](./docs/architecture.md)** | Datenfluss-Diagramme und System-Kontext |
-| **[Webhooks](./docs/webhooks.md)** | Sofortige Verarbeitung statt Polling |
+| **[Doku-Index](./docs/README.md)** | Uebersicht ueber User-, Developer- und Agent-Dokumentation |
+| **[Installation](./docs/user/installation.md)** | Quickstart, Docker-Setup, lokale Entwicklung |
+| **[Konfiguration](./docs/user/configuration.md)** | Alle Umgebungsvariablen im Detail |
+| **[Review-Workflow](./docs/user/workflow.md)** | Klassifikation, Review, Tag-Management |
+| **[CLI Commands](./docs/developer/cli.md)** | Manuelle Pipeline-Steuerung und Container-Reset |
+| **[MCP Server](./docs/developer/mcp.md)** | KI-Tools für Claude Code und andere Assistenten |
+| **[Deployment](./docs/user/deployment.md)** | Dockhand, Reverse Proxy, Backup |
+| **[Architektur](./docs/developer/architecture.md)** | Datenfluss-Diagramme und System-Kontext |
+| **[Webhooks](./docs/user/webhooks.md)** | Sofortige Verarbeitung statt Polling |
+| **[Paperless-Auth](./docs/user/paperless-auth.md)** | Anmeldung, Token-Kontext und Sicherheitsmodell |
+| **[Agent Instructions](./AGENTS.md)** | Tool-neutrale Hinweise fuer Coding-Agents |
+
+## Entwicklung & Repository-Hinweise
+
+| Datei / Pfad | Zweck |
+|---|---|
+| [`pyproject.toml`](./pyproject.toml) | Python-Paket, Dependencies, Ruff- und pytest-Konfiguration |
+| [`constraints.txt`](./constraints.txt) | Gepinnte transitive Python-Abhaengigkeiten fuer reproduzierbare Builds |
+| [`scripts/check_dependency_age.py`](./scripts/check_dependency_age.py) | 3-Tage Supply-Chain-Check fuer Python-Dependencies |
+| [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | CI: Lint, Tests, Audit, Dependency-Age, Docker Build, Grype/Trivy |
+| [`laravel/composer.json`](./laravel/composer.json) | Laravel/PHP Dependencies und Backend-Test-Scripts |
+| [`laravel/package.json`](./laravel/package.json) | Frontend-Scripts fuer Lint, Format, Typecheck und Build |
 
 ## Lizenz
 

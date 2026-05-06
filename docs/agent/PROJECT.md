@@ -45,14 +45,14 @@ scripts/              Maintenance and CI helper scripts
 
 Read these instead of expanding this file with duplicate details:
 
-- [`../architecture.md`](../architecture.md) — system architecture and data flow.
-- [`../workflow.md`](../workflow.md) — review, approval, classification, and tag workflow.
-- [`../configuration.md`](../configuration.md) — environment variables and runtime settings.
-- [`../installation.md`](../installation.md) — Docker-first setup and local development.
-- [`../cli.md`](../cli.md) — CLI commands.
-- [`../mcp.md`](../mcp.md) — MCP server/tools.
-- [`../webhooks.md`](../webhooks.md) — Paperless webhook integration.
-- [`../deployment.md`](../deployment.md) — deployment notes.
+- [`../developer/architecture.md`](../developer/architecture.md) — system architecture and data flow.
+- [`../user/workflow.md`](../user/workflow.md) — review, approval, classification, and tag workflow.
+- [`../user/configuration.md`](../user/configuration.md) — environment variables and runtime settings.
+- [`../user/installation.md`](../user/installation.md) — Docker-first setup and local development.
+- [`../developer/cli.md`](../developer/cli.md) — CLI commands.
+- [`../developer/mcp.md`](../developer/mcp.md) — MCP server/tools.
+- [`../user/webhooks.md`](../user/webhooks.md) — Paperless webhook integration.
+- [`../user/deployment.md`](../user/deployment.md) — deployment notes.
 
 ## Agent docs
 

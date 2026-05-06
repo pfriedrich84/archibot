@@ -131,7 +131,7 @@ Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit
 | `MCP_LARAVEL_PHP_BINARY` | `php` | PHP-Binary fuer den lokalen Verifier |
 | `MCP_CLASSIFY_RATE_LIMIT` | `10` | Max. KI-Klassifikationen pro Stunde (0 = unbegrenzt) |
 
-Details: [MCP-Server-Dokumentation](./mcp.md)
+Details: [MCP-Server-Dokumentation](../developer/mcp.md)
 
 ## System
 

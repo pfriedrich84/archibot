@@ -98,5 +98,5 @@ Vor Commits sollten die relevanten Checks laufen: Python `ruff`/`pytest`, Larave
 ## Naechste Schritte
 
 - [Konfiguration](./configuration.md) — Alle Umgebungsvariablen im Detail
-- [CLI Commands](./cli.md) — Manuelle Pipeline-Steuerung
+- [CLI Commands](../developer/cli.md) — Manuelle Pipeline-Steuerung
 - [Review-Workflow](./workflow.md) — So funktioniert die Klassifikation
