@@ -24,8 +24,12 @@ class FirstRunSetupTest extends TestCase
 
     public function test_setup_page_prefills_paperless_url_from_environment(): void
     {
+        $previousEnvValue = $_ENV['PAPERLESS_URL'] ?? null;
+        $previousServerValue = $_SERVER['PAPERLESS_URL'] ?? null;
+
         putenv('PAPERLESS_URL=https://paperless-env.test');
         $_ENV['PAPERLESS_URL'] = 'https://paperless-env.test';
+        $_SERVER['PAPERLESS_URL'] = 'https://paperless-env.test';
 
         try {
             $this->get('/setup')
@@ -35,8 +39,19 @@ class FirstRunSetupTest extends TestCase
                     ->where('paperlessUrl', 'https://paperless-env.test')
                 );
         } finally {
-            putenv('PAPERLESS_URL');
-            unset($_ENV['PAPERLESS_URL']);
+            if ($previousEnvValue === null) {
+                unset($_ENV['PAPERLESS_URL']);
+            } else {
+                $_ENV['PAPERLESS_URL'] = $previousEnvValue;
+            }
+
+            if ($previousServerValue === null) {
+                unset($_SERVER['PAPERLESS_URL']);
+            } else {
+                $_SERVER['PAPERLESS_URL'] = $previousServerValue;
+            }
+
+            putenv($previousEnvValue === null ? 'PAPERLESS_URL' : "PAPERLESS_URL={$previousEnvValue}");
         }
     }
 

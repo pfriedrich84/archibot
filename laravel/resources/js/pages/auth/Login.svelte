@@ -51,7 +51,9 @@
                     class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
                 >
                     Paperless-NGX server:
-                    <span class="font-medium text-foreground">{paperlessUrl}</span>
+                    <span class="font-medium text-foreground"
+                        >{paperlessUrl}</span
+                    >
                 </div>
             {/if}
 
