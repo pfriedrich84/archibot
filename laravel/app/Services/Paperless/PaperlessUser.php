@@ -32,7 +32,7 @@ readonly class PaperlessUser
     /**
      * @param  array<string, mixed>  $payload
      */
-    private static function isAdminPayload(array $payload): bool
+    public static function isAdminPayload(array $payload): bool
     {
         foreach (['is_superuser', 'is_staff', 'is_admin', 'admin', 'superuser'] as $key) {
             if (array_key_exists($key, $payload) && filter_var($payload[$key], FILTER_VALIDATE_BOOL)) {

@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/svelte-starter-kit",
+    "name": "pfriedrich84/archibot-laravel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "Laravel and Svelte interface for ArchiBot.",
     "keywords": [
         "laravel",
         "framework"
