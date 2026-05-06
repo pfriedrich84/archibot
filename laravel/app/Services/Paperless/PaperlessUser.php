@@ -18,7 +18,8 @@ readonly class PaperlessUser
     public static function fromPayload(array $payload, ?string $fallbackUsername = null): self
     {
         $username = (string) ($payload['username'] ?? $fallbackUsername ?? $payload['name'] ?? 'paperless-user');
-        $displayName = (string) ($payload['display_name'] ?? $payload['name'] ?? $username);
+        $fullName = trim((string) ($payload['first_name'] ?? '').' '.(string) ($payload['last_name'] ?? ''));
+        $displayName = (string) ($payload['display_name'] ?? $payload['name'] ?? ($fullName ?: $username));
 
         return new self(
             isset($payload['id']) ? (int) $payload['id'] : null,
@@ -27,6 +28,24 @@ readonly class PaperlessUser
             isset($payload['email']) ? (string) $payload['email'] : null,
             self::isAdminPayload($payload),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public static function fromUiSettingsPayload(array $payload, ?string $fallbackUsername = null): ?self
+    {
+        $userPayload = $payload['user'] ?? null;
+
+        if (! is_array($userPayload)) {
+            return null;
+        }
+
+        if (isset($payload['permissions']) && is_array($payload['permissions'])) {
+            $userPayload['permissions'] = $payload['permissions'];
+        }
+
+        return self::fromPayload($userPayload, $fallbackUsername);
     }
 
     /**

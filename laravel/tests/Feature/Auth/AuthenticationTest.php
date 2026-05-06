@@ -31,12 +31,17 @@ class AuthenticationTest extends TestCase
 
         Http::fake([
             'https://paperless.test/api/token/' => Http::response(['token' => 'fresh-paperless-token']),
-            'https://paperless.test/api/users/me/' => Http::response([
-                'id' => 42,
-                'username' => 'paperless-admin',
-                'name' => 'Paperless Admin',
-                'email' => 'admin@example.test',
-                'is_superuser' => true,
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'user' => [
+                    'id' => 42,
+                    'username' => 'paperless-admin',
+                    'first_name' => 'Paperless',
+                    'last_name' => 'Admin',
+                    'is_staff' => true,
+                    'is_superuser' => true,
+                    'groups' => [],
+                ],
+                'permissions' => ['view_document'],
             ]),
         ]);
 

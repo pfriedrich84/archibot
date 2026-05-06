@@ -112,6 +112,12 @@ class PaperlessClient
 
     public function currentUser(string $token, ?string $fallbackUsername = null): PaperlessUser
     {
+        $user = $this->currentUserFromUiSettingsEndpoint($token, $fallbackUsername);
+
+        if ($user instanceof PaperlessUser) {
+            return $user;
+        }
+
         $response = $this->request($token)->get('/api/users/me/');
 
         if ($response->status() === 404) {
@@ -143,6 +149,27 @@ class PaperlessClient
         }
 
         return $user;
+    }
+
+    private function currentUserFromUiSettingsEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser
+    {
+        try {
+            $response = $this->request($token)->get('/api/ui_settings/');
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json();
+
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        return PaperlessUser::fromUiSettingsPayload($payload, $fallbackUsername);
     }
 
     private function currentUserFromUsersEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser

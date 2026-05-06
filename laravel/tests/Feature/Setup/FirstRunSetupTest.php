@@ -114,10 +114,42 @@ class FirstRunSetupTest extends TestCase
         ]);
     }
 
+    public function test_setup_accepts_admin_from_paperless_ui_settings_profile(): void
+    {
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'user' => [
+                    'id' => 7,
+                    'username' => 'admin',
+                    'first_name' => 'Paperless',
+                    'last_name' => 'Admin',
+                    'is_staff' => true,
+                    'is_superuser' => true,
+                    'groups' => [],
+                ],
+                'permissions' => ['view_document', 'change_document'],
+            ]),
+        ]);
+
+        $response = $this->post('/setup', [
+            'paperless_url' => 'https://paperless.test/',
+            'username' => 'admin',
+            'password' => 'secret',
+        ]);
+
+        $response->assertRedirect('/dashboard');
+
+        $user = User::query()->firstOrFail();
+        $this->assertTrue($user->is_admin);
+        $this->assertSame('Paperless Admin', $user->name);
+    }
+
     public function test_setup_accepts_admin_when_users_me_omits_admin_flags_but_users_endpoint_has_them(): void
     {
         Http::fake([
             'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
+            'https://paperless.test/api/ui_settings/' => Http::response([], 404),
             'https://paperless.test/api/users/me/' => Http::response([
                 'id' => 7,
                 'username' => 'admin',
