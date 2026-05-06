@@ -41,6 +41,9 @@ class SettingsCatalog
                     'has_value' => $stored !== null && $stored->value !== null && $stored->value !== '',
                     'value' => $sensitive ? '' : AppSetting::getValue($key, (string) ($definition['default'] ?? '')),
                     'help' => $definition['help'] ?? null,
+                    'min' => $definition['min'] ?? null,
+                    'max' => $definition['max'] ?? null,
+                    'step' => $definition['step'] ?? null,
                 ];
             })
             ->groupBy('group')

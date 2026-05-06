@@ -40,6 +40,14 @@ class SettingsController extends Controller
                 $fieldRules[] = 'url:http,https';
             } elseif ($type === 'number') {
                 $fieldRules[] = 'numeric';
+
+                if (array_key_exists('min', $definition)) {
+                    $fieldRules[] = 'min:'.$definition['min'];
+                }
+
+                if (array_key_exists('max', $definition)) {
+                    $fieldRules[] = 'max:'.$definition['max'];
+                }
             } elseif ($type === 'bool') {
                 $fieldRules[] = 'boolean';
             } elseif ($type === 'select') {

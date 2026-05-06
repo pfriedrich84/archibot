@@ -34,6 +34,9 @@
         has_value: boolean;
         value: string;
         help: string | null;
+        min: string | null;
+        max: string | null;
+        step: string | null;
     };
 
     type SettingGroup = {
@@ -110,6 +113,12 @@
                                     value={setting.sensitive
                                         ? ''
                                         : setting.value}
+                                    min={setting.min ?? undefined}
+                                    max={setting.max ?? undefined}
+                                    step={setting.step ??
+                                        (setting.type === 'number'
+                                            ? 'any'
+                                            : undefined)}
                                     placeholder={setting.sensitive &&
                                     setting.has_value
                                         ? 'Current value saved — leave blank to keep'

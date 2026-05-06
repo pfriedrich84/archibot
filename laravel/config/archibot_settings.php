@@ -147,6 +147,10 @@ return [
             'label' => 'Hybrid search weight',
             'type' => 'number',
             'default' => '0.7',
+            'min' => '0',
+            'max' => '1',
+            'step' => '0.1',
+            'help' => 'Blend ratio: 0.0 = keyword only, 1.0 = vector only, 0.7 = default.',
         ],
 
         'classification.model' => [
