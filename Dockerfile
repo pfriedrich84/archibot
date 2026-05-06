@@ -39,7 +39,8 @@ RUN npm ci
 COPY laravel ./
 COPY --from=laravel-vendor /laravel/vendor ./vendor
 ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
-    APP_PATH_PREFIX=laravel
+    APP_PATH_PREFIX=laravel \
+    WAYFINDER_GENERATE=false
 RUN npm run build
 
 
