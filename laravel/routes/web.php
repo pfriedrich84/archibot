@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\ReviewSuggestionController;
@@ -61,6 +62,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
         Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
+        Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 
         Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');

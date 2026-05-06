@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Link, page } from '@inertiajs/svelte';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
+    import Database from 'lucide-svelte/icons/database';
     import FileType from 'lucide-svelte/icons/file-type';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import Inbox from 'lucide-svelte/icons/inbox';
@@ -42,7 +43,7 @@
 
     const user = $derived(page.props.auth.user);
 
-    const mainNavItems: NavItem[] = $derived([
+    const platformNavItems: NavItem[] = $derived([
         {
             title: 'Dashboard',
             href: dashboard(),
@@ -58,11 +59,9 @@
             href: reviewIndex(),
             icon: ClipboardCheck,
         },
-        {
-            title: 'Tags',
-            href: '/tags',
-            icon: Tag,
-        },
+    ]);
+
+    const masterDataNavItems: NavItem[] = [
         {
             title: 'Correspondents',
             href: '/correspondents',
@@ -74,15 +73,35 @@
             icon: FileType,
         },
         {
-            title: 'Worker jobs',
+            title: 'Tags',
+            href: '/tags',
+            icon: Tag,
+        },
+    ];
+
+    const processingNavItems: NavItem[] = $derived([
+        {
+            title: 'Workers',
             href: workerJobsIndex(),
             icon: Workflow,
         },
         {
-            title: 'MCP tokens',
-            href: '/settings/mcp-tokens',
-            icon: KeyRound,
+            title: 'Embeddings',
+            href: '/embeddings',
+            icon: Database,
         },
+        ...(user?.is_admin
+            ? [
+                  {
+                      title: 'Logs',
+                      href: auditLogsIndex(),
+                      icon: ScrollText,
+                  },
+              ]
+            : []),
+    ]);
+
+    const settingsNavItems: NavItem[] = $derived([
         ...(user?.is_admin
             ? [
                   {
@@ -90,13 +109,13 @@
                       href: adminSettingsEdit(),
                       icon: Settings,
                   },
-                  {
-                      title: 'Audit logs',
-                      href: auditLogsIndex(),
-                      icon: ScrollText,
-                  },
               ]
             : []),
+        {
+            title: 'MCP tokens',
+            href: '/settings/mcp-tokens',
+            icon: KeyRound,
+        },
     ]);
 
     const footerNavItems: NavItem[] = [
@@ -128,7 +147,10 @@
     </SidebarHeader>
 
     <SidebarContent>
-        <NavMain items={mainNavItems} />
+        <NavMain label="Platform" items={platformNavItems} />
+        <NavMain label="Master Data" items={masterDataNavItems} />
+        <NavMain label="Processing" items={processingNavItems} />
+        <NavMain label="Settings" items={settingsNavItems} />
     </SidebarContent>
 
     <SidebarFooter>
