@@ -94,14 +94,7 @@ def test_needs_setup_false_for_legacy_populated_db_without_marker(data_dir: Path
     assert needs_setup() is False
 
 
-def test_setup_mode_allows_frontend_setup_route_and_settings_api(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, data_dir: Path
-) -> None:
-    build_dir = tmp_path / "frontend-build"
-    build_dir.mkdir()
-    (build_dir / "index.html").write_text("frontend setup page")
-
-    monkeypatch.setattr("app.routes.frontend.FRONTEND_BUILD_DIR", build_dir)
+def test_setup_mode_allows_settings_api(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> None:
     monkeypatch.setattr("app.main.needs_setup", lambda: True)
     monkeypatch.setattr("app.api_data.needs_setup", lambda: True)
 
@@ -109,10 +102,6 @@ def test_setup_mode_allows_frontend_setup_route_and_settings_api(
     app.state.paperless = None
     app.state.ollama = None
     client = TestClient(app, raise_server_exceptions=True)
-
-    setup_page = client.get("/app/setup", follow_redirects=False)
-    assert setup_page.status_code == 200
-    assert "frontend setup page" in setup_page.text
 
     settings_schema = client.get("/api/v1/settings/schema", follow_redirects=False)
     assert settings_schema.status_code == 200

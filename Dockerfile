@@ -1,12 +1,3 @@
-FROM node:20-trixie-slim AS frontend-build
-
-WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend ./
-RUN npm run build
-
-
 FROM composer:2 AS laravel-vendor
 
 WORKDIR /laravel
@@ -40,7 +31,6 @@ COPY laravel ./
 COPY --from=laravel-vendor /laravel/vendor ./vendor
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/testing storage/framework/views bootstrap/cache
 ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
-    APP_PATH_PREFIX=laravel \
     WAYFINDER_GENERATE=false
 RUN php artisan wayfinder:generate --with-form \
     && npm run build
@@ -55,7 +45,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps (sqlite-vec wheel ist prebuilt, wir brauchen nur tini für saubere Signale)
+# System deps for the Laravel/Svelte web app plus Python worker/MCP runtime.
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get dist-upgrade -y \
@@ -71,7 +61,9 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependencies (pinned with constraints for supply-chain protection)
+# Python dependencies are kept for CLI workers and MCP runtime. FastAPI/uvicorn
+# remain installed only for legacy imports/tests during the switch-over, not as
+# the container entrypoint.
 COPY pyproject.toml constraints.txt ./
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -c constraints.txt \
@@ -89,26 +81,23 @@ RUN pip install --upgrade pip setuptools wheel \
         "mcp[cli]>=1.20.0,<=1.26.0" \
         "pymupdf>=1.24.0,<=1.27.2.2"
 
-# App
 COPY app ./app
 COPY prompts ./prompts
 COPY entrypoint.sh ./
-COPY --from=frontend-build /frontend/build ./frontend/build
 COPY --from=laravel-vendor /laravel ./laravel
 COPY --from=laravel-build /laravel/public/build ./laravel/public/build
 
-# Register console script entry point (deps already installed above)
 RUN pip install --no-deps . \
-    && chmod +x /app/entrypoint.sh
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /data /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache \
+    && chown -R www-data:www-data /app/laravel/storage /app/laravel/bootstrap/cache
 
-# Persistent state
-RUN mkdir -p /data
 VOLUME ["/data"]
 
 EXPOSE 8088 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:8088/healthz || exit 1
+    CMD curl -fsS http://localhost:${GUI_PORT:-8088}/healthz || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["./entrypoint.sh"]

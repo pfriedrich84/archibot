@@ -139,9 +139,6 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if needs_setup() and not (
             path.startswith("/setup")
-            or path.startswith("/app")
-            or path.startswith("/laravel")
-            or path.startswith("/build")
             or path.startswith("/api/v1/settings")
             or path == "/api/v1/system/status"
             or path == "/api/v1/paperless/tags"
@@ -168,12 +165,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if (
-            path in ("/healthz",)
-            or path.startswith("/static")
-            or path.startswith("/laravel")
-            or path.startswith("/build")
-        ):
+        if path in ("/healthz",) or path.startswith("/static"):
             return await call_next(request)
 
         # Webhook has its own auth via WEBHOOK_SECRET
@@ -292,10 +284,8 @@ from app.routes import (  # noqa: E402
     doctypes,
     embeddings,
     errors,
-    frontend,
     inbox,
     index,
-    laravel_proxy,
     ocr,
     review,
     stats,
@@ -307,8 +297,6 @@ from app.routes import setup as setup_routes  # noqa: E402
 
 app.include_router(setup_routes.router)
 app.include_router(api.router)
-app.include_router(laravel_proxy.router)
-app.include_router(frontend.router)
 app.include_router(index.router)
 app.include_router(chat.router)
 app.include_router(inbox.router)

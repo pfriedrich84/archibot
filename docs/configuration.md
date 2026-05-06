@@ -1,18 +1,16 @@
 # Konfiguration
 
-Alle Einstellungen werden ueber Umgebungsvariablen gesteuert. Primaer ueber
-`.env` (Docker Compose) oder die Settings-UI (`/settings`), die Aenderungen
-in `config.env` persistiert.
+Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in `/data/laravel/database.sqlite`; danach sind Laravel-Settings fuehrend.
 
 > Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
 > (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
 > internen App-Defaults.
 
 **Prioritaet (hoechste zuerst):**
-1. `{DATA_DIR}/config.env` — geschrieben von der Settings-UI
+1. Laravel Settings in `/data/laravel/database.sqlite`
 2. OS-Umgebungsvariablen — gesetzt von Docker Compose aus `.env`
-3. `.env`-Datei — Fallback fuer lokale Entwicklung
-4. Defaults — in der Anwendung hinterlegt
+3. Legacy `{DATA_DIR}/config.env` — nur fuer den einmaligen Import beim Setup
+4. Defaults — in Laravel/Python hinterlegt
 
 ## Paperless-NGX
 
@@ -90,15 +88,18 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 |---|---|---|
 | `POLL_INTERVAL_SECONDS` | `0` | Sekunden zwischen Inbox-Polls (`0` = automatisches Polling deaktiviert) |
 
-## GUI
+## Laravel/Svelte GUI
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `GUI_PORT` | `8088` | Port der Review-GUI |
-| `GUI_BASE_URL` | — | Externe URL fuer Telegram-Links (z.B. `https://classifier.local:8088`) |
-| `GUI_DATE_FORMAT` | `%d.%m.%Y` | Anzeigeformat fuer Datumswerte in der GUI (Python-`strftime`-Syntax) |
-| `GUI_USERNAME` | — | Basic-Auth Benutzername (leer = deaktiviert) |
-| `GUI_PASSWORD` | — | Basic-Auth Passwort |
+| `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI |
+| `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
+| `APP_KEY` | auto-generiert in `/data/laravel/app_key` | Laravel-App-Key fuer Sessions und verschluesselte Secrets |
+| `DB_DATABASE` | `/data/laravel/database.sqlite` | Laravel-App-Datenbank |
+| `QUEUE_CONNECTION` | `database` | Laravel Queue Backend |
+| `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
+
+Die alten `GUI_USERNAME`/`GUI_PASSWORD` Basic-Auth-Variablen werden nicht mehr verwendet. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 
 ## Telegram (optional)
 
@@ -124,7 +125,10 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | `MCP_PORT` | `3001` | Port fuer SSE/HTTP-Transport |
 | `MCP_HOST` | `0.0.0.0` | Bind-Adresse |
 | `MCP_ENABLE_WRITE` | `false` | Write-Tools aktivieren |
-| `MCP_API_KEY` | — | API-Key fuer Authentifizierung (empfohlen bei SSE) |
+| `MCP_API_KEY` | — | Legacy-API-Key, nur wenn Laravel MCP Auth deaktiviert ist |
+| `MCP_LARAVEL_AUTH_ENABLED` | `true` | MCP-Tokens ueber Laravel pruefen |
+| `MCP_LARAVEL_PATH` | `/app/laravel` | Pfad zur Laravel-App fuer den lokalen Verifier |
+| `MCP_LARAVEL_PHP_BINARY` | `php` | PHP-Binary fuer den lokalen Verifier |
 | `MCP_CLASSIFY_RATE_LIMIT` | `10` | Max. KI-Klassifikationen pro Stunde (0 = unbegrenzt) |
 
 Details: [MCP-Server-Dokumentation](./mcp.md)
@@ -138,15 +142,4 @@ Details: [MCP-Server-Dokumentation](./mcp.md)
 
 ## Settings-UI
 
-Die meisten Variablen lassen sich auch ueber die Web-Oberflaeche aendern
-(`/settings`). Aenderungen werden in `{DATA_DIR}/config.env` gespeichert
-und sind sofort wirksam — kein Container-Neustart noetig.
-
-Ausnahmen, die einen Neustart erfordern, sind in der UI entsprechend markiert
-(z.B. `GUI_PORT`, `MCP_TRANSPORT`).
-
-Unter `/app/settings` koennen auch die System-Prompts fuer Klassifikation,
-Judge-Pruefung, OCR-Korrektur und RAG-Chat bearbeitet werden. Prompt-Aenderungen
-werden als Dateien in `{DATA_DIR}` gespeichert (z.B. `classify_system.txt`) und
-ueberschreiben die eingebauten Defaults; per Reset wird die Override-Datei wieder
-entfernt.
+Admin-Settings liegen in der Laravel-Oberflaeche unter `/admin/settings`; per-user MCP Tokens unter `/settings/mcp-tokens`. Secrets werden maskiert und write-only gespeichert. Aenderungen werden in der Laravel-Datenbank auditiert.

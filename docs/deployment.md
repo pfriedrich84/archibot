@@ -43,8 +43,7 @@ Fuer Dockhand-basierte Setups (z.B. Homelab mit zentraler Stack-Verwaltung):
 Der Classifier laeuft hinter Zoraxy (oder einem anderen Reverse Proxy).
 Keine Ports direkt gegen das Internet freigeben.
 
-Wichtig: Wenn Basic-Auth aktiviert ist (`GUI_USERNAME` / `GUI_PASSWORD`),
-den Reverse Proxy so konfigurieren, dass er keine eigene Auth davor schaltet.
+Die Web-GUI wird von Laravel/Svelte direkt auf Port `8088` ausgeliefert. Authentifizierung erfolgt ueber Paperless-NGX-Login und Laravel-Sessions; die alten `GUI_USERNAME`/`GUI_PASSWORD` Basic-Auth-Variablen werden nicht mehr verwendet.
 
 ## Persistente Daten
 
@@ -60,8 +59,10 @@ volumes:
 
 | Datei | Beschreibung |
 |---|---|
-| `classifier.db` | SQLite-Datenbank (Suggestions, Embeddings, OCR-Cache, Audit-Log) |
-| `config.env` | Settings-UI-Overrides (hoechste Prioritaet) |
+| `laravel/database.sqlite` | Laravel-App-Datenbank (Sessions, Settings, Review Queue, Audit, MCP-Tokens) |
+| `laravel/app_key` | Persistenter Laravel-App-Key fuer verschluesselte Secrets |
+| `classifier.db` / `archibot.db` | Python-Worker-Datenbank (Embeddings, Worker-Kompatibilitaet, OCR-Cache) |
+| `config.env` | Legacy-Settings, die beim ersten Laravel-Setup einmalig importiert werden |
 | `config.bak.*` | Automatische Backups von config.env |
 
 ### Backup

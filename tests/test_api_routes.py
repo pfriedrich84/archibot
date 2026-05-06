@@ -112,7 +112,7 @@ def test_system_status_api_reports_legacy_ui_migration_state(client):
     payload = response.json()
 
     assert payload["app"]["legacy_ui"]["deprecated"] is True
-    assert payload["app"]["frontend"]["new_app_path"] == "/app"
+    assert payload["app"]["frontend"]["new_app_path"] == "/"
     assert payload["logging"]["request_ids"] is True
 
 

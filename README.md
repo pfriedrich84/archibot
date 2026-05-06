@@ -22,15 +22,14 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - ⏱️ Robuste Ollama-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ SQLite-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
-- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — im Browser (`/app/chat`) oder direkt im Telegram-Chat
+- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über Python/MCP/Telegram-Runtime; die Laravel-Oberfläche wird schrittweise erweitert
 - 🤖 Telegram-Bot: Vorschläge annehmen/ablehnen + RAG-Chat für Dokument-Fragen (optional)
 - 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
-- 🚀 Setup-Wizard: Geführtes Onboarding beim ersten Start (`/app/setup`) mit Paperless-Tag-Dropdowns und aus Ollama geladener Modell-Auswahl
-- 📊 Embeddings-Dashboard: Vektor-DB-Inspektion und Similarity-Search (`/app/embeddings`)
-- 📥 Inbox-View: Posteingang mit Dokumenten-Karten und Bulk-Aktionen (`/app/inbox`)
-- 🏷️ Tag-Blacklist: Unerwünschte Tags dauerhaft unterdrücken (`/app/tags`)
+- 🚀 Laravel/Svelte Setup-Wizard: Geführtes Onboarding beim ersten Start (`/setup`) mit direkter Paperless-NGX-Anmeldung
+- 📥 Inbox-View: Posteingang mit Dokumenten-Karten (`/inbox`)
+- 🏷️ Entity-Freigaben: Tags, Korrespondenten und Dokumenttypen in Laravel verwalten (`/tags`, `/correspondents`, `/doctypes`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
-- ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/app/settings`); Paperless-Tag-Felder zeigen gespeicherte Werte vorausgewählt
+- ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/admin/settings`, `/settings/appearance`, `/settings/mcp-tokens`)
 - 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot)
 
 ## Architektur
@@ -55,16 +54,16 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
         │                                │
         │                                ▼
         │                     ┌──────────────────────┐
-        └─────────────────────│ FastAPI + Svelte GUI │
-                              │   - /app/review      │
-                              │   - /app/chat        │
-                              │   - /app/inbox       │
-                              │   - /app/tags        │
-                              │   - /app/embeddings  │
-                              │   - /app/stats       │
-                              │   - /app/settings    │
-                              │   - /app/setup       │
-                              │   - /app/errors      │
+        └─────────────────────│ Laravel + Svelte GUI │
+                              │   - /dashboard       │
+                              │   - /review          │
+                              │   - /inbox           │
+                              │   - /tags            │
+                              │   - /correspondents  │
+                              │   - /doctypes        │
+                              │   - /worker-jobs     │
+                              │   - /admin/settings  │
+                              │   - /setup           │
                               └──────────────────────┘
                                          ▲
                                          │

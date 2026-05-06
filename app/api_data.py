@@ -529,7 +529,7 @@ def get_system_status(app: Any) -> dict[str, Any]:
                 "cutover_ready": True,
             },
             "frontend": {
-                "new_app_path": "/app",
+                "new_app_path": "/",
                 "mode": "migration",
                 "rendering": "hybrid",
             },

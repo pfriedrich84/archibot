@@ -4,13 +4,27 @@ services:
     container_name: archibot
     restart: unless-stopped
     environment:
-      # --- Paperless-NGX (required) ---
-      PAPERLESS_URL: ${PAPERLESS_URL}
-      PAPERLESS_TOKEN: ${PAPERLESS_TOKEN}
-      PAPERLESS_INBOX_TAG_ID: ${PAPERLESS_INBOX_TAG_ID}
+      # --- Paperless-NGX (used by first-run import and Python workers) ---
+      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_TOKEN: ${PAPERLESS_TOKEN:-}
+      PAPERLESS_INBOX_TAG_ID: ${PAPERLESS_INBOX_TAG_ID:-}
       KEEP_INBOX_TAG: ${KEEP_INBOX_TAG:-true}
 
-      # --- Ollama ---
+      # --- Laravel/Svelte app (primary UI/API) ---
+      GUI_PORT: ${GUI_PORT:-8088}
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:-}
+      APP_URL: ${APP_URL:-}
+      APP_PATH_PREFIX: ${APP_PATH_PREFIX:-}
+      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      DB_DATABASE: ${DB_DATABASE:-/data/laravel/database.sqlite}
+      SESSION_DRIVER: ${SESSION_DRIVER:-database}
+      CACHE_STORE: ${CACHE_STORE:-database}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      ARCHIBOT_PYTHON_BINARY: ${ARCHIBOT_PYTHON_BINARY:-python}
+
+      # --- Ollama / Python workers ---
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-qwen3-embedding:4b}
@@ -23,8 +37,6 @@ services:
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
       OLLAMA_EMBED_NUM_CTX: ${OLLAMA_EMBED_NUM_CTX:-8192}
       OLLAMA_OCR_NUM_CTX: ${OLLAMA_OCR_NUM_CTX:-12288}
-
-      # --- Worker ---
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-0}
       CONTEXT_MAX_DOCS: ${CONTEXT_MAX_DOCS:-5}
       MAX_DOC_CHARS: ${MAX_DOC_CHARS:-24000}
@@ -34,29 +46,13 @@ services:
       OCR_VISION_MODEL: ${OCR_VISION_MODEL:-}
       OCR_VISION_MAX_PAGES: ${OCR_VISION_MAX_PAGES:-3}
       OCR_VISION_DPI: ${OCR_VISION_DPI:-150}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
 
-      # --- GUI ---
-      GUI_PORT: ${GUI_PORT:-8088}
-      GUI_BASE_URL: ${GUI_BASE_URL:-}
-      GUI_USERNAME: ${GUI_USERNAME:-}
-      GUI_PASSWORD: ${GUI_PASSWORD:-}
-
-      # --- Laravel UI (/laravel) ---
-      ENABLE_LARAVEL: ${ENABLE_LARAVEL:-true}
-      APP_PATH_PREFIX: ${APP_PATH_PREFIX:-laravel}
-      APP_KEY: ${APP_KEY:-}
-      APP_URL: ${APP_URL:-}
-      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
-      DB_DATABASE: ${DB_DATABASE:-/data/laravel/database.sqlite}
-
-      # --- Telegram ---
+      # --- Telegram (legacy Python runtime until Laravel per-user flow is complete) ---
       ENABLE_TELEGRAM: ${ENABLE_TELEGRAM:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_POLL_INTERVAL: ${TELEGRAM_POLL_INTERVAL:-5}
-
-      # --- Webhook ---
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
 
       # --- MCP ---
       ENABLE_MCP: ${ENABLE_MCP:-false}
@@ -65,7 +61,7 @@ services:
       MCP_HOST: ${MCP_HOST:-0.0.0.0}
       MCP_ENABLE_WRITE: ${MCP_ENABLE_WRITE:-false}
       MCP_API_KEY: ${MCP_API_KEY:-}
-      MCP_LARAVEL_AUTH_ENABLED: ${MCP_LARAVEL_AUTH_ENABLED:-false}
+      MCP_LARAVEL_AUTH_ENABLED: ${MCP_LARAVEL_AUTH_ENABLED:-true}
       MCP_LARAVEL_PATH: ${MCP_LARAVEL_PATH:-/app/laravel}
       MCP_LARAVEL_PHP_BINARY: ${MCP_LARAVEL_PHP_BINARY:-php}
       MCP_CLASSIFY_RATE_LIMIT: ${MCP_CLASSIFY_RATE_LIMIT:-10}
@@ -74,8 +70,8 @@ services:
       DATA_DIR: ${DATA_DIR:-/data}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
-      - "${GUI_PORT:-8088}:8088"
-      - "${MCP_PORT:-3001}:3001"   # MCP SSE (nur bei ENABLE_MCP=true)
+      - "${GUI_PORT:-8088}:${GUI_PORT:-8088}"
+      - "${MCP_PORT:-3001}:3001"
     volumes:
       - archibot_data:/data
     # Falls Paperless/Ollama in anderen Compose-Stacks laufen,
