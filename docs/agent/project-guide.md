@@ -1,6 +1,6 @@
-# CLAUDE.md — ArchiBot
+# ArchiBot Agent Project Guide
 
-Kontext fuer Claude / Claude Code, wenn an diesem Repo gearbeitet wird.
+Kontext fuer Coding-Agents, wenn an diesem Repo gearbeitet wird.
 
 ## Projekt-Zweck
 
@@ -108,7 +108,6 @@ Der Kontext allein genuegt nicht — zusaetzlich greifen mehrere Sicherheitsnetz
 
 ```
 app/
-  main.py              Legacy FastAPI-App fuer Tests/Kompatibilitaet; nicht mehr Docker-Entrypoint
   config.py            pydantic-settings fuer Python Worker/MCP Runtime
   db.py                SQLite-Setup, Schema-Migration, sqlite-vec laden
   models.py            Pydantic-Modelle (Suggestion, TagProposal, etc.)
@@ -141,22 +140,6 @@ app/
     doctypes.py        Dokumenttyp-Whitelist- und Blacklist-Tools (analog zu tags.py)
     system.py          Status/Health-Tool
     resources.py       MCP Resources (inbox, pending suggestions)
-  routes/
-    index.py           Dashboard + Pipeline-Status-Card (idle/running, Fortschritt, Run Now/Cancel)
-    chat.py            RAG-Chat: Fragen zu Dokumenten stellen (/chat)
-    review.py          Review-Queue + Detail + Annehmen/Ablehnen
-    tags.py            Tag-Whitelist- und Blacklist-Management
-    correspondents.py  Korrespondenten-Whitelist- und Blacklist-Management (analog zu tags.py)
-    doctypes.py        Dokumenttyp-Whitelist- und Blacklist-Management (analog zu correspondents.py)
-    ocr.py             OCR-Korrektur-Vorschlaege (optional)
-    errors.py          Fehlerliste + Retry
-    stats.py           Counters, Phasen-Dauer-Metriken, Trend-Chart, Fehlerrate, Auto-Commit-Rate
-    settings.py        Legacy-Redirect/JSON-Kompatibilitaet; Laravel ist Settings-Owner
-    webhook.py         Webhook-Endpoints: /webhook/new (volle Pipeline) + /webhook/edit (Embedding-Update)
-    inbox.py           Inbox-Ansicht: Dokumenten-Karten + Bulk-Aktionen
-    embeddings.py      Vektor-DB Dashboard + Similarity-Search
-    setup.py           Legacy-Setup-Kompatibilitaet; Laravel `/setup` ist primaer
-  templates/           Legacy/Jinja-Reste und Platzhalter
   static/              Statische Assets (Logo etc.)
 laravel/               Primaere Laravel/Inertia/Svelte App: Setup, Login, Dashboard, Review, Inbox, Worker Jobs, Entity Approvals, Admin Settings, Audit, MCP Tokens
 prompts/
@@ -181,12 +164,10 @@ scripts/
 .github/workflows/
   ci.yml                 Lint, Tests, Audit, Docker Build
   docker-publish.yml     GHCR Image Publish bei Release/Push
-.claude/
-  settings.json          Permissions (allow/deny) + PreToolUse-Hooks
-  commands/
-    precommit.md         Ruff-Check + Format + pytest
-    dep-update.md        Dependency-Update mit 3-Tage-Supply-Chain-Pruefung
-    ci-local.md          Lokale CI-Simulation (alle Checks wie in GitHub Actions)
+docs/agent/
+  project-guide.md       Ausfuehrlicher Projektkontext fuer Coding-Agents
+  commands.md            Wiederverwendbare Agent-Workflows fuer Checks und Dependency-Updates
+  permissions.md         Tool- und Sicherheitsregeln fuer Agenten
 ```
 
 ## Paperless-API-Reference (nur was wir brauchen)
@@ -678,10 +659,10 @@ Install (mit constraints.txt)
   → pip check (Kompatibilitaet)
   → pip-audit (bekannte CVEs)
   → Dependency Age Check (3-Tage-Regel)
-  → Template-Syntax
-  → Import-Check
+  → CLI- und Runtime-Import-Checks
   → DB-Schema-Check
   → Prompt-File-Check
+  → Laravel Tests/Lint/Types/Build
   → Docker Build
 ```
 

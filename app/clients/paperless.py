@@ -118,17 +118,16 @@ class PaperlessClient:
         page_size: int = 25,
     ) -> list[PaperlessDocument]:
         """Full-text search with optional filters."""
-        params = [f"page_size={page_size}"]
+        params: list[tuple[str, str | int]] = [("page_size", page_size)]
         if query:
-            params.append(f"query={query}")
+            params.append(("query", query))
         if correspondent:
-            params.append(f"correspondent__name__icontains={correspondent}")
+            params.append(("correspondent__name__icontains", correspondent))
         if document_type:
-            params.append(f"document_type__name__icontains={document_type}")
+            params.append(("document_type__name__icontains", document_type))
         for tag in tags or []:
-            params.append(f"tags__name__icontains={tag}")
-        url = f"/documents/?{'&'.join(params)}"
-        r = await self._client.get(url)
+            params.append(("tags__name__icontains", tag))
+        r = await self._client.get("/documents/", params=params)
         r.raise_for_status()
         data = r.json()
         docs: list[PaperlessDocument] = []
