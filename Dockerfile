@@ -41,7 +41,8 @@ COPY --from=laravel-vendor /laravel/vendor ./vendor
 ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
     APP_PATH_PREFIX=laravel \
     WAYFINDER_GENERATE=false
-RUN npm run build
+RUN php artisan wayfinder:generate --with-form \
+    && npm run build
 
 
 FROM python:3.12-slim-trixie AS base
