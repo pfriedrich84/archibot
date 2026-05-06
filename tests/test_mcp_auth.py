@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.config import settings
-from app.mcp_tools import _auth, _deps
+from app.mcp_tools import _auth, _deps, classify, documents
+from app.models import ClassificationResult, PaperlessDocument
 
 
 class DummyCompletedProcess:
@@ -18,6 +20,54 @@ class DummyCompletedProcess:
 def make_ctx(headers: dict[str, str] | None = None, arguments: dict[str, str] | None = None):
     meta = SimpleNamespace(headers=headers or {}, arguments=arguments or {})
     return SimpleNamespace(request_context=SimpleNamespace(meta=meta))
+
+
+class CapturingMcp:
+    def __init__(self) -> None:
+        self.tools = {}
+
+    def tool(self, name: str, **kwargs):
+        def decorator(func):
+            self.tools[name] = func
+            return func
+
+        return decorator
+
+
+class NoGlobalPaperless:
+    def __getattr__(self, name: str):
+        raise AssertionError(f"global Paperless client must not be used for {name}")
+
+
+class NoopRateLimiter:
+    def check(self, key: str) -> None:
+        return None
+
+
+def make_laravel_ctx() -> SimpleNamespace:
+    ctx = make_ctx(headers={"Authorization": "Bearer abmcp_scoped"})
+    ctx.request_context.lifespan_context = SimpleNamespace(
+        paperless=NoGlobalPaperless(),
+        ollama=SimpleNamespace(),
+        rate_limiter=NoopRateLimiter(),
+    )
+    return ctx
+
+
+def enable_laravel_mcp_auth(monkeypatch, *, write_enabled: bool = False) -> None:
+    monkeypatch.setattr(settings, "mcp_laravel_auth_enabled", True)
+
+    def fake_verify(token: str):
+        assert token == "abmcp_scoped"
+        return {
+            "ok": True,
+            "user": {"id": 1, "paperless_user_id": 42, "paperless_username": "ada"},
+            "token": {"id": 5, "name": "Claude Desktop"},
+            "permissions": {"mcp_write_enabled": write_enabled},
+            "paperless": {"url": "https://paperless.example", "token": "paperless-user-token"},
+        }
+
+    monkeypatch.setattr(_auth, "_verify_laravel_mcp_token", fake_verify)
 
 
 @pytest.fixture(autouse=True)
@@ -170,3 +220,122 @@ def test_laravel_write_permission_rejects_read_only_token(monkeypatch):
 
     with pytest.raises(ValueError, match="MCP write tools are disabled for this token"):
         _auth.require_mcp_write(make_ctx(headers={"x-api-key": "abmcp_readonly"}))
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_document_uses_laravel_scoped_paperless_client(monkeypatch):
+    enable_laravel_mcp_auth(monkeypatch)
+    scoped_paperless = SimpleNamespace(
+        get_document=AsyncMock(
+            return_value=PaperlessDocument(id=123, title="Scoped", content="secret", tags=[9])
+        )
+    )
+
+    def make_scoped_client(base_url: str | None = None, token: str | None = None):
+        assert base_url == "https://paperless.example"
+        assert token == "paperless-user-token"
+        return scoped_paperless
+
+    monkeypatch.setattr(_deps, "PaperlessClient", make_scoped_client)
+    mcp = CapturingMcp()
+    documents.register(mcp)
+
+    result = await mcp.tools["get_document"](123, ctx=make_laravel_ctx())
+
+    assert '"id": 123' in result
+    scoped_paperless.get_document.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_mcp_update_document_uses_laravel_scoped_paperless_client(monkeypatch):
+    enable_laravel_mcp_auth(monkeypatch, write_enabled=True)
+    monkeypatch.setattr(settings, "mcp_enable_write", True)
+    scoped_paperless = SimpleNamespace(patch_document=AsyncMock())
+
+    def make_scoped_client(base_url: str | None = None, token: str | None = None):
+        assert base_url == "https://paperless.example"
+        assert token == "paperless-user-token"
+        return scoped_paperless
+
+    class DummyConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(_deps, "PaperlessClient", make_scoped_client)
+    monkeypatch.setattr(documents, "get_conn", lambda: DummyConn())
+    mcp = CapturingMcp()
+    documents.register(mcp)
+
+    result = await mcp.tools["update_document"](123, title="New title", ctx=make_laravel_ctx())
+
+    assert '"ok": true' in result
+    scoped_paperless.patch_document.assert_awaited_once_with(123, {"title": "New title"})
+
+
+@pytest.mark.asyncio
+async def test_mcp_classification_reads_and_lists_with_laravel_scoped_paperless_client(
+    monkeypatch,
+):
+    enable_laravel_mcp_auth(monkeypatch)
+    monkeypatch.setattr(settings, "paperless_inbox_tag_id", 9)
+    doc = PaperlessDocument(id=123, title="Inbox", content="body", tags=[9])
+    scoped_paperless = SimpleNamespace(
+        get_document=AsyncMock(return_value=doc),
+        list_correspondents=AsyncMock(return_value=[]),
+        list_document_types=AsyncMock(return_value=[]),
+        list_storage_paths=AsyncMock(return_value=[]),
+        list_tags=AsyncMock(return_value=[]),
+    )
+
+    def make_scoped_client(base_url: str | None = None, token: str | None = None):
+        assert base_url == "https://paperless.example"
+        assert token == "paperless-user-token"
+        return scoped_paperless
+
+    async def fake_maybe_correct_ocr(document, ollama, paperless):
+        assert paperless is scoped_paperless
+        return document.content, 0
+
+    async def fake_find_similar_documents(document, paperless, ollama):
+        assert paperless is scoped_paperless
+        return []
+
+    async def fake_classify(
+        document, context_docs, correspondents, doctypes, storage_paths, tags, ollama
+    ):
+        return (
+            ClassificationResult(title="Classified", tags=[], confidence=88, reasoning="ok"),
+            {"raw": True},
+        )
+
+    def fake_store_suggestion(*args, **kwargs):
+        return SimpleNamespace(id=77)
+
+    async def fake_index_document(document, ollama):
+        return None
+
+    monkeypatch.setattr(_deps, "PaperlessClient", make_scoped_client)
+    monkeypatch.setattr("app.pipeline.ocr_correction.maybe_correct_ocr", fake_maybe_correct_ocr)
+    monkeypatch.setattr(
+        "app.pipeline.context_builder.find_similar_documents", fake_find_similar_documents
+    )
+    monkeypatch.setattr("app.pipeline.context_builder.index_document", fake_index_document)
+    monkeypatch.setattr("app.pipeline.classifier.classify", fake_classify)
+    monkeypatch.setattr("app.pipeline.document_processing.store_suggestion", fake_store_suggestion)
+    mcp = CapturingMcp()
+    classify.register(mcp)
+
+    result = await mcp.tools["classify_document"](123, ctx=make_laravel_ctx())
+
+    assert '"suggestion_id": 77' in result
+    scoped_paperless.get_document.assert_awaited_once_with(123)
+    scoped_paperless.list_correspondents.assert_awaited_once()
+    scoped_paperless.list_document_types.assert_awaited_once()
+    scoped_paperless.list_storage_paths.assert_awaited_once()
+    scoped_paperless.list_tags.assert_awaited_once()
