@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key, require_mcp_write
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_deps, get_paperless
 
 log = structlog.get_logger(__name__)
 
@@ -50,8 +50,8 @@ def register(mcp: FastMCP) -> None:
         ctx: Context = None,
     ) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        docs = await deps.paperless.search_documents(
+        paperless = get_paperless(ctx)
+        docs = await paperless.search_documents(
             query=query, tags=tags, correspondent=correspondent, document_type=document_type
         )
         return json.dumps([_doc_summary(d) for d in docs], ensure_ascii=False, default=str)
@@ -82,7 +82,7 @@ def register(mcp: FastMCP) -> None:
 
         results = await find_similar_by_query_text_filtered(
             query,
-            deps.paperless,
+            get_paperless(ctx),
             deps.ollama,
             limit=limit,
             correspondent_id=correspondent_id,
@@ -111,8 +111,8 @@ def register(mcp: FastMCP) -> None:
     )
     async def get_document(document_id: int, ctx: Context = None) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        doc = await deps.paperless.get_document(document_id)
+        paperless = get_paperless(ctx)
+        doc = await paperless.get_document(document_id)
         content = doc.content or ""
         if len(content) > settings.max_doc_chars:
             content = content[: settings.max_doc_chars] + "\n...[truncated]"
@@ -127,8 +127,8 @@ def register(mcp: FastMCP) -> None:
     )
     async def list_inbox(ctx: Context = None) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        docs = await deps.paperless.list_inbox_documents(settings.paperless_inbox_tag_id)
+        paperless = get_paperless(ctx)
+        docs = await paperless.list_inbox_documents(settings.paperless_inbox_tag_id)
         return json.dumps([_doc_summary(d) for d in docs], ensure_ascii=False, default=str)
 
     # ------------------------------------------------------------------
@@ -156,7 +156,7 @@ def register(mcp: FastMCP) -> None:
             ctx: Context = None,
         ) -> str:
             require_mcp_write(ctx)
-            deps = get_deps(ctx)
+            paperless = get_paperless(ctx)
             fields: dict = {}
             if title is not None:
                 fields["title"] = title
@@ -165,7 +165,7 @@ def register(mcp: FastMCP) -> None:
             if document_type_id is not None:
                 fields["document_type"] = document_type_id
             if storage_path_id is not None:
-                doc = await deps.paperless.get_document(document_id)
+                doc = await paperless.get_document(document_id)
                 if doc.storage_path is None:
                     fields["storage_path"] = storage_path_id
             if tag_ids is not None:
@@ -174,7 +174,7 @@ def register(mcp: FastMCP) -> None:
             if not fields:
                 return json.dumps({"error": "No fields to update."})
 
-            await deps.paperless.patch_document(document_id, fields)
+            await paperless.patch_document(document_id, fields)
 
             with get_conn() as conn:
                 conn.execute(

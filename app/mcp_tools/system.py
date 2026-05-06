@@ -9,7 +9,7 @@ from mcp.types import ToolAnnotations
 
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_deps, get_paperless
 
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
@@ -26,8 +26,9 @@ def register(mcp: FastMCP) -> None:
     async def get_status(ctx: Context) -> str:
         check_api_key(ctx)
         deps = get_deps(ctx)
+        paperless = get_paperless(ctx)
 
-        paperless_ok = await deps.paperless.ping()
+        paperless_ok = await paperless.ping()
         ollama_ok = await deps.ollama.ping()
 
         with get_conn() as conn:

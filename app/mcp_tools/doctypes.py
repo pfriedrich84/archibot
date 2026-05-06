@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key, require_mcp_write
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_paperless
 from app.pipeline.committer import retroactive_doctype_apply
 
 log = structlog.get_logger(__name__)
@@ -96,7 +96,7 @@ def register(mcp: FastMCP) -> None:
         )
         async def approve_doctype(name: str, ctx: Context = None) -> str:
             require_mcp_write(ctx)
-            deps = get_deps(ctx)
+            paperless = get_paperless(ctx)
 
             with get_conn() as conn:
                 row = conn.execute(
@@ -116,7 +116,7 @@ def register(mcp: FastMCP) -> None:
                     }
                 )
 
-            entity = await deps.paperless.create_document_type(name)
+            entity = await paperless.create_document_type(name)
 
             with get_conn() as conn:
                 conn.execute(
@@ -133,7 +133,7 @@ def register(mcp: FastMCP) -> None:
 
             log.info("doctype approved via MCP", doctype_name=name, paperless_id=entity.id)
 
-            patched, pending = await retroactive_doctype_apply(name, entity.id, deps.paperless)
+            patched, pending = await retroactive_doctype_apply(name, entity.id, paperless)
 
             return json.dumps(
                 {

@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key, require_mcp_write
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_paperless
 from app.pipeline.committer import retroactive_tag_apply
 
 log = structlog.get_logger(__name__)
@@ -96,7 +96,7 @@ def register(mcp: FastMCP) -> None:
         )
         async def approve_tag(name: str, ctx: Context = None) -> str:
             require_mcp_write(ctx)
-            deps = get_deps(ctx)
+            paperless = get_paperless(ctx)
 
             # Check it exists in whitelist
             with get_conn() as conn:
@@ -115,7 +115,7 @@ def register(mcp: FastMCP) -> None:
                 )
 
             # Create in Paperless
-            entity = await deps.paperless.create_tag(name)
+            entity = await paperless.create_tag(name)
 
             # Update whitelist
             with get_conn() as conn:
@@ -134,7 +134,7 @@ def register(mcp: FastMCP) -> None:
             log.info("tag approved via MCP", tag_name=name, paperless_id=entity.id)
 
             # Retroactively apply to committed docs + resolve in pending suggestions
-            patched, pending = await retroactive_tag_apply(name, entity.id, deps.paperless)
+            patched, pending = await retroactive_tag_apply(name, entity.id, paperless)
 
             return json.dumps(
                 {

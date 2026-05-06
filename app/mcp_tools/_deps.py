@@ -23,6 +23,14 @@ def get_identity(ctx: Context) -> McpIdentity | None:
     return get_mcp_identity(ctx)
 
 
+def get_paperless(ctx: Context) -> PaperlessClient:
+    """Return a Paperless client scoped to the verified MCP user when available."""
+    identity = get_identity(ctx)
+    if identity and identity.paperless_url and identity.paperless_token:
+        return PaperlessClient(base_url=identity.paperless_url, token=identity.paperless_token)
+    return get_deps(ctx).paperless
+
+
 def get_deps(ctx: Context) -> Deps:
     """Extract Deps from the MCP lifespan context."""
     return ctx.request_context.lifespan_context

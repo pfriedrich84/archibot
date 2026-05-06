@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 
 from app.config import settings
 from app.mcp_tools._auth import check_api_key
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_deps, get_paperless
 
 log = structlog.get_logger(__name__)
 
@@ -29,12 +29,13 @@ def register(mcp: FastMCP) -> None:
     async def classify_document(document_id: int, ctx: Context = None) -> str:
         check_api_key(ctx)
         deps = get_deps(ctx)
+        paperless = get_paperless(ctx)
 
         # Rate limit
         deps.rate_limiter.check("classify")
 
-        # Fetch document
-        doc = await deps.paperless.get_document(document_id)
+        # Fetch document using the verified user's Paperless token when Laravel MCP auth is enabled.
+        doc = await paperless.get_document(document_id)
 
         # Inbox gate: only classify documents with the inbox tag
         if settings.paperless_inbox_tag_id not in doc.tags:
@@ -56,20 +57,18 @@ def register(mcp: FastMCP) -> None:
         log.info("MCP classify_document", doc_id=document_id)
 
         # Optional OCR correction
-        text, num_corrections = await maybe_correct_ocr(doc, deps.ollama, deps.paperless)
+        text, num_corrections = await maybe_correct_ocr(doc, deps.ollama, paperless)
         if num_corrections > 0:
             doc = doc.model_copy(update={"content": text})
 
         # Find similar documents for context
-        context_docs = await context_builder.find_similar_documents(
-            doc, deps.paperless, deps.ollama
-        )
+        context_docs = await context_builder.find_similar_documents(doc, paperless, deps.ollama)
 
         # Fetch entity lists
-        correspondents = await deps.paperless.list_correspondents()
-        doctypes = await deps.paperless.list_document_types()
-        storage_paths = await deps.paperless.list_storage_paths()
-        tags = await deps.paperless.list_tags()
+        correspondents = await paperless.list_correspondents()
+        doctypes = await paperless.list_document_types()
+        storage_paths = await paperless.list_storage_paths()
+        tags = await paperless.list_tags()
 
         # Run classification
         result, raw_response = await classifier.classify(
@@ -130,15 +129,16 @@ def register(mcp: FastMCP) -> None:
     ) -> str:
         check_api_key(ctx)
         deps = get_deps(ctx)
+        paperless = get_paperless(ctx)
 
         from app.pipeline import context_builder
 
-        doc = await deps.paperless.get_document(document_id)
+        doc = await paperless.get_document(document_id)
         query_text = context_builder.document_summary(doc)
 
         similar = await context_builder.find_similar_by_query_text_filtered(
             query_text,
-            deps.paperless,
+            paperless,
             deps.ollama,
             limit=limit,
             exclude_id=document_id,

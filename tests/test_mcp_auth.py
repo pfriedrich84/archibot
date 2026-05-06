@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.config import settings
-from app.mcp_tools import _auth
+from app.mcp_tools import _auth, _deps
 
 
 class DummyCompletedProcess:
@@ -63,7 +63,8 @@ def test_laravel_mcp_token_verifier_accepts_bearer_token_and_attaches_identity(
             0,
             '{"ok":true,"user":{"id":1,"paperless_user_id":42,"paperless_username":"ada",'
             '"is_admin":true},"token":{"id":5,"name":"Claude Desktop"},'
-            '"permissions":{"mcp_write_enabled":false}}\n',
+            '"permissions":{"mcp_write_enabled":false},'
+            '"paperless":{"url":"https://paperless.example","token":"paperless-user-token"}}\n',
         )
 
     monkeypatch.setattr(settings, "mcp_laravel_auth_enabled", True)
@@ -79,10 +80,18 @@ def test_laravel_mcp_token_verifier_accepts_bearer_token_and_attaches_identity(
     assert identity.paperless_user_id == 42
     assert identity.is_admin is True
     assert identity.token_name == "Claude Desktop"
+    assert identity.paperless_url == "https://paperless.example"
+    assert identity.paperless_token == "paperless-user-token"
     assert _auth.get_mcp_identity(ctx) == identity
     assert calls == [
         {
-            "command": ["php8.4", "artisan", "archibot:mcp-token-verify", "abmcp_plain"],
+            "command": [
+                "php8.4",
+                "artisan",
+                "archibot:mcp-token-verify",
+                "abmcp_plain",
+                "--include-paperless-context",
+            ],
             "cwd": laravel_path,
             "check": False,
             "capture_output": True,
@@ -94,6 +103,7 @@ def test_laravel_mcp_token_verifier_accepts_bearer_token_and_attaches_identity(
 
 def test_laravel_mcp_token_verifier_rejects_revoked_or_unknown_token(monkeypatch):
     def fake_run(command, cwd, check, capture_output, text, timeout):
+        assert "--include-paperless-context" in command
         return DummyCompletedProcess(1, '{"ok":false,"error":"invalid_token"}\n')
 
     monkeypatch.setattr(settings, "mcp_laravel_auth_enabled", True)
@@ -108,6 +118,26 @@ def test_laravel_mcp_auth_requires_token(monkeypatch):
 
     with pytest.raises(ValueError, match="Invalid or missing MCP token"):
         _auth.check_api_key(make_ctx())
+
+
+def test_get_paperless_returns_scoped_client_from_verified_identity():
+    ctx = make_ctx()
+    ctx.request_context.mcp_identity = _auth.McpIdentity(
+        user_id=1,
+        paperless_user_id=42,
+        paperless_username="ada",
+        is_admin=False,
+        token_id=5,
+        token_name="Claude Desktop",
+        mcp_write_enabled=False,
+        paperless_url="https://paperless.example",
+        paperless_token="paperless-user-token",
+    )
+
+    paperless = _deps.get_paperless(ctx)
+
+    assert paperless.base_url == "https://paperless.example"
+    assert paperless.token == "paperless-user-token"
 
 
 def test_laravel_write_permission_uses_verified_identity(monkeypatch):

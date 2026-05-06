@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -28,12 +28,15 @@ class McpIdentity:
     token_id: int | None
     token_name: str | None
     mcp_write_enabled: bool
+    paperless_url: str | None = None
+    paperless_token: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_laravel_payload(cls, payload: dict[str, Any]) -> McpIdentity:
         user = payload.get("user") or {}
         token = payload.get("token") or {}
         permissions = payload.get("permissions") or {}
+        paperless = payload.get("paperless") or {}
         return cls(
             user_id=user.get("id"),
             paperless_user_id=user.get("paperless_user_id"),
@@ -42,6 +45,8 @@ class McpIdentity:
             token_id=token.get("id"),
             token_name=token.get("name"),
             mcp_write_enabled=bool(permissions.get("mcp_write_enabled")),
+            paperless_url=paperless.get("url"),
+            paperless_token=paperless.get("token"),
         )
 
 
@@ -132,6 +137,7 @@ def _verify_laravel_mcp_token(token: str) -> dict[str, Any]:
         "artisan",
         "archibot:mcp-token-verify",
         token,
+        "--include-paperless-context",
     ]
     try:
         result = subprocess.run(

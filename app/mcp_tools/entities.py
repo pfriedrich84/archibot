@@ -8,7 +8,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
 from app.mcp_tools._auth import check_api_key
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_paperless
 
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
@@ -25,8 +25,8 @@ def register(mcp: FastMCP) -> None:
     )
     async def list_correspondents(ctx: Context) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        items = await deps.paperless.list_correspondents()
+        paperless = get_paperless(ctx)
+        items = await paperless.list_correspondents()
         return json.dumps([_entity_to_dict(e) for e in items], ensure_ascii=False)
 
     @mcp.tool(
@@ -36,8 +36,8 @@ def register(mcp: FastMCP) -> None:
     )
     async def list_document_types(ctx: Context) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        items = await deps.paperless.list_document_types()
+        paperless = get_paperless(ctx)
+        items = await paperless.list_document_types()
         return json.dumps([_entity_to_dict(e) for e in items], ensure_ascii=False)
 
     @mcp.tool(
@@ -47,8 +47,8 @@ def register(mcp: FastMCP) -> None:
     )
     async def list_tags(ctx: Context) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        items = await deps.paperless.list_tags()
+        paperless = get_paperless(ctx)
+        items = await paperless.list_tags()
         return json.dumps([_entity_to_dict(e) for e in items], ensure_ascii=False)
 
     @mcp.tool(
@@ -58,6 +58,6 @@ def register(mcp: FastMCP) -> None:
     )
     async def list_storage_paths(ctx: Context) -> str:
         check_api_key(ctx)
-        deps = get_deps(ctx)
-        items = await deps.paperless.list_storage_paths()
+        paperless = get_paperless(ctx)
+        items = await paperless.list_storage_paths()
         return json.dumps([_entity_to_dict(e) for e in items], ensure_ascii=False)

@@ -2,12 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AppSetting;
 use App\Models\McpToken;
 use Illuminate\Console\Command;
 
 class VerifyMcpToken extends Command
 {
-    protected $signature = 'archibot:mcp-token-verify {token : Raw MCP token to verify}';
+    protected $signature = 'archibot:mcp-token-verify {token : Raw MCP token to verify} {--include-paperless-context : Include the linked user Paperless URL/token for local Python MCP runtime use}';
 
     protected $description = 'Verify a raw MCP token and return linked user context as JSON for the Python MCP runtime.';
 
@@ -30,7 +31,7 @@ class VerifyMcpToken extends Command
 
         $token->forceFill(['last_used_at' => now()])->save();
 
-        $this->line(json_encode([
+        $payload = [
             'ok' => true,
             'user' => [
                 'id' => $token->user->id,
@@ -45,7 +46,16 @@ class VerifyMcpToken extends Command
             'permissions' => [
                 'mcp_write_enabled' => filter_var(config('archibot.mcp_write_enabled', env('MCP_ENABLE_WRITE', false)), FILTER_VALIDATE_BOOL),
             ],
-        ], JSON_THROW_ON_ERROR));
+        ];
+
+        if ($this->option('include-paperless-context')) {
+            $payload['paperless'] = [
+                'url' => AppSetting::getValue('paperless.url'),
+                'token' => $token->user->paperless_token,
+            ];
+        }
+
+        $this->line(json_encode($payload, JSON_THROW_ON_ERROR));
 
         return self::SUCCESS;
     }

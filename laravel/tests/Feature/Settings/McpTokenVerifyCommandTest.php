@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\AppSetting;
 use App\Models\McpToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -52,6 +53,32 @@ class McpTokenVerifyCommandTest extends TestCase
         $this->assertNotNull($token->refresh()->last_used_at);
         $this->assertStringNotContainsString($plainTextToken, Artisan::output());
         $this->assertStringNotContainsString('paperless-secret-token', Artisan::output());
+    }
+
+    public function test_command_can_include_paperless_context_for_local_python_runtime(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        $plainTextToken = McpToken::generatePlainTextToken();
+        $user = User::factory()->create([
+            'paperless_token' => 'paperless-secret-token',
+        ]);
+        McpToken::factory()->create([
+            'user_id' => $user->id,
+            'token_hash' => McpToken::hashToken($plainTextToken),
+        ]);
+
+        $exitCode = Artisan::call('archibot:mcp-token-verify', [
+            'token' => $plainTextToken,
+            '--include-paperless-context' => true,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $payload = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([
+            'url' => 'https://paperless.example',
+            'token' => 'paperless-secret-token',
+        ], $payload['paperless']);
+        $this->assertStringNotContainsString($plainTextToken, Artisan::output());
     }
 
     public function test_command_rejects_revoked_or_unknown_tokens(): void

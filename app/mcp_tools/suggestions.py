@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key, require_mcp_write
-from app.mcp_tools._deps import get_deps
+from app.mcp_tools._deps import get_paperless
 
 log = structlog.get_logger(__name__)
 
@@ -113,7 +113,7 @@ def register(mcp: FastMCP) -> None:
         )
         async def approve_suggestion(suggestion_id: int, ctx: Context = None) -> str:
             require_mcp_write(ctx)
-            deps = get_deps(ctx)
+            paperless = get_paperless(ctx)
 
             from app.models import ReviewDecision, SuggestionRow
             from app.pipeline.committer import commit_suggestion
@@ -147,7 +147,7 @@ def register(mcp: FastMCP) -> None:
                 action="accept",
             )
 
-            await commit_suggestion(suggestion, decision, deps.paperless)
+            await commit_suggestion(suggestion, decision, paperless)
 
             # Audit log
             with get_conn() as conn:
