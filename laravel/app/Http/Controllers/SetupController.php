@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppSetting;
 use App\Models\SetupState;
+use App\Services\Settings\LegacySettingsImporter;
 use App\Services\Setup\CompleteSetup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,13 +16,16 @@ use RuntimeException;
 
 class SetupController extends Controller
 {
-    public function show(): Response
+    public function show(LegacySettingsImporter $legacySettingsImporter): Response
     {
         $state = SetupState::current();
         abort_if($state->is_complete, 404);
 
+        $legacySettingsImporter->importMissing();
+
         return Inertia::render('Setup/Index', [
             'requiresResetToken' => $state->requiresResetToken(),
+            'paperlessUrl' => AppSetting::getValue('paperless.url', ''),
         ]);
     }
 
@@ -36,7 +41,9 @@ class SetupController extends Controller
             'setup_token' => [$state->requiresResetToken() ? 'required' : 'nullable', 'string'],
         ]);
 
-        if ($state->requiresResetToken() && ! Hash::check($validated['setup_token'], $state->reset_token_hash)) {
+        if ($state->requiresResetToken()
+            && (! $state->resetTokenIsValid() || ! Hash::check($validated['setup_token'], $state->reset_token_hash))
+        ) {
             throw ValidationException::withMessages([
                 'setup_token' => 'The setup token is invalid or expired.',
             ]);

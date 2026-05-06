@@ -6,6 +6,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
+use Throwable;
 
 class PaperlessClient
 {
@@ -114,16 +115,10 @@ class PaperlessClient
         $response = $this->request($token)->get('/api/users/me/');
 
         if ($response->status() === 404) {
-            $response = $this->request($token)->get('/api/users/', [
-                'username' => $fallbackUsername,
-            ]);
+            $user = $this->currentUserFromUsersEndpoint($token, $fallbackUsername);
 
-            if ($response->successful()) {
-                $payload = $response->json('results.0') ?? $response->json('0') ?? [];
-
-                if (is_array($payload) && $payload !== []) {
-                    return PaperlessUser::fromPayload($payload, $fallbackUsername);
-                }
+            if ($user instanceof PaperlessUser) {
+                return $user;
             }
         }
 
@@ -135,6 +130,43 @@ class PaperlessClient
 
         if (! is_array($payload)) {
             throw new RuntimeException('Paperless user profile response was not JSON.');
+        }
+
+        $user = PaperlessUser::fromPayload($payload, $fallbackUsername);
+
+        if (! $user->isAdmin) {
+            $enrichedUser = $this->currentUserFromUsersEndpoint($token, $user->username);
+
+            if ($enrichedUser instanceof PaperlessUser) {
+                return $enrichedUser;
+            }
+        }
+
+        return $user;
+    }
+
+    private function currentUserFromUsersEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser
+    {
+        if (! $fallbackUsername) {
+            return null;
+        }
+
+        try {
+            $response = $this->request($token)->get('/api/users/', [
+                'username' => $fallbackUsername,
+            ]);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json('results.0') ?? $response->json('0') ?? [];
+
+        if (! is_array($payload) || $payload === []) {
+            return null;
         }
 
         return PaperlessUser::fromPayload($payload, $fallbackUsername);

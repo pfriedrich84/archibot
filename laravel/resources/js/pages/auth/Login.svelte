@@ -22,10 +22,12 @@
         status = '',
         canResetPassword,
         canRegister,
+        paperlessUrl = '',
     }: {
         status?: string;
         canResetPassword: boolean;
         canRegister: boolean;
+        paperlessUrl?: string;
     } = $props();
 </script>
 
@@ -44,6 +46,15 @@
 >
     {#snippet children({ errors, processing })}
         <div class="grid gap-6">
+            {#if paperlessUrl}
+                <div
+                    class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+                >
+                    Paperless-NGX server:
+                    <span class="font-medium text-foreground">{paperlessUrl}</span>
+                </div>
+            {/if}
+
             <div class="grid gap-2">
                 <Label for="username">Paperless username</Label>
                 <Input

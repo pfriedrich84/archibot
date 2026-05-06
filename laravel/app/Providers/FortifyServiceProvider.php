@@ -115,6 +115,7 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => false,
             'canRegister' => false,
+            'paperlessUrl' => AppSetting::getValue('paperless.url', ''),
             'status' => $request->session()->get('status'),
         ]));
 

@@ -1,6 +1,5 @@
 <script lang="ts">
     import { Link, page } from '@inertiajs/svelte';
-    import BookOpen from 'lucide-svelte/icons/book-open';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
     import FileType from 'lucide-svelte/icons/file-type';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
@@ -103,13 +102,8 @@
     const footerNavItems: NavItem[] = [
         {
             title: 'Repository',
-            href: 'https://github.com/laravel/svelte-starter-kit',
+            href: 'https://github.com/pfriedrich84/archibot',
             icon: FolderGit2,
-        },
-        {
-            title: 'Documentation',
-            href: 'https://laravel.com/docs/starter-kits#svelte',
-            icon: BookOpen,
         },
     ];
 </script>

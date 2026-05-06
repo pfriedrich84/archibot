@@ -24,6 +24,11 @@ class SetupState extends Model
 
     public function requiresResetToken(): bool
     {
+        return $this->reset_token_hash !== null;
+    }
+
+    public function resetTokenIsValid(): bool
+    {
         return $this->reset_token_hash !== null
             && $this->reset_token_expires_at !== null
             && $this->reset_token_expires_at->isFuture();

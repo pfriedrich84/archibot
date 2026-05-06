@@ -25,7 +25,37 @@ readonly class PaperlessUser
             $username,
             $displayName,
             isset($payload['email']) ? (string) $payload['email'] : null,
-            (bool) ($payload['is_superuser'] ?? $payload['is_staff'] ?? $payload['is_admin'] ?? false),
+            self::isAdminPayload($payload),
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private static function isAdminPayload(array $payload): bool
+    {
+        foreach (['is_superuser', 'is_staff', 'is_admin', 'admin', 'superuser'] as $key) {
+            if (array_key_exists($key, $payload) && filter_var($payload[$key], FILTER_VALIDATE_BOOL)) {
+                return true;
+            }
+        }
+
+        $permissions = $payload['permissions'] ?? $payload['user_permissions'] ?? [];
+
+        if (! is_array($permissions)) {
+            return false;
+        }
+
+        foreach ($permissions as $permission) {
+            if (! is_string($permission)) {
+                continue;
+            }
+
+            if (str_contains($permission, 'auth.') || str_contains($permission, 'paperless.')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

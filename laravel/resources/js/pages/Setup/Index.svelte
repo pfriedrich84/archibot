@@ -16,8 +16,10 @@
     import { Label } from '@/components/ui/label';
     import { Spinner } from '@/components/ui/spinner';
 
-    let { requiresResetToken = false }: { requiresResetToken: boolean } =
-        $props();
+    let {
+        requiresResetToken = false,
+        paperlessUrl = '',
+    }: { requiresResetToken: boolean; paperlessUrl?: string } = $props();
 </script>
 
 <AppHead title="ArchiBot setup" />
@@ -68,6 +70,7 @@
                     name="paperless_url"
                     type="url"
                     required
+                    value={paperlessUrl}
                     placeholder="https://paperless.example.test"
                 />
                 <InputError message={errors.paperless_url} />

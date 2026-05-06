@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class FirstRunSetupTest extends TestCase
@@ -19,6 +20,24 @@ class FirstRunSetupTest extends TestCase
     public function test_setup_page_is_available_before_setup_is_complete(): void
     {
         $this->get('/setup')->assertOk();
+    }
+
+    public function test_setup_page_prefills_paperless_url_from_environment(): void
+    {
+        putenv('PAPERLESS_URL=https://paperless-env.test');
+        $_ENV['PAPERLESS_URL'] = 'https://paperless-env.test';
+
+        try {
+            $this->get('/setup')
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('Setup/Index')
+                    ->where('paperlessUrl', 'https://paperless-env.test')
+                );
+        } finally {
+            putenv('PAPERLESS_URL');
+            unset($_ENV['PAPERLESS_URL']);
+        }
     }
 
     public function test_setup_requires_paperless_admin_verification(): void
@@ -80,6 +99,37 @@ class FirstRunSetupTest extends TestCase
         ]);
     }
 
+    public function test_setup_accepts_admin_when_users_me_omits_admin_flags_but_users_endpoint_has_them(): void
+    {
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
+            'https://paperless.test/api/users/me/' => Http::response([
+                'id' => 7,
+                'username' => 'admin',
+                'name' => 'Paperless Admin',
+                'email' => 'admin@example.test',
+            ]),
+            'https://paperless.test/api/users/*' => Http::response([
+                'results' => [[
+                    'id' => 7,
+                    'username' => 'admin',
+                    'name' => 'Paperless Admin',
+                    'email' => 'admin@example.test',
+                    'is_superuser' => true,
+                ]],
+            ]),
+        ]);
+
+        $response = $this->post('/setup', [
+            'paperless_url' => 'https://paperless.test/',
+            'username' => 'admin',
+            'password' => 'secret',
+        ]);
+
+        $response->assertRedirect('/dashboard');
+        $this->assertTrue(User::query()->firstOrFail()->is_admin);
+    }
+
     public function test_setup_routes_are_disabled_after_setup_is_complete(): void
     {
         SetupState::current()->forceFill([
@@ -127,5 +177,50 @@ class FirstRunSetupTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors('setup_token');
+    }
+
+    public function test_expired_reset_token_does_not_allow_setup_without_token(): void
+    {
+        Http::fake();
+
+        $state = SetupState::current();
+        $state->forceFill([
+            'is_complete' => false,
+            'reset_token_hash' => Hash::make('expired-token'),
+            'reset_token_expires_at' => now()->subMinute(),
+        ])->save();
+
+        $response = $this->post('/setup', [
+            'paperless_url' => 'https://paperless.test',
+            'username' => 'admin',
+            'password' => 'secret',
+        ]);
+
+        $response->assertSessionHasErrors('setup_token');
+        $this->assertFalse(SetupState::current()->is_complete);
+        Http::assertNothingSent();
+    }
+
+    public function test_expired_reset_token_does_not_allow_setup_with_old_token(): void
+    {
+        Http::fake();
+
+        $state = SetupState::current();
+        $state->forceFill([
+            'is_complete' => false,
+            'reset_token_hash' => Hash::make('expired-token'),
+            'reset_token_expires_at' => now()->subMinute(),
+        ])->save();
+
+        $response = $this->post('/setup', [
+            'paperless_url' => 'https://paperless.test',
+            'username' => 'admin',
+            'password' => 'secret',
+            'setup_token' => 'expired-token',
+        ]);
+
+        $response->assertSessionHasErrors('setup_token');
+        $this->assertFalse(SetupState::current()->is_complete);
+        Http::assertNothingSent();
     }
 }
