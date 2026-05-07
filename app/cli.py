@@ -694,6 +694,62 @@ def _latest_suggestion_id() -> int:
     return int(row["max_id"] or 0)
 
 
+OcrCacheSnapshot = dict[int, tuple[str, int, str]]
+
+
+def _ocr_cache_snapshot(*, document_id: int | None = None) -> OcrCacheSnapshot:
+    """Return current OCR cache rows for delta-based Laravel OCR review output."""
+    from app.db import get_conn
+
+    sql = "SELECT document_id, corrected_content, num_corrections, ocr_mode FROM doc_ocr_cache"
+    params: list[object] = []
+    if document_id is not None:
+        sql += " WHERE document_id = ?"
+        params.append(document_id)
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+
+    return {
+        int(row["document_id"]): (
+            str(row["corrected_content"]),
+            int(row["num_corrections"] or 0),
+            str(row["ocr_mode"] or ""),
+        )
+        for row in rows
+    }
+
+
+def _ocr_review_payloads_since_snapshot(
+    before: OcrCacheSnapshot, *, document_id: int | None = None
+) -> list[dict[str, object]]:
+    """Return OCR cache deltas in Laravel's OCR review ingestion shape.
+
+    Laravel owns Paperless write-back. Python only reports newly generated or
+    changed corrected OCR text so Laravel can create manual/auto OCR reviews.
+    """
+    after = _ocr_cache_snapshot(document_id=document_id)
+    payloads: list[dict[str, object]] = []
+    for doc_id in sorted(after):
+        corrected_content, num_corrections, ocr_mode = after[doc_id]
+        previous = before.get(doc_id)
+        if previous == after[doc_id]:
+            continue
+        if previous is None and num_corrections <= 0:
+            # Vision validation can cache unchanged text. Do not create a
+            # user-facing OCR review when no correction was reported.
+            continue
+        payloads.append(
+            {
+                "paperless_document_id": doc_id,
+                "ocr_content": corrected_content,
+                "ocr_mode": ocr_mode,
+                "num_corrections": num_corrections,
+            }
+        )
+    return payloads
+
+
 def _review_suggestion_payloads_since(
     suggestion_id: int, *, document_id: int | None = None
 ) -> list[dict[str, object]]:
@@ -820,6 +876,7 @@ def main() -> None:
             }
             if cmd_name == "poll":
                 before_suggestion_id = _latest_suggestion_id()
+                before_ocr_cache = _ocr_cache_snapshot()
                 asyncio.run(
                     cmd_func(
                         force=_contract_force(input_payload, force),
@@ -829,16 +886,27 @@ def main() -> None:
                 review_suggestions = _review_suggestion_payloads_since(before_suggestion_id)
                 if review_suggestions:
                     output_payload["review_suggestions"] = review_suggestions
+                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
+                if ocr_reviews:
+                    output_payload["ocr_reviews"] = ocr_reviews
             elif cmd_name == "reindex":
+                before_ocr_cache = _ocr_cache_snapshot()
                 result = asyncio.run(
                     cmd_func(
                         emit_progress=True, job_id=str(input_payload.get("id")), job_type="reindex"
                     )
                 )
                 output_payload.update(result)
+                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
+                if ocr_reviews:
+                    output_payload["ocr_reviews"] = ocr_reviews
             elif cmd_name == "reindex-ocr":
+                before_ocr_cache = _ocr_cache_snapshot()
                 result = asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
                 output_payload["result"] = result
+                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
+                if ocr_reviews:
+                    output_payload["ocr_reviews"] = ocr_reviews
             elif cmd_name == "reindex-embed":
                 result = asyncio.run(cmd_func())
                 output_payload["result"] = result
@@ -849,6 +917,7 @@ def main() -> None:
                         "Worker payload requires paperless_document_id for process-document"
                     )
                 before_suggestion_id = _latest_suggestion_id()
+                before_ocr_cache = _ocr_cache_snapshot(document_id=document_id)
                 result = asyncio.run(
                     cmd_func(document_id, force=_contract_force(input_payload, force))
                 )
@@ -859,6 +928,11 @@ def main() -> None:
                     )
                     if review_suggestions:
                         output_payload["review_suggestions"] = review_suggestions
+                ocr_reviews = _ocr_review_payloads_since_snapshot(
+                    before_ocr_cache, document_id=document_id
+                )
+                if ocr_reviews:
+                    output_payload["ocr_reviews"] = ocr_reviews
             elif cmd_name == "commit-review":
                 suggestion_id = _contract_source_suggestion_id(input_payload)
                 if suggestion_id is None:
