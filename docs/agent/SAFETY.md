@@ -27,3 +27,5 @@ Tool-neutral safety guidance for coding agents.
 ## Before finishing
 
 Run the relevant checks from [`CHECKS.md`](CHECKS.md), or state clearly why checks were not run for documentation-only or planning-only work.
+
+If there are uncommitted changes, actively ask the user whether they want the changes committed, and whether they should also be pushed.

@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\InboxController;
+use App\Http\Controllers\OcrReviewController;
 use App\Http\Controllers\PaperlessWebhookController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
@@ -63,6 +64,13 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('review/{reviewSuggestion}/preview', [ReviewSuggestionController::class, 'preview'])->name('review.preview');
         Route::post('review/{reviewSuggestion}/accept', [ReviewSuggestionController::class, 'accept'])->name('review.accept');
         Route::post('review/{reviewSuggestion}/reject', [ReviewSuggestionController::class, 'reject'])->name('review.reject');
+
+        Route::get('ocr-reviews', [OcrReviewController::class, 'index'])->name('ocr-reviews.index');
+        Route::post('ocr-reviews', [OcrReviewController::class, 'store'])->name('ocr-reviews.store');
+        Route::get('ocr-reviews/{ocrReview}', [OcrReviewController::class, 'show'])->name('ocr-reviews.show');
+        Route::post('ocr-reviews/{ocrReview}/approve', [OcrReviewController::class, 'approve'])->name('ocr-reviews.approve');
+        Route::post('ocr-reviews/{ocrReview}/reject', [OcrReviewController::class, 'reject'])->name('ocr-reviews.reject');
+        Route::post('ocr-reviews/{ocrReview}/restore', [OcrReviewController::class, 'restore'])->name('ocr-reviews.restore');
 
         Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
         Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');

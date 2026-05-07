@@ -2,10 +2,15 @@
 
 namespace App\Services\Workers;
 
+use App\Models\AppSetting;
+use App\Models\AuditLog;
 use App\Models\EntityApproval;
+use App\Models\OcrReview;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
+use App\Services\Paperless\PaperlessClient;
 use Illuminate\Support\Arr;
+use Throwable;
 
 class WorkerResultIngestor
 {
@@ -18,19 +23,19 @@ class WorkerResultIngestor
      *
      * {"review_suggestions": [{"paperless_document_id": 123, ...}]}
      *
-     * @return array{review_suggestions_imported: int, entity_approvals_upserted: int}
+     * @return array{review_suggestions_imported: int, entity_approvals_upserted: int, ocr_reviews_imported: int}
      */
     public function ingest(WorkerJob $workerJob): array
     {
         $result = $workerJob->result ?? [];
         $items = Arr::get($result, 'review_suggestions', []);
 
-        if (! is_array($items)) {
-            return ['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0];
-        }
-
         $imported = 0;
         $entityApprovalsUpserted = 0;
+
+        if (! is_array($items)) {
+            $items = [];
+        }
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -76,7 +81,126 @@ class WorkerResultIngestor
             $imported++;
         }
 
-        return ['review_suggestions_imported' => $imported, 'entity_approvals_upserted' => $entityApprovalsUpserted];
+        return [
+            'review_suggestions_imported' => $imported,
+            'entity_approvals_upserted' => $entityApprovalsUpserted,
+            'ocr_reviews_imported' => $this->importOcrReviews($workerJob),
+        ];
+    }
+
+    private function importOcrReviews(WorkerJob $workerJob): int
+    {
+        $items = Arr::get($workerJob->result ?? [], 'ocr_reviews', []);
+
+        if (! is_array($items)) {
+            return 0;
+        }
+
+        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $user = $workerJob->createdBy;
+
+        if (! $paperlessUrl || ! $user?->paperless_token) {
+            return 0;
+        }
+
+        $client = new PaperlessClient($paperlessUrl);
+        $imported = 0;
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $documentId = Arr::get($item, 'paperless_document_id', Arr::get($item, 'document_id'));
+            $ocrContent = Arr::get($item, 'ocr_content', Arr::get($item, 'content'));
+
+            if (! is_numeric($documentId) || ! is_string($ocrContent) || $ocrContent === '') {
+                continue;
+            }
+
+            try {
+                $originalContent = $client->documentContent($user->paperless_token, (int) $documentId);
+            } catch (Throwable) {
+                continue;
+            }
+
+            $review = OcrReview::query()->create([
+                'paperless_document_id' => (int) $documentId,
+                'original_content' => $originalContent,
+                'ocr_content' => $ocrContent,
+                'status' => OcrReview::STATUS_PENDING,
+                'created_by_user_id' => $user->id,
+            ]);
+
+            AuditLog::query()->create([
+                'actor_user_id' => $user->id,
+                'event' => 'ocr_review.created_from_worker',
+                'target_type' => 'ocr_review',
+                'target_id' => (string) $review->id,
+                'metadata' => [
+                    'worker_job_id' => $workerJob->id,
+                    'paperless_document_id' => $review->paperless_document_id,
+                ],
+            ]);
+
+            if (AppSetting::getValue('ocr.auto_write_back', '0') === '1') {
+                $this->autoWriteOcrReview($client, $user->paperless_token, $workerJob, $review, $ocrContent);
+            }
+
+            $imported++;
+        }
+
+        return $imported;
+    }
+
+    private function autoWriteOcrReview(PaperlessClient $client, string $token, WorkerJob $workerJob, OcrReview $review, string $ocrContent): void
+    {
+        $review->forceFill([
+            'approved_content' => $ocrContent,
+            'reviewed_by_user_id' => $workerJob->created_by_user_id,
+            'reviewed_at' => now(),
+        ])->save();
+
+        try {
+            $client->updateDocumentContent($token, $review->paperless_document_id, $ocrContent);
+        } catch (Throwable $exception) {
+            $review->forceFill([
+                'status' => OcrReview::STATUS_WRITE_BACK_FAILED,
+                'write_back_error' => $exception->getMessage(),
+            ])->save();
+
+            AuditLog::query()->create([
+                'actor_user_id' => $workerJob->created_by_user_id,
+                'event' => 'ocr_review.write_back_failed',
+                'target_type' => 'ocr_review',
+                'target_id' => (string) $review->id,
+                'metadata' => [
+                    'worker_job_id' => $workerJob->id,
+                    'paperless_document_id' => $review->paperless_document_id,
+                    'auto_write' => true,
+                    'error' => $exception->getMessage(),
+                ],
+            ]);
+
+            return;
+        }
+
+        $review->forceFill([
+            'status' => OcrReview::STATUS_WRITTEN_BACK,
+            'written_back_at' => now(),
+        ])->save();
+
+        AuditLog::query()->create([
+            'actor_user_id' => $workerJob->created_by_user_id,
+            'event' => 'ocr_review.written_back',
+            'target_type' => 'ocr_review',
+            'target_id' => (string) $review->id,
+            'metadata' => [
+                'worker_job_id' => $workerJob->id,
+                'paperless_document_id' => $review->paperless_document_id,
+                'auto_write' => true,
+            ],
+        ]);
     }
 
     private function upsertEntityApprovals(ReviewSuggestion $suggestion): int

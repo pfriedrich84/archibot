@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Models\AppSetting;
 use App\Models\EntityApproval;
+use App\Models\OcrReview;
 use App\Models\ReviewSuggestion;
+use App\Models\User;
 use App\Models\WorkerJob;
 use App\Services\Workers\WorkerResultIngestor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class WorkerResultIngestorTest extends TestCase
@@ -43,7 +47,7 @@ class WorkerResultIngestorTest extends TestCase
 
         $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
 
-        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 2], $summary);
+        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 2, 'ocr_reviews_imported' => 0], $summary);
         $suggestion = ReviewSuggestion::query()->firstOrFail();
         $this->assertSame($workerJob->id, $suggestion->worker_job_id);
         $this->assertSame(456, $suggestion->source_suggestion_id);
@@ -73,7 +77,77 @@ class WorkerResultIngestorTest extends TestCase
 
         $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
 
-        $this->assertSame(['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0], $summary);
+        $this->assertSame(['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0, 'ocr_reviews_imported' => 0], $summary);
         $this->assertDatabaseCount('review_suggestions', 0);
+    }
+
+    public function test_imports_ocr_reviews_from_worker_result_and_preserves_paperless_content(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::response([
+                'id' => 123,
+                'content' => 'Current Paperless content',
+            ], 200),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $workerJob = WorkerJob::factory()->create([
+            'created_by_user_id' => $user->id,
+            'result' => [
+                'ocr_reviews' => [
+                    [
+                        'paperless_document_id' => 123,
+                        'ocr_content' => 'Generated OCR content',
+                    ],
+                ],
+            ],
+        ]);
+
+        $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
+
+        $this->assertSame(['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0, 'ocr_reviews_imported' => 1], $summary);
+        $review = OcrReview::query()->firstOrFail();
+        $this->assertSame(123, $review->paperless_document_id);
+        $this->assertSame('Current Paperless content', $review->original_content);
+        $this->assertSame('Generated OCR content', $review->ocr_content);
+        $this->assertSame(OcrReview::STATUS_PENDING, $review->status);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'ocr_review.created_from_worker',
+            'target_id' => (string) $review->id,
+        ]);
+    }
+
+    public function test_worker_imported_ocr_reviews_honor_global_auto_write_mode(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        AppSetting::put('ocr.auto_write_back', '1');
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::sequence()
+                ->push(['id' => 123, 'content' => 'Current Paperless content'], 200)
+                ->push(['id' => 123], 200),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $workerJob = WorkerJob::factory()->create([
+            'created_by_user_id' => $user->id,
+            'result' => [
+                'ocr_reviews' => [
+                    [
+                        'paperless_document_id' => 123,
+                        'ocr_content' => 'Generated OCR content',
+                    ],
+                ],
+            ],
+        ]);
+
+        $summary = app(WorkerResultIngestor::class)->ingest($workerJob);
+
+        $this->assertSame(1, $summary['ocr_reviews_imported']);
+        $review = OcrReview::query()->firstOrFail();
+        $this->assertSame(OcrReview::STATUS_WRITTEN_BACK, $review->status);
+        $this->assertSame('Generated OCR content', $review->approved_content);
+        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
+            && $request['content'] === 'Generated OCR content');
     }
 }

@@ -2,6 +2,7 @@
     import { Link, page } from '@inertiajs/svelte';
     import ClipboardCheck from 'lucide-svelte/icons/clipboard-check';
     import Database from 'lucide-svelte/icons/database';
+    import FileText from 'lucide-svelte/icons/file-text';
     import FileType from 'lucide-svelte/icons/file-type';
     import FolderGit2 from 'lucide-svelte/icons/folder-git-2';
     import Inbox from 'lucide-svelte/icons/inbox';
@@ -58,6 +59,11 @@
             title: 'Review',
             href: reviewIndex(),
             icon: ClipboardCheck,
+        },
+        {
+            title: 'OCR reviews',
+            href: '/ocr-reviews',
+            icon: FileText,
         },
     ]);
 

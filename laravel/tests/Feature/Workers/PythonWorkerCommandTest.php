@@ -34,7 +34,7 @@ PHP);
         $this->assertSame([
             'ok' => true,
             'type' => WorkerJob::TYPE_POLL,
-            'ingest' => ['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0],
+            'ingest' => ['review_suggestions_imported' => 0, 'entity_approvals_upserted' => 0, 'ocr_reviews_imported' => 0],
         ], $workerJob->result);
         $this->assertFileExists($workerJob->input_path);
         $this->assertFileExists($workerJob->output_path);
@@ -98,7 +98,7 @@ PHP);
 
         $workerJob->refresh();
         $this->assertSame(WorkerJob::STATUS_SUCCEEDED, $workerJob->status);
-        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 0], $workerJob->result['ingest']);
+        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 0, 'ocr_reviews_imported' => 0], $workerJob->result['ingest']);
 
         $suggestion = ReviewSuggestion::query()->firstOrFail();
         $this->assertSame($workerJob->id, $suggestion->worker_job_id);
