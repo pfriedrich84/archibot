@@ -11,6 +11,7 @@ Core rules for coding agents working on ArchiBot.
 - Do not create new Paperless tags, correspondents, or document types outside the approval/whitelist flow.
 - Keep OCR corrections local; never write corrected OCR text back to Paperless content.
 - In the GUI, always show Paperless labels/names instead of raw numeric IDs (for example, show `Posteingang` instead of `124`). Numeric IDs may be used internally, but user-facing screens must resolve them to labels.
+- The GUI must never show raw JSON to display metadata; present metadata with user-friendly labels, fields, tables, badges, or structured UI components instead.
 - Date format and timezone must be configured via `.env` and used by both the Laravel/Svelte GUI and the Python worker/CLI. The default timezone is `Europe/Vienna`.
 - Job control, behavior, and status semantics must be identical in the CLI and GUI. If a job is no longer running according to the CLI, it must not be shown as running in the GUI, especially after restarts or reboots.
 - Degrade gracefully: if OCR, embeddings, judge, Telegram, or optional integrations fail, continue where safe and surface the error for review.
