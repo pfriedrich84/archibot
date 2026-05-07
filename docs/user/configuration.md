@@ -93,11 +93,15 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI |
+| `GUI_DATE_FORMAT` | `%d.%m.%Y` | Datumsformat fuer benutzerseitige Anzeigen und Python-CLI-Ausgaben; muss in `.env` gepflegt werden |
+| `APP_TIMEZONE` | `Europe/Vienna` | Zeitzone fuer Laravel/PHP-Datumswerte sowie Python-Worker/CLI-Anzeigen; muss in `.env` gepflegt werden |
 | `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
 | `APP_KEY` | auto-generiert in `/data/laravel/app_key` | Laravel-App-Key fuer Sessions und verschluesselte Secrets |
 | `DB_DATABASE` | `/data/laravel/database.sqlite` | Laravel-App-Datenbank |
 | `QUEUE_CONNECTION` | `database` | Laravel Queue Backend |
 | `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
+
+Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Posteingang` statt `124`). IDs bleiben nur interne technische Referenzen.
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 

@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     gui_port: int = 8088
     gui_base_url: str = ""  # e.g. "https://classifier.local:8088" for Telegram links
     gui_date_format: str = "%d.%m.%Y"
+    app_timezone: str = "Europe/Vienna"
     cors_allowed_origins: str = ""  # comma-separated list, empty = disabled
 
     # --- Telegram ---
@@ -550,7 +551,13 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "gui_date_format": _fm(
         "GUI",
         "Date Format",
-        help="Python strftime format for displayed dates in the GUI (default: %d.%m.%Y)",
+        help="Python strftime format for displayed dates in the GUI and Python CLI (default: %d.%m.%Y)",
+    ),
+    "app_timezone": _fm(
+        "GUI",
+        "Timezone",
+        restart="app",
+        help="IANA timezone for GUI and Python CLI date/time display (default: Europe/Vienna)",
     ),
     "cors_allowed_origins": _fm(
         "GUI",

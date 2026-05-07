@@ -28,8 +28,10 @@ import signal
 import sqlite3
 import sys
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
@@ -450,6 +452,24 @@ def _laravel_db_path() -> Path:
     return Path(__file__).resolve().parents[1] / "laravel" / "database" / "database.sqlite"
 
 
+def _display_datetime(value: Any) -> str:
+    """Format stored timestamps for CLI display using .env date format/timezone."""
+    if not value:
+        return "-"
+    raw = str(value)
+    try:
+        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    try:
+        display_tz = ZoneInfo(settings.app_timezone)
+    except ZoneInfoNotFoundError:
+        display_tz = UTC
+    return when.astimezone(display_tz).strftime(f"{settings.gui_date_format} %H:%M:%S %Z")
+
+
 def cmd_jobs(args: list[str]) -> None:
     """Inspect and update Laravel worker_jobs from the Python CLI."""
     if not args or args[0] in {"-h", "--help"}:
@@ -476,8 +496,9 @@ def cmd_jobs(args: list[str]) -> None:
             for row in rows:
                 print(
                     f"#{row['id']} {row['type']} {row['status']} "
-                    f"created={row['created_at']} started={row['started_at'] or '-'} "
-                    f"finished={row['finished_at'] or '-'}"
+                    f"created={_display_datetime(row['created_at'])} "
+                    f"started={_display_datetime(row['started_at'])} "
+                    f"finished={_display_datetime(row['finished_at'])}"
                 )
             return
 
@@ -514,7 +535,7 @@ def cmd_jobs(args: list[str]) -> None:
                     else ""
                 )
                 print(
-                    f"[{log_row['level']}] {log_row['created_at']} "
+                    f"[{log_row['level']}] {_display_datetime(log_row['created_at'])} "
                     f"{log_row['phase'] or log_row['event'] or 'log'}{doc}: {log_row['message']}"
                 )
             return
