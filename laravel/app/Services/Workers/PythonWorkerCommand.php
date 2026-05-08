@@ -145,7 +145,7 @@ class PythonWorkerCommand
     private function captureOutput(WorkerJob $workerJob, string $type, string $buffer): void
     {
         foreach (preg_split('/\R/', $buffer) ?: [] as $line) {
-            $line = trim($line);
+            $line = $this->sanitizeOutputLine(trim($line));
 
             if ($line === '') {
                 continue;
@@ -164,6 +164,13 @@ class PythonWorkerCommand
 
             $this->persistLog($workerJob, $type, $line);
         }
+    }
+
+    private function sanitizeOutputLine(string $line): string
+    {
+        $line = preg_replace('/\e\[[0-?]*[ -\/]*[@-~]/', '', $line) ?? $line;
+
+        return trim($line);
     }
 
     /**

@@ -68,6 +68,25 @@ PHP);
         @unlink($script);
     }
 
+    public function test_strips_ansi_escape_codes_from_worker_logs(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+echo "\033[2m2026-05-08T11:14:28Z\033[0m [\033[32minfo\033[0m] initializing database".PHP_EOL;
+file_put_contents($output, json_encode(['ok' => true]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX_EMBED]);
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $message = $workerJob->logs()->firstOrFail()->message;
+        $this->assertSame('2026-05-08T11:14:28Z [info] initializing database', $message);
+
+        @unlink($script);
+    }
+
     public function test_ingests_python_emitted_review_suggestions_after_worker_success(): void
     {
         $script = $this->writeWorkerStub(<<<'PHP'
