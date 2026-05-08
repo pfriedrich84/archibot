@@ -377,11 +377,15 @@ async def cmd_commit_review(
         else []
     )
     overrides = overrides or {}
-    override_tag_ids = _coerce_tag_ids(overrides.get("tag_ids") if isinstance(overrides.get("tag_ids"), list) else [])
+    override_tag_ids = _coerce_tag_ids(
+        overrides.get("tag_ids") if isinstance(overrides.get("tag_ids"), list) else []
+    )
 
     decision = ReviewDecision(
         suggestion_id=suggestion.id,
-        title=str(overrides.get("title") or suggestion.proposed_title or suggestion.original_title or ""),
+        title=str(
+            overrides.get("title") or suggestion.proposed_title or suggestion.original_title or ""
+        ),
         date=str(overrides.get("date") or suggestion.effective_date),
         correspondent_id=_coerce_optional_int(overrides.get("correspondent_id"))
         or suggestion.effective_correspondent_id,

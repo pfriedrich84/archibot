@@ -69,7 +69,8 @@ class LegacyPythonState
 
     /**
      * @template T
-     * @param callable(PDO): T $callback
+     *
+     * @param  callable(PDO): T  $callback
      * @return T|null
      */
     private function withConnection(callable $callback): mixed

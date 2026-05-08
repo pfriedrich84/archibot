@@ -49,14 +49,14 @@ class StatsAndErrorsTest extends TestCase
         $user = User::factory()->create();
         $path = tempnam(sys_get_temp_dir(), 'archibot-python-db-');
         $pdo = new PDO('sqlite:'.$path);
-        $pdo->exec("CREATE TABLE processed_documents (document_id INTEGER)");
-        $pdo->exec("CREATE TABLE doc_embedding_meta (document_id INTEGER)");
-        $pdo->exec("CREATE TABLE errors (id INTEGER PRIMARY KEY, occurred_at TEXT, stage TEXT, document_id INTEGER, message TEXT, details TEXT)");
-        $pdo->exec("CREATE TABLE audit_log (action TEXT, actor TEXT)");
-        $pdo->exec("CREATE TABLE suggestions (status TEXT, confidence INTEGER, judge_verdict TEXT)");
-        $pdo->exec("CREATE TABLE phase_timing (phase TEXT, success INTEGER, duration_ms INTEGER)");
-        $pdo->exec("INSERT INTO processed_documents VALUES (1)");
-        $pdo->exec("INSERT INTO doc_embedding_meta VALUES (1)");
+        $pdo->exec('CREATE TABLE processed_documents (document_id INTEGER)');
+        $pdo->exec('CREATE TABLE doc_embedding_meta (document_id INTEGER)');
+        $pdo->exec('CREATE TABLE errors (id INTEGER PRIMARY KEY, occurred_at TEXT, stage TEXT, document_id INTEGER, message TEXT, details TEXT)');
+        $pdo->exec('CREATE TABLE audit_log (action TEXT, actor TEXT)');
+        $pdo->exec('CREATE TABLE suggestions (status TEXT, confidence INTEGER, judge_verdict TEXT)');
+        $pdo->exec('CREATE TABLE phase_timing (phase TEXT, success INTEGER, duration_ms INTEGER)');
+        $pdo->exec('INSERT INTO processed_documents VALUES (1)');
+        $pdo->exec('INSERT INTO doc_embedding_meta VALUES (1)');
         $pdo->exec("INSERT INTO errors(stage, message) VALUES ('classify', 'Failed')");
         $pdo->exec("INSERT INTO audit_log VALUES ('commit', 'auto')");
         $pdo->exec("INSERT INTO suggestions VALUES ('pending', 87, 'accepted')");
@@ -108,7 +108,7 @@ class StatsAndErrorsTest extends TestCase
         $user = User::factory()->create();
         $path = tempnam(sys_get_temp_dir(), 'archibot-python-db-');
         $pdo = new PDO('sqlite:'.$path);
-        $pdo->exec("CREATE TABLE errors (id INTEGER PRIMARY KEY, occurred_at TEXT, stage TEXT, document_id INTEGER, message TEXT, details TEXT)");
+        $pdo->exec('CREATE TABLE errors (id INTEGER PRIMARY KEY, occurred_at TEXT, stage TEXT, document_id INTEGER, message TEXT, details TEXT)');
         $pdo->exec("INSERT INTO errors(occurred_at, stage, document_id, message, details) VALUES ('2026-05-08T10:00:00Z', 'classify', 123, 'Classifier failed', '{\"reason\":\"timeout\"}')");
         $this->app->instance(LegacyPythonState::class, new LegacyPythonState($path));
 

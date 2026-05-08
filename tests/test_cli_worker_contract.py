@@ -361,8 +361,17 @@ def test_commit_review_worker_contract_reads_source_suggestion_id(
 ) -> None:
     input_path = tmp_path / "input.json"
     output_path = tmp_path / "output.json"
+    payload = {
+        "source_suggestion_id": 7,
+        "title": "Reviewed title",
+        "date": "2026-05-01",
+        "correspondent_id": 11,
+        "doctype_id": 12,
+        "storage_path_id": 13,
+        "tag_ids": [21, "22", None],
+    }
     input_path.write_text(
-        json.dumps({"id": 17, "type": "commit_review", "payload": {"source_suggestion_id": 7}}),
+        json.dumps({"id": 17, "type": "commit_review", "payload": payload}),
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -378,7 +387,7 @@ def test_commit_review_worker_contract_reads_source_suggestion_id(
 
         main()
 
-    mock_cmd.assert_called_once_with(7)
+    mock_cmd.assert_called_once_with(7, payload)
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["ok"] is True
     assert payload["command"] == "commit-review"
