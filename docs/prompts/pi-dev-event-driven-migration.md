@@ -16,7 +16,11 @@ The agent does **not** need to stop after the foundation phases. Work as far as 
 
 Make small, logically grouped commits.
 
+The agent may commit after each phase or logical milestone, but must ensure CI/tests are green before moving on to the next phase.
+
 Parallelization through subagents is allowed and encouraged when it keeps changes reviewable and avoids conflicting edits.
+
+The agent must actively manage its own context and the context of subagents. Keep shared contracts, decisions, open tasks and phase progress summarized in repository files so later subagents do not rely on hidden chat history.
 
 ## Mission
 
@@ -90,6 +94,8 @@ docs/decisions/0005-use-webhooks-as-primary-trigger.md
 16. Per-document reprocess must be possible manually through Laravel and automatically through relevant Paperless webhooks.
 17. Manual per-document reprocess must have an admin-only Laravel button on the document detail page.
 18. The existing Laravel dashboard must be extended/reused. Do not invent a separate new operations UI unless explicitly requested.
+19. CI/tests must be green before moving from one phase/logical milestone to the next.
+20. Subagent work must be coordinated through explicit shared contracts and durable notes in the repo, not hidden context.
 
 ## Parallelization / Subagents
 
@@ -112,12 +118,76 @@ Rules for parallel work:
 
 - Work on `main` is allowed for this development tool unless the operator asks otherwise.
 - Keep commits small and reviewable.
+- Commits are allowed after each phase or logical milestone.
+- Before starting the next phase or milestone, run the relevant tests/CI checks and ensure they are green.
+- If CI fails, fix CI before continuing with new feature work.
 - Avoid overlapping edits to the same files where possible.
 - Do not let subagents create conflicting schemas or duplicate abstractions.
 - Shared contracts must be written down before multiple agents implement against them.
 - Architecture decisions must be reflected in docs/ADRs.
 - If two subagents need the same interface, define the interface first.
 - Do not merge partial implementations that violate the non-negotiable rules.
+
+## Context Management for Subagents
+
+The agent must actively manage context.
+
+Before launching or delegating to subagents:
+
+1. Create or update a short shared implementation outline.
+2. Define shared contracts first: tables, statuses, event names, queues, helper names, API boundaries.
+3. Assign each subagent a clear scope and file ownership where possible.
+4. Record open decisions and assumptions in docs, ADRs or a phase notes file.
+5. Keep summaries concise but durable in repository files.
+
+Recommended durable context files:
+
+```text
+docs/governance/agent-workflow.md
+docs/governance/review-checklist.md
+docs/implementation-plan-event-driven-archibot.md
+docs/prompts/pi-dev-event-driven-migration.md
+```
+
+If useful during implementation, create a temporary but committed phase note such as:
+
+```text
+docs/implementation-notes/event-driven-phase-status.md
+```
+
+This file may track:
+
+- current phase
+- completed commits
+- open tasks
+- schema contracts
+- shared helper names
+- known failing tests
+- next safe step
+
+Do not rely on hidden chat history for essential context.
+
+## CI / Test Gate
+
+After each phase or logical milestone:
+
+1. Run the relevant test suite and linters available in the repo.
+2. If GitHub Actions or another CI exists, ensure the latest commit is green before continuing.
+3. If a test cannot be run locally, document why and provide the closest smoke check.
+4. Do not continue with new feature work while known CI/test failures remain from your changes.
+5. Keep the app runnable after each committed milestone.
+
+Minimum expected checks, depending on what exists in the repo:
+
+```text
+Python tests / lint / type checks
+Laravel/PHP tests
+frontend/build checks if UI was changed
+migration smoke checks
+Docker compose startup smoke check
+Dramatiq worker startup smoke check
+webhook endpoint smoke check
+```
 
 ## Implementation Strategy
 
@@ -662,7 +732,8 @@ At the end, provide:
 5. How to trigger a test webhook
 6. How to start the Dramatiq worker
 7. Which tests/smoke checks pass
-8. What remains, if anything, for the next phase
+8. CI status / test status at each committed milestone
+9. What remains, if anything, for the next phase
 
 ## Guardrails
 
@@ -679,3 +750,5 @@ ARCHIBOT_WORKER_BACKEND=legacy|dramatiq
 The architecture direction is replacement, not permanent dual-mode.
 
 If a change risks breaking the running app, prefer a small safe step plus a documented smoke check over a huge unreviewable rewrite.
+
+Do not continue to a new phase while CI/tests are red because of your changes. Fix the failures first.
