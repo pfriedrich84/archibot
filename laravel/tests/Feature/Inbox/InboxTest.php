@@ -19,6 +19,9 @@ class InboxTest extends TestCase
         AppSetting::put('paperless.url', 'https://paperless.example');
         AppSetting::put('paperless.inbox_tag_id', '7');
         Http::fake([
+            'paperless.example/api/correspondents/*' => Http::response(['results' => [['id' => 10, 'name' => 'ACME GmbH']]], 200),
+            'paperless.example/api/document_types/*' => Http::response(['results' => [['id' => 20, 'name' => 'Invoice']]], 200),
+            'paperless.example/api/tags/*' => Http::response(['results' => [['id' => 7, 'name' => 'Inbox']]], 200),
             'paperless.example/api/documents/*' => Http::response([
                 'results' => [
                     [
@@ -45,9 +48,16 @@ class InboxTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('inbox/Index')
                 ->where('inboxTagId', 7)
+                ->where('inboxTagName', 'Inbox')
                 ->where('error', null)
+                ->where('kpis.total', 1)
+                ->where('kpis.with_review', 1)
+                ->where('kpis.pending_review', 1)
                 ->where('documents.0.id', 123)
                 ->where('documents.0.title', 'Inbox scan')
+                ->where('documents.0.correspondent_name', 'ACME GmbH')
+                ->where('documents.0.document_type_name', 'Invoice')
+                ->where('documents.0.tags.0.name', 'Inbox')
                 ->where('documents.0.review.id', $suggestion->id)
                 ->where('documents.0.review.proposed_title', 'Suggested inbox title')
             );
@@ -66,6 +76,7 @@ class InboxTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('inbox/Index')
                 ->where('documents', [])
+                ->where('kpis.total', 0)
                 ->where('error', 'Paperless inbox tag ID is not configured.')
             );
     }
@@ -74,7 +85,12 @@ class InboxTest extends TestCase
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
         AppSetting::put('paperless.inbox_tag_id', '7');
-        Http::fake(['paperless.example/api/documents/*' => Http::response([], 500)]);
+        Http::fake([
+            'paperless.example/api/correspondents/*' => Http::response(['results' => []], 200),
+            'paperless.example/api/document_types/*' => Http::response(['results' => []], 200),
+            'paperless.example/api/tags/*' => Http::response(['results' => []], 200),
+            'paperless.example/api/documents/*' => Http::response([], 500),
+        ]);
 
         $user = User::factory()->create(['paperless_token' => 'user-token']);
 

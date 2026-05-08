@@ -111,7 +111,7 @@
                 <dd>{paperlessLabel}</dd>
             </div>
             <div>
-                <dt class="text-muted-foreground">Inbox tag ID</dt>
+                <dt class="text-muted-foreground">Inbox tag reference</dt>
                 <dd>{status.inbox_tag_id || 'Not configured'}</dd>
             </div>
         </dl>
@@ -128,7 +128,8 @@
             <div
                 class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
             >
-                <span class="font-medium">#{job.id} {job.type}</span>
+                <span class="font-medium">Worker job {job.id} · {job.type}</span
+                >
                 <span class="rounded-full bg-muted px-2 py-0.5"
                     >{job.status}</span
                 >

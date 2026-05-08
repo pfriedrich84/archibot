@@ -2,14 +2,17 @@
 
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
+use App\Http\Controllers\ErrorsController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\OcrReviewController;
 use App\Http\Controllers\PaperlessWebhookController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
+use App\Http\Controllers\StatsController;
 use App\Http\Controllers\Workers\WorkerJobController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
@@ -46,6 +49,12 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
 
+        Route::get('chat', [ChatController::class, 'page'])->name('chat.page');
+        Route::get('api/v1/chat', [ChatController::class, 'index'])->name('chat.index');
+        Route::post('api/v1/chat/ask', [ChatController::class, 'ask'])->name('chat.ask');
+        Route::get('api/v1/chat/sessions/{session}', [ChatController::class, 'show'])->name('chat.show');
+        Route::delete('api/v1/chat/sessions/{session}', [ChatController::class, 'destroy'])->name('chat.destroy');
+
         Route::get('{segment}', [EntityApprovalController::class, 'index'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.index');
@@ -60,8 +69,11 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
             ->name('entities.unblacklist');
 
         Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
+        Route::post('review/bulk/accept', [ReviewSuggestionController::class, 'bulkAccept'])->name('review.bulk.accept');
+        Route::post('review/bulk/reject', [ReviewSuggestionController::class, 'bulkReject'])->name('review.bulk.reject');
         Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');
         Route::get('review/{reviewSuggestion}/preview', [ReviewSuggestionController::class, 'preview'])->name('review.preview');
+        Route::post('review/{reviewSuggestion}/save', [ReviewSuggestionController::class, 'save'])->name('review.save');
         Route::post('review/{reviewSuggestion}/accept', [ReviewSuggestionController::class, 'accept'])->name('review.accept');
         Route::post('review/{reviewSuggestion}/reject', [ReviewSuggestionController::class, 'reject'])->name('review.reject');
 
@@ -72,6 +84,9 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('ocr-reviews/{ocrReview}/reject', [OcrReviewController::class, 'reject'])->name('ocr-reviews.reject');
         Route::post('ocr-reviews/{ocrReview}/restore', [OcrReviewController::class, 'restore'])->name('ocr-reviews.restore');
 
+        Route::get('stats', StatsController::class)->name('stats.index');
+        Route::get('errors', ErrorsController::class)->name('errors.index');
+
         Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
         Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
         Route::post('worker-jobs/{workerJob}/stop', [WorkerJobController::class, 'stop'])->name('worker-jobs.stop');
@@ -80,6 +95,8 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
+        Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
+        Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');
         Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
     });
 

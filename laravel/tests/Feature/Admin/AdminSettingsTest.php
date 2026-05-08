@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Models\AppSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -25,6 +26,7 @@ class AdminSettingsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/Settings')
                 ->has('groups')
+                ->has('prompts')
                 ->where('groups.0.name', 'Paperless')
                 ->where('groups.0.settings.0.key', 'paperless.url')
                 ->where('groups.0.settings.0.value', 'https://paperless.test')
@@ -49,6 +51,35 @@ class AdminSettingsTest extends TestCase
             'actor_user_id' => $admin->id,
             'event' => 'admin_settings.updated',
             'target_type' => 'app_settings',
+        ]);
+    }
+
+    public function test_admin_can_update_and_reset_prompt_overrides(): void
+    {
+        config(['archibot.data_dir' => storage_path('framework/testing/prompts')]);
+        File::deleteDirectory(config('archibot.data_dir'));
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->patch(route('admin.settings.prompts.update', 'chat'), [
+                'content' => 'Custom chat prompt',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('Custom chat prompt', File::get(config('archibot.data_dir').'/chat_system.txt'));
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'admin_prompt.updated',
+            'target_id' => 'chat',
+        ]);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.settings.prompts.reset', 'chat'))
+            ->assertRedirect();
+
+        $this->assertFalse(File::exists(config('archibot.data_dir').'/chat_system.txt'));
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'admin_prompt.reset',
+            'target_id' => 'chat',
         ]);
     }
 

@@ -21,12 +21,12 @@
     );
 </script>
 
-<AppHead title={`OCR review #${review.id}`} />
+<AppHead title={`OCR review ${review.id}`} />
 
 <div class="space-y-6">
     <Heading
-        title={`OCR review #${review.id}`}
-        description={`Paperless document #${review.paperless_document_id}. Review and edit OCR text before writing it back.`}
+        title={`OCR review ${review.id}`}
+        description={`Paperless document reference ${review.paperless_document_id}. Review and edit OCR text before writing it back.`}
     />
 
     <div

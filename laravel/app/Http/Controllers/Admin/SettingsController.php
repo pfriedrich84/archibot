@@ -9,6 +9,7 @@ use App\Services\Settings\SettingsCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\File;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -21,6 +22,7 @@ class SettingsController extends Controller
 
         return Inertia::render('admin/Settings', [
             'groups' => $catalog->groupedForDisplay(),
+            'prompts' => $this->promptPayloads(),
         ]);
     }
 
@@ -96,6 +98,102 @@ class SettingsController extends Controller
         }
 
         return back()->with('status', 'settings-updated');
+    }
+
+    public function updatePrompt(Request $request, string $prompt): RedirectResponse
+    {
+        $this->authorizeAdmin($request);
+        $spec = $this->promptSpec($prompt);
+        abort_if($spec === null, 404);
+
+        $validated = $request->validate([
+            'content' => ['required', 'string', 'max:80000'],
+        ]);
+
+        File::ensureDirectoryExists($this->promptDirectory());
+        File::put($this->promptPath($spec['filename']), $validated['content']);
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'admin_prompt.updated',
+            'target_type' => 'prompt',
+            'target_id' => $prompt,
+            'metadata' => ['prompt' => $prompt],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return back()->with('status', 'prompt-updated');
+    }
+
+    public function resetPrompt(Request $request, string $prompt): RedirectResponse
+    {
+        $this->authorizeAdmin($request);
+        $spec = $this->promptSpec($prompt);
+        abort_if($spec === null, 404);
+
+        File::delete($this->promptPath($spec['filename']));
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'admin_prompt.reset',
+            'target_type' => 'prompt',
+            'target_id' => $prompt,
+            'metadata' => ['prompt' => $prompt],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return back()->with('status', 'prompt-reset');
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function promptPayloads(): array
+    {
+        return collect($this->promptSpecs())
+            ->map(function (array $spec): array {
+                $path = $this->promptPath($spec['filename']);
+                $content = is_file($path) ? File::get($path) : '';
+
+                return [
+                    ...$spec,
+                    'content' => $content,
+                    'has_override' => is_file($path),
+                    'update_url' => route('admin.settings.prompts.update', $spec['key']),
+                    'reset_url' => route('admin.settings.prompts.reset', $spec['key']),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /** @return array<int, array{key: string, filename: string, label: string, description: string}> */
+    private function promptSpecs(): array
+    {
+        return [
+            ['key' => 'classify', 'filename' => 'classify_system.txt', 'label' => 'Klassifikation', 'description' => 'System prompt for document classification and JSON suggestions.'],
+            ['key' => 'classify_judge', 'filename' => 'classify_judge_system.txt', 'label' => 'LLM-as-Judge', 'description' => 'System prompt for optional validation of uncertain classifications.'],
+            ['key' => 'ocr_correction', 'filename' => 'ocr_correction_system.txt', 'label' => 'OCR text correction', 'description' => 'System prompt for text-only OCR correction.'],
+            ['key' => 'ocr_vision_light', 'filename' => 'ocr_vision_light_system.txt', 'label' => 'OCR vision light', 'description' => 'System prompt for fast vision OCR checks.'],
+            ['key' => 'ocr_vision_full', 'filename' => 'ocr_vision_full_system.txt', 'label' => 'OCR vision full', 'description' => 'System prompt for page-by-page vision OCR correction.'],
+            ['key' => 'chat', 'filename' => 'chat_system.txt', 'label' => 'RAG Chat', 'description' => 'System prompt for questions about Paperless documents.'],
+        ];
+    }
+
+    /** @return array{key: string, filename: string, label: string, description: string}|null */
+    private function promptSpec(string $key): ?array
+    {
+        return collect($this->promptSpecs())->firstWhere('key', $key);
+    }
+
+    private function promptDirectory(): string
+    {
+        return (string) config('archibot.data_dir', '/data');
+    }
+
+    private function promptPath(string $filename): string
+    {
+        return $this->promptDirectory().DIRECTORY_SEPARATOR.$filename;
     }
 
     private function normalizeValue(mixed $value, string $type): ?string

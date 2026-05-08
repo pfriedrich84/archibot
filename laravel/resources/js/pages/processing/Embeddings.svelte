@@ -21,9 +21,12 @@
         document_id: number;
         title: string | null;
         correspondent: number | null;
+        correspondent_name: string | null;
         doctype: number | null;
+        doctype_name: string | null;
         storage_path: number | null;
-        tags: Array<number | string>;
+        storage_path_name: string | null;
+        tags: { id: number | null; name: string | null }[];
         created_date: string | null;
         indexed_at: string | null;
     };
@@ -125,7 +128,9 @@
         {#if latestReindexJob}
             <div class="space-y-3 p-4 text-sm">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">Job #{latestReindexJob.id}</span>
+                    <span class="font-medium"
+                        >Worker job {latestReindexJob.id}</span
+                    >
                     <span class="rounded-full bg-muted px-2 py-0.5"
                         >{latestReindexJob.status}</span
                     >
@@ -153,11 +158,11 @@
                 {#if latestReindexJob.progress.message || latestReindexJob.progress.document_id}
                     <div class="text-muted-foreground">
                         {latestReindexJob.progress.message ?? 'Last update'}
-                        {#if latestReindexJob.progress.document_id}
-                            · Document #{latestReindexJob.progress.document_id}
-                        {/if}
                         {#if latestReindexJob.progress.document_title}
                             · {latestReindexJob.progress.document_title}
+                        {:else if latestReindexJob.progress.document_id}
+                            · Document reference {latestReindexJob.progress
+                                .document_id}
                         {/if}
                     </div>
                 {/if}
@@ -181,7 +186,9 @@
         {#each snapshot.items as item (item.document_id)}
             <div class="grid gap-2 border-b p-4 text-sm last:border-b-0">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">Document #{item.document_id}</span
+                    <span class="font-medium"
+                        >{item.title ||
+                            `Document reference ${item.document_id}`}</span
                     >
                     {#if item.created_date}
                         <span class="text-muted-foreground"
@@ -189,17 +196,26 @@
                         >
                     {/if}
                 </div>
-                <div>{item.title || 'Untitled'}</div>
+                <div class="text-muted-foreground">
+                    Paperless document reference {item.document_id}
+                </div>
                 <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {#if item.correspondent}<span
-                            >Correspondent #{item.correspondent}</span
+                            >Correspondent: {item.correspondent_name ??
+                                `reference ${item.correspondent}`}</span
                         >{/if}
-                    {#if item.doctype}<span>Type #{item.doctype}</span>{/if}
+                    {#if item.doctype}<span
+                            >Type: {item.doctype_name ??
+                                `reference ${item.doctype}`}</span
+                        >{/if}
                     {#if item.storage_path}<span
-                            >Storage #{item.storage_path}</span
+                            >Storage: {item.storage_path_name ??
+                                `reference ${item.storage_path}`}</span
                         >{/if}
                     {#if item.tags.length > 0}<span
-                            >Tags: {item.tags.join(', ')}</span
+                            >Tags: {item.tags
+                                .map((tag) => tag.name ?? `reference ${tag.id}`)
+                                .join(', ')}</span
                         >{/if}
                     {#if item.indexed_at}<span>Indexed {item.indexed_at}</span
                         >{/if}

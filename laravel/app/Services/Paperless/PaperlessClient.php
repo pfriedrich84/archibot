@@ -123,28 +123,31 @@ class PaperlessClient
      */
     public function tags(string $token): array
     {
-        $response = $this->request($token)->get('/api/tags/', ['page_size' => 200]);
+        return $this->entities($token, '/api/tags/', 'tags');
+    }
 
-        if (! $response->successful()) {
-            throw new RuntimeException('Could not fetch Paperless tags.');
-        }
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function correspondents(string $token): array
+    {
+        return $this->entities($token, '/api/correspondents/', 'correspondents');
+    }
 
-        $payload = $response->json();
-        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function documentTypes(string $token): array
+    {
+        return $this->entities($token, '/api/document_types/', 'document types');
+    }
 
-        if (! is_array($items)) {
-            throw new RuntimeException('Paperless tags response was not JSON.');
-        }
-
-        return collect($items)
-            ->filter(fn ($item) => is_array($item) && isset($item['id'], $item['name']))
-            ->map(fn (array $item): array => [
-                'id' => (int) $item['id'],
-                'name' => (string) $item['name'],
-            ])
-            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values()
-            ->all();
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function storagePaths(string $token): array
+    {
+        return $this->entities($token, '/api/storage_paths/', 'storage paths');
     }
 
     public function createTag(string $token, string $name): int
@@ -249,6 +252,49 @@ class PaperlessClient
         }
 
         return PaperlessUser::fromPayload($payload, $fallbackUsername);
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    private function entities(string $token, string $endpoint, string $label): array
+    {
+        $items = [];
+        $nextPath = $endpoint;
+        $query = ['page_size' => 200];
+
+        while ($nextPath !== null) {
+            $response = $this->request($token)->get($nextPath, $query);
+
+            if (! $response->successful()) {
+                throw new RuntimeException("Could not fetch Paperless {$label}.");
+            }
+
+            $payload = $response->json();
+            $pageItems = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+
+            if (! is_array($pageItems)) {
+                throw new RuntimeException("Paperless {$label} response was not JSON.");
+            }
+
+            foreach ($pageItems as $item) {
+                if (is_array($item) && isset($item['id'], $item['name'])) {
+                    $items[] = [
+                        'id' => (int) $item['id'],
+                        'name' => (string) $item['name'],
+                    ];
+                }
+            }
+
+            $next = is_array($payload) ? ($payload['next'] ?? null) : null;
+            $nextPath = is_string($next) && $next !== '' ? $next : null;
+            $query = [];
+        }
+
+        return collect($items)
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
     }
 
     private function createEntity(string $token, string $endpoint, string $name, string $label): int

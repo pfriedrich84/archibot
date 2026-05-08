@@ -57,7 +57,17 @@ Read these instead of expanding this file with duplicate details:
 ## Agent docs
 
 - [`RULES.md`](RULES.md) — non-negotiable project rules.
+- [`CONSTRAINTS.md`](CONSTRAINTS.md) — deployment, runtime, data, and compatibility constraints.
+- [`CODING.md`](CODING.md) — implementation guidance.
+- [`REVIEW.md`](REVIEW.md) — review checklist and focus areas.
 - [`CHECKS.md`](CHECKS.md) — validation commands.
 - [`WORKFLOWS.md`](WORKFLOWS.md) — reusable maintenance workflows.
 - [`SAFETY.md`](SAFETY.md) — safe/unsafe operations.
+- [`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md) — dependency and container safety guidance.
+- [`MEMORY.md`](MEMORY.md) — durable non-secret repo memory.
+- [`DECISIONS.md`](DECISIONS.md) — lightweight decision log.
+- [`ANTI_PATTERNS.md`](ANTI_PATTERNS.md) — approaches to avoid.
+- [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) — completion criteria.
 - [`AUTORESEARCH.md`](AUTORESEARCH.md) — optional metric-driven experiment workflow.
+- [`ASSESSMENT.md`](ASSESSMENT.md) — governance assessment and next steps.
+- [`CHANGELOG_AGENT.md`](CHANGELOG_AGENT.md) — governance-system changelog.

@@ -44,7 +44,18 @@
         settings: Setting[];
     };
 
-    let { groups }: { groups: SettingGroup[] } = $props();
+    type Prompt = {
+        key: string;
+        label: string;
+        description: string;
+        content: string;
+        has_override: boolean;
+        update_url: string;
+        reset_url: string;
+    };
+
+    let { groups, prompts }: { groups: SettingGroup[]; prompts: Prompt[] } =
+        $props();
 </script>
 
 <AppHead title="Admin settings" />
@@ -157,4 +168,85 @@
             </div>
         {/snippet}
     </Form>
+
+    <section class="grid gap-5 rounded-xl border p-6">
+        <div>
+            <h2 class="text-lg font-semibold">System prompts</h2>
+            <p class="text-sm text-muted-foreground">
+                Edit Python prompt overrides stored in the shared data
+                directory. Resetting a prompt removes the override and falls
+                back to the bundled default.
+            </p>
+        </div>
+
+        {#each prompts as prompt (prompt.key)}
+            <article class="grid gap-3 rounded-lg border p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="font-medium">{prompt.label}</h3>
+                        <p class="text-sm text-muted-foreground">
+                            {prompt.description}
+                        </p>
+                    </div>
+                    <span class="rounded-full bg-muted px-2 py-1 text-xs">
+                        {prompt.has_override
+                            ? 'Custom override'
+                            : 'Bundled default'}
+                    </span>
+                </div>
+
+                <Form
+                    method="patch"
+                    action={prompt.update_url}
+                    class="grid gap-3"
+                >
+                    {#snippet children({
+                        errors,
+                        processing,
+                        recentlySuccessful,
+                    })}
+                        <textarea
+                            name="content"
+                            rows="8"
+                            maxlength="80000"
+                            class="min-h-48 rounded-md border bg-background p-3 font-mono text-sm"
+                            placeholder="Leave empty only if you want to write an empty override."
+                            >{prompt.content}</textarea
+                        >
+                        <InputError message={errors.content} />
+                        <div class="flex flex-wrap items-center gap-3">
+                            <Button
+                                type="submit"
+                                size="sm"
+                                disabled={processing}
+                            >
+                                {#if processing}<Spinner />{/if}
+                                Save prompt
+                            </Button>
+                            {#if recentlySuccessful}
+                                <span class="text-sm text-green-600"
+                                    >Prompt saved.</span
+                                >
+                            {/if}
+                        </div>
+                    {/snippet}
+                </Form>
+
+                {#if prompt.has_override}
+                    <Form method="delete" action={prompt.reset_url}>
+                        {#snippet children({ processing })}
+                            <Button
+                                type="submit"
+                                size="sm"
+                                variant="outline"
+                                disabled={processing}
+                            >
+                                Reset to bundled default
+                            </Button>
+                        {/snippet}
+                    </Form>
+                {/if}
+            </article>
+        {/each}
+    </section>
 </div>

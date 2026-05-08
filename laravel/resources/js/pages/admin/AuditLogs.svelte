@@ -14,6 +14,7 @@
 <script lang="ts">
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { displayEntries, formatTarget } from '@/lib/display';
 
     type AuditLog = {
         id: number;
@@ -73,13 +74,29 @@
                             {/if}
                         </td>
                         <td class="px-4 py-3">
-                            {log.target_type ?? '—'}{#if log.target_id}
-                                #{log.target_id}{/if}
+                            {formatTarget(log.target_type, log.target_id)}
                         </td>
                         <td class="px-4 py-3">
-                            <code class="break-all text-xs">
-                                {JSON.stringify(log.metadata)}
-                            </code>
+                            {#if displayEntries(log.metadata).length > 0}
+                                <dl class="grid gap-1 text-xs">
+                                    {#each displayEntries(log.metadata) as entry (entry.key)}
+                                        <div
+                                            class="grid gap-1 sm:grid-cols-[8rem_1fr]"
+                                        >
+                                            <dt class="text-muted-foreground">
+                                                {entry.label}
+                                            </dt>
+                                            <dd class="break-words">
+                                                {entry.value}
+                                            </dd>
+                                        </div>
+                                    {/each}
+                                </dl>
+                            {:else}
+                                <span class="text-xs text-muted-foreground"
+                                    >—</span
+                                >
+                            {/if}
                         </td>
                     </tr>
                 {:else}

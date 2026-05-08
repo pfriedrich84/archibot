@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppSetting;
 use App\Models\WorkerJob;
+use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -14,7 +16,7 @@ class EmbeddingsController extends Controller
     public function index(Request $request): Response
     {
         $limit = min(500, max(1, (int) $request->integer('limit', 100)));
-        $snapshot = $this->embeddingSnapshot($limit);
+        $snapshot = $this->embeddingSnapshot($request, $limit);
 
         $latestReindexJob = WorkerJob::query()
             ->where('type', WorkerJob::TYPE_REINDEX)
@@ -39,7 +41,7 @@ class EmbeddingsController extends Controller
     /**
      * @return array{db_path: string, error: string|null, total_embedded: int, items: array<int, array<string, mixed>>}
      */
-    private function embeddingSnapshot(int $limit): array
+    private function embeddingSnapshot(Request $request, int $limit): array
     {
         $dbPath = $this->pythonDatabasePath();
 
@@ -68,11 +70,30 @@ class EmbeddingsController extends Controller
             $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
             $statement->execute();
 
-            $items = array_map(function (array $row): array {
+            $entityMaps = $this->entityMaps($request);
+
+            $items = array_map(function (array $row) use ($entityMaps): array {
+                $correspondentId = is_numeric($row['correspondent'] ?? null) ? (int) $row['correspondent'] : null;
+                $doctypeId = is_numeric($row['doctype'] ?? null) ? (int) $row['doctype'] : null;
+                $storagePathId = is_numeric($row['storage_path'] ?? null) ? (int) $row['storage_path'] : null;
+                $row['correspondent_name'] = $correspondentId ? ($entityMaps['correspondents'][$correspondentId] ?? null) : null;
+                $row['doctype_name'] = $doctypeId ? ($entityMaps['documentTypes'][$doctypeId] ?? null) : null;
+                $row['storage_path_name'] = $storagePathId ? ($entityMaps['storagePaths'][$storagePathId] ?? null) : null;
                 $tags = json_decode((string) ($row['tags_json'] ?? '[]'), true);
                 unset($row['tags_json']);
 
-                $row['tags'] = is_array($tags) ? $tags : [];
+                $row['tags'] = collect(is_array($tags) ? $tags : [])
+                    ->filter(fn ($tag) => is_numeric($tag) || is_string($tag))
+                    ->map(function ($tag) use ($entityMaps): array {
+                        $id = is_numeric($tag) ? (int) $tag : null;
+
+                        return [
+                            'id' => $id,
+                            'name' => $id ? ($entityMaps['tags'][$id] ?? null) : (string) $tag,
+                        ];
+                    })
+                    ->values()
+                    ->all();
 
                 return $row;
             }, $statement->fetchAll());
@@ -90,6 +111,39 @@ class EmbeddingsController extends Controller
                 'total_embedded' => 0,
                 'items' => [],
             ];
+        }
+    }
+
+    /**
+     * @return array{correspondents: array<int, string>, documentTypes: array<int, string>, storagePaths: array<int, string>, tags: array<int, string>}
+     */
+    private function entityMaps(Request $request): array
+    {
+        $empty = [
+            'correspondents' => [],
+            'documentTypes' => [],
+            'storagePaths' => [],
+            'tags' => [],
+        ];
+
+        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $token = $request->user()?->paperless_token;
+
+        if (! $paperlessUrl || ! $token) {
+            return $empty;
+        }
+
+        try {
+            $client = app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+
+            return [
+                'correspondents' => collect($client->correspondents($token))->pluck('name', 'id')->all(),
+                'documentTypes' => collect($client->documentTypes($token))->pluck('name', 'id')->all(),
+                'storagePaths' => collect($client->storagePaths($token))->pluck('name', 'id')->all(),
+                'tags' => collect($client->tags($token))->pluck('name', 'id')->all(),
+            ];
+        } catch (Throwable) {
+            return $empty;
         }
     }
 

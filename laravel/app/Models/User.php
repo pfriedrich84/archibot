@@ -40,4 +40,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(McpToken::class);
     }
+
+    public function chatSessions(): HasMany
+    {
+        return $this->hasMany(ChatSession::class);
+    }
 }

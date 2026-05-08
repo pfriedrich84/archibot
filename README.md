@@ -133,6 +133,7 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 | [`pyproject.toml`](./pyproject.toml) | Python-Paket, Dependencies, Ruff- und pytest-Konfiguration |
 | [`constraints.txt`](./constraints.txt) | Gepinnte transitive Python-Abhaengigkeiten fuer reproduzierbare Builds |
 | [`scripts/check_dependency_age.py`](./scripts/check_dependency_age.py) | 3-Tage Supply-Chain-Check fuer Python-Dependencies |
+| [`scripts/check_markdown_links.py`](./scripts/check_markdown_links.py) | Lokaler Markdown-Link-Check fuer Dokumentation |
 | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | CI: Lint, Tests, Audit, Dependency-Age, Docker Build, Grype/Trivy |
 | [`laravel/composer.json`](./laravel/composer.json) | Laravel/PHP Dependencies und Backend-Test-Scripts |
 | [`laravel/package.json`](./laravel/package.json) | Frontend-Scripts fuer Lint, Format, Typecheck und Build |

@@ -265,6 +265,32 @@ async def _ensure_entity_cache(session: ChatSession, paperless: PaperlessClient)
 # ---------------------------------------------------------------------------
 # RAG pipeline
 # ---------------------------------------------------------------------------
+async def ask_stateless(
+    question: str,
+    history: list[dict[str, Any]],
+    paperless: PaperlessClient,
+    ollama: OllamaClient,
+) -> ChatResult:
+    """Run the RAG pipeline for Laravel-owned persistent web chat sessions.
+
+    Laravel sends the durable message history for the session. Python builds a
+    temporary in-process session so retrieval, token budgeting, source metadata,
+    and Ollama error handling stay shared with Telegram/runtime chat, but Python
+    does not own web session persistence.
+    """
+    session = ChatSession(origin="web")
+    session.messages = [
+        {
+            "role": msg.get("role"),
+            "content": msg.get("content", ""),
+            **({"sources": msg.get("sources")} if "sources" in msg else {}),
+        }
+        for msg in history[-MAX_HISTORY:]
+        if msg.get("role") in {"user", "assistant"} and isinstance(msg.get("content"), str)
+    ]
+    return await ask(question, session, paperless, ollama)
+
+
 async def ask(
     question: str,
     session: ChatSession,

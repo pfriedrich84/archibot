@@ -65,9 +65,9 @@
             >
                 <div class="space-y-1">
                     <div class="text-sm text-muted-foreground">
-                        Paperless document #{review.paperless_document_id}
+                        Paperless document reference {review.paperless_document_id}
                     </div>
-                    <h2 class="font-medium">OCR review #{review.id}</h2>
+                    <h2 class="font-medium">OCR review {review.id}</h2>
                     <p class="text-sm text-muted-foreground">
                         Status: {review.status}
                         {#if review.write_back_error}

@@ -20,9 +20,11 @@
         id: number;
         title: string;
         created_date: string | null;
-        correspondent: number | null;
-        document_type: number | null;
-        tags: number[];
+        correspondent_id: number | null;
+        correspondent_name: string | null;
+        document_type_id: number | null;
+        document_type_name: string | null;
+        tags: { id: number; name: string | null }[];
         review: {
             id: number;
             status: string;
@@ -33,10 +35,19 @@
     let {
         documents,
         inboxTagId,
+        inboxTagName,
+        kpis,
         error,
     }: {
         documents: InboxDocument[];
         inboxTagId: number;
+        inboxTagName: string | null;
+        kpis: {
+            total: number;
+            with_review: number;
+            without_review: number;
+            pending_review: number;
+        };
         error: string | null;
     } = $props();
 </script>
@@ -49,10 +60,34 @@
         description="Paperless inbox documents loaded with the current user's Paperless token."
     />
 
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Inbox documents</div>
+            <div class="mt-2 text-3xl font-semibold">{kpis.total}</div>
+        </section>
+        <section class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">With review</div>
+            <div class="mt-2 text-3xl font-semibold">{kpis.with_review}</div>
+        </section>
+        <section class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Without review</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {kpis.without_review}
+            </div>
+        </section>
+        <section class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Pending review</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {kpis.pending_review}
+            </div>
+        </section>
+    </div>
+
     <div
         class="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground"
     >
-        Inbox tag ID: {inboxTagId || 'not configured'}
+        Inbox tag: {inboxTagName ??
+            `reference ${inboxTagId || 'not configured'}`}
     </div>
 
     {#if error}
@@ -71,18 +106,25 @@
         {#each documents as document (document.id)}
             <div class="grid gap-2 border-b p-4 text-sm last:border-b-0">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium"
-                        >#{document.id} {document.title || 'Untitled'}</span
-                    >
+                    <span class="font-medium">
+                        {document.title || `Document reference ${document.id}`}
+                    </span>
                     {#if document.created_date}
-                        <span class="text-muted-foreground"
-                            >{document.created_date}</span
-                        >
+                        <span class="text-muted-foreground">
+                            {document.created_date}
+                        </span>
                     {/if}
                 </div>
                 <div class="text-xs text-muted-foreground">
-                    Correspondent: {document.correspondent ?? '—'} · Type: {document.document_type ??
-                        '—'} · Tags: {document.tags.join(', ') || '—'}
+                    Document reference {document.id} · Correspondent: {document.correspondent_name ??
+                        (document.correspondent_id
+                            ? `reference ${document.correspondent_id}`
+                            : '—')} · Type: {document.document_type_name ??
+                        (document.document_type_id
+                            ? `reference ${document.document_type_id}`
+                            : '—')} · Tags: {document.tags
+                        .map((tag) => tag.name ?? `reference ${tag.id}`)
+                        .join(', ') || '—'}
                 </div>
                 {#if document.review}
                     <div class="text-xs">
@@ -91,7 +133,8 @@
                             class="underline"
                             href={reviewShow(document.review.id).url}
                         >
-                            #{document.review.id} · {document.review.status}
+                            Review suggestion {document.review.id} · {document
+                                .review.status}
                             {#if document.review.proposed_title}
                                 · {document.review.proposed_title}
                             {/if}

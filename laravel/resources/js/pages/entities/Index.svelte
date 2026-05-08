@@ -90,14 +90,14 @@
                     <div class="font-medium">{entity.name}</div>
                     <div class="text-xs text-muted-foreground">
                         {#if entity.source_review_suggestion_id}
-                            From review #{entity.source_review_suggestion_id}
+                            From review suggestion {entity.source_review_suggestion_id}
                         {:else}
                             Imported proposal
                         {/if}
                         {#if entity.sync_status}
                             · Python sync: {entity.sync_status}
                             {#if entity.sync_worker_job_id}
-                                via worker #{entity.sync_worker_job_id}
+                                via worker job {entity.sync_worker_job_id}
                             {/if}
                         {/if}
                     </div>
@@ -145,8 +145,8 @@
             <div class="border-b p-4 text-sm last:border-b-0">
                 <span class="font-medium">{entity.name}</span>
                 <span class="text-muted-foreground">
-                    · Paperless #{entity.paperless_id ?? '—'} · Python sync {entity.sync_status ??
-                        '—'}</span
+                    · Paperless reference {entity.paperless_id ?? '—'} · Python sync
+                    {entity.sync_status ?? '—'}</span
                 >
             </div>
         {:else}

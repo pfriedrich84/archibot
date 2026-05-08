@@ -61,6 +61,20 @@ class WorkerJobController extends Controller
             'jobs' => $jobs,
             'allowedTypes' => WorkerJob::userQueueableTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
+            'readiness' => [
+                'queued' => WorkerJob::query()->where('status', WorkerJob::STATUS_QUEUED)->count(),
+                'running' => WorkerJob::query()->whereIn('status', WorkerJob::runningStatuses())->count(),
+                'failed' => WorkerJob::query()->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])->count(),
+                'last_finished_at' => WorkerJob::query()->whereNotNull('finished_at')->latest('finished_at')->value('finished_at')?->toISOString(),
+                'document_processing_active' => WorkerJob::query()
+                    ->whereIn('type', WorkerJob::documentProcessingTypes())
+                    ->whereIn('status', WorkerJob::activeStatuses())
+                    ->exists(),
+                'reindex_active' => WorkerJob::query()
+                    ->whereIn('type', WorkerJob::blockingTypes())
+                    ->whereIn('status', WorkerJob::activeStatuses())
+                    ->exists(),
+            ],
         ]);
     }
 

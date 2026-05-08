@@ -20,6 +20,7 @@ class WorkerJobTest extends TestCase
         $user = User::factory()->create();
         $job = WorkerJob::factory()->create([
             'type' => WorkerJob::TYPE_REINDEX,
+            'status' => WorkerJob::STATUS_SUCCEEDED,
             'result' => ['ingest' => ['review_suggestions_imported' => 1]],
         ]);
         $suggestion = ReviewSuggestion::factory()->create([
@@ -40,6 +41,9 @@ class WorkerJobTest extends TestCase
                 ->where('jobs.data.0.review_suggestions.0.id', $suggestion->id)
                 ->where('jobs.data.0.review_suggestions.0.proposed_title', 'Imported invoice')
                 ->where('allowedTypes.0', WorkerJob::TYPE_POLL)
+                ->where('readiness.queued', 0)
+                ->where('readiness.running', 0)
+                ->where('readiness.failed', 0)
             );
     }
 

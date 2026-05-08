@@ -17,14 +17,97 @@ class ReviewSuggestionController extends Controller
 {
     public function index(Request $request): Response
     {
-        $suggestions = ReviewSuggestion::query()
-            ->where('status', ReviewSuggestion::STATUS_PENDING)
-            ->latest()
-            ->paginate(25)
+        $filters = $request->validate([
+            'status' => ['nullable', 'string', 'in:pending,accepted,rejected,all'],
+            'min_conf' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'max_conf' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'judge_verdict' => ['nullable', 'string', 'max:50'],
+            'correspondent_id' => ['nullable', 'integer', 'min:1'],
+            'storage_path_id' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable', 'string', 'in:created_desc,confidence_asc,confidence_desc'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'q' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        if (isset($filters['min_conf'], $filters['max_conf']) && (int) $filters['min_conf'] > (int) $filters['max_conf']) {
+            [$filters['min_conf'], $filters['max_conf']] = [$filters['max_conf'], $filters['min_conf']];
+        }
+
+        $status = $filters['status'] ?? ReviewSuggestion::STATUS_PENDING;
+        $query = ReviewSuggestion::query();
+
+        if ($status === ReviewSuggestion::STATUS_PENDING) {
+            $query->whereIn('id', ReviewSuggestion::query()
+                ->selectRaw('MAX(id)')
+                ->groupBy('paperless_document_id'));
+        }
+
+        if ($status !== 'all') {
+            $query->where('status', $status);
+        }
+        if (isset($filters['min_conf'])) {
+            $query->where('confidence', '>=', $filters['min_conf']);
+        }
+        if (isset($filters['max_conf'])) {
+            $query->where('confidence', '<=', $filters['max_conf']);
+        }
+        if (! empty($filters['judge_verdict'])) {
+            $query->where('judge_verdict', $filters['judge_verdict']);
+        }
+        if (! empty($filters['correspondent_id'])) {
+            $query->where(function ($query) use ($filters): void {
+                $query->where('proposed_correspondent_id', $filters['correspondent_id'])
+                    ->orWhere(fn ($query) => $query
+                        ->whereNull('proposed_correspondent_id')
+                        ->where('original_correspondent_id', $filters['correspondent_id']));
+            });
+        }
+        if (! empty($filters['storage_path_id'])) {
+            $query->where(function ($query) use ($filters): void {
+                $query->where('proposed_storage_path_id', $filters['storage_path_id'])
+                    ->orWhere(fn ($query) => $query
+                        ->whereNull('proposed_storage_path_id')
+                        ->where('original_storage_path_id', $filters['storage_path_id']));
+            });
+        }
+        if (! empty($filters['q'])) {
+            $query->where(function ($query) use ($filters): void {
+                $query->where('proposed_title', 'like', '%'.$filters['q'].'%')
+                    ->orWhere('original_title', 'like', '%'.$filters['q'].'%')
+                    ->orWhere('proposed_correspondent_name', 'like', '%'.$filters['q'].'%')
+                    ->orWhere('proposed_document_type_name', 'like', '%'.$filters['q'].'%');
+            });
+        }
+
+        match ($filters['sort'] ?? 'created_desc') {
+            'confidence_asc' => $query->orderBy('confidence')->latest('id'),
+            'confidence_desc' => $query->orderByDesc('confidence')->latest('id'),
+            default => $query->latest(),
+        };
+
+        $suggestions = $query
+            ->paginate((int) ($filters['per_page'] ?? 25))
+            ->withQueryString()
             ->through(fn (ReviewSuggestion $suggestion) => $this->summary($suggestion));
 
         return Inertia::render('review/Index', [
             'suggestions' => $suggestions,
+            'filters' => [
+                'status' => $status,
+                'min_conf' => $filters['min_conf'] ?? null,
+                'max_conf' => $filters['max_conf'] ?? null,
+                'judge_verdict' => $filters['judge_verdict'] ?? '',
+                'correspondent_id' => $filters['correspondent_id'] ?? null,
+                'storage_path_id' => $filters['storage_path_id'] ?? null,
+                'sort' => $filters['sort'] ?? 'created_desc',
+                'per_page' => $filters['per_page'] ?? 25,
+                'q' => $filters['q'] ?? '',
+            ],
+            'actions' => [
+                'index' => route('review.index'),
+                'bulkAccept' => route('review.bulk.accept'),
+                'bulkReject' => route('review.bulk.reject'),
+            ],
         ]);
     }
 
@@ -32,6 +115,7 @@ class ReviewSuggestionController extends Controller
     {
         return Inertia::render('review/Show', [
             'suggestion' => $this->detail($reviewSuggestion),
+            'entityOptions' => $this->entityOptions($request),
         ]);
     }
 
@@ -39,39 +123,7 @@ class ReviewSuggestionController extends Controller
     {
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
 
-        if ($reviewSuggestion->source_suggestion_id !== null) {
-            $workerJob = WorkerJob::query()->create([
-                'type' => WorkerJob::TYPE_COMMIT_REVIEW,
-                'status' => WorkerJob::STATUS_QUEUED,
-                'payload' => [
-                    'review_suggestion_id' => $reviewSuggestion->id,
-                    'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
-                    'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-                ],
-                'created_by_user_id' => $request->user()->id,
-            ]);
-
-            AuditLog::query()->create([
-                'actor_user_id' => $request->user()->id,
-                'event' => 'worker_job.queued',
-                'target_type' => 'worker_job',
-                'target_id' => (string) $workerJob->id,
-                'metadata' => [
-                    'type' => $workerJob->type,
-                    'review_suggestion_id' => $reviewSuggestion->id,
-                    'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
-                ],
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-            ]);
-
-            $reviewSuggestion->forceFill([
-                'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
-                'commit_worker_job_id' => $workerJob->id,
-            ])->save();
-
-            RunPythonWorkerJob::dispatch($workerJob->id);
-        }
+        $this->queueCommitWorker($request, $reviewSuggestion);
 
         return redirect()->route('review.index');
     }
@@ -81,6 +133,49 @@ class ReviewSuggestionController extends Controller
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
         return redirect()->route('review.index');
+    }
+
+    public function save(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
+    {
+        $this->assertReviewable($reviewSuggestion);
+
+        $validated = $request->validate([
+            'proposed_title' => ['nullable', 'string', 'max:255'],
+            'proposed_date' => ['nullable', 'date'],
+            'proposed_correspondent_id' => ['nullable', 'integer', 'min:1'],
+            'proposed_correspondent_name' => ['nullable', 'string', 'max:255'],
+            'proposed_document_type_id' => ['nullable', 'integer', 'min:1'],
+            'proposed_document_type_name' => ['nullable', 'string', 'max:255'],
+            'proposed_storage_path_id' => ['nullable', 'integer', 'min:1'],
+            'proposed_storage_path_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $reviewSuggestion->fill($validated)->save();
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'review_suggestion.saved',
+            'target_type' => 'review_suggestion',
+            'target_id' => (string) $reviewSuggestion->id,
+            'metadata' => [
+                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                'fields' => array_keys($validated),
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return redirect()->route('review.show', $reviewSuggestion);
+    }
+
+    public function bulkAccept(Request $request): RedirectResponse
+    {
+        return $this->bulkReview($request, ReviewSuggestion::STATUS_ACCEPTED);
+    }
+
+    public function bulkReject(Request $request): RedirectResponse
+    {
+        return $this->bulkReview($request, ReviewSuggestion::STATUS_REJECTED);
     }
 
     public function preview(Request $request, ReviewSuggestion $reviewSuggestion)
@@ -107,9 +202,93 @@ class ReviewSuggestionController extends Controller
         ]);
     }
 
+    private function bulkReview(Request $request, string $status): RedirectResponse
+    {
+        $validated = $request->validate([
+            'suggestion_ids' => ['required', 'array', 'min:1'],
+            'suggestion_ids.*' => ['integer', 'distinct'],
+        ]);
+
+        $changed = 0;
+        $skipped = 0;
+        $suggestions = ReviewSuggestion::query()
+            ->whereIn('id', $validated['suggestion_ids'])
+            ->get();
+
+        foreach ($suggestions as $suggestion) {
+            if ($suggestion->status !== ReviewSuggestion::STATUS_PENDING || ! $this->isLatestForDocument($suggestion)) {
+                $skipped++;
+
+                continue;
+            }
+
+            $this->review($request, $suggestion, $status);
+            if ($status === ReviewSuggestion::STATUS_ACCEPTED) {
+                $this->queueCommitWorker($request, $suggestion);
+            }
+            $changed++;
+        }
+
+        $skipped += count($validated['suggestion_ids']) - $suggestions->count();
+
+        return redirect()->route('review.index')->with('status', "Review bulk action completed: {$changed} changed, {$skipped} skipped.");
+    }
+
+    private function queueCommitWorker(Request $request, ReviewSuggestion $reviewSuggestion): ?WorkerJob
+    {
+        if ($reviewSuggestion->source_suggestion_id === null) {
+            return null;
+        }
+
+        $workerJob = WorkerJob::query()->create([
+            'type' => WorkerJob::TYPE_COMMIT_REVIEW,
+            'status' => WorkerJob::STATUS_QUEUED,
+            'payload' => [
+                'review_suggestion_id' => $reviewSuggestion->id,
+                'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
+                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                'title' => $reviewSuggestion->proposed_title,
+                'date' => $reviewSuggestion->proposed_date?->toDateString(),
+                'correspondent_id' => $reviewSuggestion->proposed_correspondent_id,
+                'doctype_id' => $reviewSuggestion->proposed_document_type_id,
+                'storage_path_id' => $reviewSuggestion->proposed_storage_path_id,
+                'tag_ids' => collect($reviewSuggestion->proposed_tags ?? [])
+                    ->pluck('id')
+                    ->filter(fn ($id) => is_numeric($id))
+                    ->map(fn ($id) => (int) $id)
+                    ->values()
+                    ->all(),
+            ],
+            'created_by_user_id' => $request->user()->id,
+        ]);
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'worker_job.queued',
+            'target_type' => 'worker_job',
+            'target_id' => (string) $workerJob->id,
+            'metadata' => [
+                'type' => $workerJob->type,
+                'review_suggestion_id' => $reviewSuggestion->id,
+                'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        $reviewSuggestion->forceFill([
+            'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+            'commit_worker_job_id' => $workerJob->id,
+        ])->save();
+
+        RunPythonWorkerJob::dispatch($workerJob->id);
+
+        return $workerJob;
+    }
+
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
     {
-        abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING, 409);
+        $this->assertReviewable($suggestion);
 
         $suggestion->markReviewed($status, $request->user());
 
@@ -125,6 +304,44 @@ class ReviewSuggestionController extends Controller
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
+    }
+
+    /**
+     * @return array{correspondents: array<int, array{id: int, name: string}>, documentTypes: array<int, array{id: int, name: string}>, storagePaths: array<int, array{id: int, name: string}>}
+     */
+    private function entityOptions(Request $request): array
+    {
+        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $token = $request->user()?->paperless_token;
+
+        if (! $paperlessUrl || ! $token) {
+            return ['correspondents' => [], 'documentTypes' => [], 'storagePaths' => []];
+        }
+
+        $client = new PaperlessClient($paperlessUrl);
+
+        try {
+            return [
+                'correspondents' => $client->correspondents($token),
+                'documentTypes' => $client->documentTypes($token),
+                'storagePaths' => $client->storagePaths($token),
+            ];
+        } catch (\Throwable) {
+            return ['correspondents' => [], 'documentTypes' => [], 'storagePaths' => []];
+        }
+    }
+
+    private function assertReviewable(ReviewSuggestion $suggestion): void
+    {
+        abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
+    }
+
+    private function isLatestForDocument(ReviewSuggestion $suggestion): bool
+    {
+        return ! ReviewSuggestion::query()
+            ->where('paperless_document_id', $suggestion->paperless_document_id)
+            ->where('id', '>', $suggestion->id)
+            ->exists();
     }
 
     /**
@@ -145,6 +362,8 @@ class ReviewSuggestionController extends Controller
             'proposed_title' => $suggestion->proposed_title,
             'proposed_correspondent_name' => $suggestion->proposed_correspondent_name,
             'proposed_document_type_name' => $suggestion->proposed_document_type_name,
+            'proposed_storage_path_name' => $suggestion->proposed_storage_path_name,
+            'judge_verdict' => $suggestion->judge_verdict,
             'created_at' => $suggestion->created_at?->toISOString(),
         ];
     }
@@ -179,6 +398,7 @@ class ReviewSuggestionController extends Controller
                 'tags' => $suggestion->proposed_tags ?? [],
             ],
             'context_documents' => $suggestion->context_documents ?? [],
+            'save_url' => route('review.save', $suggestion),
         ];
     }
 }

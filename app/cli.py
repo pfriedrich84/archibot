@@ -220,6 +220,15 @@ def _coerce_tag_ids(values: list[object]) -> list[int]:
     return tag_ids
 
 
+def _coerce_optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
     """Process exactly one document by ID (OCR + embed + classify)."""
     from app.db import get_conn
@@ -346,7 +355,9 @@ async def cmd_sync_entity_approval(
     return result
 
 
-async def cmd_commit_review(suggestion_id: int) -> dict[str, object]:
+async def cmd_commit_review(
+    suggestion_id: int, overrides: dict[str, object] | None = None
+) -> dict[str, object]:
     """Commit an accepted Python-origin review suggestion to Paperless."""
     from app.db import get_conn
     from app.models import ReviewDecision, SuggestionRow
@@ -365,14 +376,20 @@ async def cmd_commit_review(suggestion_id: int) -> dict[str, object]:
         if isinstance(proposed_tags, list)
         else []
     )
+    overrides = overrides or {}
+    override_tag_ids = _coerce_tag_ids(overrides.get("tag_ids") if isinstance(overrides.get("tag_ids"), list) else [])
+
     decision = ReviewDecision(
         suggestion_id=suggestion.id,
-        title=suggestion.proposed_title or suggestion.original_title or "",
-        date=suggestion.effective_date,
-        correspondent_id=suggestion.effective_correspondent_id,
-        doctype_id=suggestion.effective_doctype_id,
-        storage_path_id=suggestion.effective_storage_path_id,
-        tag_ids=tag_ids,
+        title=str(overrides.get("title") or suggestion.proposed_title or suggestion.original_title or ""),
+        date=str(overrides.get("date") or suggestion.effective_date),
+        correspondent_id=_coerce_optional_int(overrides.get("correspondent_id"))
+        or suggestion.effective_correspondent_id,
+        doctype_id=_coerce_optional_int(overrides.get("doctype_id"))
+        or suggestion.effective_doctype_id,
+        storage_path_id=_coerce_optional_int(overrides.get("storage_path_id"))
+        or suggestion.effective_storage_path_id,
+        tag_ids=override_tag_ids or tag_ids,
         action="accept",
     )
 
@@ -395,6 +412,20 @@ async def cmd_commit_review(suggestion_id: int) -> dict[str, object]:
     }
     print(f"Suggestion #{suggestion_id} commit complete: {result}")
     return result
+
+
+async def cmd_chat_ask(question: str, history: list[dict[str, Any]]) -> dict[str, object]:
+    """Answer one Laravel-persistent Chat/RAG turn from serialized history."""
+    from app.chat import ask_stateless
+
+    paperless = PaperlessClient()
+    ollama = OllamaClient()
+    try:
+        result = await ask_stateless(question, history, paperless, ollama)
+        return {"answer": result.answer, "sources": result.sources}
+    finally:
+        await paperless.aclose()
+        await ollama.aclose()
 
 
 def cmd_reset(include_config: bool = False) -> None:
@@ -595,6 +626,10 @@ COMMANDS = {
     "sync-entity-approval": (
         "Synchronize a Laravel entity approval decision into the Python worker DB",
         cmd_sync_entity_approval,
+    ),
+    "chat-ask": (
+        "Answer one stateless Chat/RAG request from a JSON contract",
+        cmd_chat_ask,
     ),
     "jobs": ("List/status/stop/retry persistent Laravel worker jobs", None),
     "reset": ("Delete all state and recreate empty DB (--yes required)", None),
@@ -939,11 +974,22 @@ def main() -> None:
                     raise ValueError(
                         "Worker payload requires source_suggestion_id for commit-review"
                     )
-                output_payload["result"] = asyncio.run(cmd_func(suggestion_id))
+                output_payload["result"] = asyncio.run(
+                    cmd_func(suggestion_id, _contract_payload(input_payload))
+                )
             elif cmd_name == "sync-entity-approval":
                 output_payload["result"] = asyncio.run(
                     cmd_func(*_contract_entity_approval(input_payload))
                 )
+            elif cmd_name == "chat-ask":
+                payload = _contract_payload(input_payload)
+                question = payload.get("question")
+                history = payload.get("history", [])
+                if not isinstance(question, str) or not question.strip():
+                    raise ValueError("Chat contract requires a non-empty question")
+                if not isinstance(history, list):
+                    raise ValueError("Chat contract history must be a list")
+                output_payload.update(asyncio.run(cmd_func(question.strip(), history)))
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)

@@ -8,9 +8,12 @@
     import Inbox from 'lucide-svelte/icons/inbox';
     import KeyRound from 'lucide-svelte/icons/key-round';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
+    import MessageCircle from 'lucide-svelte/icons/message-circle';
     import ScrollText from 'lucide-svelte/icons/scroll-text';
     import Settings from 'lucide-svelte/icons/settings';
+    import Sigma from 'lucide-svelte/icons/sigma';
     import Tag from 'lucide-svelte/icons/tag';
+    import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
     import UserRound from 'lucide-svelte/icons/user-round';
     import Workflow from 'lucide-svelte/icons/workflow';
     import type { Snippet } from 'svelte';
@@ -61,6 +64,11 @@
             icon: ClipboardCheck,
         },
         {
+            title: 'Chat/RAG',
+            href: '/chat',
+            icon: MessageCircle,
+        },
+        {
             title: 'OCR reviews',
             href: '/ocr-reviews',
             icon: FileText,
@@ -95,6 +103,16 @@
             title: 'Embeddings',
             href: '/embeddings',
             icon: Database,
+        },
+        {
+            title: 'Stats',
+            href: '/stats',
+            icon: Sigma,
+        },
+        {
+            title: 'Errors',
+            href: '/errors',
+            icon: TriangleAlert,
         },
         ...(user?.is_admin
             ? [

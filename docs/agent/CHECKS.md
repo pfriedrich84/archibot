@@ -55,3 +55,11 @@ grype archibot-local-check --only-fixed --fail-on high
 ## Documentation-only changes
 
 Usually no test suite is required. Still verify that links, command examples, and referenced paths are correct.
+
+```bash
+python3 scripts/check_markdown_links.py
+```
+
+Use `python scripts/check_markdown_links.py` in environments where `python` points to Python 3.
+
+Use this for README, `docs/`, `AGENTS.md`, `CLAUDE.md`, and GitHub template changes.
