@@ -10,10 +10,16 @@ The existing Laravel method is the required authorization gate:
 is_admin()
 ```
 
+Laravel is the central operations console for job control. Every admin-only job-control capability must have a corresponding Laravel UI action/button, protected by backend `is_admin()` authorization.
+
 ## Hard Rule
 
 ```text
 Any action that starts, retries, cancels, forces, commits, dismisses, repairs or otherwise controls pipeline/job execution must require is_admin().
+```
+
+```text
+Every admin-only job-control action must be reachable through an explicit Laravel UI button/action for admins.
 ```
 
 ## Admin-Only Actions
@@ -36,11 +42,82 @@ Require `is_admin()` for:
 - change worker/pipeline settings
 - change LLM provider/model used for processing
 
+## Required Laravel Admin Buttons / Actions
+
+Laravel must expose admin-only buttons/actions for all job-control functions.
+
+Minimum required actions:
+
+| Capability | Laravel UI action/button |
+|---|---|
+| Start document processing | `Process document` |
+| Retry document pipeline | `Retry document` |
+| Retry failed actor/pipeline items | `Retry failed items` |
+| Retry failed webhook delivery | `Retry webhook delivery` |
+| Cancel queued/running pipeline | `Cancel run` |
+| Force reprocess document | `Force reprocess` |
+| Start/resume embedding build | `Start embedding build` / `Resume embedding build` |
+| Mark embedding index stale | `Mark embedding index stale` |
+| Start reindex | `Start reindex` |
+| Start reconciliation/poll manually | `Run reconciliation now` / `Run poll now` |
+| Dismiss permanent webhook failure | `Dismiss webhook failure` |
+| Commit review suggestion | `Commit to Paperless` |
+| Sync entity approval | `Sync entity approval` |
+| Change worker/pipeline settings | `Save worker settings` |
+| Change LLM provider/model | `Save LLM settings` |
+
+Button labels may be localized, but the action must be obvious and traceable to the underlying command/event.
+
+## Button Placement Guidance
+
+Recommended UI locations:
+
+```text
+Document detail page:
+- Process document
+- Retry document
+- Force reprocess
+
+Pipeline run detail page:
+- Retry failed items
+- Cancel run
+
+Embedding status page:
+- Start embedding build
+- Resume embedding build
+- Mark embedding index stale
+
+Reindex/maintenance page:
+- Start reindex
+- Run reconciliation now
+- Run poll now
+
+Webhook delivery detail/list:
+- Retry webhook delivery
+- Dismiss webhook failure
+
+Review suggestion detail/list:
+- Commit to Paperless
+
+Entity approval UI:
+- Sync entity approval
+
+Settings/Admin area:
+- Save worker settings
+- Save LLM settings
+```
+
 ## Non-Admin Behavior
 
 Non-admin users may be allowed to view permitted status pages, but they must not mutate job or pipeline execution state.
 
 The UI should hide or disable controls for non-admins, but this is not sufficient. The backend must enforce authorization.
+
+For non-admin users:
+
+- job-control buttons should be hidden or disabled;
+- direct API calls must return `403`;
+- no command, pipeline run, retry, cancel or Paperless mutation may be created.
 
 ## Laravel/API Enforcement
 
@@ -104,6 +181,7 @@ job_control.reindex_requested
 job_control.embedding_build_requested
 job_control.webhook_failure_dismissed
 job_control.review_commit_requested
+job_control.settings_changed
 ```
 
 Recommended audit fields:
@@ -124,6 +202,7 @@ created_at
 For every PR touching job-control UI/API:
 
 - Does every mutating endpoint check `is_admin()`?
+- Does every admin-only job-control function have a Laravel UI button/action?
 - Are UI controls hidden or disabled for non-admins?
 - Is backend authorization enforced even if the UI is bypassed?
 - Are job-control actions audited?
@@ -142,6 +221,8 @@ Minimum tests:
 - non-admin cannot start embedding build
 - non-admin cannot dismiss failed webhook delivery
 - admin can perform job-control actions
+- required admin job-control buttons/actions are rendered for admins
+- required admin job-control buttons/actions are hidden or disabled for non-admins
 - hidden UI buttons are not the only protection
 - webhook ingestion still works without user session but with webhook security
 
