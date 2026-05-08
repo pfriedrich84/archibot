@@ -34,6 +34,12 @@ class PythonWorkerCommand
             'status' => WorkerJob::STATUS_RUNNING,
             'started_at' => now(),
             'error' => null,
+            'progress' => $workerJob->progress ?: [
+                'phase' => 'starting',
+                'done' => 0,
+                'total' => 0,
+                'message' => 'Worker started',
+            ],
         ])->save();
 
         $paths = $this->writeInput($workerJob);

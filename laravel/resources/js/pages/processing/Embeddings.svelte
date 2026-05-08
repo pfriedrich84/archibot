@@ -10,7 +10,8 @@
 </script>
 
 <script lang="ts">
-    import { Form } from '@inertiajs/svelte';
+    import { Form, router } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@
 
     type WorkerJob = {
         id: number;
+        type: string;
         status: string;
         progress: {
             phase?: string;
@@ -75,6 +77,23 @@
               )
             : 0,
     );
+
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            if (
+                latestReindexJob &&
+                ['queued', 'running', 'cancelling'].includes(
+                    latestReindexJob.status,
+                )
+            ) {
+                router.reload({
+                    only: ['snapshot', 'latestReindexJob'],
+                });
+            }
+        }, 3000);
+
+        return () => window.clearInterval(interval);
+    });
 </script>
 
 <AppHead title="Embeddings" />
@@ -129,7 +148,7 @@
             <div class="space-y-3 p-4 text-sm">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-medium"
-                        >Worker job {latestReindexJob.id}</span
+                        >Worker job {latestReindexJob.id} · {latestReindexJob.type}</span
                     >
                     <span class="rounded-full bg-muted px-2 py-0.5"
                         >{latestReindexJob.status}</span

@@ -120,7 +120,7 @@
     onMount(() => {
         const interval = window.setInterval(() => {
             router.reload({
-                only: ['jobs'],
+                only: ['jobs', 'readiness'],
             });
         }, 5000);
 

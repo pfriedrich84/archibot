@@ -125,10 +125,30 @@ async def cmd_reindex_ocr(*, force: bool = False) -> dict[str, object]:
         await ollama.aclose()
 
 
-async def cmd_reindex_embed() -> dict[str, object]:
+async def cmd_reindex_embed(
+    *, emit_progress: bool = False, job_id: str | None = None, job_type: str = "reindex_embed"
+) -> dict[str, object]:
     """Rebuild embeddings only (skip OCR, use cached OCR text if available)."""
+    from datetime import UTC, datetime
+
+    import app.indexer as indexer
     from app.db import EMBED_DIM, get_conn
-    from app.indexer import initial_index
+    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress, initial_index
+
+    enable_reindex_progress_stdout(emit_progress)
+    progress = get_reindex_progress()
+    progress.running = True
+    progress.total = 0
+    progress.done = 0
+    progress.failed = 0
+    progress.started_at = datetime.now(tz=UTC).isoformat()
+    progress.finished_at = None
+    progress.error = None
+    progress.cancelled = False
+    progress.phase = "prepare"
+    progress.job_id = job_id
+    progress.job_type = job_type
+    indexer._emit_reindex_progress(event="job_started", message="Embedding reindex started")
 
     # Drop + recreate vec0 so dimension changes take effect, also clear FTS index
     with get_conn() as conn:
@@ -147,9 +167,15 @@ async def cmd_reindex_embed() -> dict[str, object]:
     ollama = OllamaClient()
     try:
         count = await initial_index(paperless, ollama)
+        progress.phase = "finished"
+        progress.finished_at = datetime.now(tz=UTC).isoformat()
+        indexer._emit_reindex_progress(
+            event="job_finished", message="Embedding reindex finished", indexed=count
+        )
         print(f"Embedding complete: {count} documents indexed.")
-        return {"indexed": count}
+        return {"indexed": count, "progress": progress.__dict__.copy()}
     finally:
+        progress.running = False
         await paperless.aclose()
         await ollama.aclose()
 
@@ -947,7 +973,13 @@ def main() -> None:
                 if ocr_reviews:
                     output_payload["ocr_reviews"] = ocr_reviews
             elif cmd_name == "reindex-embed":
-                result = asyncio.run(cmd_func())
+                result = asyncio.run(
+                    cmd_func(
+                        emit_progress=True,
+                        job_id=str(input_payload.get("id")),
+                        job_type="reindex_embed",
+                    )
+                )
                 output_payload["result"] = result
             elif cmd_name in {"process-doc", "process-document"}:
                 document_id = _contract_document_id(input_payload)

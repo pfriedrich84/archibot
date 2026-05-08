@@ -19,7 +19,11 @@ class EmbeddingsController extends Controller
         $snapshot = $this->embeddingSnapshot($request, $limit);
 
         $latestReindexJob = WorkerJob::query()
-            ->where('type', WorkerJob::TYPE_REINDEX)
+            ->whereIn('type', [
+                WorkerJob::TYPE_REINDEX,
+                WorkerJob::TYPE_REINDEX_OCR,
+                WorkerJob::TYPE_REINDEX_EMBED,
+            ])
             ->latest()
             ->first();
 
@@ -27,6 +31,7 @@ class EmbeddingsController extends Controller
             'snapshot' => $snapshot,
             'latestReindexJob' => $latestReindexJob ? [
                 'id' => $latestReindexJob->id,
+                'type' => $latestReindexJob->type,
                 'status' => $latestReindexJob->status,
                 'progress' => $latestReindexJob->progress ?? [],
                 'result' => $latestReindexJob->result ?? [],
