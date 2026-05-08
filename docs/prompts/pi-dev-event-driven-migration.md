@@ -8,6 +8,16 @@ Repository:
 pfriedrich84/archibot
 ```
 
+## Working Mode
+
+This repository/tool is actively in development. It is acceptable to work directly on `main` unless the operator explicitly asks for a branch.
+
+The agent does **not** need to stop after the foundation phases. Work as far as possible toward the full documented target architecture, as long as changes remain coherent, reviewable and aligned with the non-negotiable rules.
+
+Make small, logically grouped commits.
+
+Parallelization through subagents is allowed and encouraged when it keeps changes reviewable and avoids conflicting edits.
+
 ## Mission
 
 Migrate Archibot toward the documented event-driven target architecture.
@@ -21,7 +31,7 @@ Archibot is moving from the current Laravel-subprocess/Python-CLI/APScheduler/SQ
 - Python Dramatiq actors as the pipeline engine
 - durable progress, retries, locks and recovery
 - centralized structured observability
-- Laravel as the admin operations console
+- the existing Laravel dashboard as the admin operations console
 - admin-only job control via `is_admin()`
 
 ## Read First
@@ -50,6 +60,16 @@ docs/decisions/0011-require-admin-authorization-for-job-control.md
 
 If `AGENTS.md` does not exist or does not reflect the current architecture, create/update it first.
 
+If the earlier ADRs are missing, create them before or alongside implementation:
+
+```text
+docs/decisions/0001-use-dramatiq.md
+docs/decisions/0002-use-postgresql-pgvector.md
+docs/decisions/0003-use-rabbitmq.md
+docs/decisions/0004-no-legacy-compatibility-mode.md
+docs/decisions/0005-use-webhooks-as-primary-trigger.md
+```
+
 ## Non-negotiable Architecture Rules
 
 1. Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
@@ -69,6 +89,7 @@ If `AGENTS.md` does not exist or does not reflect the current architecture, crea
 15. Do not log secrets, API keys, full OCR text, full document contents or full LLM prompts.
 16. Per-document reprocess must be possible manually through Laravel and automatically through relevant Paperless webhooks.
 17. Manual per-document reprocess must have an admin-only Laravel button on the document detail page.
+18. The existing Laravel dashboard must be extended/reused. Do not invent a separate new operations UI unless explicitly requested.
 
 ## Parallelization / Subagents
 
@@ -80,14 +101,17 @@ You may use subagents for independent tracks, for example:
 Subagent A: Governance, AGENTS.md, ADRs, docs
 Subagent B: Docker/infrastructure, PostgreSQL, RabbitMQ, pgvector
 Subagent C: Laravel migrations/models/API/webhook endpoint
-Subagent D: Python Dramatiq skeleton, actors, broker config
+Subagent D: Python Dramatiq actors, broker config, worker bootstrap
 Subagent E: Progress/retry/recovery helpers and tests
-Subagent F: Admin Laravel UI buttons/actions and authorization tests
+Subagent F: Existing Laravel dashboard buttons/actions and authorization tests
+Subagent G: Document pipeline migration
+Subagent H: Reconciliation/polling and reindex migration
 ```
 
 Rules for parallel work:
 
-- Keep branches/commits small and reviewable.
+- Work on `main` is allowed for this development tool unless the operator asks otherwise.
+- Keep commits small and reviewable.
 - Avoid overlapping edits to the same files where possible.
 - Do not let subagents create conflicting schemas or duplicate abstractions.
 - Shared contracts must be written down before multiple agents implement against them.
@@ -95,13 +119,35 @@ Rules for parallel work:
 - If two subagents need the same interface, define the interface first.
 - Do not merge partial implementations that violate the non-negotiable rules.
 
-## Implementation Scope for This Pass
+## Implementation Strategy
 
-Implement Phase 0-4 foundation only.
+Do not artificially stop at Phase 0-4. Implement as much of the target architecture as possible.
 
-Do not fully migrate the complete document-processing pipeline yet.
+However, respect this order:
 
-### Phase 0: Governance and Repo Guidance
+1. Governance and shared contracts.
+2. Infrastructure and database foundation.
+3. Webhook ingestion and durable state.
+4. Dramatiq worker foundation.
+5. Progress/retry/recovery/observability foundations.
+6. Shared pipeline-start/dedupe/lock logic.
+7. Embedding readiness gate and initial embedding build path.
+8. Webhook-triggered document processing.
+9. Polling/reconciliation every 600 seconds through the same pipeline-start logic.
+10. Reprocess per document: manual admin button and webhook-triggered reprocess.
+11. Reindex migration.
+12. Legacy worker-path cleanup where safe.
+
+Before implementing code, produce a short implementation outline with:
+
+- files you intend to create/change
+- database tables/migrations
+- Laravel endpoints/controllers
+- existing Laravel dashboard/UI areas to extend
+- Python packages/modules
+- tests/smoke checks
+
+## Phase 0: Governance and Repo Guidance
 
 Tasks:
 
@@ -122,10 +168,11 @@ Document processing must never start before the embedding index is complete.
 Progress, retry and recovery state must be durable in PostgreSQL.
 Only admins may control jobs via Laravel actions guarded by is_admin().
 Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks.
+Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 ```
 
-### Phase 1: Infrastructure Foundation
+## Phase 1: Infrastructure Foundation
 
 Add local development infrastructure for:
 
@@ -147,7 +194,7 @@ LLM_PROVIDER=ollama
 LLM_BASE_URL=http://ollama:11434
 ```
 
-### Phase 2: Database Foundation
+## Phase 2: Database Foundation
 
 Add migrations/models for the new durable state model.
 
@@ -193,7 +240,7 @@ Important constraints/indexes:
 - status/time indexes for recovery scans
 - pgvector index for embeddings where appropriate
 
-### Phase 3: Webhook Ingestion Skeleton
+## Phase 3: Webhook Ingestion
 
 Add a Laravel Paperless webhook endpoint.
 
@@ -215,7 +262,7 @@ The endpoint must:
 - not perform OCR, embedding, classification or heavy Paperless/LLM work synchronously
 - handle RabbitMQ unavailable without losing the persisted delivery
 
-### Phase 4: Dramatiq Skeleton
+## Phase 4: Dramatiq Foundation
 
 Add Python package structure:
 
@@ -249,16 +296,16 @@ app/db/
 Add:
 
 - Dramatiq broker configuration for RabbitMQ
-- a dummy webhook actor
+- a webhook actor
 - actor execution tracking
 - structured logging context
 - durable progress helper
 - embedding readiness gate helper
-- shared `start_or_attach_document_pipeline(...)` skeleton
-- recovery scan skeleton
-- retry classification skeleton
+- shared `start_or_attach_document_pipeline(...)`
+- recovery scan
+- retry classification
 
-The dummy actor should prove:
+The first actor path should prove:
 
 ```text
 webhook delivery -> persisted -> actor enqueued -> actor execution persisted -> pipeline event written
@@ -407,7 +454,7 @@ Create a shared pipeline start service/function:
 start_or_attach_document_pipeline(trigger_source, paperless_document_id, paperless_modified, content_hash?)
 ```
 
-It must eventually handle:
+It must handle:
 
 - embedding gate
 - document lock
@@ -415,8 +462,6 @@ It must eventually handle:
 - existing active/completed run
 - coalescing webhook/poll/manual/retry triggers
 - enqueueing only when a new run is needed
-
-For this pass, a skeleton implementation with tests is enough.
 
 ### Polling
 
@@ -428,15 +473,14 @@ Polling and webhooks must both go through `start_or_attach_document_pipeline(...
 
 ### Retry and Recovery
 
-Add skeletons for:
+Implement:
 
 - retry classification
 - retry status fields
 - recovery scan
 - stuck running actor detection
 - retryable vs permanent errors
-
-Do not fully implement all business retry flows yet unless naturally small.
+- manual retry hooks for failed runs/items where practical
 
 ### Reprocess
 
@@ -478,6 +522,56 @@ reprocess_full_document_pipeline
 reprocess_full_document_pipeline_force_embeddings
 ```
 
+### Existing Laravel Dashboard / Operations UI
+
+The Laravel dashboard already exists. Extend the existing dashboard and existing pages/components where appropriate.
+
+Do not create a separate new operations UI unless explicitly requested.
+
+Admin-facing job controls should be added to the existing dashboard/document/review/settings areas:
+
+```text
+Dashboard / operations overview:
+- pipeline status
+- embedding index status
+- failed/retrying/blocked counts
+- webhook delivery status
+- polling/reconciliation status
+
+Document detail page:
+- Process document
+- Retry document
+- Force reprocess
+
+Pipeline run detail/list:
+- Retry failed items
+- Cancel run
+
+Embedding status area:
+- Start embedding build
+- Resume embedding build
+- Mark embedding index stale
+
+Maintenance/reindex area:
+- Start reindex
+- Run reconciliation now
+- Run poll now
+
+Webhook delivery list/detail:
+- Retry webhook delivery
+- Dismiss webhook failure
+
+Review suggestion UI:
+- Commit to Paperless
+
+Entity approval UI:
+- Sync entity approval
+
+Settings/admin area:
+- Save worker settings
+- Save LLM settings
+```
+
 ### Logging and Observability
 
 Use structured logs.
@@ -506,8 +600,6 @@ abort_unless(auth()->user()?->is_admin(), 403);
 ```
 
 or the project-standard equivalent.
-
-Add/prepare Laravel admin UI actions/buttons for admin-only job controls.
 
 Required buttons/actions include:
 
@@ -538,7 +630,7 @@ Add tests or documented smoke checks for:
 - webhook delivery can be received and persisted
 - duplicate webhook is deduped
 - webhook endpoint returns quickly
-- dummy actor can be enqueued and processed
+- actor can be enqueued and processed
 - actor execution is persisted
 - pipeline event is persisted
 - non-admin cannot call job-control endpoints
@@ -551,10 +643,11 @@ Add tests or documented smoke checks for:
 - webhook-triggered document change can create a new run
 - duplicate webhook does not create duplicate reprocess run
 - embedding gate blocks document processing when not complete
-- poll/reconciliation and webhook use shared dedupe/lock path or at least shared skeleton
+- poll/reconciliation and webhook use shared dedupe/lock path
 - progress is stored in DB, not parsed from logs
 - embedding progress can represent `10 / 130 completed`
 - retry of a completed item does not double-count progress
+- worker/container restart recovery can requeue safe stuck work
 
 ## Expected Output
 
@@ -569,17 +662,13 @@ At the end, provide:
 5. How to trigger a test webhook
 6. How to start the Dramatiq worker
 7. Which tests/smoke checks pass
-8. What remains for the next phase
+8. What remains, if anything, for the next phase
 
-## Non-goals for This Pass
-
-Do not fully migrate the complete document-processing pipeline yet.
-
-Do not remove all legacy code in this pass unless it is clearly safe and small.
+## Guardrails
 
 Do not perform heavy document processing inside the webhook HTTP request.
 
-Do not build the full Laravel operations UI yet; placeholders/actions/routes are enough if the backend foundation is in place.
+Do not build a second operations UI; extend the existing Laravel dashboard.
 
 Do not introduce a legacy/new backend feature flag such as:
 
@@ -588,3 +677,5 @@ ARCHIBOT_WORKER_BACKEND=legacy|dramatiq
 ```
 
 The architecture direction is replacement, not permanent dual-mode.
+
+If a change risks breaking the running app, prefer a small safe step plus a documented smoke check over a huge unreviewable rewrite.
