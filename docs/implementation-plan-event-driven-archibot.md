@@ -2,7 +2,7 @@
 
 ## Zielbild
 
-Archibot soll von einer gemischten CLI-/Subprocess-/Scheduler-Architektur zu einer event-driven Pipeline weiterentwickelt werden.
+Archibot soll konsequent von einer gemischten CLI-/Subprocess-/Scheduler-Architektur zu einer event-driven Pipeline weiterentwickelt werden.
 
 Die künftige Architektur trennt klar zwischen UI, dauerhafter Datenhaltung, Message Transport und Python Processing:
 
@@ -14,7 +14,7 @@ Laravel UI / API
   -> LiteLLM-kompatibler LLM Adapter
 ```
 
-Die aktuelle SQLite-/sqlite-vec-Lösung darf während der Migration weiter existieren, soll aber nicht das langfristige Zielmodell bleiben.
+Es wird **keine dauerhafte Kompatibilitätsstrategie** mit parallelem Legacy-Betrieb verfolgt. Die bisherige SQLite-/sqlite-vec- und Subprocess-basierte Worker-Schicht wird gezielt ersetzt, nicht langfristig neben der neuen Architektur weitergeführt.
 
 ## Architektur-Entscheidungen
 
@@ -27,8 +27,6 @@ Begründung:
 - Passt besser zu event-driven Workflows als eine reine Job Queue.
 - Unterstützt saubere Queue-Trennung, Routing, Dead Lettering und Worker-Pipelines.
 - Dramatiq unterstützt RabbitMQ direkt.
-
-**Übergangsoption:** Redis/Valkey ist für eine frühe Phase möglich, wenn Betriebseinfachheit wichtiger ist als das finale Broker-Modell.
 
 ### Fachliche Datenbank
 
@@ -65,6 +63,13 @@ Actor -> app.llm.router -> provider adapter -> Ollama / LiteLLM / OpenRouter / l
 
 ```text
 archibot
+├── AGENTS.md
+├── docs/
+│   ├── implementation-plan-event-driven-archibot.md
+│   ├── architecture/
+│   ├── decisions/
+│   └── governance/
+│
 ├── laravel/
 │   ├── UI
 │   ├── Review Dashboard
@@ -101,8 +106,180 @@ archibot
 │       └── session.py
 │
 ├── PostgreSQL + pgvector
-├── RabbitMQ
-└── Redis/Valkey optional
+└── RabbitMQ
+```
+
+Redis/Valkey kann später für Cache, Rate Limits oder spezielle Locking-Anforderungen ergänzt werden. Es ist aber kein Bestandteil des Kern-Zielbilds.
+
+## Repository Governance
+
+Der Umbau ist groß genug, dass Architektur, Agentenarbeit und Code-Änderungen explizit geführt werden müssen.
+
+### Governance-Ziele
+
+- Architekturentscheidungen nachvollziehbar machen.
+- Große Umbauten in reviewbare Schritte schneiden.
+- Python-, Laravel-, Datenbank- und Infrastruktur-Änderungen klar trennen.
+- Agenten wie pi.dev/Codex über stabile Repo-Regeln führen.
+- Keine dauerhaften Legacy-Pfade einschleppen.
+- Migration nicht über versteckte Seiteneffekte, sondern über dokumentierte Phasen durchführen.
+
+### Empfohlene Dokumentstruktur
+
+```text
+docs/
+├── implementation-plan-event-driven-archibot.md
+├── architecture/
+│   ├── event-driven-architecture.md
+│   ├── data-model.md
+│   ├── actor-model.md
+│   └── llm-routing.md
+│
+├── decisions/
+│   ├── 0001-use-dramatiq.md
+│   ├── 0002-use-postgresql-pgvector.md
+│   ├── 0003-use-rabbitmq.md
+│   └── 0004-no-legacy-compatibility-mode.md
+│
+└── governance/
+    ├── repository-governance.md
+    ├── agent-workflow.md
+    └── review-checklist.md
+```
+
+### AGENTS.md
+
+Das Repository soll eine zentrale `AGENTS.md` haben. Diese Datei ist der Einstiegspunkt für Coding Agents.
+
+Sie soll enthalten:
+
+- Zielbild der Architektur in wenigen Sätzen.
+- Link auf diesen Implementation Plan.
+- Link auf Architektur- und Governance-Dokumente.
+- Regeln für Python Actors, Laravel UI, DB-Migrationen und Tests.
+- Klare Anweisung: Keine neuen Legacy-Kompatibilitätsschichten ohne explizite Entscheidung.
+
+Empfohlene Kurzregel für `AGENTS.md`:
+
+```md
+Archibot is being migrated to an event-driven architecture using Dramatiq, RabbitMQ, PostgreSQL and pgvector.
+Do not extend the legacy Laravel-subprocess/Python-CLI worker path unless the task explicitly asks for a temporary removal step.
+Prefer small, reviewable changes that move the system toward the target architecture described in docs/implementation-plan-event-driven-archibot.md.
+```
+
+### ADR-Regel
+
+Jede größere Architekturentscheidung bekommt ein kurzes ADR unter `docs/decisions/`.
+
+ADR Template:
+
+```md
+# ADR-NNNN: Title
+
+## Status
+
+Accepted | Proposed | Superseded
+
+## Context
+
+Why is this decision needed?
+
+## Decision
+
+What did we decide?
+
+## Consequences
+
+What gets easier?
+What gets harder?
+What must not be done anymore?
+```
+
+Pflicht-ADRs für diesen Umbau:
+
+- `0001-use-dramatiq.md`
+- `0002-use-postgresql-pgvector.md`
+- `0003-use-rabbitmq.md`
+- `0004-no-legacy-compatibility-mode.md`
+
+### Branch- und PR-Regeln
+
+Empfohlene Branch-Namen:
+
+```text
+arch/event-driven-foundation
+arch/postgres-pgvector
+arch/dramatiq-skeleton
+pipeline/process-document
+pipeline/inbox-poll
+pipeline/reindex
+cleanup/remove-legacy-worker
+```
+
+PRs sollen klein genug bleiben, um Architekturfolgen prüfen zu können.
+
+Jeder PR soll enthalten:
+
+- Ziel und Scope.
+- Betroffene Schichten: Laravel, Python, DB, Infrastructure, Docs.
+- Migration/Breaking Changes.
+- Tests oder Smoke Commands.
+- Hinweis, ob alte Worker-Pfade entfernt oder ersetzt werden.
+
+### Review-Checkliste
+
+Jede Änderung an der neuen Pipeline muss gegen diese Fragen geprüft werden:
+
+- Ist der Actor idempotent?
+- Gibt es einen stabilen `pipeline_run_id`?
+- Gibt es einen Dedupe-Key für wiederholbare Outputs?
+- Werden Events in PostgreSQL persistiert?
+- Ist die Queue passend gewählt?
+- Sind Retry- und Failure-Regeln explizit?
+- Wird Laravel nicht mehr als Python-Prozess-Runner erweitert?
+- Entsteht keine neue dauerhafte Legacy-Kompatibilitätsschicht?
+- Gibt es Tests oder zumindest einen dokumentierten Smoke Test?
+
+### Ownership-Regeln
+
+Empfohlene Ownership:
+
+```text
+Laravel:
+- UI
+- Review Dashboard
+- Command API
+- Lesen/Schreiben von Commands, Pipeline Runs, Events, Review Suggestions
+
+Python:
+- Dramatiq Actors
+- Paperless Integration
+- LLM Routing
+- Embeddings
+- Pipeline Events schreiben
+
+PostgreSQL:
+- Gemeinsame Source of Truth
+- Keine getrennten Python-/Laravel-Statuswelten
+
+RabbitMQ:
+- Transport für Messages
+- Kein dauerhafter fachlicher Zustand
+```
+
+### Commit-Konvention
+
+Empfohlene Commit Prefixes:
+
+```text
+docs:       Dokumentation, Governance, ADRs
+arch:       Architektur-/Strukturänderungen
+infra:      Docker, RabbitMQ, PostgreSQL, Deployment
+python:     Python Runtime, Actors, LLM, Pipeline
+laravel:    UI/API/Models/Migrations in Laravel
+pipeline:   konkrete Actor-Flows
+cleanup:    Entfernen alter Worker-/CLI-Pfade
+test:       Tests und Smoke Tests
 ```
 
 ## Begriffe
@@ -151,7 +328,7 @@ Ein zusammenhängender Lauf über ein oder mehrere Dokumente.
 Beispiele:
 
 - Ein einzelnes Dokument manuell neu verarbeiten.
-- Inbox Poll mit 17 Dokumenten.
+- Inbox Poll mit mehreren Dokumenten.
 - Vollständiger Reindex.
 
 ## Datenmodell-Ziel
@@ -369,22 +546,25 @@ LiteLLM/Remote Provider:
 
 ## Laravel Integration
 
-Kurzfristig kann `worker_jobs` als Kompatibilitätsschicht bleiben.
-
-Langfristig soll Laravel:
+Laravel soll im Zielmodell:
 
 - Commands erzeugen.
 - Pipeline Runs anzeigen.
 - Events anzeigen.
 - Review Suggestions verwalten.
+- PostgreSQL als gemeinsame Source of Truth nutzen.
 - Keine Python-Prozesse mehr direkt starten.
+- Keine separate Legacy-Worker-Schicht parallel pflegen.
 
-Aktueller Subprocess-Runner soll schrittweise ersetzt werden.
+Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden durch Commands, Pipeline Runs und Dramatiq Actors ersetzt.
 
 ## Migrationsplan
 
-### Phase 0: Vorbereitung
+### Phase 0: Vorbereitung und Governance
 
+- `AGENTS.md` als zentralen Agenten-Einstieg anlegen oder aktualisieren.
+- Governance-Dokumente unter `docs/governance/` anlegen.
+- ADRs unter `docs/decisions/` anlegen.
 - Bestehende Worker-Flows dokumentieren.
 - Aktuelle CLI-Kommandos erfassen:
   - `poll`
@@ -395,11 +575,12 @@ Aktueller Subprocess-Runner soll schrittweise ersetzt werden.
   - `commit-review`
   - `sync-entity-approval`
 - Bestehende Progress-/Event-Ausgaben erfassen.
-- Tests für vorhandenes Verhalten ergänzen, bevor Logik verschoben wird.
+- Bestehende Funktionalität durch Tests absichern, damit sie gezielt in Actors übertragen werden kann.
 
-### Phase 1: Infrastruktur ergänzen
+### Phase 1: Infrastruktur ersetzen
 
-- Docker Compose um PostgreSQL, RabbitMQ und optional Redis/Valkey erweitern.
+- Docker Compose um PostgreSQL und RabbitMQ erweitern.
+- SQLite als primäre Runtime-Datenbank ablösen.
 - Python Dependencies ergänzen:
   - `dramatiq`
   - `pika` oder passender RabbitMQ Support über Dramatiq Extras
@@ -424,7 +605,7 @@ LLM_BASE_URL=http://ollama:11434
 - Neue Tabellen für Commands, Pipeline Runs, Pipeline Events und Actor Executions anlegen.
 - Python DB Session Layer ergänzen.
 - Laravel Models/Migrations für dieselben Tabellen ergänzen oder eine klare Ownership definieren.
-- UI kann vorerst weiterhin `worker_jobs` nutzen.
+- `worker_jobs` wird nicht als langfristige UI-/Audit-Quelle weiterentwickelt.
 
 ### Phase 3: Dramatiq Skeleton
 
@@ -446,9 +627,9 @@ oder, falls Dramatiq CLI verwendet wird:
 dramatiq app.actors.document app.actors.ocr app.actors.embedding app.actors.classification
 ```
 
-### Phase 4: Einzelnes Dokument migrieren
+### Phase 4: Einzelnes Dokument ersetzen
 
-Zuerst nur `process_document` event-driven bauen.
+Zuerst `process_document` event-driven bauen und den alten Prozesspfad dafür entfernen.
 
 Actors:
 
@@ -465,30 +646,35 @@ Akzeptanzkriterien:
 - Fehler werden als Events geschrieben.
 - Retry erzeugt keine doppelten Suggestions.
 - Laravel kann den Status anzeigen.
+- Der alte Subprocess-Pfad für diese Funktion ist entfernt oder deaktiviert, nicht parallel weitergeführt.
 
-### Phase 5: Inbox Poll migrieren
+### Phase 5: Inbox Poll ersetzen
 
-- `poll_inbox` erzeugt nur noch Events/Commands für einzelne Dokumente.
+- `poll_inbox` erzeugt nur noch Commands/Events für einzelne Dokumente.
 - Die eigentliche Verarbeitung läuft über die Dokument-Pipeline.
 - Poll selbst bleibt leichtgewichtig.
+- Alter Scheduler-/Subprocess-Pfad wird entfernt.
 
 Akzeptanzkriterien:
 
 - Poll blockiert nicht unnötig lange.
 - Einzelne Dokumentfehler stoppen nicht den gesamten Poll.
 - UI zeigt Gesamtfortschritt und Detailfehler.
+- Es gibt nur noch den Dramatiq-basierten Poll-Pfad.
 
-### Phase 6: Reindex migrieren
+### Phase 6: Reindex ersetzen
 
 - Reindex wird in Discover + viele Dokument-Actors + Abschlussphase geteilt.
 - Reindex Lock einführen.
 - Embedding Rebuild in pgvector schreiben.
+- Alter sqlite-vec Reindex-Pfad wird entfernt.
 
 Akzeptanzkriterien:
 
 - Reindex ist abbrechbar oder pausierbar.
 - Einzelne Dokumentfehler führen zu `partially_failed`, nicht zu Totalabbruch.
 - Embedding Search läuft über pgvector.
+- Es gibt keinen aktiven sqlite-vec Reindex-Pfad mehr.
 
 ### Phase 7: LLM Router abstrahieren
 
@@ -505,28 +691,11 @@ Akzeptanzkriterien:
 
 ### Phase 8: Alte Worker-Schicht entfernen
 
-- Laravel Subprocess Runner deaktivieren oder entfernen.
-- Alte `app.cli` Kommandos entweder entfernen oder als Debug-/Sync-Wrappers behalten.
-- APScheduler nur noch als Enqueue-Scheduler verwenden oder komplett ersetzen.
-- `worker_jobs` entweder migrieren oder als Legacy-Kompatibilität belassen.
-
-## Kompatibilitätsstrategie
-
-Während der Migration sollen beide Wege koexistieren können:
-
-```text
-Legacy:
-Laravel worker_jobs -> Python CLI Subprocess
-
-Neu:
-Laravel command -> PostgreSQL command -> Dramatiq message -> Python Actor Pipeline
-```
-
-Feature Flag:
-
-```env
-ARCHIBOT_WORKER_BACKEND=legacy|dramatiq
-```
+- Laravel Subprocess Runner entfernen.
+- Alte `app.cli` Worker-Kommandos entfernen oder auf reine Admin-/Debug-Kommandos ohne produktive Worker-Steuerung reduzieren.
+- APScheduler entfernen oder auf reine Command-Erzeugung ohne eigene Verarbeitung reduzieren.
+- `worker_jobs` durch Commands, Pipeline Runs und Pipeline Events ersetzen.
+- Doku und AGENTS.md aktualisieren.
 
 ## Risiken
 
@@ -546,9 +715,10 @@ PostgreSQL, RabbitMQ, Dramatiq und Pipeline-Umbau gleichzeitig ist riskant.
 
 Gegenmaßnahme:
 
-- Erst Infrastruktur und Skeleton.
-- Dann nur `process_document` migrieren.
-- Erst danach Poll und Reindex.
+- Trotzdem kein dauerhafter Legacy-Pfad.
+- Umbau in Phasen.
+- Pro Phase alte Pfade entfernen, sobald der neue Pfad akzeptiert ist.
+- Tests und Smoke Commands pro Phase.
 
 ### UI/Backend Drift
 
@@ -560,28 +730,44 @@ Gegenmaßnahme:
 - Pipeline Events als Source of Truth für UI-Fortschritt.
 - Klare Tabellen-Ownership dokumentieren.
 
+### Agenten ändern zu viel auf einmal
+
+Coding Agents könnten mehrere Schichten gleichzeitig umbauen.
+
+Gegenmaßnahme:
+
+- AGENTS.md verweist auf Plan, Governance und Review-Checkliste.
+- PR-Scope klein halten.
+- Architekturänderungen brauchen ADR.
+- Kein neuer Legacy-Kompatibilitätsmodus ohne ADR und explizite User-Entscheidung.
+
 ## Definition of Done
 
 Der Umbau gilt als erfolgreich, wenn:
 
-- Python Jobs nicht mehr über Laravel Subprocess gestartet werden müssen.
+- Python Jobs nicht mehr über Laravel Subprocess gestartet werden.
 - Dokumentverarbeitung event-driven über Dramatiq läuft.
 - PostgreSQL die gemeinsame Source of Truth ist.
 - Embedding Search über pgvector läuft.
 - Laravel Pipeline Runs, Events, Fehler und Review Suggestions anzeigen kann.
 - Retry und Cancel kontrolliert funktionieren.
 - LiteLLM/Ollama austauschbar über einen Adapter angebunden sind.
-- Legacy CLI weiterhin für Debugging nutzbar ist oder bewusst entfernt wurde.
+- Legacy Worker-Pfade entfernt sind.
+- Repository Governance dokumentiert ist.
+- AGENTS.md Coding Agents auf das Zielbild und die Regeln verpflichtet.
 
 ## Empfohlene erste Umsetzung für pi.dev/Codex
 
 ```md
-Implement Phase 1-3 of the event-driven Archibot migration.
+Implement Phase 0-3 of the event-driven Archibot migration.
 
 Read `docs/implementation-plan-event-driven-archibot.md` first.
 
 Scope:
-- Add PostgreSQL, RabbitMQ and optional Redis/Valkey to the local development stack.
+- Add or update `AGENTS.md` as the central coding-agent entrypoint.
+- Add repository governance docs under `docs/governance/`.
+- Add ADRs under `docs/decisions/` for Dramatiq, PostgreSQL/pgvector, RabbitMQ, and no legacy compatibility mode.
+- Add PostgreSQL and RabbitMQ to the local development stack.
 - Add Python dependencies for Dramatiq, PostgreSQL access and pgvector.
 - Add initial `app/events`, `app/jobs`, and `app/actors` package structure.
 - Add a Dramatiq broker configuration.
@@ -591,13 +777,15 @@ Scope:
 
 Non-goals:
 - Do not migrate the full document processing pipeline yet.
-- Do not remove existing CLI or Laravel worker_jobs yet.
-- Do not change current production behavior without a feature flag.
+- Do not keep or design a parallel legacy compatibility mode.
+- Do not extend the existing Laravel-subprocess/Python-CLI worker path.
 
 Acceptance criteria:
-- Existing app still starts.
+- Governance docs and ADRs exist.
+- AGENTS.md points coding agents to the implementation plan and governance rules.
 - New infrastructure can be started locally.
 - Dummy actor can be enqueued and processed.
 - Actor execution and event are persisted.
 - Tests or smoke commands document the new path.
+- No new feature flag such as `ARCHIBOT_WORKER_BACKEND=legacy|dramatiq` is introduced.
 ```
