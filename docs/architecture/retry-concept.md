@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Archibot needs a clear retry concept for failed or interrupted work.
+Archibot needs a clear retry and reprocess concept for failed, interrupted or intentionally repeated work.
 
 Retries must be safe across:
 
@@ -14,6 +14,8 @@ Retries must be safe across:
 - per-document processing errors
 - partial reindex failures
 - webhook/poll race conditions
+
+Reprocess must be possible per document, even if the latest previous run succeeded.
 
 The retry concept builds on durable state:
 
@@ -34,7 +36,40 @@ The retry concept builds on durable state:
 5. Transient failures can auto-retry.
 6. Permanent validation failures do not auto-retry.
 7. User/manual retry is possible for failed but recoverable runs/items.
-8. Retry must respect embedding readiness, document locks and reindex locks.
+8. Per-document reprocess is always possible for admins.
+9. Retry/reprocess must respect embedding readiness, document locks and reindex locks.
+
+## Retry vs Reprocess
+
+### Retry
+
+Retry continues or repeats failed/missing work for a previous failed or interrupted run.
+
+Examples:
+
+- retry failed OCR step
+- retry failed classification actor
+- retry failed items in a reindex
+- retry webhook delivery that was persisted but not enqueued
+
+### Reprocess
+
+Reprocess intentionally creates a new document-processing run for one document, even if previous runs succeeded.
+
+Examples:
+
+- admin wants a fresh classification after prompt/model changes
+- admin wants to force new review suggestions
+- admin wants to re-evaluate a document after manual Paperless corrections
+- admin wants to re-run the full pipeline for debugging
+
+Hard rule:
+
+```text
+Per-document reprocess must be available as an admin-only Laravel action.
+```
+
+Reprocess should create a new run with a new pipeline version, reprocess reason or force flag so it does not get suppressed by normal completed-run dedupe.
 
 ## Retry Levels
 
@@ -61,6 +96,33 @@ Examples:
 - document classification failed after max actor retries
 - OCR correction failed for one document
 - user manually retries a failed document
+
+### Document Reprocess
+
+Creates a new document pipeline run even if a previous run succeeded.
+
+Required behavior:
+
+- admin-only via Laravel UI/API
+- check `is_admin()` before command creation
+- acquire the same document lock
+- respect embedding readiness gate
+- record `trigger_source = manual`
+- record `reprocess_requested = true`
+- record `reprocess_reason` if provided
+- create a new `pipeline_run_id`
+- use a new or forced `pipeline_dedupe_key`
+- avoid duplicate active runs for the same document
+- decide whether to reuse existing embeddings or recompute them based on selected mode
+
+Recommended modes:
+
+```text
+reprocess_metadata_only
+reprocess_classification_only
+reprocess_full_document_pipeline
+reprocess_full_document_pipeline_force_embeddings
+```
 
 ### Pipeline Item Retry
 
@@ -116,6 +178,16 @@ Examples:
 - permanent upstream issue was fixed
 - operator wants to retry failed items from a reindex
 
+### Manual Reprocess
+
+Admin-triggered from Laravel UI.
+
+Examples:
+
+- reprocess one document from the document detail page
+- force reprocess one document after changing model/prompt/config
+- full pipeline rerun for one document
+
 ### Recovery Retry
 
 System-triggered after restart/rebuild.
@@ -151,6 +223,10 @@ last_retry_at
 retry_reason
 retry_mode          automatic | manual | recovery
 retry_of_run_id
+reprocess_requested
+reprocess_reason
+reprocess_mode
+reprocess_of_run_id
 ```
 
 ### `pipeline_items`
@@ -250,20 +326,36 @@ Mapping examples:
 
 ## Idempotency Requirements
 
-Retry must not duplicate outputs.
+Retry must not duplicate outputs. Reprocess may intentionally create a new run/output set, but it must still be traceable and deduplicated within that reprocess run.
 
 Use dedupe keys for outputs:
 
 ### Document Pipeline Dedupe
 
+Normal run:
+
 ```text
 paperless_document_id + paperless_modified + content_hash + pipeline_version
 ```
 
+Forced reprocess run:
+
+```text
+paperless_document_id + paperless_modified + content_hash + pipeline_version + reprocess_run_id
+```
+
 ### Review Suggestion Dedupe
+
+Normal run:
 
 ```text
 paperless_document_id + content_hash + model_version + prompt_version + suggestion_type
+```
+
+Forced reprocess run:
+
+```text
+paperless_document_id + content_hash + model_version + prompt_version + suggestion_type + reprocess_run_id
 ```
 
 ### Embedding Dedupe
@@ -299,6 +391,13 @@ For embedding builds:
 
 ```text
 progress_done = count(document_embeddings matching build scope/model/content_hash)
+```
+
+For document reprocess:
+
+```text
+new pipeline_run_id -> new progress counters
+previous runs remain unchanged and audit-visible
 ```
 
 ## Retry Flow: Actor Failure
@@ -343,6 +442,28 @@ retry_failed_steps_only
 retry_full_document_pipeline
 force_reprocess_with_new_pipeline_version
 ```
+
+## Reprocess Flow: Per Document
+
+```text
+admin clicks Force reprocess on document
+  -> Laravel checks is_admin()
+  -> create reprocess command
+  -> create new pipeline_run_id
+  -> set trigger_source = manual
+  -> set reprocess_requested = true
+  -> set reprocess_mode
+  -> acquire document lock
+  -> check embedding readiness gate
+  -> start document pipeline
+  -> produce new events/progress/output tied to the new run
+```
+
+If another run is active for the same document, the reprocess request must not start in parallel. It should either:
+
+- stay queued/pending, or
+- show a clear UI message, or
+- attach to/cancel existing run only if the admin explicitly chooses that behavior.
 
 ## Retry Flow: Reindex Partial Failure
 
@@ -415,6 +536,8 @@ Laravel should expose:
 - manual retry button where allowed
 - retry failed items button for batch runs
 - force reprocess option for document pipeline where appropriate
+- per-document reprocess action on the document detail page
+- reprocess mode selector where useful
 
 UI labels examples:
 
@@ -424,19 +547,22 @@ Failed after 5 attempts: Ollama timeout
 Blocked: embedding index not complete
 Retry failed 3 documents
 Force reprocess document
+Reprocess classification only
+Reprocess full document pipeline
 ```
 
 ## Worker Requirements
 
-All retryable actors must:
+All retryable/reprocessable actors must:
 
 - classify errors
 - update actor execution status
 - update durable progress/item state
 - emit pipeline event
 - log structured error with correlation IDs
-- avoid duplicate outputs
+- avoid duplicate outputs unless a force reprocess run intentionally creates a new output set
 - respect cancel_requested before retrying next step
+- respect document lock and embedding readiness gate
 
 ## Test Requirements
 
@@ -447,6 +573,10 @@ Minimum tests:
 - HTTP 429 uses retry-after if present
 - invalid webhook payload becomes failed_permanent
 - manual retry of failed document does not duplicate review suggestion
+- admin can force reprocess a succeeded document
+- non-admin cannot force reprocess a document
+- reprocess creates a new pipeline run linked to the previous document/run context
+- reprocess does not run in parallel with an active document run
 - retry of completed pipeline item does not double-count progress
 - reindex retry only failed items works
 - reboot recovery requeues stuck retryable work
