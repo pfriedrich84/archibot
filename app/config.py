@@ -48,8 +48,14 @@ class Settings(BaseSettings):
     ocr_vision_max_pages: int = 3
     ocr_vision_dpi: int = 150
 
+    # --- Event-driven pipeline ---
+    database_url: str = "postgresql+psycopg://archibot:archibot@postgres:5432/archibot"
+    dramatiq_broker_url: str = "amqp://guest:guest@rabbitmq:5672/"
+    archibot_queue_prefix: str = "archibot"
+    paperless_webhook_secret: str = ""
+
     # --- Worker ---
-    poll_interval_seconds: int = 0
+    poll_interval_seconds: int = 600
     context_max_docs: int = 5
     classification_max_tags: int = 4
     context_max_distance: float = 0.5  # 0 = no threshold/unlimited; 0.5 = default relevance cutoff

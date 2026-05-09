@@ -17,8 +17,16 @@ services:
       APP_KEY: ${APP_KEY:-}
       APP_URL: ${APP_URL:-}
       APP_PATH_PREFIX: ${APP_PATH_PREFIX:-}
-      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
-      DB_DATABASE: ${DB_DATABASE:-/data/laravel/database.sqlite}
+      DB_CONNECTION: ${DB_CONNECTION:-pgsql}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_DATABASE: ${DB_DATABASE:-archibot}
+      DB_USERNAME: ${DB_USERNAME:-archibot}
+      DB_PASSWORD: ${DB_PASSWORD:-archibot}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}
+      DRAMATIQ_BROKER_URL: ${DRAMATIQ_BROKER_URL:-amqp://guest:guest@rabbitmq:5672/}
+      ARCHIBOT_QUEUE_PREFIX: ${ARCHIBOT_QUEUE_PREFIX:-archibot}
+      PAPERLESS_WEBHOOK_SECRET: ${PAPERLESS_WEBHOOK_SECRET:-}
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
       CACHE_STORE: ${CACHE_STORE:-database}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
@@ -37,7 +45,7 @@ services:
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
       OLLAMA_EMBED_NUM_CTX: ${OLLAMA_EMBED_NUM_CTX:-8192}
       OLLAMA_OCR_NUM_CTX: ${OLLAMA_OCR_NUM_CTX:-12288}
-      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-0}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-600}
       CONTEXT_MAX_DOCS: ${CONTEXT_MAX_DOCS:-5}
       MAX_DOC_CHARS: ${MAX_DOC_CHARS:-24000}
       EMBED_MAX_CHARS: ${EMBED_MAX_CHARS:-6000}
@@ -74,14 +82,46 @@ services:
       - "${MCP_PORT:-3001}:3001"
     volumes:
       - archibot_data:/data
+    depends_on:
+      - postgres
+      - rabbitmq
     # Falls Paperless/Ollama in anderen Compose-Stacks laufen,
     # entsprechendes externes Netzwerk einkommentieren:
     # networks:
     #   - paperless
     #   - ollama
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: archibot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-archibot}
+      POSTGRES_USER: ${POSTGRES_USER:-archibot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-archibot}
+    volumes:
+      - archibot_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: archibot-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - archibot_rabbitmq:/var/lib/rabbitmq
+
 volumes:
   archibot_data:
+    driver: local
+  archibot_postgres:
+    driver: local
+  archibot_rabbitmq:
     driver: local
 
 # networks:

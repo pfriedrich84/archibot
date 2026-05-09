@@ -9,8 +9,11 @@ export CACHE_STORE="${CACHE_STORE:-database}"
 export SESSION_DRIVER="${SESSION_DRIVER:-database}"
 export ARCHIBOT_PYTHON_BINARY="${ARCHIBOT_PYTHON_BINARY:-python}"
 
-mkdir -p /data/laravel "$(dirname "$DB_DATABASE")" /app/laravel/storage/app /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache
-touch "$DB_DATABASE"
+mkdir -p /data/laravel /app/laravel/storage/app /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache
+if [ "$DB_CONNECTION" = "sqlite" ]; then
+    mkdir -p "$(dirname "$DB_DATABASE")"
+    touch "$DB_DATABASE"
+fi
 
 if [ -z "${APP_KEY:-}" ]; then
     if [ -f /data/laravel/app_key ]; then
@@ -32,6 +35,16 @@ php artisan storage:link >/dev/null 2>&1 || true
 # Run queued Laravel jobs (including Python worker CLI hand-offs) in the background.
 echo "Starting Laravel queue worker"
 php artisan queue:work --sleep=3 --tries=1 --timeout="${QUEUE_WORKER_TIMEOUT:-900}" &
+
+# Start Dramatiq actors and the durable recovery bridge when RabbitMQ is configured.
+if [ -n "${DRAMATIQ_BROKER_URL:-}" ]; then
+    echo "Starting Dramatiq worker"
+    cd /app
+    python -m dramatiq app.actors.webhook app.actors.maintenance app.actors.document app.actors.embedding app.actors.review &
+    echo "Starting event recovery bridge"
+    python -m app.event_worker recovery-scan --interval-seconds "${EVENT_RECOVERY_INTERVAL_SECONDS:-30}" &
+    cd /app/laravel
+fi
 
 # Start MCP SSE server in background if enabled.
 if [ "${ENABLE_MCP:-false}" = "true" ]; then

@@ -55,6 +55,7 @@ RUN apt-get update \
         php-cli \
         php-curl \
         php-mbstring \
+        php-pgsql \
         php-sqlite3 \
         php-xml \
         php-zip \
@@ -69,6 +70,10 @@ RUN pip install --upgrade pip setuptools wheel \
         "pydantic>=2.9.0,<=2.12.5" \
         "pydantic-settings>=2.5.0" \
         "apscheduler>=3.10.4" \
+        "dramatiq[rabbitmq]>=1.17.0,<2.0.0" \
+        "sqlalchemy>=2.0.0,<3.0.0" \
+        "psycopg[binary]>=3.2.0,<4.0.0" \
+        "pgvector>=0.3.0,<1.0.0" \
         "structlog>=24.4.0" \
         "sqlite-vec>=0.1.3,<=0.1.7" \
         "mcp[cli]>=1.20.0,<=1.26.0" \
