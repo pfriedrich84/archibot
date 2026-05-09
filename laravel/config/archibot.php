@@ -7,6 +7,6 @@ return [
     'chat_timeout' => env('ARCHIBOT_CHAT_TIMEOUT', 120),
     'data_dir' => env('DATA_DIR', '/data'),
     'paperless_webhook_secret' => env('PAPERLESS_WEBHOOK_SECRET', env('WEBHOOK_SECRET', '')),
-    'webhook_enqueue_command' => env('ARCHIBOT_WEBHOOK_ENQUEUE_COMMAND', ''),
+    'webhook_direct_enqueue_enabled' => env('ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE', false),
     'poll_interval_seconds' => env('POLL_INTERVAL_SECONDS', 600),
 ];

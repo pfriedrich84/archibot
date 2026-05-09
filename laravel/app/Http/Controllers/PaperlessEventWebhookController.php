@@ -78,7 +78,7 @@ class PaperlessEventWebhookController extends Controller
         ]);
 
         return response()->json([
-            'status' => $duplicate ? 'duplicate' : 'queued',
+            'status' => $duplicate ? WebhookDelivery::STATUS_DUPLICATE : WebhookDelivery::STATUS_QUEUED,
             'duplicate' => $duplicate,
             'document_id' => $documentId,
             'webhook_delivery_id' => $delivery->id,
@@ -175,7 +175,7 @@ class PaperlessEventWebhookController extends Controller
                 'message' => 'Direct webhook enqueue command completed; delivery remains queued until actor processing confirms it.',
                 'payload' => [
                     'status' => $delivery->status,
-                    'transport' => 'configured_command',
+                    'transport' => 'fixed_python_enqueue',
                 ],
             ]);
 
@@ -195,30 +195,18 @@ class PaperlessEventWebhookController extends Controller
      */
     private function enqueueCommand(int $deliveryId): array
     {
-        $configured = trim((string) config('archibot.webhook_enqueue_command', ''));
-        if ($configured === '') {
+        if (! (bool) config('archibot.webhook_direct_enqueue_enabled', false)) {
             return [];
         }
 
-        $parts = str_getcsv($configured, ' ', '"', '\\');
-        $parts = array_values(array_filter($parts, fn (?string $part): bool => $part !== null && $part !== ''));
-        if ($parts === []) {
-            return [];
-        }
-
-        $hasPlaceholder = false;
-        foreach ($parts as $index => $part) {
-            if (str_contains($part, '{delivery_id}')) {
-                $hasPlaceholder = true;
-                $parts[$index] = str_replace('{delivery_id}', (string) $deliveryId, $part);
-            }
-        }
-
-        if (! $hasPlaceholder) {
-            $parts[] = (string) $deliveryId;
-        }
-
-        return $parts;
+        return [
+            (string) config('archibot.python_binary', 'python3'),
+            '-m',
+            'app.event_worker',
+            'enqueue-webhook',
+            '--delivery-id',
+            (string) $deliveryId,
+        ];
     }
 
     private function recordDeferredEnqueue(
@@ -250,6 +238,39 @@ class PaperlessEventWebhookController extends Controller
         ], fn ($value): bool => $value !== null));
     }
 
+    private function redactSensitiveKey(string $key): bool
+    {
+        $normalized = Str::of($key)->lower()->replace(['-', '_', ' '], '')->toString();
+
+        return str_contains($normalized, 'authorization')
+            || str_contains($normalized, 'apikey')
+            || str_contains($normalized, 'secret')
+            || str_contains($normalized, 'token')
+            || str_contains($normalized, 'password')
+            || str_contains($normalized, 'signature')
+            || str_contains($normalized, 'cookie');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function redactSensitivePayload(array $payload): array
+    {
+        $redacted = [];
+        foreach ($payload as $key => $value) {
+            if (is_string($key) && $this->redactSensitiveKey($key)) {
+                $redacted[$key] = '[redacted]';
+
+                continue;
+            }
+
+            $redacted[$key] = is_array($value) ? $this->redactSensitivePayload($value) : $value;
+        }
+
+        return $redacted;
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      * @param  array<string, mixed>  $normalizedPayload
@@ -265,8 +286,9 @@ class PaperlessEventWebhookController extends Controller
         array $normalizedPayload,
     ): array {
         $headers = collect($request->headers->all())
-            ->except(['authorization', 'x-api-key', 'x-webhook-secret'])
-            ->map(fn (array $values): array => array_map('strval', $values))
+            ->map(fn (array $values, string $key): array => $this->redactSensitiveKey($key)
+                ? array_fill(0, count($values), '[redacted]')
+                : array_map('strval', $values))
             ->all();
 
         try {
@@ -276,7 +298,7 @@ class PaperlessEventWebhookController extends Controller
                 'paperless_document_id' => $documentId,
                 'dedupe_key' => $dedupeKey,
                 'payload_hash' => $payloadHash,
-                'raw_payload' => $payload,
+                'raw_payload' => $this->redactSensitivePayload($payload),
                 'normalized_payload' => $normalizedPayload,
                 'headers' => $headers,
                 'status' => WebhookDelivery::STATUS_QUEUED,

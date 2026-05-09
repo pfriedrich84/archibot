@@ -20,16 +20,23 @@ DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
 DRAMATIQ_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
 ARCHIBOT_QUEUE_PREFIX=archibot
 POLL_INTERVAL_SECONDS=600
-PAPERLESS_WEBHOOK_SECRET=change-me
+PAPERLESS_WEBHOOK_SECRET=<generate-a-random-secret>
 ```
 
 Optional direct webhook enqueue bridge:
 
 ```env
-ARCHIBOT_WEBHOOK_ENQUEUE_COMMAND="python -m app.event_worker enqueue-webhook --delivery-id={delivery_id}"
+ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true
+ARCHIBOT_PYTHON_BINARY=python
 ```
 
-If the direct enqueue command is unset or fails, the webhook delivery stays durable in PostgreSQL and the recovery bridge can enqueue it later.
+When direct enqueue is enabled, Laravel does not execute arbitrary configured argv. It runs the fixed safe command with the configured Python binary:
+
+```bash
+python -m app.event_worker enqueue-webhook --delivery-id <webhook_delivery_id>
+```
+
+If direct enqueue is disabled or fails, the webhook delivery stays durable in PostgreSQL and the recovery bridge can enqueue it later.
 
 Initial queues use the configured prefix:
 
@@ -84,7 +91,7 @@ Webhook ingestion is intentionally lightweight:
 2. persist raw and normalized delivery data in `webhook_deliveries`;
 3. compute a dedupe key;
 4. record pipeline events;
-5. optionally attempt direct enqueue;
+5. optionally attempt fixed direct enqueue;
 6. return quickly.
 
 Do not perform OCR, embedding, classification, Paperless fetches or LLM calls inside the HTTP request.
@@ -107,7 +114,7 @@ python -m app.event_worker recovery-scan --once
 # Continuous recovery and polling loop.
 python -m app.event_worker recovery-scan --interval-seconds 30
 
-# Enqueue one persisted webhook delivery, used by ARCHIBOT_WEBHOOK_ENQUEUE_COMMAND.
+# Enqueue one persisted webhook delivery, used by ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE.
 python -m app.event_worker enqueue-webhook --delivery-id=123
 ```
 

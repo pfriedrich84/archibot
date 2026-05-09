@@ -38,6 +38,38 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame(42, $event->paperless_document_id);
     }
 
+    public function test_event_webhook_redacts_persisted_secrets_but_hashes_original_payload(): void
+    {
+        $payload = [
+            'event' => 'document_updated',
+            'document_id' => 7,
+            'api_key' => 'payload-secret',
+            'nested' => [
+                'token' => 'nested-token',
+                'safe' => 'visible',
+            ],
+        ];
+        $expectedHash = hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '');
+
+        $this->withHeaders([
+            'Authorization' => 'Bearer auth-secret',
+            'X-Api-Key' => 'header-secret',
+            'X-Safe-Header' => 'visible-header',
+        ])->postJson(route('api.webhooks.paperless'), $payload)->assertOk();
+
+        $delivery = WebhookDelivery::query()->firstOrFail();
+        $this->assertSame($expectedHash, $delivery->payload_hash);
+        $this->assertSame('[redacted]', $delivery->raw_payload['api_key']);
+        $this->assertSame('[redacted]', $delivery->raw_payload['nested']['token']);
+        $this->assertSame('visible', $delivery->raw_payload['nested']['safe']);
+        $this->assertSame(['[redacted]'], $delivery->headers['authorization']);
+        $this->assertSame(['[redacted]'], $delivery->headers['x-api-key']);
+        $this->assertSame(['visible-header'], $delivery->headers['x-safe-header']);
+        $this->assertStringNotContainsString('payload-secret', json_encode($delivery->raw_payload));
+        $this->assertStringNotContainsString('nested-token', json_encode($delivery->raw_payload));
+        $this->assertStringNotContainsString('header-secret', json_encode($delivery->headers));
+    }
+
     public function test_event_webhook_deduplicates_identical_delivery(): void
     {
         $payload = [
@@ -58,9 +90,10 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'webhook.duplicate']);
     }
 
-    public function test_event_webhook_records_deferred_enqueue_when_configured_command_fails(): void
+    public function test_event_webhook_records_deferred_enqueue_when_direct_enqueue_fails(): void
     {
-        Config::set('archibot.webhook_enqueue_command', 'archibot-enqueue {delivery_id}');
+        Config::set('archibot.webhook_direct_enqueue_enabled', true);
+        Config::set('archibot.python_binary', 'python-test');
         Process::fake(['*' => Process::result(errorOutput: 'secret-token should not be stored', exitCode: 1)]);
 
         $this->withHeader('X-Webhook-Secret', 'top-secret')
@@ -83,12 +116,20 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertStringNotContainsString('top-secret', json_encode($event->payload));
         $this->assertStringNotContainsString('secret-token', json_encode($event->payload));
 
-        Process::assertRan(fn ($process): bool => $process->command === ['archibot-enqueue', (string) $delivery->id]);
+        Process::assertRan(fn ($process): bool => $process->command === [
+            'python-test',
+            '-m',
+            'app.event_worker',
+            'enqueue-webhook',
+            '--delivery-id',
+            (string) $delivery->id,
+        ]);
     }
 
-    public function test_event_webhook_records_enqueue_requested_when_configured_command_succeeds(): void
+    public function test_event_webhook_records_enqueue_requested_when_direct_enqueue_succeeds(): void
     {
-        Config::set('archibot.webhook_enqueue_command', 'archibot-enqueue {delivery_id}');
+        Config::set('archibot.webhook_direct_enqueue_enabled', true);
+        Config::set('archibot.python_binary', 'python-test');
         Process::fake(['*' => Process::result()]);
 
         $this->postJson(route('api.webhooks.paperless'), [
@@ -106,7 +147,8 @@ class PaperlessEventWebhookTest extends TestCase
 
     public function test_event_webhook_duplicate_does_not_attempt_direct_enqueue(): void
     {
-        Config::set('archibot.webhook_enqueue_command', 'archibot-enqueue {delivery_id}');
+        Config::set('archibot.webhook_direct_enqueue_enabled', true);
+        Config::set('archibot.python_binary', 'python-test');
         Process::fake(['*' => Process::result()]);
 
         $payload = ['event' => 'document_updated', 'document_id' => 7];
@@ -117,7 +159,14 @@ class PaperlessEventWebhookTest extends TestCase
             'duplicate' => true,
         ]);
 
-        Process::assertRanTimes(fn ($process): bool => $process->command[0] === 'archibot-enqueue', 1);
+        Process::assertRanTimes(fn ($process): bool => $process->command === [
+            'python-test',
+            '-m',
+            'app.event_worker',
+            'enqueue-webhook',
+            '--delivery-id',
+            (string) WebhookDelivery::query()->firstOrFail()->id,
+        ], 1);
         $this->assertDatabaseCount('webhook_deliveries', 1);
         $this->assertDatabaseCount('pipeline_events', 3);
     }
