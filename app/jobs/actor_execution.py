@@ -143,6 +143,49 @@ def finish_actor_execution(
         )
 
 
+def schedule_actor_execution_retry(
+    handle: ActorExecutionHandle,
+    *,
+    retry_class: str,
+    retry_reason: str,
+    backoff_seconds: int,
+    error_message: str | None = None,
+) -> None:
+    """Mark an actor execution retrying with durable backoff metadata."""
+    if handle.id is None:
+        return
+
+    duration_ms = int((time.monotonic() - handle.started_monotonic) * 1000)
+    statement = sql_text(
+        """
+        UPDATE actor_executions
+        SET status = 'retrying',
+            finished_at = CURRENT_TIMESTAMP,
+            duration_ms = :duration_ms,
+            retry_reason = :retry_reason,
+            retry_mode = 'automatic',
+            last_retry_at = CURRENT_TIMESTAMP,
+            next_retry_at = CURRENT_TIMESTAMP + (:backoff_seconds * INTERVAL '1 second'),
+            error_type = :retry_class,
+            error_message = :error_message,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :actor_execution_id
+        """
+    )
+    with engine().begin() as connection:
+        connection.execute(
+            statement,
+            {
+                "actor_execution_id": handle.id,
+                "duration_ms": duration_ms,
+                "retry_class": retry_class,
+                "retry_reason": retry_reason,
+                "backoff_seconds": backoff_seconds,
+                "error_message": error_message,
+            },
+        )
+
+
 def list_stale_running_actor_executions(
     *, stale_after_seconds: int = 900, limit: int = 100
 ) -> list[StaleActorExecutionRecord]:

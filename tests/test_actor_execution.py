@@ -98,6 +98,35 @@ def test_finish_actor_execution_updates_status(monkeypatch):
     }
 
 
+def test_schedule_actor_execution_retry_updates_retry_metadata(monkeypatch):
+    calls = []
+    monkeypatch.setattr(actor_execution, "engine", lambda: FakeEngine(calls))
+    monkeypatch.setattr(actor_execution, "sql_text", lambda statement: statement)
+    monkeypatch.setattr(actor_execution.time, "monotonic", lambda: 12.5)
+
+    handle = actor_execution.ActorExecutionHandle(
+        id=123,
+        actor_name="commit_review_suggestion",
+        started_monotonic=10.0,
+    )
+    actor_execution.schedule_actor_execution_retry(
+        handle,
+        retry_class="transient_paperless",
+        retry_reason="TimeoutError",
+        backoff_seconds=30,
+        error_message="slow",
+    )
+
+    assert calls[0][1] == {
+        "actor_execution_id": 123,
+        "duration_ms": 2500,
+        "retry_class": "transient_paperless",
+        "retry_reason": "TimeoutError",
+        "backoff_seconds": 30,
+        "error_message": "slow",
+    }
+
+
 def test_list_stale_running_actor_executions_returns_records(monkeypatch):
     calls = []
     rows = [

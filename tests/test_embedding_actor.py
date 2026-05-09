@@ -66,6 +66,60 @@ def test_embedding_actor_builds_pgvector_index(monkeypatch):
     assert actor_finishes[0][1]["status"] == "succeeded"
 
 
+def test_embedding_actor_schedules_retry_for_transient_build_failure(monkeypatch):
+    finishes = []
+    retries = []
+    events = []
+
+    monkeypatch.setattr(
+        embedding,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=77, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+    monkeypatch.setattr(
+        embedding,
+        "start_embedding_index_build",
+        lambda **kwargs: EmbeddingIndexBuild(id=55, status="building"),
+    )
+    monkeypatch.setattr(embedding, "update_embedding_index_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(embedding, "update_actor_execution_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        embedding,
+        "finish_embedding_index_build",
+        lambda *args, **kwargs: finishes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        embedding,
+        "schedule_actor_execution_retry",
+        lambda *args, **kwargs: retries.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        embedding, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
+
+    async def fake_build(build_id, limit, actor_execution_id):
+        raise ConnectionError("ollama unavailable")
+
+    monkeypatch.setattr(embedding, "_build_pgvector_embeddings", fake_build)
+
+    with pytest.raises(ConnectionError):
+        embedding._build_initial_embedding_index_impl(limit=12)
+
+    assert finishes == [
+        ((55,), {"status": "failed", "error": "Retry scheduled after ConnectionError."})
+    ]
+    assert retries[0][1] == {
+        "retry_class": "transient_network",
+        "retry_reason": "ConnectionError",
+        "backoff_seconds": 30,
+        "error_message": "ollama unavailable",
+    }
+    assert events[-1][0] == ("actor.retry_scheduled",)
+    assert events[-1][1]["payload"]["embedding_index_state_id"] == 55
+
+
 @pytest.mark.asyncio
 async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch):
     progresses = []

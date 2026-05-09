@@ -13,7 +13,11 @@ from app.config import settings
 from app.dramatiq_broker import dramatiq, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.jobs.actor_execution import (
+    finish_actor_execution,
+    schedule_actor_execution_retry,
+    start_actor_execution,
+)
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
     document_embedding_text,
@@ -25,6 +29,7 @@ from app.jobs.embedding_index import (
     update_embedding_index_progress,
 )
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
+from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 
 log = structlog.get_logger(__name__)
 
@@ -181,11 +186,42 @@ def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
             else f"{failed_count} document embeddings failed",
         )
     except Exception as exc:
+        retry_class = classify_exception(exc)
+        attempt = 1
+        max_attempts = 5
+        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
+            backoff_seconds = retry_backoff_seconds(attempt)
+            finish_embedding_index_build(
+                build.id,
+                status="failed",
+                error=f"Retry scheduled after {type(exc).__name__}.",
+            )
+            schedule_actor_execution_retry(
+                actor_execution,
+                retry_class=retry_class.value,
+                retry_reason=type(exc).__name__,
+                backoff_seconds=backoff_seconds,
+                error_message=str(exc)[:1000],
+            )
+            publish_pipeline_event(
+                types.ACTOR_RETRY_SCHEDULED,
+                level="warning",
+                message="Embedding index actor retry scheduled.",
+                payload={
+                    "actor_name": actor_name,
+                    "embedding_index_state_id": build.id,
+                    "retry_class": retry_class.value,
+                    "retry_reason": type(exc).__name__,
+                    "backoff_seconds": backoff_seconds,
+                },
+            )
+            raise
+
         finish_embedding_index_build(build.id, status="failed", error=str(exc)[:1000])
         finish_actor_execution(
             actor_execution,
             status="failed",
-            error_type=type(exc).__name__,
+            error_type=retry_class.value,
             error_message=str(exc)[:1000],
         )
         raise

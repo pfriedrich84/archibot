@@ -11,7 +11,12 @@ from app.clients.paperless import PaperlessClient
 from app.dramatiq_broker import dramatiq, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.jobs.actor_execution import (
+    finish_actor_execution,
+    schedule_actor_execution_retry,
+    start_actor_execution,
+)
+from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.review_commit import (
     commit_review_suggestion_to_paperless,
     load_review_commit,
@@ -75,11 +80,38 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
-        mark_review_commit_status(review_suggestion_id, "failed", type(exc).__name__)
+        retry_class = classify_exception(exc)
+        attempt = 1
+        max_attempts = 5
+        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
+            backoff_seconds = retry_backoff_seconds(attempt)
+            mark_review_commit_status(review_suggestion_id, "retrying", retry_class.value)
+            schedule_actor_execution_retry(
+                actor_execution,
+                retry_class=retry_class.value,
+                retry_reason=type(exc).__name__,
+                backoff_seconds=backoff_seconds,
+                error_message=str(exc)[:1000],
+            )
+            publish_pipeline_event(
+                types.ACTOR_RETRY_SCHEDULED,
+                level="warning",
+                message="Review commit actor retry scheduled.",
+                payload={
+                    "actor_name": actor_name,
+                    "review_suggestion_id": review_suggestion_id,
+                    "retry_class": retry_class.value,
+                    "retry_reason": type(exc).__name__,
+                    "backoff_seconds": backoff_seconds,
+                },
+            )
+            raise
+
+        mark_review_commit_status(review_suggestion_id, "failed", retry_class.value)
         finish_actor_execution(
             actor_execution,
             status="failed",
-            error_type=type(exc).__name__,
+            error_type=retry_class.value,
             error_message=str(exc)[:1000],
         )
         raise

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.actors import maintenance
 from app.jobs.actor_execution import ActorExecutionHandle
 from app.jobs.pipeline_start import PipelineStartResult
@@ -61,6 +63,45 @@ def test_poll_reconciliation_uses_shared_pipeline_start(monkeypatch):
     assert len(progresses) == 2
     assert events[-1][0] == ("poll.reconciliation.completed",)
     assert finishes[-1][1] == {"status": "succeeded"}
+
+
+def test_poll_reconciliation_schedules_retry_for_transient_fetch_failure(monkeypatch):
+    retries = []
+    events = []
+
+    monkeypatch.setattr(maintenance.settings, "paperless_inbox_tag_id", 123)
+    monkeypatch.setattr(
+        maintenance,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=7, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+
+    async def fake_fetch():
+        raise TimeoutError("paperless slow")
+
+    monkeypatch.setattr(maintenance, "_fetch_inbox_documents", fake_fetch)
+    monkeypatch.setattr(
+        maintenance,
+        "schedule_actor_execution_retry",
+        lambda *args, **kwargs: retries.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        maintenance, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
+
+    with pytest.raises(TimeoutError):
+        maintenance._reconcile_inbox_documents_impl(limit=None)
+
+    assert retries[0][1] == {
+        "retry_class": "transient_network",
+        "retry_reason": "TimeoutError",
+        "backoff_seconds": 30,
+        "error_message": "paperless slow",
+    }
+    assert events[0][0] == ("actor.retry_scheduled",)
+    assert events[0][1]["payload"]["actor_name"] == "reconcile_inbox_documents"
 
 
 def test_poll_reconciliation_skips_without_inbox_tag(monkeypatch):
