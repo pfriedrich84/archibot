@@ -4,6 +4,8 @@ namespace Tests\Feature\Review;
 
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
+use App\Models\EmbeddingIndexState;
+use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WorkerJob;
@@ -144,6 +146,27 @@ class ReviewSuggestionTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_accepting_event_driven_suggestion_marks_commit_queued_without_legacy_worker(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 789,
+            'source_suggestion_id' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $suggestion->refresh();
+        $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->status);
+        $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
+        $this->assertNull($suggestion->commit_worker_job_id);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertNothingPushed();
+    }
+
     public function test_accepting_python_origin_suggestion_queues_commit_worker_job(): void
     {
         Queue::fake();
@@ -172,6 +195,61 @@ class ReviewSuggestionTest extends TestCase
             'event' => 'worker_job.queued',
             'target_id' => (string) $workerJob->id,
         ]);
+    }
+
+    public function test_admin_can_queue_manual_reprocess_from_review_detail(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        EmbeddingIndexState::query()->create(['status' => 'complete']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($admin)
+            ->post(route('review.reprocess', $suggestion), ['reason' => 'try again'])
+            ->assertRedirect(route('review.show', $suggestion));
+
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame(PipelineRun::STATUS_PENDING, $run->status);
+        $this->assertSame('manual', $run->trigger_source);
+        $this->assertSame(456, $run->paperless_document_id);
+        $this->assertTrue($run->reprocess_requested);
+        $this->assertSame('try again', $run->reprocess_reason);
+        $this->assertSame($admin->id, $run->requested_by_user_id);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'pipeline_run.manual_reprocess_queued',
+            'target_type' => 'pipeline_run',
+            'target_id' => (string) $run->id,
+        ]);
+    }
+
+    public function test_manual_reprocess_is_blocked_when_embedding_index_is_not_complete(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        EmbeddingIndexState::query()->create(['status' => 'building']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($admin)
+            ->post(route('review.reprocess', $suggestion), ['reason' => 'try again'])
+            ->assertRedirect(route('review.show', $suggestion));
+
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame(PipelineRun::STATUS_BLOCKED, $run->status);
+        $this->assertSame('blocked', $run->progress_current_phase);
+        $this->assertSame('Waiting for embedding index to complete.', $run->progress_message);
+        $this->assertSame('embedding_index_not_ready', $run->error_type);
+        $this->assertSame('Waiting for embedding index to complete.', $run->error);
+        $this->assertTrue($run->reprocess_requested);
+    }
+
+    public function test_non_admin_cannot_queue_manual_reprocess(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($user)
+            ->post(route('review.reprocess', $suggestion))
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('pipeline_runs', 0);
     }
 
     public function test_review_preview_checks_document_access_and_proxies_paperless_preview(): void

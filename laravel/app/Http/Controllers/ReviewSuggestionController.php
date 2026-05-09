@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Models\EmbeddingIndexState;
+use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -135,6 +138,61 @@ class ReviewSuggestionController extends Controller
         return redirect()->route('review.index');
     }
 
+    public function reprocess(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        $reason = (string) ($validated['reason'] ?? 'manual_admin_reprocess');
+        if ($reason === '') {
+            $reason = 'manual_admin_reprocess';
+        }
+
+        $dedupeKey = hash('sha256', implode(':', [
+            'manual_reprocess',
+            (string) $reviewSuggestion->paperless_document_id,
+            (string) Str::uuid(),
+        ]));
+
+        $gateOpen = $this->embeddingIndexIsComplete();
+        $run = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => $gateOpen ? PipelineRun::STATUS_PENDING : PipelineRun::STATUS_BLOCKED,
+            'scope' => 'single_document',
+            'trigger_source' => 'manual',
+            'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+            'pipeline_dedupe_key' => $dedupeKey,
+            'coalesced_sources' => ['manual'],
+            'progress_current_phase' => $gateOpen ? 'queued' : 'blocked',
+            'progress_message' => $gateOpen ? 'Manual admin reprocess queued.' : 'Waiting for embedding index to complete.',
+            'progress_updated_at' => now(),
+            'reprocess_requested' => true,
+            'reprocess_reason' => $reason,
+            'reprocess_mode' => 'manual',
+            'requested_by_user_id' => $request->user()->id,
+            'error_type' => $gateOpen ? null : 'embedding_index_not_ready',
+            'error' => $gateOpen ? null : 'Waiting for embedding index to complete.',
+        ]);
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'pipeline_run.manual_reprocess_queued',
+            'target_type' => 'pipeline_run',
+            'target_id' => (string) $run->id,
+            'metadata' => [
+                'review_suggestion_id' => $reviewSuggestion->id,
+                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                'reason' => $reason,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return redirect()->route('review.show', $reviewSuggestion)->with('status', 'Manual reprocess queued.');
+    }
+
     public function save(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertReviewable($reviewSuggestion);
@@ -202,6 +260,11 @@ class ReviewSuggestionController extends Controller
         ]);
     }
 
+    private function embeddingIndexIsComplete(): bool
+    {
+        return EmbeddingIndexState::query()->latest()->value('status') === 'complete';
+    }
+
     private function bulkReview(Request $request, string $status): RedirectResponse
     {
         $validated = $request->validate([
@@ -237,6 +300,10 @@ class ReviewSuggestionController extends Controller
     private function queueCommitWorker(Request $request, ReviewSuggestion $reviewSuggestion): ?WorkerJob
     {
         if ($reviewSuggestion->source_suggestion_id === null) {
+            $reviewSuggestion->forceFill([
+                'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+            ])->save();
+
             return null;
         }
 
@@ -399,6 +466,7 @@ class ReviewSuggestionController extends Controller
             ],
             'context_documents' => $suggestion->context_documents ?? [],
             'save_url' => route('review.save', $suggestion),
+            'reprocess_url' => route('review.reprocess', $suggestion),
         ];
     }
 }

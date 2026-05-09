@@ -2,9 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActorExecution;
 use App\Models\AppSetting;
+use App\Models\Command;
+use App\Models\EmbeddingIndexState;
+use App\Models\PipelineItem;
+use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
+use App\Models\WebhookDelivery;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -26,6 +32,87 @@ class DashboardTest extends TestCase
         ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_REJECTED]);
         WorkerJob::factory()->create(['status' => WorkerJob::STATUS_RUNNING]);
         WorkerJob::factory()->create(['status' => WorkerJob::STATUS_FAILED]);
+        WebhookDelivery::query()->create([
+            'source' => 'paperless',
+            'event_type' => 'document.created',
+            'paperless_document_id' => 123,
+            'dedupe_key' => 'dedupe',
+            'payload_hash' => str_repeat('a', 64),
+            'raw_payload' => ['document_id' => 123],
+            'status' => WebhookDelivery::STATUS_QUEUED,
+            'received_at' => now(),
+        ]);
+        WebhookDelivery::query()->create([
+            'source' => 'paperless',
+            'event_type' => 'document.updated',
+            'paperless_document_id' => 456,
+            'dedupe_key' => 'dedupe-failed',
+            'payload_hash' => str_repeat('b', 64),
+            'raw_payload' => ['document_id' => 456],
+            'status' => WebhookDelivery::STATUS_FAILED,
+            'received_at' => now()->addMinute(),
+            'processed_at' => now()->addMinutes(2),
+            'error' => 'RabbitMQ unavailable',
+        ]);
+        $pipelineRun = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_PENDING,
+            'trigger_source' => 'webhook',
+            'paperless_document_id' => 123,
+            'progress_total' => 3,
+            'progress_done' => 1,
+            'progress_current_phase' => 'classification',
+            'progress_message' => 'Classifying document.',
+        ]);
+        PipelineItem::query()->create([
+            'pipeline_run_id' => $pipelineRun->id,
+            'paperless_document_id' => 123,
+            'item_type' => 'classification',
+            'status' => 'failed',
+        ]);
+        PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 456,
+            'reprocess_requested' => true,
+        ]);
+        ActorExecution::query()->create([
+            'actor_name' => 'handle_document_pipeline',
+            'queue_name' => 'archibot.io',
+            'status' => 'running',
+            'progress_total' => 3,
+            'progress_done' => 1,
+            'progress_current_item' => 'paperless_document:123',
+        ]);
+        ActorExecution::query()->create([
+            'actor_name' => 'commit_review_suggestion',
+            'queue_name' => 'archibot.io',
+            'status' => 'failed',
+            'error_type' => 'PaperlessError',
+        ]);
+        EmbeddingIndexState::query()->create([
+            'status' => 'building',
+            'embedding_model' => 'nomic-embed-text',
+            'document_count' => 10,
+            'embedded_count' => 4,
+            'failed_count' => 1,
+        ]);
+        Command::query()->create([
+            'type' => 'embedding_index_build',
+            'status' => 'pending',
+            'payload' => [],
+        ]);
+        Command::query()->create([
+            'type' => 'poll_reconciliation',
+            'status' => 'pending',
+            'payload' => [],
+        ]);
+        Command::query()->create([
+            'type' => 'reindex',
+            'status' => 'pending',
+            'payload' => [],
+        ]);
 
         $this->actingAs($user)
             ->get(route('dashboard'))
@@ -38,6 +125,34 @@ class DashboardTest extends TestCase
                 ->where('counts.pending_reviews', 2)
                 ->where('counts.queued_or_running_workers', 1)
                 ->where('counts.failed_workers', 1)
+                ->where('counts.queued_webhook_deliveries', 1)
+                ->where('counts.active_pipeline_runs', 1)
+                ->where('counts.blocked_pipeline_runs', 1)
+                ->where('counts.failed_pipeline_runs', 0)
+                ->where('counts.running_actor_executions', 1)
+                ->where('counts.failed_actor_executions', 1)
+                ->where('embeddingIndex.status', 'building')
+                ->where('embeddingIndex.embedding_model', 'nomic-embed-text')
+                ->where('embeddingIndex.document_count', 10)
+                ->where('embeddingIndex.embedded_count', 4)
+                ->where('embeddingIndex.failed_count', 1)
+                ->where('embeddingIndex.pending_build_commands', 1)
+                ->where('maintenance.pending_poll_commands', 1)
+                ->where('maintenance.pending_reindex_commands', 1)
+                ->where('maintenance.poll_interval_seconds', 600)
+                ->has('recentWebhookDeliveries', 2)
+                ->where('recentWebhookDeliveries.0.status', WebhookDelivery::STATUS_FAILED)
+                ->where('recentWebhookDeliveries.0.event_type', 'document.updated')
+                ->where('recentWebhookDeliveries.0.paperless_document_id', 456)
+                ->where('recentWebhookDeliveries.0.error', 'RabbitMQ unavailable')
+                ->where('recentWebhookDeliveries.0.can_retry', true)
+                ->where('recentWebhookDeliveries.0.can_dismiss', true)
+                ->has('recentActorExecutions', 2)
+                ->has('recentPipelineRuns', 2)
+                ->where('recentPipelineRuns.0.progress_total', 3)
+                ->where('recentPipelineRuns.0.progress_done', 1)
+                ->where('recentPipelineRuns.0.failed_items_count', 1)
+                ->where('recentPipelineRuns.0.can_retry_failed_items', false)
                 ->has('recentWorkerJobs', 2)
             );
     }

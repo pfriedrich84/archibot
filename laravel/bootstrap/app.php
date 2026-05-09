@@ -16,7 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
-        $middleware->validateCsrfTokens(except: ['webhook/*', '*/webhook/*']);
+        $middleware->validateCsrfTokens(except: [
+            'webhook/*',
+            '*/webhook/*',
+            'api/webhooks/*',
+            '*/api/webhooks/*',
+        ]);
 
         $middleware->web(append: [
             EnsureSetupIsComplete::class,

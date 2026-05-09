@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Form } from '@inertiajs/svelte';
+    import { Form, page } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@
         proposed: Record<string, unknown>;
         context_documents: Record<string, unknown>[];
         save_url: string;
+        reprocess_url: string;
     };
 
     let {
@@ -36,6 +37,8 @@
             storagePaths: EntityOption[];
         };
     } = $props();
+
+    const isAdmin = $derived(Boolean(page.props.auth.user?.is_admin));
 </script>
 
 <AppHead title={`Review document ${suggestion.paperless_document_id}`} />
@@ -278,5 +281,34 @@
                 {/snippet}
             </Form>
         </div>
+    {/if}
+
+    {#if isAdmin}
+        <section class="rounded-xl border p-4">
+            <h2 class="mb-2 font-semibold">Admin job control</h2>
+            <p class="mb-3 text-sm text-muted-foreground">
+                Queue this Paperless document for event-driven reprocessing.
+            </p>
+            <Form
+                method="post"
+                action={suggestion.reprocess_url}
+                class="flex gap-3"
+            >
+                {#snippet children({ processing })}
+                    <input
+                        type="hidden"
+                        name="reason"
+                        value="manual_admin_reprocess"
+                    />
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                    >
+                        Reprocess document
+                    </Button>
+                {/snippet}
+            </Form>
+        </section>
     {/if}
 </div>

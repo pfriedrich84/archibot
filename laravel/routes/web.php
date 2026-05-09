@@ -4,15 +4,20 @@ use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EmbeddingIndexController;
 use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\ErrorsController;
 use App\Http\Controllers\InboxController;
+use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
+use App\Http\Controllers\PaperlessEventWebhookController;
 use App\Http\Controllers\PaperlessWebhookController;
+use App\Http\Controllers\PipelineRunController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\StatsController;
+use App\Http\Controllers\WebhookDeliveryController;
 use App\Http\Controllers\Workers\WorkerJobController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
@@ -23,6 +28,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         'app' => 'archibot',
     ]))->name('healthz');
 
+    Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
     Route::post('/webhook/new', [PaperlessWebhookController::class, 'new'])->name('webhook.new');
     Route::post('/webhook/edit', [PaperlessWebhookController::class, 'edit'])->name('webhook.edit');
 
@@ -76,6 +82,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('review/{reviewSuggestion}/save', [ReviewSuggestionController::class, 'save'])->name('review.save');
         Route::post('review/{reviewSuggestion}/accept', [ReviewSuggestionController::class, 'accept'])->name('review.accept');
         Route::post('review/{reviewSuggestion}/reject', [ReviewSuggestionController::class, 'reject'])->name('review.reject');
+        Route::post('review/{reviewSuggestion}/reprocess', [ReviewSuggestionController::class, 'reprocess'])->name('review.reprocess');
 
         Route::get('ocr-reviews', [OcrReviewController::class, 'index'])->name('ocr-reviews.index');
         Route::post('ocr-reviews', [OcrReviewController::class, 'store'])->name('ocr-reviews.store');
@@ -86,6 +93,16 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('stats', StatsController::class)->name('stats.index');
         Route::get('errors', ErrorsController::class)->name('errors.index');
+
+        Route::post('pipeline-runs/{pipelineRun}/retry', [PipelineRunController::class, 'retry'])->name('pipeline-runs.retry');
+        Route::post('pipeline-runs/{pipelineRun}/retry-failed-items', [PipelineRunController::class, 'retryFailedItems'])->name('pipeline-runs.retry-failed-items');
+        Route::post('pipeline-runs/{pipelineRun}/cancel', [PipelineRunController::class, 'cancel'])->name('pipeline-runs.cancel');
+        Route::post('embedding-index/build', [EmbeddingIndexController::class, 'build'])->name('embedding-index.build');
+        Route::post('embedding-index/mark-stale', [EmbeddingIndexController::class, 'markStale'])->name('embedding-index.mark-stale');
+        Route::post('maintenance/poll', [MaintenanceCommandController::class, 'poll'])->name('maintenance.poll');
+        Route::post('maintenance/reindex', [MaintenanceCommandController::class, 'reindex'])->name('maintenance.reindex');
+        Route::post('webhook-deliveries/{webhookDelivery}/retry', [WebhookDeliveryController::class, 'retry'])->name('webhook-deliveries.retry');
+        Route::post('webhook-deliveries/{webhookDelivery}/dismiss', [WebhookDeliveryController::class, 'dismiss'])->name('webhook-deliveries.dismiss');
 
         Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
         Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
