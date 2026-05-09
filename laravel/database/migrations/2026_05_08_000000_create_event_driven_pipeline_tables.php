@@ -205,7 +205,7 @@ return new class extends Migration
 
         if (Schema::getConnection()->getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE document_embeddings ADD COLUMN embedding vector');
-            DB::statement('CREATE INDEX document_embeddings_embedding_hnsw ON document_embeddings USING hnsw (embedding vector_cosine_ops)');
+            DB::statement("COMMENT ON COLUMN document_embeddings.embedding IS 'pgvector value; intentionally unconstrained because embedding dimensions depend on the configured embedding model. Create ANN indexes separately for fixed dimensions only.'");
         }
     }
 

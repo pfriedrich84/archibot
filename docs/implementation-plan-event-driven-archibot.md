@@ -582,15 +582,16 @@ Wichtige Felder:
 - `content_hash`
 - `embedding_model`
 - `dimensions`
-- `embedding vector(...)`
+- `embedding vector`
 - `created_at`
 
-Empfohlener Index:
+Hinweis: pgvector-ANN-Indizes wie HNSW benötigen eine feste Vektordimension. Da ArchiBot die Embedding-Dimension pro Modell speichert, bleibt die Spalte in der Basismigration unbeschränkt. Dimensionsspezifische ANN-Indizes können später als partielle Expression-Indizes ergänzt werden, z. B. für 1024-dimensionale Modelle:
 
 ```sql
-CREATE INDEX document_embeddings_embedding_hnsw
+CREATE INDEX document_embeddings_embedding_1024_hnsw
 ON document_embeddings
-USING hnsw (embedding vector_cosine_ops);
+USING hnsw ((embedding::vector(1024)) vector_cosine_ops)
+WHERE dimensions = 1024;
 ```
 
 ### `llm_calls`
