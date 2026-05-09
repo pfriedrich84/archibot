@@ -11,6 +11,16 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class EmbeddingIndexState extends Model
 {
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_BUILDING = 'building';
+
+    public const STATUS_COMPLETE = 'complete';
+
+    public const STATUS_FAILED = 'failed';
+
+    public const STATUS_STALE = 'stale';
+
     protected $table = 'embedding_index_state';
 
     protected function casts(): array

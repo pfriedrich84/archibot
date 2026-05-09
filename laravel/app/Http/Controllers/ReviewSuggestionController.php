@@ -262,7 +262,7 @@ class ReviewSuggestionController extends Controller
 
     private function embeddingIndexIsComplete(): bool
     {
-        return EmbeddingIndexState::query()->latest()->value('status') === 'complete';
+        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
     }
 
     private function bulkReview(Request $request, string $status): RedirectResponse

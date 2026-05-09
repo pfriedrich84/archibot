@@ -19,8 +19,8 @@ class EmbeddingIndexController extends Controller
         $payload = $limit > 0 ? ['limit' => $limit] : [];
 
         $command = Command::query()->create([
-            'type' => 'embedding_index_build',
-            'status' => 'pending',
+            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'status' => Command::STATUS_PENDING,
             'payload' => $payload,
             'created_by_user_id' => $request->user()->id,
         ]);
@@ -33,7 +33,7 @@ class EmbeddingIndexController extends Controller
             'payload' => [
                 'actor_user_id' => $request->user()->id,
                 'actor_is_admin' => true,
-                'action' => 'embedding_index_build',
+                'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
                 'command_id' => $command->id,
                 'limit' => $limit > 0 ? $limit : null,
             ],
@@ -54,12 +54,12 @@ class EmbeddingIndexController extends Controller
         $state = EmbeddingIndexState::query()->latest()->first();
         if ($state === null) {
             $state = EmbeddingIndexState::query()->create([
-                'status' => 'stale',
+                'status' => EmbeddingIndexState::STATUS_STALE,
                 'error' => 'Marked stale by admin before an index existed.',
             ]);
         } else {
             $state->forceFill([
-                'status' => 'stale',
+                'status' => EmbeddingIndexState::STATUS_STALE,
                 'error' => 'Marked stale by admin.',
             ])->save();
         }

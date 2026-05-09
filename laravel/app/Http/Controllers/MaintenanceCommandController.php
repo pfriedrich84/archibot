@@ -18,8 +18,8 @@ class MaintenanceCommandController extends Controller
         $limit = $request->integer('limit');
         $payload = $limit > 0 ? ['limit' => $limit] : [];
         $command = Command::query()->create([
-            'type' => 'poll_reconciliation',
-            'status' => 'pending',
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_PENDING,
             'payload' => $payload,
             'created_by_user_id' => $request->user()->id,
         ]);
@@ -32,7 +32,7 @@ class MaintenanceCommandController extends Controller
             'payload' => [
                 'actor_user_id' => $request->user()->id,
                 'actor_is_admin' => true,
-                'action' => 'poll_reconciliation',
+                'action' => Command::TYPE_POLL_RECONCILIATION,
                 'command_id' => $command->id,
                 'limit' => $limit > 0 ? $limit : null,
             ],
@@ -63,19 +63,19 @@ class MaintenanceCommandController extends Controller
         $embeddingState = EmbeddingIndexState::query()->latest()->first();
         if ($embeddingState === null) {
             $embeddingState = EmbeddingIndexState::query()->create([
-                'status' => 'stale',
+                'status' => EmbeddingIndexState::STATUS_STALE,
                 'error' => 'Reindex requested by admin before an index existed.',
             ]);
         } else {
             $embeddingState->forceFill([
-                'status' => 'stale',
+                'status' => EmbeddingIndexState::STATUS_STALE,
                 'error' => 'Reindex requested by admin.',
             ])->save();
         }
 
         $command = Command::query()->create([
-            'type' => 'reindex',
-            'status' => 'pending',
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_PENDING,
             'payload' => $payload,
             'created_by_user_id' => $request->user()->id,
         ]);
@@ -88,7 +88,7 @@ class MaintenanceCommandController extends Controller
             'payload' => [
                 'actor_user_id' => $request->user()->id,
                 'actor_is_admin' => true,
-                'action' => 'reindex',
+                'action' => Command::TYPE_REINDEX,
                 'command_id' => $command->id,
                 'embedding_index_state_id' => $embeddingState->id,
                 'limit' => $limit > 0 ? $limit : null,

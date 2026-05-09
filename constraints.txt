@@ -2,7 +2,7 @@
 # 3 days old. Update only after the new version has been publicly available for
 # >= 3 days unless a security fix explicitly requires an age exception.
 #
-# Last reviewed: 2026-05-06
+# Last reviewed: 2026-05-09
 
 packaging<=26.0
 rich<=14.3.3
@@ -33,6 +33,12 @@ sqlite-vec<=0.1.9
 pymupdf<=1.27.2.3
 ruff<=0.15.12
 structlog<=25.5.0
+# Event-driven runtime dependencies: Dramatiq/RabbitMQ transport and PostgreSQL/pgvector state.
+dramatiq<=1.18.0
+pika<=1.3.2
+sqlalchemy<=2.0.44
+psycopg<=3.2.13
+pgvector<=0.4.1
 pygments<=2.20.0
 pytest<=9.0.3
 pytest-asyncio<=1.3.0

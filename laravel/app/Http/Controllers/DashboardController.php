@@ -6,6 +6,7 @@ use App\Models\ActorExecution;
 use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
+use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\SetupState;
@@ -37,16 +38,16 @@ class DashboardController extends Controller
 
         $embeddingIndexState = EmbeddingIndexState::query()->latest()->first();
         $pendingEmbeddingBuildCommands = Command::query()
-            ->where('type', 'embedding_index_build')
-            ->whereIn('status', ['pending', 'queued', 'running'])
+            ->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)
+            ->whereIn('status', Command::activeStatuses())
             ->count();
         $pendingPollCommands = Command::query()
-            ->where('type', 'poll_reconciliation')
-            ->whereIn('status', ['pending', 'queued', 'running'])
+            ->where('type', Command::TYPE_POLL_RECONCILIATION)
+            ->whereIn('status', Command::activeStatuses())
             ->count();
         $pendingReindexCommands = Command::query()
-            ->where('type', 'reindex')
-            ->whereIn('status', ['pending', 'queued', 'running'])
+            ->where('type', Command::TYPE_REINDEX)
+            ->whereIn('status', Command::activeStatuses())
             ->count();
 
         return Inertia::render('Dashboard', [
@@ -101,10 +102,10 @@ class DashboardController extends Controller
                     ->whereIn('status', [PipelineRun::STATUS_FAILED, PipelineRun::STATUS_FAILED_PERMANENT, PipelineRun::STATUS_PARTIALLY_FAILED])
                     ->count(),
                 'running_actor_executions' => ActorExecution::query()
-                    ->where('status', 'running')
+                    ->where('status', ActorExecution::STATUS_RUNNING)
                     ->count(),
                 'failed_actor_executions' => ActorExecution::query()
-                    ->where('status', 'failed')
+                    ->where('status', ActorExecution::STATUS_FAILED)
                     ->count(),
             ],
             'recentWebhookDeliveries' => WebhookDelivery::query()
@@ -155,7 +156,7 @@ class DashboardController extends Controller
                     'finished_at' => $execution->finished_at?->toISOString(),
                 ]),
             'recentPipelineRuns' => PipelineRun::query()
-                ->withCount(['items as failed_items_count' => fn ($query) => $query->where('status', 'failed')])
+                ->withCount(['items as failed_items_count' => fn ($query) => $query->where('status', PipelineItem::STATUS_FAILED)])
                 ->latest()
                 ->limit(5)
                 ->get()

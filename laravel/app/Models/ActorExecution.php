@@ -14,6 +14,22 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class ActorExecution extends Model
 {
+    public const STATUS_QUEUED = 'queued';
+
+    public const STATUS_RUNNING = 'running';
+
+    public const STATUS_RETRYING = 'retrying';
+
+    public const STATUS_SUCCEEDED = 'succeeded';
+
+    public const STATUS_FAILED = 'failed';
+
+    public const STATUS_FAILED_PERMANENT = 'failed_permanent';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_SKIPPED = 'skipped';
+
     protected function casts(): array
     {
         return [

@@ -12,6 +12,22 @@ use Illuminate\Database\Eloquent\Model;
 ])]
 class PipelineItem extends Model
 {
+    public const TYPE_PAPERLESS_FETCH = 'paperless_fetch';
+
+    public const TYPE_CLASSIFICATION = 'classification';
+
+    public const TYPE_REVIEW_SUGGESTION = 'review_suggestion';
+
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_RUNNING = 'running';
+
+    public const STATUS_SUCCEEDED = 'succeeded';
+
+    public const STATUS_FAILED = 'failed';
+
+    public const STATUS_SKIPPED = 'skipped';
+
     protected function casts(): array
     {
         return [

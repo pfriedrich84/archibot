@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
+use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,12 +53,12 @@ class PipelineRunController extends Controller
             PipelineRun::STATUS_PARTIALLY_FAILED,
         ], true), 409);
 
-        $failedItems = $pipelineRun->items()->where('status', 'failed');
+        $failedItems = $pipelineRun->items()->where('status', PipelineItem::STATUS_FAILED);
         $failedItemCount = (clone $failedItems)->count();
         abort_if($failedItemCount === 0, 409);
 
         $failedItems->update([
-            'status' => 'pending',
+            'status' => PipelineItem::STATUS_PENDING,
             'attempt' => DB::raw('attempt + 1'),
             'retry_reason' => 'manual_admin_retry_failed_items',
             'retry_mode' => 'manual',
@@ -136,7 +137,7 @@ class PipelineRunController extends Controller
             return true;
         }
 
-        return EmbeddingIndexState::query()->latest()->value('status') === 'complete';
+        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
     }
 
     /**
