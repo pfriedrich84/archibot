@@ -1,0 +1,129 @@
+"""PostgreSQL helpers for webhook delivery actor state."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from app.config import settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
+_engine: Engine | None = None
+
+
+@dataclass(frozen=True)
+class WebhookDeliveryRecord:
+    id: int
+    event_type: str
+    paperless_document_id: int
+    paperless_modified: str | None
+    status: str
+    normalized_payload: dict[str, Any]
+
+
+def engine() -> Engine:
+    global _engine
+    if _engine is None:
+        try:
+            from sqlalchemy import create_engine
+        except (
+            ModuleNotFoundError
+        ) as exc:  # pragma: no cover - dependency is installed in target image
+            raise RuntimeError(
+                "sqlalchemy is required for PostgreSQL-backed webhook actors"
+            ) from exc
+
+        _engine = create_engine(settings.database_url, pool_pre_ping=True)
+    return _engine
+
+
+def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | None:
+    """Load the normalized state needed by the webhook Dramatiq actor."""
+    try:
+        from sqlalchemy import text
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        raise RuntimeError("sqlalchemy is required for PostgreSQL-backed webhook actors") from exc
+
+    statement = text(
+        """
+        SELECT id, event_type, paperless_document_id, status, normalized_payload
+        FROM webhook_deliveries
+        WHERE id = :webhook_delivery_id
+        """
+    )
+    with engine().connect() as connection:
+        row = (
+            connection.execute(statement, {"webhook_delivery_id": webhook_delivery_id})
+            .mappings()
+            .first()
+        )
+
+    if row is None:
+        return None
+
+    normalized_payload = row["normalized_payload"] or {}
+    if not isinstance(normalized_payload, dict):
+        normalized_payload = {}
+
+    paperless_modified = normalized_payload.get("paperless_modified")
+    return WebhookDeliveryRecord(
+        id=int(row["id"]),
+        event_type=str(row["event_type"]),
+        paperless_document_id=int(row["paperless_document_id"]),
+        paperless_modified=None if paperless_modified is None else str(paperless_modified),
+        status=str(row["status"]),
+        normalized_payload=normalized_payload,
+    )
+
+
+def list_queued_webhook_delivery_ids(limit: int = 100) -> list[int]:
+    """Return queued webhook deliveries eligible for actor enqueue/recovery."""
+    try:
+        from sqlalchemy import text
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        raise RuntimeError("sqlalchemy is required for PostgreSQL-backed webhook actors") from exc
+
+    statement = text(
+        """
+        SELECT id
+        FROM webhook_deliveries
+        WHERE status = 'queued'
+        ORDER BY received_at ASC, id ASC
+        LIMIT :limit
+        """
+    )
+    with engine().connect() as connection:
+        rows = connection.execute(statement, {"limit": limit}).mappings().all()
+
+    return [int(row["id"]) for row in rows]
+
+
+def mark_webhook_delivery_status(
+    webhook_delivery_id: int, status: str, error: str | None = None
+) -> None:
+    """Persist webhook actor outcome without storing document contents in logs."""
+    try:
+        from sqlalchemy import text
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        raise RuntimeError("sqlalchemy is required for PostgreSQL-backed webhook actors") from exc
+
+    statement = text(
+        """
+        UPDATE webhook_deliveries
+        SET status = :status,
+            error = :error,
+            processed_at = CASE
+                WHEN :status IN ('processed', 'blocked', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP
+                ELSE processed_at
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :webhook_delivery_id
+        """
+    )
+    with engine().begin() as connection:
+        connection.execute(
+            statement,
+            {"webhook_delivery_id": webhook_delivery_id, "status": status, "error": error},
+        )
