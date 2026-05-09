@@ -4,17 +4,19 @@ Concise project context for coding agents. For durable details, prefer the canon
 
 ## Purpose
 
-ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It polls documents tagged `Posteingang`, asks local Ollama models for metadata suggestions, stores suggestions in a review queue, and writes metadata back to Paperless only after approval or explicitly configured safe automation.
+ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It is being migrated from polling/subprocess-oriented processing to an event-driven architecture where Paperless webhooks are the primary trigger and periodic polling remains reconciliation/fallback.
 
 Suggested metadata includes title, date, correspondent, document type, storage path, and tags.
 
-## Core architecture
+## Core architecture target
 
-- **Python worker/CLI/MCP** owns document processing, Paperless/Ollama calls, embeddings, OCR correction, classification, committing, and MCP tools.
-- **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, inbox UI, entity approvals, audit views, MCP tokens, and worker-job orchestration.
-- **SQLite + sqlite-vec** provide local state, audit data, review queues, and embedding similarity search.
-- **Ollama** provides local LLM classification, optional OCR correction, embeddings, judge pass, and RAG chat.
-- **Single container** is the primary deployment shape; persistent runtime data lives under `/data`.
+- **Paperless webhooks** are the primary low-latency trigger for new or changed documents.
+- **Periodic polling** remains automatic every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic as webhooks.
+- **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, dashboard/operations UI, command API, webhook ingestion and admin-only job controls.
+- **Python Dramatiq actors** own document processing, Paperless/Ollama/LLM calls, embeddings, OCR correction, classification, committing and maintenance execution.
+- **PostgreSQL + pgvector** are the durable source of truth for state, progress, retries, events, audit data and embedding similarity search.
+- **RabbitMQ** is the Dramatiq message broker/transport, not the only job state.
+- **Ollama/LiteLLM-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings, judge pass and RAG chat.
 
 ## Classification model
 

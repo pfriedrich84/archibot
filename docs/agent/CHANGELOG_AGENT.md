@@ -7,3 +7,4 @@
 - Added GitHub issue and pull request templates for reproducible agent/human collaboration.
 - Added a reusable Markdown local-link checker under `scripts/` and documented it in agent checks.
 - Added an ADR directory index under `docs/developer/adr/`.
+- Refreshed `ASSESSMENT.md` after governance files, templates, and link checking were established.

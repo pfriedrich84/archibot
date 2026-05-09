@@ -20,10 +20,10 @@ Date: 2026-05-08
 
 ## Governance debt and drift
 
-- Agent governance was partially present but missing several standard files for constraints, coding guidance, reviews, decisions, anti-patterns, supply chain, and definition of done.
-- GitHub issue and PR templates were missing, making reproducibility and acceptance criteria less consistent.
-- Documentation-only link checking existed inline in CI for agent docs but not as a reusable local script.
-- `docs/developer/adr/` now has an index, but project-defining ADRs have not yet been written.
+- Standard agent governance files are now present and linked from `AGENTS.md` and `docs/README.md`.
+- GitHub issue and pull request templates are now present for reproducible collaboration.
+- Documentation-only link checking is available as `scripts/check_markdown_links.py`.
+- `docs/developer/adr/` has an index, but project-defining ADRs have not yet been written.
 - **Low impact supply-chain drift:** CI currently invokes `aquasec/trivy:latest`. Pinning the scanner image would improve reproducibility, but this was not changed because it affects CI behavior.
 
 ## Recommended next improvements

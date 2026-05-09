@@ -4,9 +4,9 @@ Evidence-based constraints for ArchiBot changes.
 
 ## Deployment and runtime
 
-- ArchiBot is Docker-first and optimized for a single-container deployment shape.
-- Runtime state is local and persistent under `/data`; do not assume a hosted database or cloud services.
-- Paperless-NGX and Ollama are external services configured by environment variables or the setup UI.
+- ArchiBot is Docker-first; the event-driven target also includes PostgreSQL/pgvector and RabbitMQ services for local/deployed stacks.
+- Runtime state must be durable. The target source of truth is PostgreSQL; do not create hidden in-memory or log-only job state.
+- Paperless-NGX and Ollama/LiteLLM-compatible providers are external services configured by environment variables or the setup UI.
 - Default timezone is `Europe/Vienna`; date and timezone behavior must remain configurable and consistent between Python and Laravel/Svelte.
 
 ## Local-first AI constraints
@@ -27,5 +27,7 @@ Evidence-based constraints for ArchiBot changes.
 
 - Python runtime targets Python 3.12.
 - Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` currently allows PHP `^8.3`.
-- SQLite and `sqlite-vec` are part of the core storage/search model.
-- Keep CLI and GUI job state semantics aligned.
+- The migration target replaces SQLite/sqlite-vec state and vector search with PostgreSQL/pgvector.
+- Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
+- Do not introduce a permanent `legacy|dramatiq` backend compatibility mode.
+- Keep Laravel and Python aligned on the shared PostgreSQL pipeline state model.

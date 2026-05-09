@@ -10,6 +10,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`user/webhooks.md`](user/webhooks.md) — Paperless-Webhooks fuer sofortige Verarbeitung.
 - [`user/deployment.md`](user/deployment.md) — Dockhand, Reverse Proxy, Backup.
 - [`user/paperless-auth.md`](user/paperless-auth.md) — Anmeldung, Token-Kontext und Sicherheitsmodell.
+- [`operations/event-driven-pipeline.md`](operations/event-driven-pipeline.md) — Betrieb des event-driven Webhook-/Dramatiq-/Recovery-Pipelinepfads.
 
 ## Developer
 
@@ -17,6 +18,15 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`developer/cli.md`](developer/cli.md) — CLI-Kommandos fuer Pipeline, Reindex, Reset.
 - [`developer/mcp.md`](developer/mcp.md) — MCP-Server, Tools, Auth und Integration.
 - [`developer/adr/README.md`](developer/adr/README.md) — Architecture Decision Records.
+
+## Event-driven Migration
+
+- [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — Zielarchitektur und Migrationsplan.
+- [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization.
+- [`decisions/`](decisions/) — akzeptierte Architekturentscheidungen.
+- [`governance/repository-governance.md`](governance/repository-governance.md) — Repository-Governance fuer den Umbau.
+- [`governance/agent-workflow.md`](governance/agent-workflow.md) — Agenten- und Subagenten-Workflow.
+- [`governance/review-checklist.md`](governance/review-checklist.md) — Review-Checkliste fuer Migrationaenderungen.
 
 ## Agent Instructions
 
