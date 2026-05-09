@@ -7,6 +7,7 @@ def test_recovery_loop_once_runs_single_scan_and_poll_reconciliation(monkeypatch
     sleeps = []
 
     monkeypatch.setattr(event_worker, "run_recovery_scan", lambda limit: scans.append(limit))
+    monkeypatch.setattr(event_worker.settings, "poll_interval_seconds", 600)
     monkeypatch.setattr(
         event_worker, "enqueue_poll_reconciliation", lambda limit=None: polls.append(limit)
     )
