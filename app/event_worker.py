@@ -36,7 +36,7 @@ def run_recovery_loop(
     """Run durable recovery and periodic Paperless polling reconciliation."""
     recovery_interval = 30 if interval_seconds is None else interval_seconds
     poll_interval = max(1, settings.poll_interval_seconds)
-    last_poll_at = 0.0
+    last_poll_at = -float(poll_interval)
     while True:
         now = time.monotonic()
         run_recovery_scan(limit=limit)
