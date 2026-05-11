@@ -68,6 +68,7 @@
     let aiModelLoading = $state(false);
     let aiModelError = $state('');
     let aiModelItems = $state<string[]>([]);
+    let selectedAiModel = $state('');
     let aiModelProvider = $state<{
         id: string;
         label: string;
@@ -81,6 +82,17 @@
             .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
             ?.getAttribute('content') ?? '';
 
+    const modelSettingInputNames = new Set([
+        'classification_model',
+        'embedding_model',
+        'ocr_text_model',
+        'ocr_vision_model',
+        'classification_judge_model',
+    ]);
+
+    const isModelSetting = (setting: Setting) =>
+        modelSettingInputNames.has(setting.input_name);
+
     const settingValue = (name: string) => {
         const element = document.querySelector<
             HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -88,6 +100,24 @@
 
         return element?.value ?? '';
     };
+
+    function applyLoadedModel(inputName: string) {
+        if (!selectedAiModel) {
+            return;
+        }
+
+        const element = document.querySelector<HTMLInputElement>(
+            `[name="${inputName}"]`,
+        );
+
+        if (!element) {
+            return;
+        }
+
+        element.value = selectedAiModel;
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
     async function loadAiModels() {
         aiModelLoading = true;
@@ -126,6 +156,7 @@
             }
 
             aiModelItems = data.items ?? [];
+            selectedAiModel = aiModelItems[0] ?? '';
             aiModelProvider = data.provider ?? null;
         } catch (error) {
             aiModelError =
@@ -199,12 +230,70 @@
         {/if}
 
         {#if aiModelItems.length > 0}
-            <textarea
-                readonly
-                rows="8"
-                class="min-h-32 rounded-md border bg-background p-3 font-mono text-sm"
-                value={aiModelItems.join('\n')}
-            ></textarea>
+            <datalist id="ai-loaded-models">
+                {#each aiModelItems as model (model)}
+                    <option value={model}></option>
+                {/each}
+            </datalist>
+
+            <div class="grid gap-3">
+                <div class="grid gap-2">
+                    <Label for="selected_ai_model">Loaded models</Label>
+                    <select
+                        id="selected_ai_model"
+                        bind:value={selectedAiModel}
+                        class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
+                    >
+                        {#each aiModelItems as model (model)}
+                            <option value={model}>{model}</option>
+                        {/each}
+                    </select>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => applyLoadedModel('classification_model')}
+                    >
+                        Use for classification
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => applyLoadedModel('embedding_model')}
+                    >
+                        Use for embedding
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => applyLoadedModel('ocr_text_model')}
+                    >
+                        Use for OCR text
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() => applyLoadedModel('ocr_vision_model')}
+                    >
+                        Use for OCR vision
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={() =>
+                            applyLoadedModel('classification_judge_model')}
+                    >
+                        Use for judge
+                    </Button>
+                </div>
+
+                <p class="text-xs text-muted-foreground">
+                    Model fields below also use these loaded models as browser
+                    suggestions while this page is open.
+                </p>
+            </div>
         {/if}
     </section>
 
@@ -284,6 +373,9 @@
                                         (setting.type === 'number'
                                             ? 'any'
                                             : undefined)}
+                                    list={isModelSetting(setting)
+                                        ? 'ai-loaded-models'
+                                        : undefined}
                                     placeholder={setting.sensitive &&
                                     setting.has_value
                                         ? 'Current value saved — leave blank to keep'
