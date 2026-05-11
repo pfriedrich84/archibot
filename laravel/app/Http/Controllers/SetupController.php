@@ -107,8 +107,11 @@ class SetupController extends Controller
             'ocr_mode' => ['required', Rule::in(['off', 'text', 'vision_light', 'vision_full'])],
         ]);
 
+        $state->refresh();
+        $providedSetupToken = (string) $request->input('setup_token', '');
+
         if ($state->requiresResetToken()
-            && (! $state->resetTokenIsValid() || ! Hash::check($validated['setup_token'], $state->reset_token_hash))
+            && (! $state->resetTokenIsValid() || $providedSetupToken === '' || ! Hash::check($providedSetupToken, $state->reset_token_hash))
         ) {
             throw ValidationException::withMessages([
                 'setup_token' => 'The setup token is invalid or expired.',

@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -291,30 +290,29 @@ class PaperlessEventWebhookController extends Controller
                 : array_map('strval', $values))
             ->all();
 
-        try {
-            $delivery = WebhookDelivery::query()->create([
-                'source' => 'paperless',
-                'event_type' => $eventType,
-                'paperless_document_id' => $documentId,
-                'dedupe_key' => $dedupeKey,
-                'payload_hash' => $payloadHash,
-                'raw_payload' => $this->redactSensitivePayload($payload),
-                'normalized_payload' => $normalizedPayload,
-                'headers' => $headers,
-                'status' => WebhookDelivery::STATUS_QUEUED,
-                'request_id' => (string) $request->headers->get('X-Request-Id', Str::uuid()->toString()),
-                'received_at' => now(),
-            ]);
+        $existing = WebhookDelivery::query()
+            ->where('source', 'paperless')
+            ->where('dedupe_key', $dedupeKey)
+            ->first();
 
-            return [$delivery, false];
-        } catch (UniqueConstraintViolationException) {
-            /** @var WebhookDelivery $delivery */
-            $delivery = WebhookDelivery::query()
-                ->where('source', 'paperless')
-                ->where('dedupe_key', $dedupeKey)
-                ->firstOrFail();
-
-            return [$delivery, true];
+        if ($existing instanceof WebhookDelivery) {
+            return [$existing, true];
         }
+
+        $delivery = WebhookDelivery::query()->create([
+            'source' => 'paperless',
+            'event_type' => $eventType,
+            'paperless_document_id' => $documentId,
+            'dedupe_key' => $dedupeKey,
+            'payload_hash' => $payloadHash,
+            'raw_payload' => $this->redactSensitivePayload($payload),
+            'normalized_payload' => $normalizedPayload,
+            'headers' => $headers,
+            'status' => WebhookDelivery::STATUS_QUEUED,
+            'request_id' => (string) $request->headers->get('X-Request-Id', Str::uuid()->toString()),
+            'received_at' => now(),
+        ]);
+
+        return [$delivery, false];
     }
 }
