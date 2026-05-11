@@ -2,8 +2,8 @@
 set -e
 
 export APP_PATH_PREFIX="${APP_PATH_PREFIX:-}"
-export DB_CONNECTION="${DB_CONNECTION:-sqlite}"
-export DB_DATABASE="${DB_DATABASE:-/data/laravel/database.sqlite}"
+export DB_CONNECTION="${DB_CONNECTION:-pgsql}"
+export DB_DATABASE="${DB_DATABASE:-archibot}"
 export QUEUE_CONNECTION="${QUEUE_CONNECTION:-database}"
 export CACHE_STORE="${CACHE_STORE:-database}"
 export SESSION_DRIVER="${SESSION_DRIVER:-database}"
@@ -28,10 +28,6 @@ wait_for_tcp() {
 }
 
 mkdir -p /data/laravel /app/laravel/storage/app /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache
-if [ "$DB_CONNECTION" = "sqlite" ]; then
-    mkdir -p "$(dirname "$DB_DATABASE")"
-    touch "$DB_DATABASE"
-fi
 
 if [ -z "${APP_KEY:-}" ]; then
     if [ -f /data/laravel/app_key ]; then

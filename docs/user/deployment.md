@@ -47,23 +47,22 @@ Die Web-GUI wird von Laravel/Svelte direkt auf Port `8088` ausgeliefert. Authent
 
 ## Persistente Daten
 
-Alle Daten liegen in `DATA_DIR` (Default: `/data`), das als Docker-Volume
-gemountet werden sollte:
+Datei- und Konfigurationsdaten liegen in `DATA_DIR` (Default: `/data`), das als Docker-Volume
+gemountet werden sollte. Die App-Datenbank liegt im PostgreSQL-Volume:
 
 ```yaml
 volumes:
   - classifier-data:/data
 ```
 
-### Inhalt von DATA_DIR
+### Persistente Daten
 
-| Datei | Beschreibung |
+| Ort | Beschreibung |
 |---|---|
-| `laravel/database.sqlite` | Laravel-App-Datenbank (Sessions, Settings, Review Queue, Audit, MCP-Tokens) |
-| `laravel/app_key` | Persistenter Laravel-App-Key fuer verschluesselte Secrets |
-| `classifier.db` / `archibot.db` | Python-Worker-Datenbank (Embeddings, Worker-Kompatibilitaet, OCR-Cache) |
-| `config.env` | Legacy-Settings, die beim ersten Laravel-Setup einmalig importiert werden |
-| `config.bak.*` | Automatische Backups von config.env |
+| PostgreSQL-Volume `archibot_postgres` | App-Datenbank (Sessions, Settings, Review Queue, Audit, MCP-Tokens, Embeddings) |
+| `DATA_DIR/laravel/app_key` | Persistenter Laravel-App-Key fuer verschluesselte Secrets |
+| `DATA_DIR/config.env` | Legacy-Settings, die beim ersten Laravel-Setup einmalig importiert werden |
+| `DATA_DIR/config.bak.*` | Automatische Backups von config.env |
 
 ### Backup
 

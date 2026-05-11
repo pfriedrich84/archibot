@@ -28,7 +28,7 @@ Date: 2026-05-08
 
 ## Recommended next improvements
 
-1. Add ADRs for major established decisions: single-container deployment, local Ollama-first AI, SQLite/sqlite-vec storage, and Python/Laravel responsibility split.
+1. Add ADRs for major established decisions: single-container deployment, local Ollama-first AI, PostgreSQL/pgvector storage, and Python/Laravel responsibility split.
 2. Expand user troubleshooting docs from recurring support issues once they are known.
 3. Consider adding Composer/npm dependency audit guidance if CI later adopts those ecosystem-native checks.
 4. Periodically compare README, docs, CI, and Docker configuration for drift after major feature work.

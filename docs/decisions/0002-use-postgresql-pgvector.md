@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The target event-driven architecture needs shared durable state across Laravel and Python workers. SQLite/sqlite-vec is not a good long-term fit for concurrent workers, durable progress/retry state and vector search in a multi-component pipeline.
+The target event-driven architecture needs shared durable state across Laravel and Python workers. A single PostgreSQL/pgvector database is a better long-term fit for concurrent workers, durable progress/retry state and vector search in a multi-component pipeline.
 
 ## Decision
 
@@ -18,6 +18,6 @@ PostgreSQL stores webhook deliveries, commands, pipeline runs, pipeline items, p
 
 - Laravel and Python share one durable state model.
 - Progress and retry state survive worker restarts and container rebuilds.
-- Embedding similarity search moves from sqlite-vec to pgvector.
+- Embedding similarity search uses pgvector.
 - Migrations must account for pgvector-specific indexes while keeping local smoke checks practical.
 - Runtime state must not be split into separate Laravel/Python status worlds.

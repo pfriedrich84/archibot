@@ -18,13 +18,13 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 
 - 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
 - 🧠 Klassifikation via Ollama (Default: `gemma4:e4b`, konfigurierbar)
-- 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`sqlite-vec`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
+- 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
 - ✅ Review-GUI in der Svelte-Admin-App: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`), optional eingeschraenkt auf Dokumente mit `OCR_REQUESTED_TAG_ID`
 - ⏱️ Robuste Ollama-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
-- 🗄️ SQLite-State mit vollständigem Audit-Trail
+- 🗄️ PostgreSQL-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
 - 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über Python/MCP/Telegram-Runtime; die Laravel-Oberfläche wird schrittweise erweitert
 - 🤖 Telegram-Bot: Vorschläge annehmen/ablehnen + RAG-Chat für Dokument-Fragen (optional)
@@ -49,7 +49,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
         │ PATCH                          │
         │ (nach Freigabe)                ▼
         │                     ┌──────────────────────┐
-        │                     │   SQLite + vec0      │
+        │                     │ PostgreSQL + pgvector │
         │                     │   - suggestions      │
         │                     │   - tag whitelist    │
         │                     │   - embeddings       │
@@ -111,7 +111,7 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 - `llama3.1:8b` (nur sinnvoll, wenn dein Host/Ollama-Offloading stabil laeuft)
 
 > Wichtig: Wenn du `OLLAMA_EMBED_MODEL` oder `OLLAMA_EMBED_DIM` aenderst,
-> fuehre danach einen **Full Reindex** aus, damit sqlite-vec mit der neuen
+> fuehre danach einen **Full Reindex** aus, damit pgvector mit der neuen
 > Embedding-Dimension neu aufgebaut wird.
 
 ## Dokumentation

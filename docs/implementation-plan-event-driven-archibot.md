@@ -17,7 +17,7 @@ Paperless Webhooks / Laravel UI / Scheduler
 
 **Paperless Webhooks sind der primäre Trigger für neue oder geänderte Dokumente.** Polling bleibt nur ein Fallback/Reconciliation-Mechanismus, nicht der Hauptpfad.
 
-Es wird **keine dauerhafte Kompatibilitätsstrategie** mit parallelem Legacy-Betrieb verfolgt. Die bisherige SQLite-/sqlite-vec- und Subprocess-basierte Worker-Schicht wird gezielt ersetzt, nicht langfristig neben der neuen Architektur weitergeführt.
+Es wird **keine dauerhafte Kompatibilitätsstrategie** mit parallelem Legacy-Betrieb verfolgt. Die bisherige Subprocess-basierte Worker-Schicht wird gezielt ersetzt, nicht langfristig neben der neuen Architektur weitergeführt.
 
 ## Architektur-Entscheidungen
 
@@ -51,8 +51,8 @@ Begründung:
 Begründung:
 
 - Gemeinsame robuste Datenbasis für Laravel und Python.
-- Besser geeignet für parallele Worker als SQLite.
-- pgvector ersetzt sqlite-vec für Embedding Search.
+- Geeignet für parallele Worker und dauerhaftes Retry-/Progress-Tracking.
+- pgvector ist der Standard für Embedding Search.
 - Sauberer Ort für Webhook Deliveries, Pipeline Runs, Events, Actor Executions, Reviews, Audit Log und LLM Usage.
 
 ### Python Job Framework
@@ -573,7 +573,7 @@ Wichtige Felder:
 
 ### `document_embeddings`
 
-Ablöse für sqlite-vec.
+Ablöse für pgvector.
 
 Wichtige Felder:
 
@@ -784,7 +784,7 @@ Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden
 ### Phase 1: Infrastruktur ersetzen
 
 - Docker Compose um PostgreSQL und RabbitMQ erweitern.
-- SQLite als primäre Runtime-Datenbank ablösen.
+- PostgreSQL als primäre Runtime-Datenbank ablösen.
 - Python Dependencies ergänzen:
   - `dramatiq`
   - `pika` oder passender RabbitMQ Support über Dramatiq Extras
@@ -886,14 +886,14 @@ Akzeptanzkriterien:
 - Reindex wird in Discover + viele Dokument-Actors + Abschlussphase geteilt.
 - Reindex Lock einführen.
 - Embedding Rebuild in pgvector schreiben.
-- Alter sqlite-vec Reindex-Pfad wird entfernt.
+- Alter pgvector Reindex-Pfad wird entfernt.
 
 Akzeptanzkriterien:
 
 - Reindex ist abbrechbar oder pausierbar.
 - Einzelne Dokumentfehler führen zu `partially_failed`, nicht zu Totalabbruch.
 - Embedding Search läuft über pgvector.
-- Es gibt keinen aktiven sqlite-vec Reindex-Pfad mehr.
+- Es gibt keinen aktiven pgvector Reindex-Pfad mehr.
 
 ### Phase 8: LLM Router abstrahieren
 

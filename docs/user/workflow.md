@@ -12,7 +12,7 @@ in Paperless-NGX.
          |
 3. OCR-Korrektur (optional)     Nur wenn OCR_MODE != off
          |
-4. Embedding berechnen          qwen3-embedding:4b (Default), gespeichert in sqlite-vec
+4. Embedding berechnen          qwen3-embedding:4b (Default), gespeichert in pgvector
          |
 5. Kontext-Suche                KNN: aehnlichste bereits klassifizierte Dokumente finden
          |

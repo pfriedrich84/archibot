@@ -1,13 +1,13 @@
 # Konfiguration
 
-Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in `/data/laravel/database.sqlite`; danach sind Laravel-Settings fuehrend.
+Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend.
 
 > Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
 > (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
 > internen App-Defaults.
 
 **Prioritaet (hoechste zuerst):**
-1. Laravel Settings in `/data/laravel/database.sqlite`
+1. Laravel Settings in PostgreSQL
 2. OS-Umgebungsvariablen — gesetzt von Docker Compose aus `.env`
 3. Legacy `{DATA_DIR}/config.env` — nur fuer den einmaligen Import beim Setup
 4. Defaults — in Laravel/Python hinterlegt
@@ -63,7 +63,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell (hoehere Retrieval-Qualitaet) |
-| `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer sqlite-vec. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
+| `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer pgvector. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
 | `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens) |
 | `EMBED_MAX_CHARS` | `6000` | Max. Zeichen des Dokumenttexts fuer Embedding |
 | `OLLAMA_EMBED_RETRIES` | `3` | Max. Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
@@ -97,7 +97,7 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | `APP_TIMEZONE` | `Europe/Vienna` | Zeitzone fuer Laravel/PHP-Datumswerte sowie Python-Worker/CLI-Anzeigen; muss in `.env` gepflegt werden |
 | `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
 | `APP_KEY` | auto-generiert in `/data/laravel/app_key` | Laravel-App-Key fuer Sessions und verschluesselte Secrets |
-| `DB_DATABASE` | `/data/laravel/database.sqlite` | Laravel-App-Datenbank |
+| `DB_DATABASE` | `archibot` | Laravel-App-Datenbankname |
 | `QUEUE_CONNECTION` | `database` | Laravel Queue Backend |
 | `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
 

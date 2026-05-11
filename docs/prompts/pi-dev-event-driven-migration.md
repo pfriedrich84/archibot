@@ -26,7 +26,7 @@ The agent must actively manage its own context and the context of subagents. Kee
 
 Migrate Archibot toward the documented event-driven target architecture.
 
-Archibot is moving from the current Laravel-subprocess/Python-CLI/APScheduler/SQLite/sqlite-vec architecture to:
+Archibot is moving from the current Laravel-subprocess/Python-CLI/APScheduler/PostgreSQL/pgvector architecture to:
 
 - Paperless webhooks as the primary trigger
 - periodic polling every 600 seconds as reconciliation/fallback

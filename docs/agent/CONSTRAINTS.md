@@ -27,7 +27,7 @@ Evidence-based constraints for ArchiBot changes.
 
 - Python runtime targets Python 3.12.
 - Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` currently allows PHP `^8.3`.
-- The migration target replaces SQLite/sqlite-vec state and vector search with PostgreSQL/pgvector.
+- The migration target standardizes state and vector search on PostgreSQL/pgvector.
 - Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
 - Do not introduce a permanent `legacy|dramatiq` backend compatibility mode.
 - Keep Laravel and Python aligned on the shared PostgreSQL pipeline state model.

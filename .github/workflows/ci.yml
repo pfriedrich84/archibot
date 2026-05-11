@@ -150,6 +150,20 @@ jobs:
 
   laravel-starter:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: archibot_test
+          POSTGRES_USER: archibot
+          POSTGRES_PASSWORD: archibot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U archibot -d archibot_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: laravel
@@ -161,7 +175,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
-          extensions: sqlite3, pdo_sqlite, mbstring, dom, curl, zip
+          extensions: pgsql, pdo_pgsql, mbstring, dom, curl, zip
           coverage: none
 
       - name: Set up Node.js
@@ -177,8 +191,6 @@ jobs:
       - name: Prepare Laravel environment
         run: |
           cp .env.example .env
-          php -r '$env = file_get_contents(".env"); $env = preg_replace("/^DB_CONNECTION=.*/m", "DB_CONNECTION=sqlite", $env); $env = preg_replace("/^DB_DATABASE=.*/m", "DB_DATABASE=database/database.sqlite", $env); file_put_contents(".env", $env);'
-          touch database/database.sqlite
           php artisan key:generate --ansi
           php artisan migrate --force --ansi
 

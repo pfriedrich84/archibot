@@ -19,11 +19,10 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
 └────────────────┘    └─────────────────────────────────┘    └──────────────┘
                                      │
                                      ▼
-                              ┌──────────────┐
-                              │   SQLite +   │
-                              │   sqlite-vec │
-                              │   (/data)    │
-                              └──────────────┘
+                              ┌──────────────────────┐
+                              │ PostgreSQL + pgvector │
+                              │  (persistent volume)  │
+                              └──────────────────────┘
 ```
 
 ## Dokument-Lebenszyklus
@@ -49,7 +48,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │  1. Idempotenz-Check (schon verarbeitet?)    │
 │  2. OCR-Korrektur  (optional, nur wenn noetig)│
 │  3. Kontext-Suche  (aehnliche Dokumente via  │
-│     Embedding-Similarity, sqlite-vec)        │
+│     Embedding-Similarity, pgvector)          │
 │  4. Klassifikation (Ollama LLM, JSON-Antwort)│
 │  4b. Judge-Pass (optional, LLM-as-Judge      │
 │      prueft Klassifikation, ggf. Korrektur)  │
@@ -119,7 +118,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 ### 3. Kontext-Suche
 
 - Berechnet Embedding des Zieldokuments via Ollama (`qwen3-embedding:4b`, Dim via `OLLAMA_EMBED_DIM`/Auto)
-- KNN-Suche in `doc_embeddings` (sqlite-vec) findet die aehnlichsten Dokumente
+- KNN-Suche in `doc_embeddings` (pgvector) findet die aehnlichsten Dokumente
 - **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — nur reviewte/bestaetigte Dokumente mit zuverlaessigen Metadaten dienen als Referenz
 - Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Tags, Speicherpfad)
 
@@ -170,7 +169,7 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 |---|---|
 | `processed_documents` | Verarbeitungsstatus pro Dokument (Idempotenz) |
 | `suggestions` | LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
-| `doc_embeddings` | Virtuelle sqlite-vec Tabelle fuer Vektor-Similarity (1024-dim) |
+| `doc_embeddings` | Virtuelle pgvector Tabelle fuer Vektor-Similarity (1024-dim) |
 | `doc_embedding_meta` | Metadaten zu Embeddings (document_id, title, created_at) |
 | `tag_whitelist` | Staging fuer unbekannte Tags (name, times_seen, approved) |
 | `tag_blacklist` | Abgelehnte Tags — werden bei zukuenftigen Vorschlaegen ignoriert |
@@ -185,6 +184,6 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 
 - **Ein Container:** Laravel/Svelte GUI/API + Laravel Queue Worker + Python Worker/MCP Runtime
 - **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
-- **Volume:** `/data` fuer Laravel SQLite (`/data/laravel/database.sqlite`), Python Worker-DB, Logs, Custom Prompts und importierte Legacy-Konfiguration
+- **Volumes:** PostgreSQL-Volume fuer App-Datenbank und Embeddings; `/data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
 - **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet die Laravel Queue und optional den Python MCP-Server
 - **Netzwerk:** Muss Paperless und Ollama erreichen koennen. Bei separaten Compose-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
