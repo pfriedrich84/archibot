@@ -27,7 +27,14 @@
         key: string;
         input_name: string;
         label: string;
-        type: 'text' | 'url' | 'number' | 'password' | 'bool' | 'select';
+        type:
+            | 'text'
+            | 'url'
+            | 'number'
+            | 'password'
+            | 'bool'
+            | 'select'
+            | 'textarea';
         options: string[];
         required: boolean;
         sensitive: boolean;
@@ -109,6 +116,18 @@
                                         </option>
                                     {/each}
                                 </select>
+                            {:else if setting.type === 'textarea'}
+                                <Label for={setting.input_name}
+                                    >{setting.label}</Label
+                                >
+                                <textarea
+                                    id={setting.input_name}
+                                    name={setting.input_name}
+                                    required={setting.required}
+                                    rows="8"
+                                    class="min-h-32 rounded-md border bg-background p-3 font-mono text-sm"
+                                    >{setting.value}</textarea
+                                >
                             {:else}
                                 <Label for={setting.input_name}
                                     >{setting.label}</Label

@@ -45,6 +45,7 @@ class LlmGateway(Protocol):
         user: str,
         model: str | None = None,
         num_ctx: int | None = None,
+        role: str = "classification",
     ) -> dict[str, Any]: ...
 
     async def chat_vision_json(
@@ -55,6 +56,7 @@ class LlmGateway(Protocol):
         image_b64: str,
         model: str | None = None,
         num_ctx: int | None = None,
+        role: str = "ocr",
     ) -> dict[str, Any]: ...
 
     async def unload_model(self, model: str, *, swap: bool = False) -> None: ...

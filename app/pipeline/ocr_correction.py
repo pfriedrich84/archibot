@@ -265,6 +265,7 @@ async def _correct_text_only(
             user=user_text,
             model=ollama.ocr_model,
             num_ctx=settings.ollama_ocr_num_ctx,
+            role="ocr",
         )
 
         corrected, num = _parse_ocr_response(raw, text)
@@ -314,6 +315,7 @@ async def _correct_vision_light(
             images=images,
             model=vision_model,
             num_ctx=settings.ollama_ocr_num_ctx,
+            role="ocr",
         )
 
         corrected, num = _parse_ocr_response(raw, text)
@@ -369,6 +371,7 @@ async def _correct_vision_full(
                     images=[page_image],
                     model=vision_model,
                     num_ctx=settings.ollama_ocr_num_ctx,
+                    role="ocr",
                 )
                 corrected, num = _parse_ocr_response(raw, page_text)
                 corrected_pages.append(corrected)

@@ -26,15 +26,46 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 
 ArchiBot unterstuetzt native Ollama-Endpunkte und lokale OpenAI-kompatible `/v1`-APIs (z.B. LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp server oder Ollama `/v1`). Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert.
 
+Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. lokale LiteLLM-Embeddings plus OpenRouter als Judge. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
+
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | `ollama` fuer native Ollama-API oder `openai_compatible` fuer OpenAI-kompatible lokale `/v1`-API |
 | `OLLAMA_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1` oder `http://litellm:4000/v1` |
 | `OPENAI_API_KEY` | — | Optionaler Bearer Token fuer OpenAI-kompatible Provider; leer lassen bei lokalen Endpunkten ohne Auth |
+| `AI_PROVIDER_PROFILES` | — | Optionales JSON-Array weiterer Provider-Profile (`id`, `type`, `base_url`, optional `api_key_env`, `is_cloud`). Secrets bevorzugt per Env-Variable referenzieren, nicht inline speichern. |
+| `CLASSIFICATION_PROVIDER` | — | Provider-Profil-ID fuer Klassifikation; leer = Default |
+| `EMBEDDING_PROVIDER` | — | Provider-Profil-ID fuer Embeddings; leer = Default |
+| `OCR_PROVIDER` | — | Provider-Profil-ID fuer OCR Text/Vision; leer = Default |
+| `JUDGE_PROVIDER` | — | Provider-Profil-ID fuer Judge-Verifikation; leer = Default |
+| `CHAT_PROVIDER` | — | Provider-Profil-ID fuer Chat/RAG; leer = Default |
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
 | `OLLAMA_MODEL_SWAP_DELAY` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt; nur bei native Ollama genutzt |
+
+Beispiel fuer mehrere Provider:
+
+```json
+[
+  {
+    "id": "local-litellm",
+    "label": "Local LiteLLM",
+    "type": "openai_compatible",
+    "base_url": "http://litellm:4000/v1"
+  },
+  {
+    "id": "openrouter",
+    "label": "OpenRouter",
+    "type": "openai_compatible",
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "is_cloud": true
+  }
+]
+```
+
+Dann z.B. `EMBEDDING_PROVIDER=local-litellm` und `JUDGE_PROVIDER=openrouter` setzen.
 
 ## Phase 1: OCR-Korrektur
 

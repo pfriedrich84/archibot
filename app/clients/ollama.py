@@ -58,13 +58,53 @@ class OllamaClient:
             base_url=self.base_url,
             timeout=httpx.Timeout(settings.ollama_timeout_seconds),
         )
+        self._clients: dict[str, httpx.AsyncClient] = {}
         self.embed_retry_count: int = 0
 
     def _provider(self) -> str:
         return getattr(self, "provider", "ollama")
 
+    def _provider_for_role(self, role: str) -> dict[str, str]:
+        try:
+            provider = dict(settings.ai_provider_for_role(role))
+        except (AttributeError, TypeError, ValueError):
+            provider = {
+                "id": "default",
+                "type": self._provider(),
+                "base_url": getattr(self, "base_url", ""),
+                "api_key": getattr(settings, "openai_api_key", ""),
+            }
+        if provider.get("id") == "default":
+            provider["type"] = self._provider()
+            provider["base_url"] = getattr(self, "base_url", settings.ollama_url)
+            provider["api_key"] = settings.openai_api_key
+        return provider
+
+    def _provider_type(self, provider: dict[str, str] | None = None) -> str:
+        if provider is None:
+            return self._provider()
+        return (provider.get("type") or "ollama").strip().lower()
+
+    def _client_for_provider(self, provider: dict[str, str] | None = None) -> httpx.AsyncClient:
+        if provider is None:
+            return self._client
+        current_base_url = getattr(self, "base_url", settings.ollama_url).rstrip("/")
+        base_url = (provider.get("base_url") or current_base_url).rstrip("/")
+        if base_url == current_base_url:
+            return self._client
+        if not hasattr(self, "_clients"):
+            self._clients = {}
+        if base_url not in self._clients:
+            self._clients[base_url] = httpx.AsyncClient(
+                base_url=base_url,
+                timeout=httpx.Timeout(settings.ollama_timeout_seconds),
+            )
+        return self._clients[base_url]
+
     async def aclose(self) -> None:
         await self._client.aclose()
+        for client in getattr(self, "_clients", {}).values():
+            await client.aclose()
 
     # ---------------------------------------------------------------
     # Health
@@ -78,6 +118,15 @@ class OllamaClient:
             log.warning("ollama ping failed", error=str(exc))
             return False
 
+    def _role_for_model(self, model: str) -> str:
+        if model == self.embed_model:
+            return "embedding"
+        if model == getattr(self, "ocr_model", "") or model == settings.ocr_vision_model:
+            return "ocr"
+        if model == settings.ollama_judge_model:
+            return "judge"
+        return "classification"
+
     async def unload_model(self, model: str, *, swap: bool = False) -> None:
         """Unload a model from VRAM via keep_alive=0.
 
@@ -86,12 +135,13 @@ class OllamaClient:
         Terminal cleanup calls should leave *swap* as False to avoid needless
         latency.
         """
-        if self._provider() == "openai_compatible":
+        provider = self._provider_for_role(self._role_for_model(model))
+        if self._provider_type(provider) == "openai_compatible":
             log.debug("model unload skipped for OpenAI-compatible provider", model=model)
             return
 
         try:
-            await self._client.post(
+            await self._client_for_provider(provider).post(
                 "/api/generate",
                 json={"model": model, "keep_alive": 0},
             )
@@ -107,10 +157,16 @@ class OllamaClient:
                 log.debug("waiting for GPU memory recovery", delay_s=delay)
                 await asyncio.sleep(delay)
 
-    def _auth_headers(self) -> dict[str, str]:
-        if self._provider() != "openai_compatible" or not settings.openai_api_key:
+    def _auth_headers(self, provider: dict[str, str] | None = None) -> dict[str, str]:
+        if provider is None:
+            api_key = settings.openai_api_key
+            provider_type = self._provider()
+        else:
+            api_key = provider.get("api_key", "")
+            provider_type = self._provider_type(provider)
+        if provider_type != "openai_compatible" or not api_key:
             return {}
-        return {"Authorization": f"Bearer {settings.openai_api_key}"}
+        return {"Authorization": f"Bearer {api_key}"}
 
     async def list_models(self) -> list[str]:
         """Return model names available from the configured provider."""
@@ -192,6 +248,17 @@ class OllamaClient:
         *,
         vision: bool = False,
     ) -> dict[str, Any]:
+        return await self._chat_json_with_retries_for_provider(
+            payload, provider=None, vision=vision
+        )
+
+    async def _chat_json_with_retries_for_provider(
+        self,
+        payload: dict[str, Any],
+        *,
+        provider: dict[str, str] | None = None,
+        vision: bool = False,
+    ) -> dict[str, Any]:
         # Keep this bounded to avoid long stalls on OCR/classification workloads.
         retries_raw = getattr(settings, "ollama_chat_retries", 1)
         base_delay_raw = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
@@ -202,7 +269,9 @@ class OllamaClient:
 
         for attempt in range(1 + max_retries):
             try:
-                r = await self._client.post("/api/chat", json=current_payload)
+                r = await self._client_for_provider(provider).post(
+                    "/api/chat", json=current_payload
+                )
                 r.raise_for_status()
                 data = r.json()
                 content = data.get("message", {}).get("content", "")
@@ -236,14 +305,15 @@ class OllamaClient:
         retry_count: int,
         base_delay: float,
         log_label: str,
+        provider: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """POST /chat/completions with retry handling for OpenAI-compatible APIs."""
         for attempt in range(1 + retry_count):
             try:
-                r = await self._client.post(
+                r = await self._client_for_provider(provider).post(
                     "/chat/completions",
                     json=payload,
-                    headers=self._auth_headers(),
+                    headers=self._auth_headers(provider),
                 )
                 r.raise_for_status()
                 return r.json()
@@ -260,7 +330,12 @@ class OllamaClient:
                     continue
                 raise
 
-    async def _openai_chat_json_with_retries(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _openai_chat_json_with_retries(
+        self,
+        payload: dict[str, Any],
+        *,
+        provider: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         retries_raw = getattr(settings, "ollama_chat_retries", 1)
         base_delay_raw = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
         max_retries = retries_raw if isinstance(retries_raw, int) else 1
@@ -274,6 +349,7 @@ class OllamaClient:
                     retry_count=0,
                     base_delay=base_delay,
                     log_label="openai-compatible chat json",
+                    provider=provider,
                 )
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 return self._parse_chat_json_content(content)
@@ -333,9 +409,11 @@ class OllamaClient:
         model: str | None = None,
         temperature: float = 0.1,
         num_ctx: int | None = None,
+        role: str = "classification",
     ) -> dict[str, Any]:
         """Call the configured chat provider and parse a JSON response."""
-        if self._provider() == "openai_compatible":
+        provider = self._provider_for_role(role)
+        if self._provider_type(provider) == "openai_compatible":
             payload = {
                 "model": model or self.model,
                 "stream": False,
@@ -346,7 +424,7 @@ class OllamaClient:
                     {"role": "user", "content": user},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload)
+            return await self._openai_chat_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -361,7 +439,9 @@ class OllamaClient:
                 {"role": "user", "content": user},
             ],
         }
-        return await self._chat_json_with_retries(payload, vision=False)
+        return await self._chat_json_with_retries_for_provider(
+            payload, provider=provider, vision=False
+        )
 
     # ---------------------------------------------------------------
     # Chat with vision (JSON mode)
@@ -375,12 +455,14 @@ class OllamaClient:
         model: str | None = None,
         temperature: float = 0.1,
         num_ctx: int | None = None,
+        role: str = "ocr",
     ) -> dict[str, Any]:
         """Call provider chat with images and parse a JSON response.
 
         *images* must be a list of base64-encoded image strings (no data URI prefix).
         """
-        if self._provider() == "openai_compatible":
+        provider = self._provider_for_role(role)
+        if self._provider_type(provider) == "openai_compatible":
             content: list[dict[str, Any]] = [{"type": "text", "text": user}]
             content.extend(
                 {
@@ -399,7 +481,7 @@ class OllamaClient:
                     {"role": "user", "content": content},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload)
+            return await self._openai_chat_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -414,7 +496,9 @@ class OllamaClient:
                 {"role": "user", "content": user, "images": images},
             ],
         }
-        return await self._chat_json_with_retries(payload, vision=True)
+        return await self._chat_json_with_retries_for_provider(
+            payload, provider=provider, vision=True
+        )
 
     # ---------------------------------------------------------------
     # Chat (plain text, for conversational RAG)
@@ -440,7 +524,8 @@ class OllamaClient:
         retries = retries_raw if isinstance(retries_raw, int) else 1
         base_delay = float(base_delay_raw) if isinstance(base_delay_raw, int | float) else 1.0
 
-        if self._provider() == "openai_compatible":
+        provider = self._provider_for_role("chat")
+        if self._provider_type(provider) == "openai_compatible":
             payload = {
                 "model": model or self.model,
                 "stream": False,
@@ -452,6 +537,7 @@ class OllamaClient:
                 retry_count=retries,
                 base_delay=base_delay,
                 log_label="openai-compatible plain chat",
+                provider=provider,
             )
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if not content:
@@ -469,6 +555,7 @@ class OllamaClient:
             retry_count=retries,
             base_delay=base_delay,
             log_label="ollama plain chat",
+            provider=provider,
         )
         content = data.get("message", {}).get("content", "")
         if not content:
@@ -519,11 +606,12 @@ class OllamaClient:
         retry_count: int,
         base_delay: float,
         log_label: str,
+        provider: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """POST /api/chat with retry handling for transient errors."""
         for attempt in range(1 + retry_count):
             try:
-                r = await self._client.post("/api/chat", json=payload)
+                r = await self._client_for_provider(provider).post("/api/chat", json=payload)
                 r.raise_for_status()
                 return r.json()
             except Exception as exc:
@@ -559,9 +647,10 @@ class OllamaClient:
         base_delay = settings.ollama_embed_retry_base_delay
         prompt = text
         last_exc: Exception | None = None
+        provider = self._provider_for_role("embedding")
 
         for attempt in range(1 + max_retries):
-            if self._provider() == "openai_compatible":
+            if self._provider_type(provider) == "openai_compatible":
                 payload = {"model": self.embed_model, "input": prompt}
             else:
                 payload = {
@@ -570,11 +659,11 @@ class OllamaClient:
                     "options": {"num_ctx": settings.ollama_embed_num_ctx},
                 }
             try:
-                if self._provider() == "openai_compatible":
-                    r = await self._client.post(
+                if self._provider_type(provider) == "openai_compatible":
+                    r = await self._client_for_provider(provider).post(
                         "/embeddings",
                         json=payload,
-                        headers=self._auth_headers(),
+                        headers=self._auth_headers(provider),
                     )
                     r.raise_for_status()
                     data = r.json()
@@ -583,14 +672,16 @@ class OllamaClient:
                         items[0].get("embedding") if items and isinstance(items[0], dict) else None
                     )
                 else:
-                    r = await self._client.post("/api/embeddings", json=payload)
+                    r = await self._client_for_provider(provider).post(
+                        "/api/embeddings", json=payload
+                    )
                     r.raise_for_status()
                     data = r.json()
                     vec = data.get("embedding")
                 if not vec:
                     source = (
                         "OpenAI-compatible provider"
-                        if self._provider() == "openai_compatible"
+                        if self._provider_type(provider) == "openai_compatible"
                         else "Ollama"
                     )
                     raise ValueError(f"{source} returned empty embedding")

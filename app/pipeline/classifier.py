@@ -461,7 +461,7 @@ async def verify(
     )
 
     try:
-        raw = await ollama.chat_json(system=system, user=user, model=model)
+        raw = await ollama.chat_json(system=system, user=user, model=model, role="judge")
     except Exception as exc:
         log.warning("judge call failed", doc_id=target.id, error=str(exc))
         return JudgeVerdict(verdict="error", reasoning=str(exc)[:300])
