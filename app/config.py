@@ -251,9 +251,9 @@ class Settings(BaseSettings):
 
     @property
     def ollama_embed_dim_resolved(self) -> int:
-        """Embedding dimension used by sqlite-vec.
+        """Expected embedding vector dimension.
 
-        `ollama_embed_dim=0` enables auto mode for known defaults.
+        `ollama_embed_dim=0` enables auto mode for known model defaults.
         """
         if self.ollama_embed_dim > 0:
             return self.ollama_embed_dim
@@ -642,7 +642,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Embedding Dimension",
         "number",
         restart="app",
-        help="Expected embedding vector dimension for sqlite-vec. 0 = auto (qwen3-embedding:0.6b -> 1024, qwen3-embedding:4b -> 2560).",
+        help="Expected embedding vector dimension. 0 = auto (qwen3-embedding:0.6b -> 1024, qwen3-embedding:4b -> 2560).",
     ),
     "ollama_embed_num_ctx": _fm(
         "Phase 2: Embedding",

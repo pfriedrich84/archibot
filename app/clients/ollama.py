@@ -12,7 +12,6 @@ import httpx
 import structlog
 
 from app.config import settings
-from app.db import EMBED_DIM
 
 log = structlog.get_logger(__name__)
 
@@ -700,7 +699,7 @@ class OllamaClient:
                         else "Ollama"
                     )
                     raise ValueError(f"{source} returned empty embedding")
-                expected_dim = EMBED_DIM
+                expected_dim = settings.ollama_embed_dim_resolved
                 if len(vec) != expected_dim:
                     raise ValueError(
                         f"Unexpected embedding dimension: got {len(vec)}, expected {expected_dim}"
