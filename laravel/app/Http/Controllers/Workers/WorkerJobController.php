@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
+use App\Services\Workers\StaleWorkerJobCanceller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -14,8 +15,10 @@ use Inertia\Response;
 
 class WorkerJobController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, StaleWorkerJobCanceller $staleCanceller): Response
     {
+        $staleCanceller->cancel();
+
         $jobs = WorkerJob::query()
             ->with([
                 'reviewSuggestions' => fn ($query) => $query->latest(),
@@ -78,9 +81,11 @@ class WorkerJobController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, StaleWorkerJobCanceller $staleCanceller): RedirectResponse
     {
         abort_unless($request->user()?->is_admin, 403);
+
+        $staleCanceller->cancel();
 
         $validated = $request->validate([
             'type' => ['required', Rule::in(WorkerJob::userQueueableTypes())],

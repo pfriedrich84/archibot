@@ -106,6 +106,8 @@ class PythonWorkerCommand
     private function waitForCompatibleJobs(WorkerJob $workerJob): void
     {
         while ($this->hasIncompatibleRunningJob($workerJob)) {
+            app(StaleWorkerJobCanceller::class)->cancel();
+
             $workerJob->refresh();
             if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
                 return;

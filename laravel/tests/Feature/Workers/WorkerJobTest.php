@@ -7,6 +7,7 @@ use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -66,6 +67,49 @@ class WorkerJobTest extends TestCase
             'event' => 'worker_job.queued',
             'target_id' => (string) $workerJob->id,
         ]);
+    }
+
+    public function test_index_auto_cancels_stale_cancelling_jobs(): void
+    {
+        Config::set('archibot_workers.stale_cancelling_minutes', 30);
+        $user = User::factory()->create();
+        $job = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_POLL,
+            'status' => WorkerJob::STATUS_CANCELLING,
+            'cancellation_requested_at' => now()->subHours(2),
+            'updated_at' => now()->subHours(2),
+            'progress' => ['phase' => 'polling'],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('worker-jobs.index'))
+            ->assertOk();
+
+        $job->refresh();
+        $this->assertSame(WorkerJob::STATUS_CANCELLED, $job->status);
+        $this->assertNotNull($job->finished_at);
+        $this->assertSame('Worker job was force-cancelled after stale cancellation timeout.', $job->logs()->firstOrFail()->message);
+    }
+
+    public function test_cancel_stale_worker_jobs_command_unblocks_old_cancelling_jobs(): void
+    {
+        $stale = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_CANCELLING,
+            'cancellation_requested_at' => now()->subMinutes(31),
+            'updated_at' => now()->subMinutes(31),
+        ]);
+        $fresh = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_CANCELLING,
+            'cancellation_requested_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('worker-jobs:cancel-stale', ['--minutes' => 30])
+            ->expectsOutput('Cancelled 1 stale worker job(s).')
+            ->assertSuccessful();
+
+        $this->assertSame(WorkerJob::STATUS_CANCELLED, $stale->refresh()->status);
+        $this->assertSame(WorkerJob::STATUS_CANCELLING, $fresh->refresh()->status);
     }
 
     public function test_process_document_requires_document_id(): void
