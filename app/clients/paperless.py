@@ -16,7 +16,9 @@ log = structlog.get_logger(__name__)
 
 class PaperlessClient:
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
-        self.base_url = (base_url if base_url is not None else settings.paperless_url).strip().rstrip("/")
+        self.base_url = (
+            (base_url if base_url is not None else settings.paperless_url).strip().rstrip("/")
+        )
         self.token = (token if token is not None else settings.paperless_token).strip()
         if not self.token:
             raise ValueError(
