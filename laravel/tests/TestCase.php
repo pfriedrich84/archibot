@@ -31,22 +31,23 @@ abstract class TestCase extends BaseTestCase
     protected function markArchiBotSetupComplete(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.test');
-        SetupState::current()->forceFill([
+        SetupState::query()->updateOrCreate(['id' => 1], [
             'is_complete' => true,
             'reset_token_hash' => null,
             'reset_token_expires_at' => null,
             'completed_at' => now(),
-        ])->save();
+        ]);
     }
 
     protected function markArchiBotSetupIncomplete(): void
     {
-        SetupState::current()->forceFill([
+        AppSetting::query()->delete();
+        SetupState::query()->updateOrCreate(['id' => 1], [
             'is_complete' => false,
             'reset_token_hash' => null,
             'reset_token_expires_at' => null,
             'completed_at' => null,
-        ])->save();
+        ]);
     }
 
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
