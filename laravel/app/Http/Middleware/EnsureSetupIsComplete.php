@@ -33,6 +33,10 @@ class EnsureSetupIsComplete
             return true;
         }
 
+        if (app()->environment('testing') && (bool) config('archibot.testing_setup_complete', false)) {
+            return true;
+        }
+
         return $request->is('up')
             || $request->is('build/*')
             || $request->is('favicon.ico')
