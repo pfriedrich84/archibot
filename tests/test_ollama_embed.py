@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -201,7 +202,7 @@ async def test_embed_retries_on_transient_500_then_succeeds(client: OllamaClient
 
 
 async def test_embed_retries_exhausted_raises(client: OllamaClient):
-    """All retries exhausted — raises the last HTTPStatusError."""
+    """All retries exhausted — raises provider body details."""
     client._client.post = AsyncMock(
         return_value=_make_response(500, text='{"error": "internal error"}')
     )
@@ -212,7 +213,7 @@ async def test_embed_retries_exhausted_raises(client: OllamaClient):
     ):
         mock_settings.ollama_embed_retries = 2
         mock_settings.ollama_embed_retry_base_delay = 0.01
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(ValueError, match="internal error"):
             await client.embed("hello world")
 
     # 1 initial + 2 retries = 3 attempts, 2 retries counted
@@ -221,12 +222,12 @@ async def test_embed_retries_exhausted_raises(client: OllamaClient):
 
 
 async def test_embed_no_retry_on_4xx(client: OllamaClient):
-    """4xx client error (not 429) raises immediately without retry."""
+    """4xx client error (not 429) raises immediately with provider body."""
     client._client.post = AsyncMock(
         return_value=_make_response(400, text='{"error": "bad request"}')
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(ValueError, match=re.escape('body={"error": "bad request"}')):
         await client.embed("hello world")
 
     assert client.embed_retry_count == 0
@@ -311,7 +312,7 @@ async def test_embed_context_length_progressive_truncation(client: OllamaClient)
 
 
 async def test_embed_retry_disabled_when_zero(client: OllamaClient):
-    """With retries=0, errors raise immediately."""
+    """With retries=0, errors raise immediately with provider body."""
     client._client.post = AsyncMock(
         return_value=_make_response(500, text='{"error": "internal error"}')
     )
@@ -319,7 +320,7 @@ async def test_embed_retry_disabled_when_zero(client: OllamaClient):
     with patch("app.clients.ollama.settings") as mock_settings:
         mock_settings.ollama_embed_retries = 0
         mock_settings.ollama_embed_retry_base_delay = 1.0
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(ValueError, match="internal error"):
             await client.embed("hello world")
 
     assert client.embed_retry_count == 0

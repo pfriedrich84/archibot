@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # --- Paperless ---
@@ -38,18 +39,39 @@ class Settings(BaseSettings):
     ocr_provider: str = ""
     judge_provider: str = ""
     chat_provider: str = ""
-    ollama_model: str = "gemma4:e4b"
-    ollama_embed_model: str = "qwen3-embedding:4b"
-    ollama_embed_dim: int = 0  # 0 = auto-detect from known model defaults
-    ollama_ocr_model: str = "qwen3:4b"
+    ollama_model: str = Field(
+        default="gemma4:e4b",
+        validation_alias=AliasChoices("CLASSIFICATION_MODEL", "OLLAMA_MODEL"),
+    )
+    ollama_embed_model: str = Field(
+        default="qwen3-embedding:4b",
+        validation_alias=AliasChoices("EMBEDDING_MODEL", "OLLAMA_EMBED_MODEL"),
+    )
+    ollama_embed_dim: int = Field(
+        default=0,
+        validation_alias=AliasChoices("EMBEDDING_DIMENSION", "OLLAMA_EMBED_DIM"),
+    )  # 0 = auto-detect from known model defaults
+    ollama_ocr_model: str = Field(
+        default="qwen3:4b",
+        validation_alias=AliasChoices("OCR_TEXT_MODEL", "OLLAMA_OCR_MODEL"),
+    )
     ollama_timeout_seconds: int = 600
     ollama_embed_retries: int = 3
     ollama_embed_retry_base_delay: float = 1.0
     ollama_chat_retries: int = 2
     ollama_chat_retry_base_delay: float = 1.0
-    ollama_num_ctx: int = 16384
-    ollama_embed_num_ctx: int = 8192
-    ollama_ocr_num_ctx: int = 12288
+    ollama_num_ctx: int = Field(
+        default=16384,
+        validation_alias=AliasChoices("CLASSIFICATION_CONTEXT_WINDOW", "OLLAMA_NUM_CTX"),
+    )
+    ollama_embed_num_ctx: int = Field(
+        default=8192,
+        validation_alias=AliasChoices("EMBEDDING_CONTEXT_WINDOW", "OLLAMA_EMBED_NUM_CTX"),
+    )
+    ollama_ocr_num_ctx: int = Field(
+        default=12288,
+        validation_alias=AliasChoices("OCR_CONTEXT_WINDOW", "OLLAMA_OCR_NUM_CTX"),
+    )
     ollama_model_swap_delay: float = 8.0  # seconds to wait after unloading a model
 
     # --- OCR ---
@@ -78,7 +100,10 @@ class Settings(BaseSettings):
     # --- LLM-as-Judge verification (optional second pass) ---
     enable_judge_verification: bool = False
     judge_confidence_threshold: int = 101  # 101 = judge all results (confidence is 0-100)
-    ollama_judge_model: str = "qwen3:4b"  # empty = reuse ollama_model (no extra GPU swap)
+    ollama_judge_model: str = Field(
+        default="qwen3:4b",
+        validation_alias=AliasChoices("JUDGE_MODEL", "OLLAMA_JUDGE_MODEL"),
+    )  # empty = reuse ollama_model (no extra GPU swap)
 
     # --- GUI ---
     gui_port: int = 8088
@@ -243,6 +268,18 @@ class Settings(BaseSettings):
         return 1024
 
 
+_CONFIG_ENV_ALIASES = {
+    "classification_model": "ollama_model",
+    "embedding_model": "ollama_embed_model",
+    "embedding_dimension": "ollama_embed_dim",
+    "ocr_text_model": "ollama_ocr_model",
+    "classification_context_window": "ollama_num_ctx",
+    "embedding_context_window": "ollama_embed_num_ctx",
+    "ocr_context_window": "ollama_ocr_num_ctx",
+    "judge_model": "ollama_judge_model",
+}
+
+
 _SENSITIVE_STRING_SETTINGS = {
     "mcp_api_key",
     "openai_api_key",
@@ -277,6 +314,7 @@ def _apply_config_env_overrides() -> None:
             continue
         key, _, raw = stripped.partition("=")
         field_name = key.strip().lower()
+        field_name = _CONFIG_ENV_ALIASES.get(field_name, field_name)
         raw = raw.strip()
 
         if field_name not in Settings.model_fields:

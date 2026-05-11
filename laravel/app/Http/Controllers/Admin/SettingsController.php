@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Services\Ollama\OllamaClient;
+use App\Services\Settings\PythonRuntimeConfigExporter;
 use App\Services\Settings\SettingsCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -122,6 +123,8 @@ class SettingsController extends Controller
         }
 
         if ($changes !== []) {
+            app(PythonRuntimeConfigExporter::class)->export();
+
             AuditLog::query()->create([
                 'actor_user_id' => $request->user()->id,
                 'event' => 'admin_settings.updated',

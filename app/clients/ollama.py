@@ -575,6 +575,21 @@ class OllamaClient:
             return False
 
     @staticmethod
+    def _http_error_detail(exc: httpx.HTTPStatusError, *, provider: dict[str, str]) -> str:
+        body = exc.response.text.strip()
+        if len(body) > 1000:
+            body = body[:1000] + "...[truncated]"
+        provider_id = provider.get("id") or "default"
+        base_url = provider.get("base_url") or ""
+        detail = (
+            f"Embedding provider returned HTTP {exc.response.status_code}"
+            f" provider={provider_id} base_url={base_url}"
+        )
+        if body:
+            detail += f" body={body}"
+        return detail
+
+    @staticmethod
     def _is_retryable(exc: Exception) -> bool:
         if isinstance(exc, httpx.HTTPStatusError):
             code = exc.response.status_code
@@ -713,10 +728,13 @@ class OllamaClient:
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
                         status=exc.response.status_code,
+                        body=exc.response.text[:500],
                     )
                     await asyncio.sleep(delay)
                     continue
-                raise
+                detail = self._http_error_detail(exc, provider=provider)
+                log.warning("embedding provider request failed", error=detail)
+                raise ValueError(detail) from exc
             except Exception as exc:
                 last_exc = exc
                 if attempt < max_retries and self._is_retryable(exc):

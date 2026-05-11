@@ -8,6 +8,7 @@ use App\Models\SetupState;
 use App\Models\User;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Settings\LegacySettingsImporter;
+use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -94,6 +95,26 @@ class CompleteSetup
                 ],
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
+            ]);
+
+            app(PythonRuntimeConfigExporter::class)->export([
+                'PAPERLESS_URL' => $paperlessUrl,
+                'PAPERLESS_TOKEN' => $token,
+                'PAPERLESS_INBOX_TAG_ID' => (string) $data['paperless_inbox_tag_id'],
+                'PAPERLESS_PROCESSED_TAG_ID' => (string) ($data['paperless_processed_tag_id'] ?? ''),
+                'OCR_REQUESTED_TAG_ID' => (string) ($data['ocr_requested_tag_id'] ?? ''),
+                'OCR_MODE' => (string) $data['ocr_mode'],
+                'LLM_PROVIDER' => (string) $data['llm_provider'],
+                'OLLAMA_URL' => rtrim((string) $data['ollama_url'], '/'),
+                'OPENAI_API_KEY' => (string) ($data['openai_api_key'] ?? ''),
+                'CLASSIFICATION_MODEL' => (string) $data['classification_model'],
+                'EMBEDDING_MODEL' => (string) $data['embedding_model'],
+                'OCR_TEXT_MODEL' => (string) ($data['ocr_text_model'] ?? ''),
+                'JUDGE_MODEL' => (string) ($data['classification_judge_model'] ?? ''),
+                'OLLAMA_MODEL' => (string) $data['classification_model'],
+                'OLLAMA_EMBED_MODEL' => (string) $data['embedding_model'],
+                'OLLAMA_OCR_MODEL' => (string) ($data['ocr_text_model'] ?? ''),
+                'OLLAMA_JUDGE_MODEL' => (string) ($data['classification_judge_model'] ?? ''),
             ]);
 
             Auth::login($user);

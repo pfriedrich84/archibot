@@ -24,6 +24,8 @@ class FirstRunSetupTest extends TestCase
 
     public function test_setup_page_prefills_paperless_url_from_environment(): void
     {
+        config(['archibot_settings.import_paths' => [storage_path('framework/testing/missing-config.env')]]);
+
         $previousEnvValue = $_ENV['PAPERLESS_URL'] ?? null;
         $previousServerValue = $_SERVER['PAPERLESS_URL'] ?? null;
 
@@ -89,6 +91,9 @@ class FirstRunSetupTest extends TestCase
             ]),
         ]);
 
+        $runtimeConfigPath = storage_path('framework/testing/config.env');
+        config(['archibot_settings.import_paths' => [$runtimeConfigPath]]);
+
         $response = $this->post('/setup', $this->setupPayload([
             'paperless_url' => 'https://paperless.test/',
         ]));
@@ -109,6 +114,12 @@ class FirstRunSetupTest extends TestCase
         $this->assertSame(7, $user->paperless_user_id);
         $this->assertTrue($user->is_admin);
         $this->assertSame('paperless-token', $user->paperless_token);
+        $runtimeConfig = file_get_contents($runtimeConfigPath);
+        $this->assertStringContainsString('PAPERLESS_TOKEN=paperless-token', $runtimeConfig);
+        $this->assertStringContainsString('PAPERLESS_URL=https://paperless.test', $runtimeConfig);
+        $this->assertStringContainsString('CLASSIFICATION_MODEL=llama3.2:latest', $runtimeConfig);
+        $this->assertStringContainsString('EMBEDDING_MODEL=nomic-embed-text:latest', $runtimeConfig);
+        $this->assertStringContainsString('OLLAMA_MODEL=llama3.2:latest', $runtimeConfig);
 
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'setup.completed',
