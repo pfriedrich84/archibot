@@ -13,6 +13,7 @@ Core rules for coding agents working on ArchiBot.
 - In the GUI, always show Paperless labels/names instead of raw numeric IDs (for example, show `Posteingang` instead of `124`). Numeric IDs may be used internally, but user-facing screens must resolve them to labels.
 - The GUI must never show raw JSON to display metadata; present metadata with user-friendly labels, fields, tables, badges, or structured UI components instead.
 - Date format and timezone must be configured via `.env` and used by both the Laravel/Svelte GUI and the Python worker/CLI. The default timezone is `Europe/Vienna`.
+- CLI and UI must always execute the same product behavior. Any command available through the CLI must use the same backend, configuration source, durable state, progress semantics, database/storage target, authorization assumptions, and side effects as the corresponding Laravel UI action. Never leave CLI commands on a legacy path when the UI has migrated.
 - Job control, behavior, and status semantics must be identical in the CLI and GUI. If a job is no longer running according to the CLI, it must not be shown as running in the GUI, especially after restarts or reboots.
 - Degrade gracefully: if OCR, embeddings, judge, Telegram, or optional integrations fail, continue where safe and surface the error for review.
 

@@ -35,6 +35,7 @@ Progress, retry and recovery state must be durable in PostgreSQL.
 Only admins may control jobs via Laravel actions guarded by `is_admin()`.
 Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks.
 Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
+CLI commands must behave exactly like the corresponding Laravel UI actions: same backend, config source, durable state, progress semantics, storage target, and side effects. Never leave CLI on a legacy SQLite/subprocess path while the UI uses PostgreSQL/pgvector/event-driven flows.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 
 Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md).

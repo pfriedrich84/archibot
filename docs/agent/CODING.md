@@ -4,6 +4,7 @@
 
 - Prefer targeted, reviewable changes over broad rewrites.
 - Preserve the Python/Laravel boundary: Python owns document processing and model calls; Laravel/Svelte owns UI, settings, review, and orchestration.
+- Keep CLI behavior identical to the Laravel UI path. When updating a workflow such as reindex, polling, embedding builds, review commits, or settings, verify the CLI entry point uses the same backend/config/state as the UI instead of a legacy fallback.
 - Update tests and docs when behavior changes.
 - Avoid unrelated formatting churn.
 
