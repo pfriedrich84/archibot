@@ -177,6 +177,7 @@ jobs:
       - name: Prepare Laravel environment
         run: |
           cp .env.example .env
+          php -r '$env = file_get_contents(".env"); $env = preg_replace("/^DB_CONNECTION=.*/m", "DB_CONNECTION=sqlite", $env); $env = preg_replace("/^DB_DATABASE=.*/m", "DB_DATABASE=database/database.sqlite", $env); file_put_contents(".env", $env);'
           touch database/database.sqlite
           php artisan key:generate --ansi
           php artisan migrate --force --ansi
