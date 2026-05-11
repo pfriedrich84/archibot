@@ -1,6 +1,10 @@
 # ArchiBot
 
 [![AI Assisted](https://img.shields.io/badge/AI-Assisted-blueviolet)](https://github.com/pfriedrich84/archibot)
+![Project Status](https://img.shields.io/badge/status-in%20development-orange)
+![Release](https://img.shields.io/badge/release-none%20yet-lightgrey)
+
+> **Hinweis:** ArchiBot ist aktuell in aktiver Entwicklung. Es gibt noch keinen stabilen Release.
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
