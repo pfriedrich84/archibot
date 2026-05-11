@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -110,6 +111,27 @@ class Settings(BaseSettings):
     # --- State ---
     data_dir: str = "/data"
     log_level: str = "INFO"
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _empty_non_string_env_uses_default(cls, value: Any, info: ValidationInfo) -> Any:
+        """Treat empty env values for typed settings as unset.
+
+        Docker Compose/.env files commonly contain placeholders such as
+        ``PAPERLESS_INBOX_TAG_ID=``. Pydantic cannot parse an empty string as
+        an int/float/bool, but for these optional configuration placeholders we
+        want the declared default (usually 0/False/None) instead of failing at
+        import time.
+        """
+        if value != "":
+            return value
+
+        field = cls.model_fields.get(info.field_name or "")
+        if field is None or isinstance(field.default, str):
+            return value
+        if field.default is None or isinstance(field.default, (bool, int, float)):
+            return field.default
+        return value
 
     @property
     def db_path(self) -> Path:
@@ -221,6 +243,16 @@ class Settings(BaseSettings):
         return 1024
 
 
+_SENSITIVE_STRING_SETTINGS = {
+    "mcp_api_key",
+    "openai_api_key",
+    "paperless_token",
+    "paperless_webhook_secret",
+    "telegram_bot_token",
+    "webhook_secret",
+}
+
+
 # Singleton
 settings = Settings()  # type: ignore[call-arg]
 
@@ -251,6 +283,14 @@ def _apply_config_env_overrides() -> None:
             continue
 
         default = Settings.model_fields[field_name].default
+        if (
+            raw == ""
+            and field_name in _SENSITIVE_STRING_SETTINGS
+            and isinstance(default, str)
+            and getattr(settings, field_name, "")
+        ):
+            continue
+
         try:
             if isinstance(default, bool):
                 coerced: Any = raw.lower() in ("true", "1", "yes")

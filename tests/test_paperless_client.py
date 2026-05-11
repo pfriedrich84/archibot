@@ -8,6 +8,11 @@ import pytest
 from app.clients.paperless import PaperlessClient
 
 
+def test_paperless_client_rejects_empty_token():
+    with pytest.raises(ValueError, match="Paperless API token is empty"):
+        PaperlessClient("http://paperless", "")
+
+
 @pytest.mark.asyncio
 async def test_search_documents_url_encodes_filter_values():
     requests: list[httpx.Request] = []
