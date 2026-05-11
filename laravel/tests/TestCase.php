@@ -18,8 +18,12 @@ abstract class TestCase extends BaseTestCase
 
         $this->withoutVite();
 
-        if ($this->completeSetupByDefault && Schema::hasTable('app_settings') && Schema::hasTable('setup_states')) {
-            $this->markArchiBotSetupComplete();
+        if (Schema::hasTable('app_settings') && Schema::hasTable('setup_states')) {
+            if ($this->completeSetupByDefault) {
+                $this->markArchiBotSetupComplete();
+            } else {
+                $this->markArchiBotSetupIncomplete();
+            }
         }
     }
 
@@ -28,7 +32,19 @@ abstract class TestCase extends BaseTestCase
         AppSetting::put('paperless.url', 'https://paperless.test');
         SetupState::current()->forceFill([
             'is_complete' => true,
+            'reset_token_hash' => null,
+            'reset_token_expires_at' => null,
             'completed_at' => now(),
+        ])->save();
+    }
+
+    protected function markArchiBotSetupIncomplete(): void
+    {
+        SetupState::current()->forceFill([
+            'is_complete' => false,
+            'reset_token_hash' => null,
+            'reset_token_expires_at' => null,
+            'completed_at' => null,
         ])->save();
     }
 
