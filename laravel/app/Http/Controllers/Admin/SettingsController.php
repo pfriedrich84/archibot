@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Services\Ollama\OllamaClient;
 use App\Services\Settings\SettingsCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\File;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,6 +26,42 @@ class SettingsController extends Controller
             'groups' => $catalog->groupedForDisplay(),
             'prompts' => $this->promptPayloads(),
         ]);
+    }
+
+    public function aiModels(Request $request): array
+    {
+        $this->authorizeAdmin($request);
+
+        $validated = $request->validate([
+            'provider_id' => ['nullable', 'string'],
+            'llm_provider' => ['nullable', Rule::in(['ollama', 'openai_compatible'])],
+            'ollama_url' => ['nullable', 'url:http,https'],
+            'openai_api_key' => ['nullable', 'string'],
+            'ai_provider_profiles' => ['nullable', 'string'],
+        ]);
+
+        $provider = $this->resolveAiProvider($validated);
+
+        try {
+            return [
+                'items' => app(OllamaClient::class, [
+                    'baseUrl' => $provider['base_url'],
+                    'provider' => $provider['type'],
+                    'apiKey' => $provider['api_key'] ?: null,
+                ])->models(),
+                'provider' => [
+                    'id' => $provider['id'],
+                    'label' => $provider['label'],
+                    'type' => $provider['type'],
+                    'base_url' => $provider['base_url'],
+                    'is_cloud' => $provider['is_cloud'],
+                ],
+            ];
+        } catch (\RuntimeException $exception) {
+            throw ValidationException::withMessages([
+                'provider_id' => $exception->getMessage(),
+            ]);
+        }
     }
 
     public function update(Request $request, SettingsCatalog $catalog): RedirectResponse
@@ -145,6 +183,83 @@ class SettingsController extends Controller
         ]);
 
         return back()->with('status', 'prompt-reset');
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array{id: string, label: string, type: string, base_url: string, api_key: string, is_cloud: bool}
+     */
+    private function resolveAiProvider(array $input): array
+    {
+        $profiles = [
+            'default' => [
+                'id' => 'default',
+                'label' => 'Default AI provider',
+                'type' => (string) ($input['llm_provider'] ?? AppSetting::getValue('llm.provider', 'ollama')),
+                'base_url' => rtrim((string) ($input['ollama_url'] ?? AppSetting::getValue('ollama.url', 'http://ollama:11434')), '/'),
+                'api_key' => (string) (($input['openai_api_key'] ?? '') ?: AppSetting::getValue('llm.openai_api_key', '')),
+                'is_cloud' => false,
+            ],
+        ];
+
+        foreach ($this->decodeAiProviderProfiles((string) ($input['ai_provider_profiles'] ?? AppSetting::getValue('llm.provider_profiles', ''))) as $profile) {
+            $profiles[$profile['id']] = $profile;
+        }
+
+        $providerId = trim((string) ($input['provider_id'] ?? '')) ?: 'default';
+
+        if (! isset($profiles[$providerId])) {
+            throw ValidationException::withMessages([
+                'provider_id' => "AI provider profile '{$providerId}' was not found.",
+            ]);
+        }
+
+        return $profiles[$providerId];
+    }
+
+    /**
+     * @return array<int, array{id: string, label: string, type: string, base_url: string, api_key: string, is_cloud: bool}>
+     */
+    private function decodeAiProviderProfiles(string $json): array
+    {
+        $json = trim($json);
+        if ($json === '') {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        if (! is_array($decoded)) {
+            throw ValidationException::withMessages([
+                'ai_provider_profiles' => 'Provider profiles must be a JSON array.',
+            ]);
+        }
+
+        $profiles = [];
+        foreach ($decoded as $profile) {
+            if (! is_array($profile)) {
+                continue;
+            }
+
+            $id = trim((string) ($profile['id'] ?? ''));
+            $type = strtolower(trim((string) ($profile['type'] ?? '')));
+            $baseUrl = rtrim(trim((string) ($profile['base_url'] ?? '')), '/');
+
+            if ($id === '' || ! in_array($type, ['ollama', 'openai_compatible'], true) || $baseUrl === '') {
+                continue;
+            }
+
+            $apiKeyEnv = trim((string) ($profile['api_key_env'] ?? ''));
+            $profiles[] = [
+                'id' => $id,
+                'label' => trim((string) ($profile['label'] ?? $id)) ?: $id,
+                'type' => $type,
+                'base_url' => $baseUrl,
+                'api_key' => $apiKeyEnv !== '' ? (string) env($apiKeyEnv, '') : (string) ($profile['api_key'] ?? ''),
+                'is_cloud' => filter_var($profile['is_cloud'] ?? false, FILTER_VALIDATE_BOOL),
+            ];
+        }
+
+        return $profiles;
     }
 
     /** @return array<int, array<string, mixed>> */

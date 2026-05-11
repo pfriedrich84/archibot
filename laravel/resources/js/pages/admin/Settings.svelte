@@ -63,6 +63,77 @@
 
     let { groups, prompts }: { groups: SettingGroup[]; prompts: Prompt[] } =
         $props();
+
+    let aiModelProviderId = $state('default');
+    let aiModelLoading = $state(false);
+    let aiModelError = $state('');
+    let aiModelItems = $state<string[]>([]);
+    let aiModelProvider = $state<{
+        id: string;
+        label: string;
+        type: string;
+        base_url: string;
+        is_cloud: boolean;
+    } | null>(null);
+
+    const csrfToken = () =>
+        document
+            .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+            ?.getAttribute('content') ?? '';
+
+    const settingValue = (name: string) => {
+        const element = document.querySelector<
+            HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >(`[name="${name}"]`);
+
+        return element?.value ?? '';
+    };
+
+    async function loadAiModels() {
+        aiModelLoading = true;
+        aiModelError = '';
+        aiModelItems = [];
+        aiModelProvider = null;
+
+        try {
+            const response = await fetch('/admin/settings/ai-models', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    provider_id: aiModelProviderId,
+                    llm_provider: settingValue('llm_provider'),
+                    ollama_url: settingValue('ollama_url'),
+                    openai_api_key: settingValue('llm_openai_api_key'),
+                    ai_provider_profiles: settingValue('llm_provider_profiles'),
+                }),
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const errors = data?.errors ?? {};
+                const firstError = Object.values(errors).flat()[0];
+
+                throw new Error(
+                    typeof firstError === 'string'
+                        ? firstError
+                        : (data?.message ?? 'Could not load models.'),
+                );
+            }
+
+            aiModelItems = data.items ?? [];
+            aiModelProvider = data.provider ?? null;
+        } catch (error) {
+            aiModelError =
+                error instanceof Error ? error.message : String(error);
+        } finally {
+            aiModelLoading = false;
+        }
+    }
 </script>
 
 <AppHead title="Admin settings" />
@@ -72,6 +143,70 @@
         title="Admin settings"
         description="Manage global ArchiBot settings. Only Paperless superusers can access this page. Secrets are write-only after saving."
     />
+
+    <section class="grid max-w-3xl gap-4 rounded-xl border p-6">
+        <div>
+            <h2 class="text-lg font-semibold">AI provider model loader</h2>
+            <p class="text-sm text-muted-foreground">
+                Test the default provider or a named provider profile and load
+                its currently available model IDs. Unsaved AI provider fields on
+                this page are included in the check.
+            </p>
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div class="grid gap-2">
+                <Label for="ai_model_provider_id">Provider profile ID</Label>
+                <Input
+                    id="ai_model_provider_id"
+                    value={aiModelProviderId}
+                    oninput={(event) =>
+                        (aiModelProviderId = event.currentTarget.value)}
+                    placeholder="default, local-litellm, openrouter"
+                />
+            </div>
+            <div class="flex items-end">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={loadAiModels}
+                    disabled={aiModelLoading}
+                >
+                    {#if aiModelLoading}<Spinner />{/if}
+                    Load models
+                </Button>
+            </div>
+        </div>
+
+        {#if aiModelError}
+            <p class="text-sm text-destructive">{aiModelError}</p>
+        {/if}
+
+        {#if aiModelProvider}
+            <div class="rounded-md border bg-muted/30 p-3 text-sm">
+                <p>
+                    Loaded {aiModelItems.length} models from
+                    <strong>{aiModelProvider.label}</strong>
+                    ({aiModelProvider.type}, {aiModelProvider.base_url}).
+                </p>
+                {#if aiModelProvider.is_cloud}
+                    <p class="mt-1 text-amber-700 dark:text-amber-400">
+                        Cloud provider: document text or OCR content may leave
+                        your machine when this profile is used for processing.
+                    </p>
+                {/if}
+            </div>
+        {/if}
+
+        {#if aiModelItems.length > 0}
+            <textarea
+                readonly
+                rows="8"
+                class="min-h-32 rounded-md border bg-background p-3 font-mono text-sm"
+                value={aiModelItems.join('\n')}
+            ></textarea>
+        {/if}
+    </section>
 
     <Form {...update.form()} class="grid gap-6">
         {#snippet children({ errors, processing, recentlySuccessful })}

@@ -111,6 +111,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 
         Route::get('admin/settings', [SettingsController::class, 'edit'])->name('admin.settings.edit');
+        Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])->name('admin.settings.ai-models');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
         Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');
