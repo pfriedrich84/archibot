@@ -155,9 +155,11 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         app.state.paperless = PaperlessClient()
         actions.append("Paperless client recreated")
 
-    # --- Ollama client ---
+    # --- AI provider client ---
     ollama_fields = {
+        "llm_provider",
         "ollama_url",
+        "openai_api_key",
         "ollama_model",
         "ollama_embed_model",
         "ollama_embed_dim",
@@ -176,7 +178,7 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         if old:
             await old.aclose()
         app.state.ollama = OllamaClient()
-        actions.append("Ollama client recreated")
+        actions.append("AI provider client recreated")
 
     # Keep worker module refs in sync after client recreation.
     if (changed_keys & paperless_fields) or (changed_keys & ollama_fields):

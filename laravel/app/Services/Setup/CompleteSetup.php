@@ -45,7 +45,9 @@ class CompleteSetup
             AppSetting::put('paperless.processed_tag_id', (string) ($data['paperless_processed_tag_id'] ?? ''));
             AppSetting::put('ocr.requested_tag_id', (string) ($data['ocr_requested_tag_id'] ?? ''));
             AppSetting::put('ocr.mode', (string) $data['ocr_mode']);
+            AppSetting::put('llm.provider', (string) $data['llm_provider']);
             AppSetting::put('ollama.url', rtrim((string) $data['ollama_url'], '/'));
+            AppSetting::put('llm.openai_api_key', (string) ($data['openai_api_key'] ?? ''), true);
             AppSetting::put('classification.model', (string) $data['classification_model']);
             AppSetting::put('embedding.model', (string) $data['embedding_model']);
             AppSetting::put('ocr.text_model', (string) ($data['ocr_text_model'] ?? ''));
@@ -85,6 +87,7 @@ class CompleteSetup
                     'paperless_user_id' => $paperlessUser->id,
                     'imported_setting_keys' => $importedKeys,
                     'paperless_inbox_tag_id' => (int) $data['paperless_inbox_tag_id'],
+                    'llm_provider' => (string) $data['llm_provider'],
                     'ollama_url' => rtrim((string) $data['ollama_url'], '/'),
                     'classification_model' => (string) $data['classification_model'],
                     'embedding_model' => (string) $data['embedding_model'],

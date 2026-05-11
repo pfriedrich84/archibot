@@ -7,30 +7,44 @@ use RuntimeException;
 
 class OllamaClient
 {
-    public function __construct(private readonly string $baseUrl) {}
+    public function __construct(
+        private readonly string $baseUrl,
+        private readonly string $provider = 'ollama',
+        private readonly ?string $apiKey = null,
+    ) {}
 
     /**
      * @return array<int, string>
      */
     public function models(): array
     {
-        $response = Http::baseUrl(rtrim($this->baseUrl, '/'))
+        $provider = strtolower(trim($this->provider));
+        $request = Http::baseUrl(rtrim($this->baseUrl, '/'))
             ->acceptJson()
-            ->timeout(10)
-            ->get('/api/tags');
+            ->timeout(10);
 
-        if (! $response->successful()) {
-            throw new RuntimeException('Could not fetch Ollama models.');
+        if ($provider === 'openai_compatible' && filled($this->apiKey)) {
+            $request = $request->withToken($this->apiKey);
         }
 
-        $models = $response->json('models');
+        $response = $request->get($provider === 'openai_compatible' ? '/models' : '/api/tags');
+
+        if (! $response->successful()) {
+            throw new RuntimeException($provider === 'openai_compatible'
+                ? 'Could not fetch OpenAI-compatible models.'
+                : 'Could not fetch Ollama models.');
+        }
+
+        $models = $provider === 'openai_compatible' ? $response->json('data') : $response->json('models');
 
         if (! is_array($models)) {
-            throw new RuntimeException('Ollama models response was not JSON.');
+            throw new RuntimeException($provider === 'openai_compatible'
+                ? 'OpenAI-compatible models response was not JSON.'
+                : 'Ollama models response was not JSON.');
         }
 
         return collect($models)
-            ->map(fn ($model) => is_array($model) ? ($model['name'] ?? null) : null)
+            ->map(fn ($model) => is_array($model) ? ($provider === 'openai_compatible' ? ($model['id'] ?? null) : ($model['name'] ?? null)) : null)
             ->filter(fn ($name) => is_string($name) && trim($name) !== '')
             ->map(fn (string $name) => trim($name))
             ->unique()

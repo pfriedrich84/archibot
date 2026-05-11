@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     paperless_processed_tag_id: int | None = None
     keep_inbox_tag: bool = True
 
-    # --- Ollama ---
+    # --- AI provider / Ollama-compatible defaults ---
+    llm_provider: str = "ollama"  # ollama | openai_compatible
     ollama_url: str = "http://ollama:11434"
+    openai_api_key: str = ""
     ollama_model: str = "gemma4:e4b"
     ollama_embed_model: str = "qwen3-embedding:4b"
     ollama_embed_dim: int = 0  # 0 = auto-detect from known model defaults
@@ -288,6 +290,7 @@ def _fm(
     min: float | None = None,
     max: float | None = None,
     step: float | None = None,
+    options: list[str] | None = None,
 ) -> dict[str, Any]:
     meta: dict[str, Any] = {
         "category": category,
@@ -304,6 +307,8 @@ def _fm(
         meta["max"] = max
     if step is not None:
         meta["step"] = step
+    if options is not None:
+        meta["options"] = options
     return meta
 
 
@@ -343,23 +348,43 @@ FIELD_META: dict[str, dict[str, Any]] = {
     "keep_inbox_tag": _fm(
         "Paperless", "Keep Inbox Tag", "bool", help="Keep the inbox tag on documents after commit"
     ),
-    # --- Ollama (shared) ---
+    # --- AI provider (shared) ---
+    "llm_provider": _fm(
+        "AI Provider",
+        "Provider",
+        "select",
+        restart="component",
+        help="ollama = native Ollama API; openai_compatible = local OpenAI-compatible /v1 API",
+        options=["ollama", "openai_compatible"],
+    ),
     "ollama_url": _fm(
-        "Ollama", "Ollama URL", "url", restart="component", help="Base URL of the Ollama server"
+        "AI Provider",
+        "Base URL",
+        "url",
+        restart="component",
+        help="Ollama base URL for native mode, or OpenAI-compatible base URL including /v1 (for example http://localhost:11434/v1).",
+    ),
+    "openai_api_key": _fm(
+        "AI Provider",
+        "OpenAI-compatible API Key",
+        "password",
+        restart="component",
+        help="Optional bearer token for OpenAI-compatible local providers. Leave empty when the endpoint does not require authentication.",
+        sensitive=True,
     ),
     "ollama_timeout_seconds": _fm(
-        "Ollama",
+        "AI Provider",
         "Timeout (seconds)",
         "number",
         restart="component",
-        help="HTTP timeout for Ollama requests",
+        help="HTTP timeout for AI provider requests",
     ),
     "ollama_model_swap_delay": _fm(
-        "Ollama",
-        "Model Swap Delay (seconds)",
+        "AI Provider",
+        "Ollama Model Swap Delay (seconds)",
         "number",
         help="Seconds to wait after unloading a model before loading the next one. "
-        "Gives the GPU time to free memory so Ollama detects correct VRAM. "
+        "Only used by the native Ollama provider. "
         "Set to 0 to disable.",
     ),
     # --- Phase 1: OCR ---

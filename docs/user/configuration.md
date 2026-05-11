@@ -22,15 +22,19 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag-ID, die nach Commit gesetzt wird; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |
 
-## Ollama (allgemein)
+## AI Provider / Ollama (allgemein)
+
+ArchiBot unterstuetzt native Ollama-Endpunkte und lokale OpenAI-kompatible `/v1`-APIs (z.B. LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp server oder Ollama `/v1`). Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_URL` | `http://ollama:11434` | Ollama-Endpoint |
-| `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer Ollama-Requests (Sekunden) |
+| `LLM_PROVIDER` | `ollama` | `ollama` fuer native Ollama-API oder `openai_compatible` fuer OpenAI-kompatible lokale `/v1`-API |
+| `OLLAMA_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1` oder `http://litellm:4000/v1` |
+| `OPENAI_API_KEY` | — | Optionaler Bearer Token fuer OpenAI-kompatible Provider; leer lassen bei lokalen Endpunkten ohne Auth |
+| `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
-| `OLLAMA_MODEL_SWAP_DELAY` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt |
+| `OLLAMA_MODEL_SWAP_DELAY` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt; nur bei native Ollama genutzt |
 
 ## Phase 1: OCR-Korrektur
 

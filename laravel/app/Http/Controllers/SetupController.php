@@ -29,6 +29,7 @@ class SetupController extends Controller
         return Inertia::render('Setup/Index', [
             'requiresResetToken' => $state->requiresResetToken(),
             'paperlessUrl' => AppSetting::getValue('paperless.url', ''),
+            'llmProvider' => AppSetting::getValue('llm.provider', 'ollama'),
             'ollamaUrl' => AppSetting::getValue('ollama.url', 'http://ollama:11434'),
             'defaults' => [
                 'inboxTagId' => AppSetting::getValue('paperless.inbox_tag_id', ''),
@@ -74,11 +75,17 @@ class SetupController extends Controller
         abort_if(SetupState::current()->is_complete, 404);
 
         $validated = $request->validate([
+            'llm_provider' => ['nullable', Rule::in(['ollama', 'openai_compatible'])],
             'ollama_url' => ['required', 'url'],
+            'openai_api_key' => ['nullable', 'string'],
         ]);
 
         try {
-            return ['items' => app(OllamaClient::class, ['baseUrl' => $validated['ollama_url']])->models()];
+            return ['items' => app(OllamaClient::class, [
+                'baseUrl' => $validated['ollama_url'],
+                'provider' => $validated['llm_provider'] ?? 'ollama',
+                'apiKey' => $validated['openai_api_key'] ?? null,
+            ])->models()];
         } catch (RuntimeException $exception) {
             throw ValidationException::withMessages([
                 'ollama_url' => $exception->getMessage(),
@@ -99,7 +106,9 @@ class SetupController extends Controller
             'paperless_inbox_tag_id' => ['required', 'integer', 'min:1'],
             'paperless_processed_tag_id' => ['nullable', 'integer', 'min:1'],
             'ocr_requested_tag_id' => ['nullable', 'integer', 'min:1'],
+            'llm_provider' => ['required', Rule::in(['ollama', 'openai_compatible'])],
             'ollama_url' => ['required', 'url'],
+            'openai_api_key' => ['nullable', 'string'],
             'classification_model' => ['required', 'string'],
             'embedding_model' => ['required', 'string'],
             'ocr_text_model' => ['nullable', 'string'],

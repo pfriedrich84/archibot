@@ -2,7 +2,7 @@
     export const layout = {
         title: 'ArchiBot setup',
         description:
-            'Connect ArchiBot to Paperless-NGX, choose tags, and select Ollama models',
+            'Connect ArchiBot to Paperless-NGX, choose tags, and select AI provider models',
     };
 </script>
 
@@ -30,11 +30,13 @@
     let {
         requiresResetToken = false,
         paperlessUrl = '',
+        llmProvider = 'ollama',
         ollamaUrl = 'http://ollama:11434',
         defaults = {},
     }: {
         requiresResetToken: boolean;
         paperlessUrl?: string;
+        llmProvider?: string;
         ollamaUrl?: string;
         defaults?: SetupDefaults;
     } = $props();
@@ -42,7 +44,9 @@
     let paperless_url = $state((() => paperlessUrl)());
     let username = $state('');
     let password = $state('');
+    let llm_provider = $state((() => llmProvider)());
     let ollama_url = $state((() => ollamaUrl)());
+    let openai_api_key = $state('');
     let tags = $state<TagOption[]>([]);
     let models = $state<string[]>([]);
     let tagError = $state('');
@@ -120,7 +124,9 @@
             const data = await postJson<{ items: string[] }>(
                 '/setup/ollama-models',
                 {
+                    llm_provider,
                     ollama_url,
+                    openai_api_key,
                 },
             );
             models = data.items;
@@ -145,7 +151,8 @@
         <h1 class="text-3xl font-semibold tracking-tight">ArchiBot setup</h1>
         <p class="text-sm text-muted-foreground">
             Connect Paperless-NGX, choose the Paperless tags ArchiBot should
-            use, then connect Ollama and select installed models.
+            use, then connect your local AI provider and select installed
+            models.
         </p>
     </div>
 
@@ -328,26 +335,69 @@
 
             <section class="grid gap-4 border-t pt-6">
                 <div>
-                    <h2 class="text-lg font-semibold">3. Ollama</h2>
+                    <h2 class="text-lg font-semibold">3. AI provider</h2>
                     <p class="text-sm text-muted-foreground">
-                        Connect to Ollama and choose from the models currently
-                        installed on that server.
+                        Use native Ollama or a local OpenAI-compatible endpoint
+                        such as LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp, or
+                        Ollama /v1.
                     </p>
                 </div>
 
-                <div class="grid gap-2">
-                    <Label for="ollama_url">Ollama URL</Label>
-                    <Input
-                        id="ollama_url"
-                        name="ollama_url"
-                        type="url"
-                        required
-                        value={ollama_url}
-                        oninput={(event) =>
-                            (ollama_url = event.currentTarget.value)}
-                    />
-                    <InputError message={errors.ollama_url} />
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div class="grid gap-2">
+                        <Label for="llm_provider">Provider</Label>
+                        <select
+                            id="llm_provider"
+                            name="llm_provider"
+                            bind:value={llm_provider}
+                            class="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                            <option value="ollama">Ollama native</option>
+                            <option value="openai_compatible">
+                                OpenAI-compatible endpoint
+                            </option>
+                        </select>
+                        <InputError message={errors.llm_provider} />
+                    </div>
+
+                    <div class="grid gap-2">
+                        <Label for="ollama_url">Base URL</Label>
+                        <Input
+                            id="ollama_url"
+                            name="ollama_url"
+                            type="url"
+                            required
+                            value={ollama_url}
+                            oninput={(event) =>
+                                (ollama_url = event.currentTarget.value)}
+                            placeholder={llm_provider === 'openai_compatible'
+                                ? 'http://localhost:11434/v1'
+                                : 'http://ollama:11434'}
+                        />
+                        <InputError message={errors.ollama_url} />
+                    </div>
                 </div>
+
+                {#if llm_provider === 'openai_compatible'}
+                    <div class="grid gap-2">
+                        <Label for="openai_api_key">
+                            API key / bearer token (optional)
+                        </Label>
+                        <PasswordInput
+                            id="openai_api_key"
+                            name="openai_api_key"
+                            value={openai_api_key}
+                            oninput={(event) =>
+                                (openai_api_key = event.currentTarget.value)}
+                            autocomplete="off"
+                        />
+                        <p class="text-xs text-muted-foreground">
+                            Leave empty for local endpoints that do not require
+                            authentication.
+                        </p>
+                        <InputError message={errors.openai_api_key} />
+                    </div>
+                {/if}
 
                 <div class="flex flex-wrap items-center gap-3">
                     <Button
@@ -357,7 +407,7 @@
                         disabled={loadingModels || !ollama_url}
                     >
                         {#if loadingModels}<Spinner />{/if}
-                        Connect and load Ollama models
+                        Connect and load models
                     </Button>
                     {#if models.length > 0}
                         <span class="text-sm text-muted-foreground">

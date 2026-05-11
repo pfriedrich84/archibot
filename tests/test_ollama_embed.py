@@ -29,12 +29,66 @@ def _make_response(
 @pytest.fixture()
 def client() -> OllamaClient:
     c = OllamaClient.__new__(OllamaClient)
+    c.provider = "ollama"
     c.base_url = "http://test:11434"
     c.model = "test-model"
     c.embed_model = "test-embed"
     c._client = AsyncMock()
     c.embed_retry_count = 0
     return c
+
+
+async def test_openai_compatible_list_models(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.get = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"id": "local-chat"}, {"id": "local-embed"}]},
+            request=httpx.Request("GET", "http://test/v1/models"),
+        )
+    )
+
+    assert await client.list_models() == ["local-chat", "local-embed"]
+    client._client.get.assert_awaited_once_with("/models", headers={})
+
+
+async def test_openai_compatible_embed(client: OllamaClient):
+    client.provider = "openai_compatible"
+    embedding = [0.1] * EMBED_DIM
+    client._client.post = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"embedding": embedding}]},
+            request=httpx.Request("POST", "http://test/v1/embeddings"),
+        )
+    )
+
+    result = await client.embed("hello world")
+
+    assert result == embedding
+    client._client.post.assert_awaited_once_with(
+        "/embeddings",
+        json={"model": "test-embed", "input": "hello world"},
+        headers={},
+    )
+
+
+async def test_openai_compatible_chat_json_parses_choice_content(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps({"ok": True})}}]},
+            request=httpx.Request("POST", "http://test/v1/chat/completions"),
+        )
+    )
+
+    result = await client.chat_json(system="system", user="user")
+
+    assert result == {"ok": True}
+    payload = client._client.post.await_args.kwargs["json"]
+    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["messages"][0] == {"role": "system", "content": "system"}
 
 
 async def test_embed_succeeds_without_retry(client: OllamaClient):

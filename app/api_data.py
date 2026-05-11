@@ -509,6 +509,7 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "embedding_index_ready": _has_embedding_index(),
             "paperless_configured": bool(settings.paperless_url and settings.paperless_token),
             "ollama_configured": bool(settings.ollama_url),
+            "llm_provider": settings.llm_provider,
             "ocr_mode": settings.ocr_mode,
             "poll_interval_seconds": settings.poll_interval_seconds,
             "auto_commit_confidence": settings.auto_commit_confidence,
@@ -541,6 +542,7 @@ def get_system_status(app: Any) -> dict[str, Any]:
             },
             "ollama": {
                 "configured": bool(settings.ollama_url),
+                "provider": settings.llm_provider,
                 "url": settings.ollama_url,
                 "model": settings.ollama_model,
                 "ocr_model": settings.ollama_ocr_model,

@@ -99,6 +99,7 @@ class FirstRunSetupTest extends TestCase
         $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
         $this->assertSame('1', AppSetting::getValue('paperless.inbox_tag_id'));
         $this->assertSame('2', AppSetting::getValue('paperless.processed_tag_id'));
+        $this->assertSame('ollama', AppSetting::getValue('llm.provider'));
         $this->assertSame('http://ollama.test:11434', AppSetting::getValue('ollama.url'));
         $this->assertSame('llama3.2:latest', AppSetting::getValue('classification.model'));
         $this->assertSame('nomic-embed-text:latest', AppSetting::getValue('embedding.model'));
@@ -238,10 +239,31 @@ class FirstRunSetupTest extends TestCase
         ]);
 
         $this->postJson('/setup/ollama-models', [
+            'llm_provider' => 'ollama',
             'ollama_url' => 'http://ollama.test:11434',
         ])->assertOk()
             ->assertJsonPath('items.0', 'nomic-embed-text:latest')
             ->assertJsonPath('items.1', 'qwen3:4b');
+    }
+
+    public function test_setup_can_load_openai_compatible_models(): void
+    {
+        Http::fake([
+            '*openai.test/v1/models' => Http::response([
+                'data' => [
+                    ['id' => 'local-chat'],
+                    ['id' => 'local-embed'],
+                ],
+            ]),
+        ]);
+
+        $this->postJson('/setup/ollama-models', [
+            'llm_provider' => 'openai_compatible',
+            'ollama_url' => 'http://openai.test/v1',
+            'openai_api_key' => 'local-token',
+        ])->assertOk()
+            ->assertJsonPath('items.0', 'local-chat')
+            ->assertJsonPath('items.1', 'local-embed');
     }
 
     public function test_setup_routes_are_disabled_after_setup_is_complete(): void
@@ -343,6 +365,7 @@ class FirstRunSetupTest extends TestCase
             'paperless_inbox_tag_id' => 1,
             'paperless_processed_tag_id' => 2,
             'ocr_requested_tag_id' => 3,
+            'llm_provider' => 'ollama',
             'ollama_url' => 'http://ollama.test:11434',
             'classification_model' => 'llama3.2:latest',
             'embedding_model' => 'nomic-embed-text:latest',
