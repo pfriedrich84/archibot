@@ -69,6 +69,28 @@ def test_empty_string_env_values_remain_empty_strings(monkeypatch):
     assert cfg.paperless_url == ""
 
 
+@pytest.mark.parametrize(
+    ("model", "expected_dim"),
+    [
+        ("qwen3-embedding:4b", 2560),
+        ("qwen3-embedding-4b-local", 2560),
+        ("qwen3-embedding:0.6b", 1024),
+        ("qwen3-embedding-0.6b-local", 1024),
+        ("unknown-embedding-model", 1024),
+    ],
+)
+def test_qwen_embedding_dimension_auto_detection(monkeypatch, model, expected_dim):
+    from app.config import Settings
+
+    monkeypatch.setenv("EMBEDDING_MODEL", model)
+    monkeypatch.delenv("EMBEDDING_DIMENSION", raising=False)
+    monkeypatch.delenv("OLLAMA_EMBED_DIM", raising=False)
+
+    cfg = Settings()
+
+    assert cfg.ollama_embed_dim_resolved == expected_dim
+
+
 def test_config_env_accepts_friendly_ai_aliases(tmp_path):
     import app.config as config_module
 

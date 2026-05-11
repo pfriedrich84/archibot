@@ -259,9 +259,9 @@ class Settings(BaseSettings):
             return self.ollama_embed_dim
 
         model = (self.ollama_embed_model or "").lower()
-        if model.startswith("qwen3-embedding:4b"):
+        if "qwen3-embedding" in model and "4b" in model:
             return 2560
-        if model.startswith("qwen3-embedding:0.6b"):
+        if "qwen3-embedding" in model and "0.6b" in model:
             return 1024
 
         # Safe fallback for unknown models in auto mode.
