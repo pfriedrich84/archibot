@@ -191,7 +191,7 @@ jobs:
       - name: Prepare Laravel environment
         run: |
           cp .env.example .env
-          php -r '$env = file_get_contents(".env"); $overrides = ["DB_HOST" => "127.0.0.1", "DB_DATABASE" => "archibot_test", "DB_USERNAME" => "archibot", "DB_PASSWORD" => "archibot"]; foreach ($overrides as $key => $value) { $env = preg_replace("/^{$key}=.*/m", "{$key}={$value}", $env); } file_put_contents(".env", $env);'
+          php -r '$env = file_get_contents(".env"); $overrides = ["APP_ENV" => "testing", "DB_HOST" => "127.0.0.1", "DB_DATABASE" => "archibot_test", "DB_USERNAME" => "archibot", "DB_PASSWORD" => "archibot"]; foreach ($overrides as $key => $value) { $env = preg_replace("/^{$key}=.*/m", "{$key}={$value}", $env); } file_put_contents(".env", $env);'
           php artisan key:generate --ansi
           php artisan migrate --force --ansi
 
