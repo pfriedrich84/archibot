@@ -9,8 +9,9 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 3. [`docs/agent/PROJECT.md`](docs/agent/PROJECT.md) — project context, architecture notes, and important implementation details.
 4. [`docs/agent/CODING.md`](docs/agent/CODING.md) — coding conventions and implementation guidance.
 5. [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md) — validation commands to run before finishing code changes.
-6. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
-7. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
+6. [`docs/agent/TOOLING.md`](docs/agent/TOOLING.md) — approved MCP/tooling policy for coding agents.
+7. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
+8. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
 
 ## Project docs
 
