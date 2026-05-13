@@ -12,7 +12,7 @@
 
 - Follow Ruff configuration from `pyproject.toml`.
 - Keep document-processing logic deterministic and testable where possible.
-- Use fixtures or mocks for Paperless/Ollama behavior in tests; do not require real user documents or secrets.
+- Use fixtures or mocks for Paperless/AI-provider behavior in tests; do not require real user documents or secrets.
 
 ## Laravel / Svelte
 
@@ -20,6 +20,12 @@
 - Avoid showing raw JSON as the primary metadata display.
 - Preserve explicit safety actions for review, approval, rejection, and whitelist flows.
 - Use existing npm/composer scripts from `laravel/package.json` and `laravel/composer.json`.
+
+## External dependency documentation
+
+- When changing code that depends on third-party libraries, frameworks, SDKs, APIs, CLIs, generated clients, or config formats, consult current external documentation first when available.
+- Prefer Context7 for current, version-specific public documentation; if Context7 is unavailable or unhelpful, use official docs, release notes, repository README files, or source code and mention the fallback in the summary.
+- Do not rely only on model memory for dependency-sensitive implementation details such as Laravel/Svelte APIs, httpx/OpenAI-compatible payloads, Docker/Compose syntax, Dramatiq/RabbitMQ behavior, or Paperless API semantics.
 
 ## Refactoring discipline
 

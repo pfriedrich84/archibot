@@ -10,20 +10,20 @@
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
 </p>
 
-KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als **ein einzelner Docker-Container** gegen eine lokale **Ollama**-Instanz.
+KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als **ein einzelner Docker-Container** gegen lokale Ollama- oder OpenAI-kompatible Provider wie LiteLLM.
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Freigabe in Paperless geschrieben. Neue Tags, die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
 ## Features
 
 - 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
-- 🧠 Klassifikation via Ollama (Default: `gemma4:e4b`, konfigurierbar)
+- 🧠 Klassifikation via lokalem AI-Provider/Ollama (Default: `gemma4:e4b`, konfigurierbar)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
 - ✅ Review-GUI in der Svelte-Admin-App: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`), optional eingeschraenkt auf Dokumente mit `OCR_REQUESTED_TAG_ID`
-- ⏱️ Robuste Ollama-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
+- ⏱️ Robuste AI-Provider-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ PostgreSQL-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
 - 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über Python/MCP/Telegram-Runtime; die Laravel-Oberfläche wird schrittweise erweitert
@@ -43,7 +43,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 │ Paperless-NGX  │◀───────────│  Worker (APScheduler)│
 │  (Tag: Post-   │            │   - fetch inbox docs │
 │   eingang)     │──docs─────▶│   - build context    │
-└────────────────┘            │   - call Ollama      │
+└────────────────┘            │   - call AI provider │
         ▲                     │   - store suggestion │
         │                     └──────────┬───────────┘
         │ PATCH                          │
@@ -82,12 +82,17 @@ curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-com
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
 # → optional Werte eintragen; alternativ im Setup-Wizard konfigurieren
+# → für LiteLLM/OpenAI-kompatible Provider: LLM_PROVIDER=openai_compatible,
+#   OPENAI_BASE_URL/OLLAMA_URL inklusive /v1 setzen und Modell-Aliasse eintragen
 
-# 2. Ollama-Modelle ziehen (auf dem Ollama-Host)
+# 2. Modelle bereitstellen
+# Native Ollama:
 ollama pull gemma4:e4b
 ollama pull qwen3-embedding:4b
 ollama pull qwen3:4b              # OCR-Korrektur (optional)
 ollama pull qwen3-vl:4b           # Vision-OCR (optional)
+# OpenAI-kompatible Provider wie LiteLLM: Modell-Aliasse im Provider konfigurieren.
+# Embedding-Requests senden encoding_format="float" und funktionieren z.B. mit llama.cpp.
 
 # 3. Starten
 docker compose up -d
@@ -110,9 +115,10 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 - `qwen3:4b` (oft gut bei strukturierter Extraktion)
 - `llama3.1:8b` (nur sinnvoll, wenn dein Host/Ollama-Offloading stabil laeuft)
 
-> Wichtig: Wenn du `OLLAMA_EMBED_MODEL` oder `OLLAMA_EMBED_DIM` aenderst,
-> fuehre danach einen **Full Reindex** aus, damit pgvector mit der neuen
-> Embedding-Dimension neu aufgebaut wird.
+> Wichtig: Wenn du `ARCHIBOT_EMBEDDING_MODEL`/`OLLAMA_EMBED_MODEL` oder
+> `OLLAMA_EMBED_DIM` aenderst, fuehre danach einen **Full Reindex** aus,
+> damit pgvector mit der neuen Embedding-Dimension neu aufgebaut wird.
+> OpenAI-kompatible Embeddings setzen explizit `encoding_format: "float"`.
 
 ## Dokumentation
 

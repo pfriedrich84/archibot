@@ -32,4 +32,4 @@ Core rules for coding agents working on ArchiBot.
 - ArchiBot suggests metadata first; Paperless updates happen only after explicit approval or configured safe automation.
 - A Paperless storage path that already exists on a document is authoritative.
 - Review queues and whitelists are safety boundaries, not implementation details.
-- Python owns document processing, embeddings, Ollama calls, and MCP runtime; Laravel/Svelte owns UI, setup, settings, review, and worker-job orchestration.
+- Python owns document processing, embeddings, AI-provider calls, and MCP runtime; Laravel/Svelte owns UI, setup, settings, review, and worker-job orchestration.

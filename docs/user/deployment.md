@@ -91,7 +91,7 @@ docker exec archibot archibot reset --yes --include-config
 | Verbindung | Richtung | Beschreibung |
 |---|---|---|
 | Classifier → Paperless | HTTP | API-Zugriff (Dokumente, Metadaten) |
-| Classifier → Ollama | HTTP | LLM-Inference (Chat, Embedding) |
+| Classifier → AI-Provider | HTTP | LLM-Inference (Chat, Embedding) via Ollama oder OpenAI-kompatiblem Endpoint |
 | Classifier → Telegram | HTTPS | Bot-API (optional, Long-Polling) |
 | Browser → Classifier | HTTP | Web-GUI (Port 8088) |
 | Paperless → Classifier | HTTP | Webhook (optional, Port 8088) |

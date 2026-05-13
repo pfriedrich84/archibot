@@ -13,7 +13,7 @@ Suggested metadata includes title, date, correspondent, document type, storage p
 - **Paperless webhooks** are the primary low-latency trigger for new or changed documents.
 - **Periodic polling** remains automatic every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic as webhooks.
 - **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, dashboard/operations UI, command API, webhook ingestion and admin-only job controls.
-- **Python Dramatiq actors** own document processing, Paperless/Ollama/LLM calls, embeddings, OCR correction, classification, committing and maintenance execution.
+- **Python Dramatiq actors** own document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
 - **PostgreSQL + pgvector** are the durable source of truth for state, progress, retries, events, audit data and embedding similarity search.
 - **RabbitMQ** is the Dramatiq message broker/transport, not the only job state.
 - **Ollama/LiteLLM-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings, judge pass and RAG chat.
@@ -32,7 +32,7 @@ Safety boundaries:
 ## Important paths
 
 ```text
-app/                  Python worker, CLI, MCP runtime, Paperless/Ollama clients
+app/                  Python worker, CLI, MCP runtime, Paperless/AI-provider clients
 app/pipeline/         OCR, context building, classification, commit pipeline
 app/mcp_tools/        MCP tool implementations
 laravel/              Laravel/Inertia/Svelte UI and API

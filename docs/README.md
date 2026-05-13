@@ -36,6 +36,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`agent/CODING.md`](agent/CODING.md) — Coding-Konventionen und Implementierungshinweise.
 - [`agent/REVIEW.md`](agent/REVIEW.md) — Review-Fokus und PR-Pruefpunkte.
 - [`agent/CHECKS.md`](agent/CHECKS.md) — Validierungsbefehle.
+- [`agent/TOOLING.md`](agent/TOOLING.md) — MCP-/Tooling-Policy fuer Coding-Agents.
 - [`agent/WORKFLOWS.md`](agent/WORKFLOWS.md) — Wiederverwendbare Workflows.
 - [`agent/SAFETY.md`](agent/SAFETY.md) — Sicherheitsregeln fuer Agenten.
 - [`agent/SUPPLY_CHAIN.md`](agent/SUPPLY_CHAIN.md) — Dependency- und Container-Sicherheitsregeln.

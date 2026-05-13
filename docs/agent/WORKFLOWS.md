@@ -7,9 +7,10 @@ Reusable, tool-neutral workflows for common repository tasks.
 1. Read [`RULES.md`](RULES.md) and the relevant project docs.
 2. Keep the change small and reviewable.
 3. Update tests and docs when behavior changes.
-4. Run the relevant checks from [`CHECKS.md`](CHECKS.md).
-5. For documentation changes, run `python3 scripts/check_markdown_links.py` from the repository root.
-6. Summarize changed files, validation results, and any follow-up work.
+4. For dependency-sensitive code/config changes, check current external documentation first (prefer Context7 when useful) and summarize the source or fallback used.
+5. Run the relevant checks from [`CHECKS.md`](CHECKS.md).
+6. For documentation changes, run `python3 scripts/check_markdown_links.py` from the repository root.
+7. Summarize changed files, validation results, documentation sources used, and any follow-up work.
 
 ## Local CI simulation
 

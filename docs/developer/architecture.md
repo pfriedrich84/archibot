@@ -11,8 +11,8 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          │ HTTP
                          ▼
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
-│ Paperless-NGX  │◀──▶│   ArchiBot                      │◀──▶│    Ollama     │
-│                │    │   (Laravel + Inertia/Svelte)     │    │              │
+│ Paperless-NGX  │◀──▶│   ArchiBot                      │◀──▶│ AI Provider   │
+│                │    │   (Laravel + Inertia/Svelte)     │    │ Ollama/LiteLLM│
 │ - Dokumente    │    │                                  │    │ - Chat (LLM) │
 │ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
@@ -49,7 +49,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │  2. OCR-Korrektur  (optional, nur wenn noetig)│
 │  3. Kontext-Suche  (aehnliche Dokumente via  │
 │     Embedding-Similarity, pgvector)          │
-│  4. Klassifikation (Ollama LLM, JSON-Antwort)│
+│  4. Klassifikation (AI-Provider, JSON-Antwort)│
 │  4b. Judge-Pass (optional, LLM-as-Judge      │
 │      prueft Klassifikation, ggf. Korrektur)  │
 │  5. Vorschlag speichern (suggestions-Tabelle)│
@@ -117,7 +117,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 
 ### 3. Kontext-Suche
 
-- Berechnet Embedding des Zieldokuments via Ollama (`qwen3-embedding:4b`, Dim via `OLLAMA_EMBED_DIM`/Auto)
+- Berechnet Embedding des Zieldokuments via konfiguriertem AI-Provider (`qwen3-embedding:4b` bzw. Provider-Alias wie `qwen3-embedding-4b-local`, Dim via `OLLAMA_EMBED_DIM`/Auto)
 - KNN-Suche in `doc_embeddings` (pgvector) findet die aehnlichsten Dokumente
 - **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — nur reviewte/bestaetigte Dokumente mit zuverlaessigen Metadaten dienen als Referenz
 - Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Tags, Speicherpfad)
@@ -127,7 +127,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 - System-Prompt: Built-in aus `prompts/classify_system.txt` oder Custom Override aus `/data/classify_system.txt`
 - User-Prompt: Entity-Listen + Kontext-Dokumente mit Metadaten + Zieldokument
 - Token-Budgetierung: 60% fuer Zieldokument, 40% fuer Kontext. Zu kleine Kontext-Dokumente werden gedroppt
-- Ollama-Aufruf mit `format: "json"`, liefert strukturiertes JSON
+- Provider-Aufruf mit JSON-Ausgabe (`format: "json"` bei nativer Ollama-API, OpenAI-kompatible Chat-Completions bei `/v1`-Providern), liefert strukturiertes JSON
 - Ergebnis: Titel, Datum, Korrespondent, Dokumenttyp, Speicherpfad, Tags (mit Confidence), Gesamt-Confidence, Reasoning
 
 ### 5. Tag-Whitelist
@@ -186,4 +186,4 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 - **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
 - **Volumes:** PostgreSQL-Volume fuer App-Datenbank und Embeddings; `/data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
 - **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet die Laravel Queue und optional den Python MCP-Server
-- **Netzwerk:** Muss Paperless und Ollama erreichen koennen. Bei separaten Compose-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
+- **Netzwerk:** Muss Paperless und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Compose-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`

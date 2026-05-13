@@ -31,7 +31,7 @@ Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche 
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | `ollama` fuer native Ollama-API oder `openai_compatible` fuer OpenAI-kompatible lokale `/v1`-API |
-| `OLLAMA_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1` oder `http://litellm:4000/v1` |
+| `OLLAMA_URL` / `OPENAI_BASE_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1` oder `http://litellm:4000/v1`. `OPENAI_BASE_URL` ist ein Alias fuer OpenAI-kompatible Setups; `OLLAMA_URL` bleibt der Legacy-Name. |
 | `OPENAI_API_KEY` | — | Optionaler Bearer Token fuer OpenAI-kompatible Provider; leer lassen bei lokalen Endpunkten ohne Auth |
 | `AI_PROVIDER_PROFILES` | — | Optionales JSON-Array weiterer Provider-Profile (`id`, `type`, `base_url`, optional `api_key_env`, `is_cloud`). Secrets bevorzugt per Env-Variable referenzieren, nicht inline speichern. |
 | `CLASSIFICATION_PROVIDER` | — | Provider-Profil-ID fuer Klassifikation; leer = Default |
@@ -97,12 +97,24 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell (hoehere Retrieval-Qualitaet) |
+| `ARCHIBOT_EMBEDDING_MODEL` / `EMBEDDING_MODEL` / `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell oder Provider-Alias (hoehere Retrieval-Qualitaet). `OLLAMA_EMBED_MODEL` bleibt als Legacy-Name unterstuetzt. |
 | `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer pgvector. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
 | `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens) |
 | `EMBED_MAX_CHARS` | `6000` | Max. Zeichen des Dokumenttexts fuer Embedding |
 | `OLLAMA_EMBED_RETRIES` | `3` | Max. Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
 | `OLLAMA_EMBED_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Backoff |
+
+Bei `LLM_PROVIDER=openai_compatible` sendet ArchiBot Embeddings an `/v1/embeddings` mit OpenAI-kompatiblem Payload und setzt explizit `encoding_format: "float"`. Das ist fuer LiteLLM/llama.cpp-Embeddings wichtig; `encoding_format: null` darf nicht gesendet werden. Der Modellname bleibt ein konfigurierbarer Provider-Alias, z.B. `qwen3-embedding-4b-local`; fuer Qwen3-Embedding 4B erkennt ArchiBot automatisch die Dimension `2560`, wenn `OLLAMA_EMBED_DIM=0` gesetzt ist.
+
+Beispiel fuer LiteLLM-Embeddings hinter einem lokalen OpenAI-kompatiblen Endpoint:
+
+```env
+LLM_PROVIDER=openai_compatible
+OPENAI_BASE_URL=http://litellm:4000/v1
+OPENAI_API_KEY=<optional-local-token>
+ARCHIBOT_EMBEDDING_MODEL=qwen3-embedding-4b-local
+OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
+```
 
 ## Phase 3: Klassifikation
 
