@@ -70,7 +70,11 @@ async def test_openai_compatible_embed(client: OllamaClient):
     assert result == embedding
     client._client.post.assert_awaited_once_with(
         "/embeddings",
-        json={"model": "test-embed", "input": "hello world"},
+        json={
+            "model": "test-embed",
+            "input": "hello world",
+            "encoding_format": "float",
+        },
         headers={},
     )
 
@@ -126,7 +130,11 @@ async def test_embed_uses_embedding_provider_profile(client: OllamaClient, monke
     assert result == embedding
     embed_client.post.assert_awaited_once_with(
         "/embeddings",
-        json={"model": "test-embed", "input": "hello world"},
+        json={
+            "model": "test-embed",
+            "input": "hello world",
+            "encoding_format": "float",
+        },
         headers={"Authorization": "Bearer local-token"},
     )
     client._client.post.assert_not_called()

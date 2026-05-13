@@ -665,7 +665,11 @@ class OllamaClient:
 
         for attempt in range(1 + max_retries):
             if self._provider_type(provider) == "openai_compatible":
-                payload = {"model": self.embed_model, "input": prompt}
+                payload = {
+                    "model": self.embed_model,
+                    "input": prompt,
+                    "encoding_format": "float",
+                }
             else:
                 payload = {
                     "model": self.embed_model,

@@ -40,6 +40,7 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
     ("env_name", "field_name", "expected"),
     [
         ("CLASSIFICATION_MODEL", "ollama_model", "local-chat"),
+        ("ARCHIBOT_EMBEDDING_MODEL", "ollama_embed_model", "qwen3-embedding-4b-local"),
         ("EMBEDDING_MODEL", "ollama_embed_model", "local-embed"),
         ("EMBEDDING_DIMENSION", "ollama_embed_dim", 1234),
         ("OCR_TEXT_MODEL", "ollama_ocr_model", "local-ocr"),
@@ -47,6 +48,7 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
         ("CLASSIFICATION_CONTEXT_WINDOW", "ollama_num_ctx", 4096),
         ("EMBEDDING_CONTEXT_WINDOW", "ollama_embed_num_ctx", 2048),
         ("OCR_CONTEXT_WINDOW", "ollama_ocr_num_ctx", 8192),
+        ("OPENAI_BASE_URL", "ollama_url", "http://10.10.0.4:4000/v1"),
     ],
 )
 def test_friendly_ai_env_aliases(monkeypatch, env_name, field_name, expected):
@@ -95,22 +97,27 @@ def test_config_env_accepts_friendly_ai_aliases(tmp_path):
     import app.config as config_module
 
     (tmp_path / "config.env").write_text(
-        "EMBEDDING_MODEL=qwen3-embedding-4b-local\nEMBEDDING_CONTEXT_WINDOW=4096\n",
+        "ARCHIBOT_EMBEDDING_MODEL=qwen3-embedding-4b-local\n"
+        "EMBEDDING_CONTEXT_WINDOW=4096\n"
+        "OPENAI_BASE_URL=http://10.10.0.4:4000/v1\n",
         encoding="utf-8",
     )
     original_data_dir = config_module.settings.data_dir
     original_model = config_module.settings.ollama_embed_model
     original_context = config_module.settings.ollama_embed_num_ctx
+    original_url = config_module.settings.ollama_url
     object.__setattr__(config_module.settings, "data_dir", str(tmp_path))
 
     config_module._apply_config_env_overrides()
 
     assert config_module.settings.ollama_embed_model == "qwen3-embedding-4b-local"
     assert config_module.settings.ollama_embed_num_ctx == 4096
+    assert config_module.settings.ollama_url == "http://10.10.0.4:4000/v1"
 
     object.__setattr__(config_module.settings, "data_dir", original_data_dir)
     object.__setattr__(config_module.settings, "ollama_embed_model", original_model)
     object.__setattr__(config_module.settings, "ollama_embed_num_ctx", original_context)
+    object.__setattr__(config_module.settings, "ollama_url", original_url)
 
 
 def test_blank_config_env_secret_does_not_override_existing_env_value(tmp_path, monkeypatch):

@@ -31,7 +31,10 @@ class Settings(BaseSettings):
 
     # --- AI provider / Ollama-compatible defaults ---
     llm_provider: str = "ollama"  # ollama | openai_compatible
-    ollama_url: str = "http://ollama:11434"
+    ollama_url: str = Field(
+        default="http://ollama:11434",
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "OLLAMA_URL"),
+    )
     openai_api_key: str = ""
     ai_provider_profiles: str = ""  # JSON list of named provider profiles
     classification_provider: str = ""
@@ -45,7 +48,9 @@ class Settings(BaseSettings):
     )
     ollama_embed_model: str = Field(
         default="qwen3-embedding:4b",
-        validation_alias=AliasChoices("EMBEDDING_MODEL", "OLLAMA_EMBED_MODEL"),
+        validation_alias=AliasChoices(
+            "ARCHIBOT_EMBEDDING_MODEL", "EMBEDDING_MODEL", "OLLAMA_EMBED_MODEL"
+        ),
     )
     ollama_embed_dim: int = Field(
         default=0,
@@ -270,6 +275,7 @@ class Settings(BaseSettings):
 
 _CONFIG_ENV_ALIASES = {
     "classification_model": "ollama_model",
+    "archibot_embedding_model": "ollama_embed_model",
     "embedding_model": "ollama_embed_model",
     "embedding_dimension": "ollama_embed_dim",
     "ocr_text_model": "ollama_ocr_model",
@@ -277,6 +283,7 @@ _CONFIG_ENV_ALIASES = {
     "embedding_context_window": "ollama_embed_num_ctx",
     "ocr_context_window": "ollama_ocr_num_ctx",
     "judge_model": "ollama_judge_model",
+    "openai_base_url": "ollama_url",
 }
 
 
