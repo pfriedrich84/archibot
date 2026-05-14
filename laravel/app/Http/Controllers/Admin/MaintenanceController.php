@@ -1,0 +1,140 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Jobs\RunMaintenanceResetCommand;
+use App\Models\AuditLog;
+use App\Models\WorkerJob;
+use App\Services\Workers\WorkerJobDispatcher;
+use App\Services\Workers\WorkerJobRecovery;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class MaintenanceController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        return Inertia::render('admin/Maintenance', [
+            'workerJobCounts' => [
+                'queued' => WorkerJob::query()->where('status', WorkerJob::STATUS_QUEUED)->count(),
+                'running' => WorkerJob::query()->where('status', WorkerJob::STATUS_RUNNING)->count(),
+                'cancelling' => WorkerJob::query()->where('status', WorkerJob::STATUS_CANCELLING)->count(),
+                'failed' => WorkerJob::query()->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])->count(),
+            ],
+            'recentAuditLogs' => AuditLog::query()
+                ->where('event', 'like', 'maintenance.%')
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->map(fn (AuditLog $auditLog) => [
+                    'id' => $auditLog->id,
+                    'event' => $auditLog->event,
+                    'target_type' => $auditLog->target_type,
+                    'target_id' => $auditLog->target_id,
+                    'metadata' => $auditLog->metadata ?? [],
+                    'created_at' => $auditLog->created_at?->toISOString(),
+                ])
+                ->values(),
+        ]);
+    }
+
+    public function recoverWorkerJobs(Request $request, WorkerJobRecovery $recovery): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $summary = $recovery->recoverAll();
+
+        $this->audit($request, 'maintenance.worker_jobs_recovery_requested', 'worker_jobs', 'recovery', $summary);
+
+        return back()->with('status', 'Worker job recovery completed.');
+    }
+
+    public function startWorkerJob(Request $request, WorkerJobDispatcher $dispatcher): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $validated = $request->validate([
+            'type' => ['required', Rule::in([
+                WorkerJob::TYPE_POLL,
+                WorkerJob::TYPE_REINDEX,
+                WorkerJob::TYPE_REINDEX_OCR,
+                WorkerJob::TYPE_REINDEX_EMBED,
+            ])],
+            'force' => ['nullable', 'boolean'],
+        ]);
+
+        $force = $request->boolean('force');
+        $type = $validated['type'];
+        $payload = match ($type) {
+            WorkerJob::TYPE_POLL => ['mode' => 'inbox', 'force' => $force],
+            WorkerJob::TYPE_REINDEX => ['mode' => 'full'],
+            WorkerJob::TYPE_REINDEX_OCR => ['mode' => 'ocr', 'force' => $force],
+            WorkerJob::TYPE_REINDEX_EMBED => ['mode' => 'embed'],
+        };
+
+        $workerJob = $dispatcher->dispatch(
+            type: $type,
+            payload: $payload,
+            user: $request->user(),
+            request: $request,
+            auditEvent: 'maintenance.worker_job_requested',
+            auditMetadata: ['maintenance_action' => $type],
+        );
+
+        return back()->with('status', 'Maintenance worker job #'.$workerJob->id.' queued.');
+    }
+
+    public function reset(Request $request): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $validated = $request->validate([
+            'include_config' => ['nullable', 'boolean'],
+            'confirmation' => ['required', 'string'],
+        ]);
+
+        $includeConfig = $request->boolean('include_config');
+        $expected = $includeConfig ? 'RESET CONFIG' : 'RESET';
+
+        if (($validated['confirmation'] ?? '') !== $expected) {
+            return back()->withErrors([
+                'confirmation' => 'Type '.$expected.' to confirm this reset.',
+            ]);
+        }
+
+        RunMaintenanceResetCommand::dispatch(
+            includeConfig: $includeConfig,
+            actorUserId: $request->user()->id,
+            requestIp: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        $this->audit($request, 'maintenance.reset_requested', 'maintenance_reset', $includeConfig ? 'database_config' : 'database', [
+            'include_config' => $includeConfig,
+        ]);
+
+        return back()->with('status', $includeConfig
+            ? 'Database and config reset queued.'
+            : 'Database reset queued.');
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function audit(Request $request, string $event, string $targetType, string $targetId, array $metadata = []): void
+    {
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => $event,
+            'target_type' => $targetType,
+            'target_id' => $targetId,
+            'metadata' => $metadata,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+    }
+}

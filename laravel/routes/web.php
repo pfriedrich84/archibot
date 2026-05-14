@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\MaintenanceController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
@@ -118,6 +119,10 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');
         Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
+        Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
+        Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
+        Route::post('admin/maintenance/worker-jobs', [MaintenanceController::class, 'startWorkerJob'])->name('admin.maintenance.worker-jobs');
+        Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])->name('admin.maintenance.reset');
     });
 
     require __DIR__.'/settings.php';

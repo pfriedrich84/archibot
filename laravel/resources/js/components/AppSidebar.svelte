@@ -16,6 +16,7 @@
     import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
     import UserRound from 'lucide-svelte/icons/user-round';
     import Workflow from 'lucide-svelte/icons/workflow';
+    import Wrench from 'lucide-svelte/icons/wrench';
     import type { Snippet } from 'svelte';
     import AppLogo from '@/components/AppLogo.svelte';
     import NavFooter from '@/components/NavFooter.svelte';
@@ -33,6 +34,7 @@
     import { toUrl } from '@/lib/utils';
     import { dashboard } from '@/routes';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
+    import { index as maintenanceIndex } from '@/routes/admin/maintenance';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as inboxIndex } from '@/routes/inbox';
     import { index as reviewIndex } from '@/routes/review';
@@ -116,6 +118,11 @@
         },
         ...(user?.is_admin
             ? [
+                  {
+                      title: 'Maintenance',
+                      href: maintenanceIndex(),
+                      icon: Wrench,
+                  },
                   {
                       title: 'Logs',
                       href: auditLogsIndex(),
