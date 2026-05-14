@@ -103,7 +103,7 @@ class PythonWorkerCommand
             $this->updateEntityApprovalSyncStatus($workerJob, $processSucceeded, is_array($result) ? $result : []);
         }
 
-        if ($processSucceeded && is_array($result)) {
+        if (is_array($result)) {
             $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
 
             if ($ingestSummary !== []) {

@@ -129,6 +129,46 @@ PHP);
         @unlink($script);
     }
 
+    public function test_valid_partial_output_is_ingested_when_python_exits_non_zero(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$input = $argv[array_search('--input', $argv, true) + 1];
+$output = $argv[array_search('--output', $argv, true) + 1];
+$data = json_decode(file_get_contents($input), true);
+file_put_contents($output, json_encode([
+    'ok' => false,
+    'review_suggestions' => [[
+        'source_suggestion_id' => 777,
+        'paperless_document_id' => $data['payload']['paperless_document_id'],
+        'confidence' => 88,
+        'proposed' => ['title' => 'Partial invoice'],
+    ]],
+]));
+fwrite(STDERR, 'worker failed after writing partial output');
+exit(1);
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
+            'payload' => ['paperless_document_id' => 500],
+        ]);
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $workerJob->refresh();
+        $this->assertSame(WorkerJob::STATUS_FAILED, $workerJob->status);
+        $this->assertSame(1, $workerJob->exit_code);
+        $this->assertSame(['review_suggestions_imported' => 1, 'entity_approvals_upserted' => 0, 'ocr_reviews_imported' => 0], $workerJob->result['ingest']);
+        $this->assertDatabaseHas('review_suggestions', [
+            'paperless_document_id' => 500,
+            'source_suggestion_id' => 777,
+            'proposed_title' => 'Partial invoice',
+        ]);
+
+        @unlink($script);
+    }
+
     public function test_commit_review_worker_updates_review_commit_status(): void
     {
         $script = $this->writeWorkerStub(<<<'PHP'

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'paperless_document_id',
+    'dedupe_key',
     'original_content',
     'ocr_content',
     'approved_content',

@@ -48,34 +48,40 @@ class WorkerResultIngestor
                 continue;
             }
 
-            $suggestion = ReviewSuggestion::query()->create([
-                'worker_job_id' => $workerJob->id,
-                'source_suggestion_id' => Arr::get($item, 'source_suggestion_id', Arr::get($item, 'python_suggestion_id')),
-                'paperless_document_id' => (int) $documentId,
-                'status' => (string) Arr::get($item, 'status', ReviewSuggestion::STATUS_PENDING),
-                'confidence' => Arr::get($item, 'confidence'),
-                'reasoning' => Arr::get($item, 'reasoning'),
-                'original_title' => Arr::get($item, 'original.title', Arr::get($item, 'original_title')),
-                'original_date' => Arr::get($item, 'original.date', Arr::get($item, 'original_date')),
-                'original_correspondent_id' => Arr::get($item, 'original.correspondent_id', Arr::get($item, 'original_correspondent_id')),
-                'original_document_type_id' => Arr::get($item, 'original.document_type_id', Arr::get($item, 'original_document_type_id')),
-                'original_storage_path_id' => Arr::get($item, 'original.storage_path_id', Arr::get($item, 'original_storage_path_id')),
-                'original_tags' => Arr::get($item, 'original.tags', Arr::get($item, 'original_tags', [])),
-                'proposed_title' => Arr::get($item, 'proposed.title', Arr::get($item, 'proposed_title')),
-                'proposed_date' => Arr::get($item, 'proposed.date', Arr::get($item, 'proposed_date')),
-                'proposed_correspondent_name' => Arr::get($item, 'proposed.correspondent_name', Arr::get($item, 'proposed_correspondent_name')),
-                'proposed_correspondent_id' => Arr::get($item, 'proposed.correspondent_id', Arr::get($item, 'proposed_correspondent_id')),
-                'proposed_document_type_name' => Arr::get($item, 'proposed.document_type_name', Arr::get($item, 'proposed_document_type_name')),
-                'proposed_document_type_id' => Arr::get($item, 'proposed.document_type_id', Arr::get($item, 'proposed_document_type_id')),
-                'proposed_storage_path_name' => Arr::get($item, 'proposed.storage_path_name', Arr::get($item, 'proposed_storage_path_name')),
-                'proposed_storage_path_id' => Arr::get($item, 'proposed.storage_path_id', Arr::get($item, 'proposed_storage_path_id')),
-                'proposed_tags' => Arr::get($item, 'proposed.tags', Arr::get($item, 'proposed_tags', [])),
-                'context_documents' => Arr::get($item, 'context_documents', []),
-                'raw_response' => Arr::get($item, 'raw_response'),
-                'judge_verdict' => Arr::get($item, 'judge_verdict'),
-                'judge_reasoning' => Arr::get($item, 'judge_reasoning'),
-                'original_proposed_snapshot' => Arr::get($item, 'original_proposed_snapshot'),
-            ]);
+            $sourceSuggestionId = Arr::get($item, 'source_suggestion_id', Arr::get($item, 'python_suggestion_id'));
+            $dedupeKey = $this->reviewSuggestionDedupeKey((int) $documentId, $item, $sourceSuggestionId);
+
+            $suggestion = ReviewSuggestion::query()->updateOrCreate(
+                ['dedupe_key' => $dedupeKey],
+                [
+                    'worker_job_id' => $workerJob->id,
+                    'source_suggestion_id' => is_numeric($sourceSuggestionId) ? (int) $sourceSuggestionId : null,
+                    'paperless_document_id' => (int) $documentId,
+                    'status' => (string) Arr::get($item, 'status', ReviewSuggestion::STATUS_PENDING),
+                    'confidence' => Arr::get($item, 'confidence'),
+                    'reasoning' => Arr::get($item, 'reasoning'),
+                    'original_title' => Arr::get($item, 'original.title', Arr::get($item, 'original_title')),
+                    'original_date' => Arr::get($item, 'original.date', Arr::get($item, 'original_date')),
+                    'original_correspondent_id' => Arr::get($item, 'original.correspondent_id', Arr::get($item, 'original_correspondent_id')),
+                    'original_document_type_id' => Arr::get($item, 'original.document_type_id', Arr::get($item, 'original_document_type_id')),
+                    'original_storage_path_id' => Arr::get($item, 'original.storage_path_id', Arr::get($item, 'original_storage_path_id')),
+                    'original_tags' => Arr::get($item, 'original.tags', Arr::get($item, 'original_tags', [])),
+                    'proposed_title' => Arr::get($item, 'proposed.title', Arr::get($item, 'proposed_title')),
+                    'proposed_date' => Arr::get($item, 'proposed.date', Arr::get($item, 'proposed_date')),
+                    'proposed_correspondent_name' => Arr::get($item, 'proposed.correspondent_name', Arr::get($item, 'proposed_correspondent_name')),
+                    'proposed_correspondent_id' => Arr::get($item, 'proposed.correspondent_id', Arr::get($item, 'proposed_correspondent_id')),
+                    'proposed_document_type_name' => Arr::get($item, 'proposed.document_type_name', Arr::get($item, 'proposed_document_type_name')),
+                    'proposed_document_type_id' => Arr::get($item, 'proposed.document_type_id', Arr::get($item, 'proposed_document_type_id')),
+                    'proposed_storage_path_name' => Arr::get($item, 'proposed.storage_path_name', Arr::get($item, 'proposed_storage_path_name')),
+                    'proposed_storage_path_id' => Arr::get($item, 'proposed.storage_path_id', Arr::get($item, 'proposed_storage_path_id')),
+                    'proposed_tags' => Arr::get($item, 'proposed.tags', Arr::get($item, 'proposed_tags', [])),
+                    'context_documents' => Arr::get($item, 'context_documents', []),
+                    'raw_response' => Arr::get($item, 'raw_response'),
+                    'judge_verdict' => Arr::get($item, 'judge_verdict'),
+                    'judge_reasoning' => Arr::get($item, 'judge_reasoning'),
+                    'original_proposed_snapshot' => Arr::get($item, 'original_proposed_snapshot'),
+                ]
+            );
 
             $entityApprovalsUpserted += $this->upsertEntityApprovals($suggestion);
             $imported++;
@@ -124,26 +130,31 @@ class WorkerResultIngestor
                 continue;
             }
 
-            $review = OcrReview::query()->create([
-                'paperless_document_id' => (int) $documentId,
-                'original_content' => $originalContent,
-                'ocr_content' => $ocrContent,
-                'status' => OcrReview::STATUS_PENDING,
-                'created_by_user_id' => $user->id,
-            ]);
+            $review = OcrReview::query()->firstOrCreate(
+                ['dedupe_key' => $this->ocrReviewDedupeKey((int) $documentId, $ocrContent)],
+                [
+                    'paperless_document_id' => (int) $documentId,
+                    'original_content' => $originalContent,
+                    'ocr_content' => $ocrContent,
+                    'status' => OcrReview::STATUS_PENDING,
+                    'created_by_user_id' => $user->id,
+                ]
+            );
 
-            AuditLog::query()->create([
-                'actor_user_id' => $user->id,
-                'event' => 'ocr_review.created_from_worker',
-                'target_type' => 'ocr_review',
-                'target_id' => (string) $review->id,
-                'metadata' => [
-                    'worker_job_id' => $workerJob->id,
-                    'paperless_document_id' => $review->paperless_document_id,
-                ],
-            ]);
+            if ($review->wasRecentlyCreated) {
+                AuditLog::query()->create([
+                    'actor_user_id' => $user->id,
+                    'event' => 'ocr_review.created_from_worker',
+                    'target_type' => 'ocr_review',
+                    'target_id' => (string) $review->id,
+                    'metadata' => [
+                        'worker_job_id' => $workerJob->id,
+                        'paperless_document_id' => $review->paperless_document_id,
+                    ],
+                ]);
+            }
 
-            if (AppSetting::getValue('ocr.auto_write_back', '0') === '1') {
+            if (AppSetting::getValue('ocr.auto_write_back', '0') === '1' && $review->status !== OcrReview::STATUS_WRITTEN_BACK) {
                 $this->autoWriteOcrReview($client, $user->paperless_token, $workerJob, $review, $ocrContent);
             }
 
@@ -201,6 +212,55 @@ class WorkerResultIngestor
                 'auto_write' => true,
             ],
         ]);
+    }
+
+    /** @param array<string, mixed> $item */
+    private function reviewSuggestionDedupeKey(int $documentId, array $item, mixed $sourceSuggestionId): string
+    {
+        if (is_scalar($sourceSuggestionId) && trim((string) $sourceSuggestionId) !== '') {
+            return hash('sha256', 'review-suggestion:source:'.$documentId.':'.trim((string) $sourceSuggestionId));
+        }
+
+        return hash('sha256', 'review-suggestion:fallback:'.$documentId.':'.$this->stableJson([
+            'content_hash' => Arr::get($item, 'content_hash'),
+            'proposed_title' => Arr::get($item, 'proposed.title', Arr::get($item, 'proposed_title')),
+            'proposed_date' => Arr::get($item, 'proposed.date', Arr::get($item, 'proposed_date')),
+            'proposed_correspondent_name' => Arr::get($item, 'proposed.correspondent_name', Arr::get($item, 'proposed_correspondent_name')),
+            'proposed_correspondent_id' => Arr::get($item, 'proposed.correspondent_id', Arr::get($item, 'proposed_correspondent_id')),
+            'proposed_document_type_name' => Arr::get($item, 'proposed.document_type_name', Arr::get($item, 'proposed_document_type_name')),
+            'proposed_document_type_id' => Arr::get($item, 'proposed.document_type_id', Arr::get($item, 'proposed_document_type_id')),
+            'proposed_storage_path_name' => Arr::get($item, 'proposed.storage_path_name', Arr::get($item, 'proposed_storage_path_name')),
+            'proposed_storage_path_id' => Arr::get($item, 'proposed.storage_path_id', Arr::get($item, 'proposed_storage_path_id')),
+            'proposed_tags' => Arr::get($item, 'proposed.tags', Arr::get($item, 'proposed_tags', [])),
+        ]));
+    }
+
+    private function ocrReviewDedupeKey(int $documentId, string $ocrContent): string
+    {
+        return hash('sha256', 'ocr-review:'.$documentId.':'.hash('sha256', $ocrContent));
+    }
+
+    /** @param array<mixed> $value */
+    private function stableJson(array $value): string
+    {
+        $this->sortRecursively($value);
+
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /** @param array<mixed> $value */
+    private function sortRecursively(array &$value): void
+    {
+        foreach ($value as &$item) {
+            if (is_array($item)) {
+                $this->sortRecursively($item);
+            }
+        }
+        unset($item);
+
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
     }
 
     private function upsertEntityApprovals(ReviewSuggestion $suggestion): int
