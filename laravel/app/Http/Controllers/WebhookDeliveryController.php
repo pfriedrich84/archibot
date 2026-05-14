@@ -7,9 +7,33 @@ use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class WebhookDeliveryController extends Controller
 {
+    public function index(Request $request): Response
+    {
+        $deliveries = WebhookDelivery::query()
+            ->latest('received_at')
+            ->latest('id')
+            ->paginate(25)
+            ->through(fn (WebhookDelivery $delivery) => $this->deliveryPayload($request, $delivery, includeDetails: false));
+
+        return Inertia::render('webhooks/Index', [
+            'deliveries' => $deliveries,
+            'isAdmin' => (bool) $request->user()?->is_admin,
+        ]);
+    }
+
+    public function show(Request $request, WebhookDelivery $webhookDelivery): Response
+    {
+        return Inertia::render('webhooks/Show', [
+            'delivery' => $this->deliveryPayload($request, $webhookDelivery, includeDetails: true),
+            'isAdmin' => (bool) $request->user()?->is_admin,
+        ]);
+    }
+
     public function retry(Request $request, WebhookDelivery $webhookDelivery): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
@@ -54,6 +78,60 @@ class WebhookDeliveryController extends Controller
             WebhookDelivery::STATUS_FAILED_PERMANENT,
             WebhookDelivery::STATUS_BLOCKED,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function deliveryPayload(Request $request, WebhookDelivery $delivery, bool $includeDetails): array
+    {
+        $canControl = (bool) $request->user()?->is_admin
+            && in_array($delivery->status, $this->controllableStatuses(), true);
+
+        $payload = [
+            'id' => $delivery->id,
+            'source' => $delivery->source,
+            'event_type' => $delivery->event_type,
+            'paperless_document_id' => $delivery->paperless_document_id,
+            'status' => $delivery->status,
+            'dedupe_key' => $delivery->dedupe_key,
+            'payload_hash' => $delivery->payload_hash,
+            'request_id' => $delivery->request_id,
+            'received_at' => $delivery->received_at?->toISOString(),
+            'processed_at' => $delivery->processed_at?->toISOString(),
+            'error' => $delivery->error,
+            'payload_summary' => $this->summary($delivery->normalized_payload ?: $delivery->raw_payload),
+            'header_summary' => $this->summary($delivery->headers),
+            'show_url' => route('webhook-deliveries.show', $delivery),
+            'retry_url' => route('webhook-deliveries.retry', $delivery),
+            'dismiss_url' => route('webhook-deliveries.dismiss', $delivery),
+            'can_retry' => $canControl,
+            'can_dismiss' => $canControl,
+        ];
+
+        if ($includeDetails) {
+            $payload['raw_payload'] = $delivery->raw_payload ?? [];
+            $payload['normalized_payload'] = $delivery->normalized_payload ?? [];
+            $payload['headers'] = $delivery->headers ?? [];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $value
+     * @return array<int, array{key: string, value: mixed}>
+     */
+    private function summary(?array $value): array
+    {
+        return collect($value ?? [])
+            ->take(6)
+            ->map(fn (mixed $entry, string|int $key): array => [
+                'key' => (string) $key,
+                'value' => is_scalar($entry) || $entry === null ? $entry : json_encode($entry),
+            ])
+            ->values()
+            ->all();
     }
 
     private function event(Request $request, string $eventType, WebhookDelivery $webhookDelivery, string $message): void

@@ -7,11 +7,87 @@ use App\Models\PipelineEvent;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class WebhookDeliveryControlTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_authenticated_user_can_view_webhook_delivery_index(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $this->webhookDelivery([
+            'event_type' => 'document.created',
+            'paperless_document_id' => 99,
+            'status' => WebhookDelivery::STATUS_PROCESSED,
+            'dedupe_key' => 'dedupe-processed',
+            'raw_payload' => ['document_id' => 99, 'title' => 'Invoice'],
+            'headers' => ['x-paperless-event' => 'document.created'],
+            'processed_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('webhook-deliveries.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('webhooks/Index')
+                ->where('isAdmin', false)
+                ->has('deliveries.data', 1)
+                ->where('deliveries.data.0.event_type', 'document.created')
+                ->where('deliveries.data.0.paperless_document_id', 99)
+                ->where('deliveries.data.0.status', WebhookDelivery::STATUS_PROCESSED)
+                ->where('deliveries.data.0.dedupe_key', 'dedupe-processed')
+                ->where('deliveries.data.0.payload_summary.0.key', 'document_id')
+                ->where('deliveries.data.0.header_summary.0.key', 'x-paperless-event')
+                ->where('deliveries.data.0.can_retry', false)
+                ->where('deliveries.data.0.can_dismiss', false)
+            );
+    }
+
+    public function test_failed_delivery_lists_admin_action_data_and_detail(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_FAILED,
+            'error' => 'RabbitMQ unavailable',
+            'normalized_payload' => ['document_id' => 42, 'event' => 'updated'],
+            'headers' => ['x-request-id' => 'req-123'],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('webhook-deliveries.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('webhooks/Index')
+                ->where('isAdmin', true)
+                ->where('deliveries.data.0.id', $delivery->id)
+                ->where('deliveries.data.0.status', WebhookDelivery::STATUS_FAILED)
+                ->where('deliveries.data.0.error', 'RabbitMQ unavailable')
+                ->where('deliveries.data.0.can_retry', true)
+                ->where('deliveries.data.0.can_dismiss', true)
+                ->where('deliveries.data.0.retry_url', route('webhook-deliveries.retry', $delivery))
+                ->where('deliveries.data.0.dismiss_url', route('webhook-deliveries.dismiss', $delivery))
+            );
+
+        $this->actingAs($admin)
+            ->get(route('webhook-deliveries.show', $delivery))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('webhooks/Show')
+                ->where('delivery.id', $delivery->id)
+                ->where('delivery.raw_payload.document_id', 42)
+                ->where('delivery.normalized_payload.event', 'updated')
+                ->where('delivery.headers.x-request-id', 'req-123')
+                ->where('delivery.can_retry', true)
+                ->where('delivery.can_dismiss', true)
+            );
+    }
+
+    public function test_guest_cannot_view_webhook_delivery_index(): void
+    {
+        $this->get(route('webhook-deliveries.index'))->assertRedirect(route('login'));
+    }
 
     public function test_admin_can_retry_failed_webhook_delivery(): void
     {

@@ -15,6 +15,7 @@
     import Tag from 'lucide-svelte/icons/tag';
     import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
     import UserRound from 'lucide-svelte/icons/user-round';
+    import Webhook from 'lucide-svelte/icons/webhook';
     import Workflow from 'lucide-svelte/icons/workflow';
     import Wrench from 'lucide-svelte/icons/wrench';
     import type { Snippet } from 'svelte';
@@ -100,6 +101,11 @@
             title: 'Workers',
             href: workerJobsIndex(),
             icon: Workflow,
+        },
+        {
+            title: 'Webhooks',
+            href: '/webhook-deliveries',
+            icon: Webhook,
         },
         {
             title: 'Embeddings',

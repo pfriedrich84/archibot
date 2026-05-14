@@ -180,6 +180,7 @@ class DashboardController extends Controller
                     'error' => $delivery->error,
                     'received_at' => $delivery->received_at?->toISOString(),
                     'processed_at' => $delivery->processed_at?->toISOString(),
+                    'show_url' => route('webhook-deliveries.show', $delivery),
                     'retry_url' => route('webhook-deliveries.retry', $delivery),
                     'dismiss_url' => route('webhook-deliveries.dismiss', $delivery),
                     'can_retry' => in_array($delivery->status, [

@@ -86,6 +86,7 @@
         error: string | null;
         received_at: string | null;
         processed_at: string | null;
+        show_url: string;
         retry_url: string;
         dismiss_url: string;
         can_retry: boolean;
@@ -569,15 +570,23 @@
     </section>
 
     <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 font-semibold">
-            Recent webhook deliveries
+        <div class="flex items-center justify-between border-b px-4 py-3">
+            <div class="font-semibold">Recent webhook deliveries</div>
+            <a
+                class="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                href="/webhook-deliveries"
+            >
+                View all
+            </a>
         </div>
         {#each recentWebhookDeliveries as delivery (delivery.id)}
             <div
                 class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
             >
-                <span class="font-medium"
-                    >Webhook {delivery.id} · {delivery.event_type}</span
+                <a
+                    class="font-medium underline-offset-4 hover:underline"
+                    href={delivery.show_url}
+                    >Webhook {delivery.id} · {delivery.event_type}</a
                 >
                 <span class="rounded-full bg-muted px-2 py-0.5"
                     >{delivery.status}</span

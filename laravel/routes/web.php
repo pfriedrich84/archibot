@@ -100,6 +100,8 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('embedding-index/mark-stale', [EmbeddingIndexController::class, 'markStale'])->name('embedding-index.mark-stale');
         Route::post('maintenance/poll', [MaintenanceCommandController::class, 'poll'])->name('maintenance.poll');
         Route::post('maintenance/reindex', [MaintenanceCommandController::class, 'reindex'])->name('maintenance.reindex');
+        Route::get('webhook-deliveries', [WebhookDeliveryController::class, 'index'])->name('webhook-deliveries.index');
+        Route::get('webhook-deliveries/{webhookDelivery}', [WebhookDeliveryController::class, 'show'])->name('webhook-deliveries.show');
         Route::post('webhook-deliveries/{webhookDelivery}/retry', [WebhookDeliveryController::class, 'retry'])->name('webhook-deliveries.retry');
         Route::post('webhook-deliveries/{webhookDelivery}/dismiss', [WebhookDeliveryController::class, 'dismiss'])->name('webhook-deliveries.dismiss');
 
