@@ -222,7 +222,7 @@ Dramatiq actors will own durable execution of pipeline steps. Actors must:
 
 ## References
 
-- [ADR-0006: Worker Jobs as Temporary Laravel Control Plane](../decisions/0006-worker-jobs-as-temporary-control-plane.md)
+- [ADR-0012: Worker Jobs as Temporary Laravel Control Plane](../decisions/0012-worker-jobs-as-temporary-control-plane.md)
 - [Event-driven implementation plan](../implementation-plan-event-driven-archibot.md)
 - [Laravel job-control implementation plan](../implementation-plan-laravel-job-control.md)
 - [Authorization for Job Control](authorization-job-control.md)

@@ -947,13 +947,13 @@ Prevent future drift and keep the repo moving toward the event-driven target.
 1. Create:
 
 ```text
-docs/decisions/0006-worker-jobs-as-temporary-control-plane.md
+docs/decisions/0012-worker-jobs-as-temporary-control-plane.md
 ```
 
 Content:
 
 ```md
-# ADR-0006: Worker jobs as temporary Laravel control plane
+# ADR-0012: Worker jobs as temporary Laravel control plane
 
 ## Status
 

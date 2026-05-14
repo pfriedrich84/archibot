@@ -1,4 +1,4 @@
-# ADR-0006: Worker Jobs as Temporary Laravel Control Plane
+# ADR-0012: Worker Jobs as Temporary Laravel Control Plane
 
 ## Status
 
