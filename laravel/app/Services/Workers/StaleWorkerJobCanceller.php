@@ -26,7 +26,10 @@ class StaleWorkerJobCanceller
                         ->where('cancellation_requested_at', '<=', $cutoff))
                     ->orWhere(fn ($query) => $query
                         ->whereNull('cancellation_requested_at')
-                        ->where('updated_at', '<=', $cutoff));
+                        ->where('updated_at', '<=', $cutoff))
+                    ->orWhere(fn ($query) => $query
+                        ->whereNotNull('lease_expires_at')
+                        ->where('lease_expires_at', '<=', now()));
             })
             ->get();
 
@@ -34,6 +37,7 @@ class StaleWorkerJobCanceller
             $job->forceFill([
                 'status' => WorkerJob::STATUS_CANCELLED,
                 'finished_at' => $job->finished_at ?: Carbon::now(),
+                'lease_expires_at' => null,
                 'error' => trim(($job->error ? $job->error."\n" : '').'Cancelled automatically after being stuck in cancelling state.'),
                 'progress' => array_merge(is_array($job->progress) ? $job->progress : [], [
                     'cancelled' => true,

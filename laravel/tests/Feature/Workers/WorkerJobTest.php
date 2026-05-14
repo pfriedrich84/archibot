@@ -115,6 +115,34 @@ class WorkerJobTest extends TestCase
         $this->assertSame(WorkerJob::STATUS_CANCELLING, $fresh->refresh()->status);
     }
 
+    public function test_cancel_stale_worker_jobs_command_unblocks_expired_cancelling_lease(): void
+    {
+        $expiredLease = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_CANCELLING,
+            'worker_id' => 'stale-worker',
+            'lease_expires_at' => now()->subMinute(),
+            'heartbeat_at' => now()->subMinutes(5),
+            'cancellation_requested_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+        $activeLease = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_CANCELLING,
+            'worker_id' => 'active-worker',
+            'lease_expires_at' => now()->addMinutes(5),
+            'heartbeat_at' => now(),
+            'cancellation_requested_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('worker-jobs:cancel-stale', ['--minutes' => 30])
+            ->expectsOutput('Cancelled 1 stale worker job(s).')
+            ->assertSuccessful();
+
+        $this->assertSame(WorkerJob::STATUS_CANCELLED, $expiredLease->refresh()->status);
+        $this->assertNull($expiredLease->lease_expires_at);
+        $this->assertSame(WorkerJob::STATUS_CANCELLING, $activeLease->refresh()->status);
+    }
+
     public function test_queueing_duplicate_active_worker_job_reuses_existing_dispatch(): void
     {
         Queue::fake();

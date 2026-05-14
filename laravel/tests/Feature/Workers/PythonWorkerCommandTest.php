@@ -158,6 +158,82 @@ PHP);
         @unlink($script);
     }
 
+    public function test_worker_command_records_lease_and_heartbeat_metadata(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode(['ok' => true]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create();
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $workerJob->refresh();
+        $this->assertSame(WorkerJob::STATUS_SUCCEEDED, $workerJob->status);
+        $this->assertNotNull($workerJob->worker_id);
+        $this->assertNotNull($workerJob->heartbeat_at);
+        $this->assertNull($workerJob->lease_expires_at);
+
+        @unlink($script);
+    }
+
+    public function test_worker_command_does_not_run_when_another_active_lease_owns_job(): void
+    {
+        $marker = tempnam(sys_get_temp_dir(), 'archibot-worker-marker-');
+        @unlink($marker);
+        $script = $this->writeWorkerStub(<<<PHP
+file_put_contents('$marker', 'ran');
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_RUNNING,
+            'worker_id' => 'other-worker',
+            'lease_expires_at' => now()->addMinutes(5),
+            'heartbeat_at' => now(),
+        ]);
+
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $workerJob->refresh();
+        $this->assertSame(WorkerJob::STATUS_RUNNING, $workerJob->status);
+        $this->assertSame('other-worker', $workerJob->worker_id);
+        $this->assertFileDoesNotExist($marker);
+
+        @unlink($script);
+    }
+
+    public function test_worker_command_can_take_over_expired_running_lease(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode(['ok' => true]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_RUNNING,
+            'worker_id' => 'stale-worker',
+            'lease_expires_at' => now()->subMinute(),
+            'heartbeat_at' => now()->subMinutes(2),
+            'started_at' => now()->subMinutes(3),
+        ]);
+
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $workerJob->refresh();
+        $this->assertSame(WorkerJob::STATUS_SUCCEEDED, $workerJob->status);
+        $this->assertNotSame('stale-worker', $workerJob->worker_id);
+        $this->assertNotNull($workerJob->heartbeat_at);
+        $this->assertNull($workerJob->lease_expires_at);
+
+        @unlink($script);
+    }
+
     public function test_sync_entity_approval_worker_updates_sync_status(): void
     {
         $script = $this->writeWorkerStub(<<<'PHP'

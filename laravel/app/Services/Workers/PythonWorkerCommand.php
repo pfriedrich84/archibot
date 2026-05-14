@@ -19,20 +19,20 @@ class PythonWorkerCommand
      */
     public function run(WorkerJob $workerJob, ?WorkerResultIngestor $ingestor = null): WorkerJob
     {
-        if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
-            return $workerJob;
+        $workerId = (string) Str::uuid();
+
+        if (! $workerJob->acquireLease($workerId)) {
+            return $workerJob->refresh();
         }
 
-        $this->waitForCompatibleJobs($workerJob);
+        $this->waitForCompatibleJobs($workerJob, $workerId);
         $workerJob->refresh();
 
-        if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+        if ($workerJob->status !== WorkerJob::STATUS_RUNNING || $workerJob->worker_id !== $workerId) {
             return $workerJob;
         }
 
         $workerJob->forceFill([
-            'status' => WorkerJob::STATUS_RUNNING,
-            'started_at' => now(),
             'error' => null,
             'progress' => $workerJob->progress ?: [
                 'phase' => 'starting',
@@ -41,18 +41,24 @@ class PythonWorkerCommand
                 'message' => 'Worker started',
             ],
         ])->save();
+        $workerJob->heartbeatLease($workerId);
 
         $paths = $this->writeInput($workerJob);
         $command = $this->commandFor($workerJob, $paths['input'], $paths['output']);
 
         $process = new Process($command, base_path('..'), timeout: null);
-        $process->start(function (string $type, string $buffer) use ($workerJob, $process): void {
-            $this->captureOutput($workerJob, $type, $buffer);
+        $process->start(function (string $type, string $buffer) use ($workerJob, $process, $workerId): void {
+            $this->captureOutput($workerJob, $type, $buffer, $workerId);
             $this->signalIfCancelling($workerJob, $process);
         });
 
+        $nextHeartbeatAt = now()->addSeconds($this->heartbeatSeconds());
         while ($process->isRunning()) {
             $this->signalIfCancelling($workerJob, $process);
+            if (now()->greaterThanOrEqualTo($nextHeartbeatAt)) {
+                $workerJob->heartbeatLease($workerId);
+                $nextHeartbeatAt = now()->addSeconds($this->heartbeatSeconds());
+            }
             usleep(250_000);
         }
 
@@ -63,6 +69,10 @@ class PythonWorkerCommand
         }
 
         $workerJob->refresh();
+        if ($workerJob->worker_id !== $workerId) {
+            return $workerJob;
+        }
+
         $result = is_file($paths['output'])
             ? json_decode((string) file_get_contents($paths['output']), true)
             : null;
@@ -80,6 +90,7 @@ class PythonWorkerCommand
                 ? null
                 : trim($process->getErrorOutput() ?: $process->getOutput() ?: ($status === WorkerJob::STATUS_CANCELLED ? 'Cancelled.' : '')),
             'finished_at' => now(),
+            'lease_expires_at' => null,
         ])->save();
 
         if ($workerJob->type === WorkerJob::TYPE_COMMIT_REVIEW) {
@@ -103,13 +114,14 @@ class PythonWorkerCommand
         return $workerJob;
     }
 
-    private function waitForCompatibleJobs(WorkerJob $workerJob): void
+    private function waitForCompatibleJobs(WorkerJob $workerJob, string $workerId): void
     {
         while ($this->hasIncompatibleRunningJob($workerJob)) {
             app(StaleWorkerJobCanceller::class)->cancel();
+            $workerJob->heartbeatLease($workerId);
 
             $workerJob->refresh();
-            if ($workerJob->status !== WorkerJob::STATUS_QUEUED) {
+            if ($workerJob->status !== WorkerJob::STATUS_RUNNING || $workerJob->worker_id !== $workerId) {
                 return;
             }
             sleep(1);
@@ -122,6 +134,9 @@ class PythonWorkerCommand
             return WorkerJob::query()
                 ->whereKeyNot($workerJob->id)
                 ->runningOrCancelling()
+                ->where(fn ($query) => $query
+                    ->whereNull('lease_expires_at')
+                    ->orWhere('lease_expires_at', '>', now()))
                 ->exists();
         }
 
@@ -130,6 +145,9 @@ class PythonWorkerCommand
                 ->whereKeyNot($workerJob->id)
                 ->whereIn('type', WorkerJob::blockingTypes())
                 ->runningOrCancelling()
+                ->where(fn ($query) => $query
+                    ->whereNull('lease_expires_at')
+                    ->orWhere('lease_expires_at', '>', now()))
                 ->exists();
 
             if ($blocking) {
@@ -142,6 +160,9 @@ class PythonWorkerCommand
                     ->whereKeyNot($workerJob->id)
                     ->where('type', WorkerJob::TYPE_PROCESS_DOCUMENT)
                     ->runningOrCancelling()
+                    ->where(fn ($query) => $query
+                        ->whereNull('lease_expires_at')
+                        ->orWhere('lease_expires_at', '>', now()))
                     ->where('payload->paperless_document_id', $documentId)
                     ->exists();
             }
@@ -150,7 +171,7 @@ class PythonWorkerCommand
         return false;
     }
 
-    private function captureOutput(WorkerJob $workerJob, string $type, string $buffer): void
+    private function captureOutput(WorkerJob $workerJob, string $type, string $buffer, string $workerId): void
     {
         foreach (preg_split('/\R/', $buffer) ?: [] as $line) {
             $line = $this->sanitizeOutputLine(trim($line));
@@ -164,6 +185,7 @@ class PythonWorkerCommand
 
                 if (is_array($payload)) {
                     $workerJob->forceFill(['progress' => $payload])->save();
+                    $workerJob->heartbeatLease($workerId);
                     $this->persistLog($workerJob, $type, $payload['message'] ?? $payload['event'] ?? 'Progress update', $payload);
                 }
 
@@ -195,6 +217,11 @@ class PythonWorkerCommand
             'message' => $message,
             'context' => $context,
         ]);
+    }
+
+    private function heartbeatSeconds(): int
+    {
+        return max(1, (int) config('archibot_workers.heartbeat_seconds', 15));
     }
 
     private function signalIfCancelling(WorkerJob $workerJob, Process $process): void

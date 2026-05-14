@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'payload',
     'dispatch_key',
     'dispatch_attempts',
+    'worker_id',
+    'lease_expires_at',
+    'heartbeat_at',
     'dispatched_at',
     'input_path',
     'output_path',
@@ -67,6 +70,8 @@ class WorkerJob extends Model
             'result' => 'array',
             'progress' => 'array',
             'dispatch_attempts' => 'integer',
+            'lease_expires_at' => 'datetime',
+            'heartbeat_at' => 'datetime',
             'dispatched_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
@@ -146,6 +151,14 @@ class WorkerJob extends Model
         return $query->whereIn('status', self::activeStatuses());
     }
 
+    public function scopeExpiredLease(Builder $query): Builder
+    {
+        return $query
+            ->whereIn('status', self::runningStatuses())
+            ->whereNotNull('lease_expires_at')
+            ->where('lease_expires_at', '<=', now());
+    }
+
     public function isActive(): bool
     {
         return in_array($this->status, self::activeStatuses(), true);
@@ -162,6 +175,95 @@ class WorkerJob extends Model
             'dispatch_attempts' => ((int) $this->dispatch_attempts) + 1,
             'dispatched_at' => now(),
         ])->save();
+    }
+
+    public function hasActiveLease(): bool
+    {
+        return $this->isActive()
+            && $this->worker_id !== null
+            && $this->lease_expires_at !== null
+            && $this->lease_expires_at->isFuture();
+    }
+
+    public function hasExpiredLease(): bool
+    {
+        return $this->isActive()
+            && $this->lease_expires_at !== null
+            && ! $this->lease_expires_at->isFuture();
+    }
+
+    public function acquireLease(string $workerId, ?int $leaseSeconds = null): bool
+    {
+        $leaseSeconds = max(1, $leaseSeconds ?? (int) config('archibot_workers.lease_seconds', 300));
+        $now = now();
+        $expiresAt = $now->copy()->addSeconds($leaseSeconds);
+
+        $this->refresh();
+
+        $updated = self::query()
+            ->whereKey($this->id)
+            ->where(function (Builder $query) use ($now): void {
+                $query
+                    ->where('status', self::STATUS_QUEUED)
+                    ->orWhere(fn (Builder $query) => $query
+                        ->where('status', self::STATUS_RUNNING)
+                        ->whereNotNull('lease_expires_at')
+                        ->where('lease_expires_at', '<=', $now));
+            })
+            ->where(function (Builder $query) use ($now, $workerId): void {
+                $query
+                    ->whereNull('worker_id')
+                    ->orWhere('worker_id', $workerId)
+                    ->orWhereNull('lease_expires_at')
+                    ->orWhere('lease_expires_at', '<=', $now);
+            })
+            ->update([
+                'status' => self::STATUS_RUNNING,
+                'worker_id' => $workerId,
+                'lease_expires_at' => $expiresAt,
+                'heartbeat_at' => $now,
+                'started_at' => $this->started_at ?: $now,
+                'updated_at' => $now,
+            ]);
+
+        $this->refresh();
+
+        return $updated === 1;
+    }
+
+    public function heartbeatLease(string $workerId, ?int $leaseSeconds = null): bool
+    {
+        $leaseSeconds = max(1, $leaseSeconds ?? (int) config('archibot_workers.lease_seconds', 300));
+        $now = now();
+
+        $updated = self::query()
+            ->whereKey($this->id)
+            ->where('worker_id', $workerId)
+            ->whereIn('status', self::runningStatuses())
+            ->update([
+                'heartbeat_at' => $now,
+                'lease_expires_at' => $now->copy()->addSeconds($leaseSeconds),
+                'updated_at' => $now,
+            ]);
+
+        $this->refresh();
+
+        return $updated === 1;
+    }
+
+    public function releaseLease(string $workerId): bool
+    {
+        $updated = self::query()
+            ->whereKey($this->id)
+            ->where('worker_id', $workerId)
+            ->update([
+                'lease_expires_at' => null,
+                'updated_at' => now(),
+            ]);
+
+        $this->refresh();
+
+        return $updated === 1;
     }
 
     public function isBlockingType(): bool
