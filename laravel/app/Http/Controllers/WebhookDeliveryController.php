@@ -113,6 +113,24 @@ class WebhookDeliveryController extends Controller
             $payload['raw_payload'] = $delivery->raw_payload ?? [];
             $payload['normalized_payload'] = $delivery->normalized_payload ?? [];
             $payload['headers'] = $delivery->headers ?? [];
+            $payload['pipeline_events'] = PipelineEvent::query()
+                ->where('webhook_delivery_id', $delivery->id)
+                ->latest('created_at')
+                ->latest('id')
+                ->limit(25)
+                ->get()
+                ->map(fn (PipelineEvent $event) => [
+                    'id' => $event->id,
+                    'event_type' => $event->event_type,
+                    'level' => $event->level,
+                    'message' => $event->message,
+                    'paperless_document_id' => $event->paperless_document_id,
+                    'pipeline_run_id' => $event->pipeline_run_id,
+                    'command_id' => $event->command_id,
+                    'payload' => $event->payload ?? [],
+                    'created_at' => $event->created_at?->toISOString(),
+                ])
+                ->values();
         }
 
         return $payload;

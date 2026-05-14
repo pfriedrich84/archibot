@@ -107,9 +107,13 @@ class ReviewSuggestionTest extends TestCase
     public function test_authenticated_users_can_view_review_detail(): void
     {
         $user = User::factory()->create();
+        $workerJob = WorkerJob::factory()->create();
+        $commitWorkerJob = WorkerJob::factory()->create();
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 456,
             'reasoning' => 'Classifier reasoning',
+            'worker_job_id' => $workerJob->id,
+            'commit_worker_job_id' => $commitWorkerJob->id,
         ]);
 
         $this->actingAs($user)
@@ -119,6 +123,8 @@ class ReviewSuggestionTest extends TestCase
                 ->component('review/Show')
                 ->where('suggestion.paperless_document_id', 456)
                 ->where('suggestion.reasoning', 'Classifier reasoning')
+                ->where('suggestion.worker_job_url', route('worker-jobs.show', $workerJob))
+                ->where('suggestion.commit_worker_job_url', route('worker-jobs.show', $commitWorkerJob))
                 ->where('suggestion.original.title', 'Original document title')
             );
     }

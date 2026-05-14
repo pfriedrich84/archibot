@@ -24,6 +24,7 @@ class AuditLogController extends Controller
                 'event' => $log->event,
                 'target_type' => $log->target_type,
                 'target_id' => $log->target_id,
+                'target_url' => $this->targetUrl($log),
                 'metadata' => $log->metadata ?? [],
                 'actor' => $log->actor ? [
                     'id' => $log->actor->id,
@@ -38,5 +39,19 @@ class AuditLogController extends Controller
         return Inertia::render('admin/AuditLogs', [
             'logs' => $logs,
         ]);
+    }
+
+    private function targetUrl(AuditLog $log): ?string
+    {
+        if (! $log->target_type || ! $log->target_id) {
+            return null;
+        }
+
+        return match ($log->target_type) {
+            'worker_job' => route('worker-jobs.show', $log->target_id),
+            'webhook_delivery' => route('webhook-deliveries.show', $log->target_id),
+            'review_suggestion' => route('review.show', $log->target_id),
+            default => null,
+        };
     }
 }

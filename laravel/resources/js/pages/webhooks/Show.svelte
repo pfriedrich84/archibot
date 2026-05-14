@@ -40,6 +40,17 @@
         raw_payload: Record<string, unknown>;
         normalized_payload: Record<string, unknown>;
         headers: Record<string, unknown>;
+        pipeline_events: {
+            id: number;
+            event_type: string;
+            level: string;
+            message: string | null;
+            paperless_document_id: number | null;
+            pipeline_run_id: number | null;
+            command_id: number | null;
+            payload: Record<string, unknown>;
+            created_at: string | null;
+        }[];
         retry_url: string;
         dismiss_url: string;
         can_retry: boolean;
@@ -143,6 +154,40 @@
                 {delivery.error}
             </div>
         {/if}
+    </section>
+
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-3 font-semibold">Pipeline events</h2>
+        <div class="space-y-2 text-sm">
+            {#each delivery.pipeline_events as event (event.id)}
+                <div class="rounded-md bg-muted/40 p-3">
+                    <div class="flex flex-wrap gap-2 text-muted-foreground">
+                        <span>{event.created_at ?? '—'}</span>
+                        <span>[{event.level}]</span>
+                        <span>{event.event_type}</span>
+                        {#if event.pipeline_run_id}<span
+                                >run {event.pipeline_run_id}</span
+                            >{/if}
+                        {#if event.command_id}<span
+                                >command {event.command_id}</span
+                            >{/if}
+                        {#if event.paperless_document_id}<span
+                                >document {event.paperless_document_id}</span
+                            >{/if}
+                    </div>
+                    {#if event.message}
+                        <div class="mt-1 break-words">{event.message}</div>
+                    {/if}
+                    <pre class="mt-2 overflow-x-auto text-xs">{pretty(
+                            event.payload,
+                        )}</pre>
+                </div>
+            {:else}
+                <div class="text-muted-foreground">
+                    No pipeline events are linked to this delivery.
+                </div>
+            {/each}
+        </div>
     </section>
 
     <section class="grid gap-4 lg:grid-cols-2">

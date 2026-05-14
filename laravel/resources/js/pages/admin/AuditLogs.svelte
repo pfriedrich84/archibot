@@ -21,6 +21,7 @@
         event: string;
         target_type: string | null;
         target_id: string | null;
+        target_url: string | null;
         metadata: Record<string, unknown>;
         actor: {
             id: number;
@@ -74,7 +75,16 @@
                             {/if}
                         </td>
                         <td class="px-4 py-3">
-                            {formatTarget(log.target_type, log.target_id)}
+                            {#if log.target_url}
+                                <a class="underline" href={log.target_url}>
+                                    {formatTarget(
+                                        log.target_type,
+                                        log.target_id,
+                                    )}
+                                </a>
+                            {:else}
+                                {formatTarget(log.target_type, log.target_id)}
+                            {/if}
                         </td>
                         <td class="px-4 py-3">
                             {#if displayEntries(log.metadata).length > 0}

@@ -54,6 +54,15 @@ class WebhookDeliveryControlTest extends TestCase
             'normalized_payload' => ['document_id' => 42, 'event' => 'updated'],
             'headers' => ['x-request-id' => 'req-123'],
         ]);
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'paperless.delivery.failed',
+            'paperless_document_id' => 42,
+            'level' => 'error',
+            'message' => 'Delivery failed.',
+            'payload' => ['reason' => 'RabbitMQ unavailable'],
+            'created_at' => now(),
+        ]);
 
         $this->actingAs($admin)
             ->get(route('webhook-deliveries.index'))
@@ -79,6 +88,8 @@ class WebhookDeliveryControlTest extends TestCase
                 ->where('delivery.raw_payload.document_id', 42)
                 ->where('delivery.normalized_payload.event', 'updated')
                 ->where('delivery.headers.x-request-id', 'req-123')
+                ->where('delivery.pipeline_events.0.event_type', 'paperless.delivery.failed')
+                ->where('delivery.pipeline_events.0.payload.reason', 'RabbitMQ unavailable')
                 ->where('delivery.can_retry', true)
                 ->where('delivery.can_dismiss', true)
             );
