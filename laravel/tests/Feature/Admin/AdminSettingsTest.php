@@ -55,6 +55,42 @@ class AdminSettingsTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_update_telegram_and_mcp_runtime_settings(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
+            'paperless_url' => 'https://paperless.test',
+            'gui_base_url' => 'https://archibot.example',
+            'telegram_enable' => '1',
+            'telegram_bot_token' => 'telegram-secret',
+            'telegram_chat_id' => '-1001234567890',
+            'telegram_poll_interval' => '7',
+            'mcp_api_key' => 'legacy-mcp-secret',
+            'mcp_laravel_auth_enabled' => '1',
+            'mcp_laravel_path' => '/app/laravel',
+            'mcp_laravel_php_binary' => 'php8.3',
+            'mcp_classify_rate_limit' => '25',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertSame('1', AppSetting::getValue('telegram.enable'));
+        $this->assertSame('telegram-secret', AppSetting::getValue('telegram.bot_token'));
+        $this->assertSame('legacy-mcp-secret', AppSetting::getValue('mcp.api_key'));
+
+        $runtimeConfig = file_get_contents(config('archibot_settings.import_paths')[0]);
+        $this->assertStringContainsString('GUI_BASE_URL=https://archibot.example', $runtimeConfig);
+        $this->assertStringContainsString('ENABLE_TELEGRAM=1', $runtimeConfig);
+        $this->assertStringContainsString('TELEGRAM_BOT_TOKEN=telegram-secret', $runtimeConfig);
+        $this->assertStringContainsString('TELEGRAM_CHAT_ID=-1001234567890', $runtimeConfig);
+        $this->assertStringContainsString('TELEGRAM_POLL_INTERVAL=7', $runtimeConfig);
+        $this->assertStringContainsString('MCP_API_KEY=legacy-mcp-secret', $runtimeConfig);
+        $this->assertStringContainsString('MCP_LARAVEL_AUTH_ENABLED=1', $runtimeConfig);
+        $this->assertStringContainsString('MCP_LARAVEL_PATH=/app/laravel', $runtimeConfig);
+        $this->assertStringContainsString('MCP_LARAVEL_PHP_BINARY=php8.3', $runtimeConfig);
+        $this->assertStringContainsString('MCP_CLASSIFY_RATE_LIMIT=25', $runtimeConfig);
+    }
+
     public function test_admin_can_load_ai_models_for_default_provider(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);

@@ -139,7 +139,8 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI |
+| `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI; Runtime-/Container-Setting, muss in `.env` gepflegt werden |
+| `GUI_BASE_URL` | — | Externe ArchiBot-URL fuer Telegram-Review-Links; kann in `/admin/settings` gepflegt werden |
 | `GUI_DATE_FORMAT` | `%d.%m.%Y` | Datumsformat fuer benutzerseitige Anzeigen und Python-CLI-Ausgaben; muss in `.env` gepflegt werden |
 | `APP_TIMEZONE` | `Europe/Vienna` | Zeitzone fuer Laravel/PHP-Datumswerte sowie Python-Worker/CLI-Anzeigen; muss in `.env` gepflegt werden |
 | `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
@@ -153,6 +154,8 @@ Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Poste
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 
 ## Telegram (optional)
+
+Telegram-Bot-Token, Chat-ID, Poll-Intervall und Aktivierung koennen in `/admin/settings` gepflegt werden. Telegram ist ein optionaler Benachrichtigungskanal; die Laravel-Weboberflaeche bleibt der kanonische Review-Fallback.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -168,6 +171,8 @@ Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit
 | `WEBHOOK_SECRET` | — | Shared Secret fuer `POST /webhook/paperless`. Siehe [Webhook-Doku](./webhooks.md). |
 
 ## MCP Server (optional)
+
+MCP-Transport, Host/Port, Write-Tool-Schalter, Auth-Modus und Rate-Limit koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -185,6 +190,8 @@ Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit
 Details: [MCP-Server-Dokumentation](../developer/mcp.md)
 
 ## System
+
+Diese Werte sind bewusst runtime-/deployment-only und werden nicht ueber `/admin/settings` geaendert, weil sie Container, Dateisystem oder Logging betreffen und einen Prozess-/Deployment-Neustart brauchen.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
