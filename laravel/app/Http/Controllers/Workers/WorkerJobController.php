@@ -119,18 +119,38 @@ class WorkerJobController extends Controller
     {
         abort_unless($request->user()?->is_admin, 403);
 
+        $now = now();
+
         if ($workerJob->status === WorkerJob::STATUS_QUEUED) {
             $workerJob->forceFill([
                 'status' => WorkerJob::STATUS_CANCELLED,
-                'cancellation_requested_at' => now(),
-                'finished_at' => now(),
+                'cancellation_requested_at' => $now,
+                'finished_at' => $now,
+                'lease_expires_at' => null,
                 'error' => 'Cancelled before execution.',
+                'progress' => array_merge(is_array($workerJob->progress) ? $workerJob->progress : [], [
+                    'cancelled' => true,
+                    'message' => 'Cancelled before execution.',
+                ]),
             ])->save();
-        } elseif ($workerJob->status === WorkerJob::STATUS_RUNNING) {
+            $workerJob->appendSystemLog('worker_job.cancelled', 'Queued worker job was cancelled before execution.');
+        } elseif (in_array($workerJob->status, [WorkerJob::STATUS_RUNNING, WorkerJob::STATUS_CANCELLING], true)) {
+            $killAfterAt = $now->copy()->addSeconds(max(1, (int) config('archibot_workers.cancel_grace_seconds', 30)));
+            $progress = is_array($workerJob->progress) ? $workerJob->progress : [];
+            $progress['cancellation'] = array_merge(is_array($progress['cancellation'] ?? null) ? $progress['cancellation'] : [], [
+                'requested_at' => $workerJob->cancellation_requested_at?->toISOString() ?? $now->toISOString(),
+                'kill_after_at' => $killAfterAt->toISOString(),
+                'message' => 'Cancellation requested by an administrator.',
+            ]);
+
             $workerJob->forceFill([
                 'status' => WorkerJob::STATUS_CANCELLING,
-                'cancellation_requested_at' => now(),
+                'cancellation_requested_at' => $workerJob->cancellation_requested_at ?: $now,
+                'progress' => $progress,
             ])->save();
+            $workerJob->appendSystemLog('worker_job.cancel_requested', 'Worker job cancellation was requested by an administrator.', 'warning', [
+                'kill_after_at' => $killAfterAt->toISOString(),
+            ]);
         }
 
         AuditLog::query()->create([
@@ -139,6 +159,53 @@ class WorkerJobController extends Controller
             'target_type' => 'worker_job',
             'target_id' => (string) $workerJob->id,
             'metadata' => ['status' => $workerJob->status],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return redirect()->route('worker-jobs.index');
+    }
+
+    public function forceKill(Request $request, WorkerJob $workerJob): RedirectResponse
+    {
+        abort_unless($request->user()?->is_admin, 403);
+
+        abort_unless(in_array($workerJob->status, WorkerJob::runningStatuses(), true), 422);
+
+        $validated = $request->validate([
+            'status' => ['nullable', Rule::in([WorkerJob::STATUS_CANCELLED, WorkerJob::STATUS_FAILED])],
+        ]);
+
+        $terminalStatus = $validated['status'] ?? WorkerJob::STATUS_CANCELLED;
+        $now = now();
+        $progress = is_array($workerJob->progress) ? $workerJob->progress : [];
+        $progress['force_killed_by_admin'] = true;
+        $progress['message'] = $terminalStatus === WorkerJob::STATUS_FAILED
+            ? 'Worker job was force-failed by an administrator.'
+            : 'Worker job was force-cancelled by an administrator.';
+
+        $workerJob->forceFill([
+            'status' => $terminalStatus,
+            'cancellation_requested_at' => $workerJob->cancellation_requested_at ?: $now,
+            'finished_at' => $workerJob->finished_at ?: $now,
+            'worker_id' => null,
+            'lease_expires_at' => null,
+            'heartbeat_at' => null,
+            'error' => trim(($workerJob->error ? $workerJob->error."\n" : '').'force_killed_by_admin'),
+            'progress' => $progress,
+        ])->save();
+
+        $workerJob->appendSystemLog('worker_job.force_killed', 'Worker job was marked terminal by an administrator.', 'error', [
+            'status' => $terminalStatus,
+            'process_stop_available' => false,
+        ]);
+
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => 'worker_job.force_killed',
+            'target_type' => 'worker_job',
+            'target_id' => (string) $workerJob->id,
+            'metadata' => ['status' => $terminalStatus],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);

@@ -7,5 +7,6 @@ return [
     'heartbeat_seconds' => (int) env('ARCHIBOT_WORKER_HEARTBEAT_SECONDS', 15),
     'pending_redispatch_seconds' => (int) env('ARCHIBOT_PENDING_REDISPATCH_SECONDS', 30),
     'stale_running_minutes' => (int) env('ARCHIBOT_STALE_RUNNING_MINUTES', 10),
+    'cancel_grace_seconds' => (int) env('ARCHIBOT_CANCEL_GRACE_SECONDS', 30),
     'max_dispatch_attempts' => (int) env('ARCHIBOT_WORKER_MAX_DISPATCH_ATTEMPTS', 3),
 ];

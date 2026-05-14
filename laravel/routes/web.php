@@ -107,6 +107,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
         Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
         Route::post('worker-jobs/{workerJob}/stop', [WorkerJobController::class, 'stop'])->name('worker-jobs.stop');
+        Route::post('worker-jobs/{workerJob}/force-kill', [WorkerJobController::class, 'forceKill'])->name('worker-jobs.force-kill');
         Route::post('worker-jobs/{workerJob}/retry', [WorkerJobController::class, 'retry'])->name('worker-jobs.retry');
         Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 

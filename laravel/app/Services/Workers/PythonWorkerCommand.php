@@ -6,11 +6,13 @@ use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 class PythonWorkerCommand
 {
@@ -232,11 +234,61 @@ class PythonWorkerCommand
             return;
         }
 
-        try {
-            $process->signal(2);
-        } catch (RuntimeException) {
-            // Process may have exited between isRunning() and signal().
+        $progress = is_array($workerJob->progress) ? $workerJob->progress : [];
+        $cancellation = is_array($progress['cancellation'] ?? null) ? $progress['cancellation'] : [];
+
+        if (empty($cancellation['cancel_signal_sent_at'])) {
+            try {
+                $process->signal(2);
+                $cancellation['cancel_signal_sent_at'] = now()->toISOString();
+                $cancellation['signal'] = 'SIGINT';
+                $progress['cancellation'] = $cancellation;
+                $workerJob->forceFill(['progress' => $progress])->save();
+                $workerJob->appendSystemLog('worker_job.cancel_signal_sent', 'Sent SIGINT to cancelling worker process.', 'warning');
+            } catch (RuntimeException) {
+                // Process may have exited between isRunning() and signal().
+            }
         }
+
+        if (! empty($cancellation['forced_stop_at'])) {
+            return;
+        }
+
+        $killAfterAt = $this->cancellationKillAfterAt($workerJob, $cancellation);
+        if ($killAfterAt === null || now()->lessThan($killAfterAt)) {
+            return;
+        }
+
+        $cancellation['forced_stop_at'] = now()->toISOString();
+        $progress['cancellation'] = $cancellation;
+        $workerJob->forceFill(['progress' => $progress])->save();
+        $workerJob->appendSystemLog('worker_job.cancel_force_stop', 'Cancellation grace period expired; stopping worker process.', 'error', [
+            'kill_after_at' => $killAfterAt->toISOString(),
+        ]);
+
+        try {
+            $process->stop(5, 15);
+        } catch (RuntimeException) {
+            // Process may already have exited.
+        }
+    }
+
+    /** @param array<string, mixed> $cancellation */
+    private function cancellationKillAfterAt(WorkerJob $workerJob, array $cancellation): ?Carbon
+    {
+        if (is_string($cancellation['kill_after_at'] ?? null)) {
+            try {
+                return Carbon::parse($cancellation['kill_after_at']);
+            } catch (Throwable) {
+                // Fall back to cancellation_requested_at plus configured grace period.
+            }
+        }
+
+        if ($workerJob->cancellation_requested_at === null) {
+            return null;
+        }
+
+        return $workerJob->cancellation_requested_at->copy()->addSeconds(max(1, (int) config('archibot_workers.cancel_grace_seconds', 30)));
     }
 
     /**
