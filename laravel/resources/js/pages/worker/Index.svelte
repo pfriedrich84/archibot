@@ -23,7 +23,12 @@
     import { Spinner } from '@/components/ui/spinner';
     import { displayEntries, formatDisplayValue } from '@/lib/display';
     import { show as reviewShow } from '@/routes/review';
-    import { retry, stop, store } from '@/routes/worker-jobs';
+    import {
+        retry,
+        show as workerJobShow,
+        stop,
+        store,
+    } from '@/routes/worker-jobs';
 
     type ReviewSuggestionLink = {
         id: number;
@@ -257,8 +262,10 @@
         {#each jobs.data as job (job.id)}
             <div class="grid gap-2 border-b p-4 text-sm last:border-b-0">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium"
-                        >Worker job {job.id} · {job.type}</span
+                    <a
+                        class="font-medium hover:underline"
+                        href={workerJobShow(job.id).url}
+                        >Worker job {job.id} · {job.type}</a
                     >
                     <span class="rounded-full bg-muted px-2 py-0.5"
                         >{labelForStatus(job.status)}</span

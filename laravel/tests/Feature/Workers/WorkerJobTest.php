@@ -48,6 +48,92 @@ class WorkerJobTest extends TestCase
             );
     }
 
+    public function test_authenticated_users_can_view_worker_job_detail_with_logs(): void
+    {
+        $user = User::factory()->create();
+        $job = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
+            'status' => WorkerJob::STATUS_SUCCEEDED,
+            'payload' => ['paperless_document_id' => 123],
+            'progress' => ['phase' => 'review', 'done' => 1, 'total' => 1, 'failed' => 0],
+            'result' => ['ingest' => ['review_suggestions_imported' => 1]],
+            'dispatch_key' => hash('sha256', 'detail-test'),
+            'dispatch_attempts' => 1,
+            'dispatched_at' => now()->subMinutes(5),
+            'worker_id' => 'worker-1',
+            'lease_expires_at' => now()->addMinute(),
+            'heartbeat_at' => now(),
+        ]);
+        $job->logs()->create([
+            'stream' => 'stdout',
+            'level' => 'info',
+            'event' => 'document_processed',
+            'phase' => 'review',
+            'paperless_document_id' => 123,
+            'message' => 'Processed document 123.',
+            'context' => ['duration_ms' => 10],
+        ]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'worker_job_id' => $job->id,
+            'paperless_document_id' => 123,
+            'proposed_title' => 'Detailed invoice',
+            'dedupe_key' => hash('sha256', 'suggestion-detail'),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('worker-jobs.show', $job))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('worker/Show')
+                ->where('job.id', $job->id)
+                ->where('job.type', WorkerJob::TYPE_PROCESS_DOCUMENT)
+                ->where('job.payload.paperless_document_id', 123)
+                ->where('job.progress.phase', 'review')
+                ->where('job.ingest.review_suggestions_imported', 1)
+                ->where('job.dispatch_key', $job->dispatch_key)
+                ->where('logs.data.0.message', 'Processed document 123.')
+                ->where('logs.data.0.paperless_document_id', 123)
+                ->where('reviewSuggestions.0.id', $suggestion->id)
+                ->where('reviewSuggestions.0.dedupe_key', $suggestion->dedupe_key)
+                ->where('actions', null)
+            );
+    }
+
+    public function test_admin_sees_worker_job_detail_actions(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $job = WorkerJob::factory()->create(['status' => WorkerJob::STATUS_CANCELLING]);
+
+        $this->actingAs($admin)
+            ->get(route('worker-jobs.show', $job))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('worker/Show')
+                ->where('isAdmin', true)
+                ->where('actions.can_stop', true)
+                ->where('actions.can_force_kill', true)
+                ->where('actions.force_kill_url', route('worker-jobs.force-kill', $job))
+            );
+    }
+
+    public function test_non_admin_cannot_force_kill_worker_job(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $job = WorkerJob::factory()->create(['status' => WorkerJob::STATUS_RUNNING]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.force-kill', $job))
+            ->assertForbidden();
+    }
+
+    public function test_worker_job_index_links_to_detail_page(): void
+    {
+        $indexPage = file_get_contents(resource_path('js/pages/worker/Index.svelte'));
+
+        $this->assertIsString($indexPage);
+        $this->assertStringContainsString('workerJobShow(job.id).url', $indexPage);
+    }
+
     public function test_queueing_worker_job_creates_record_dispatches_laravel_job_and_audit_log(): void
     {
         Queue::fake();

@@ -81,6 +81,105 @@ class WorkerJobController extends Controller
         ]);
     }
 
+    public function show(Request $request, WorkerJob $workerJob): Response
+    {
+        $workerJob->load([
+            'createdBy:id,name,email',
+            'retryOf:id,type,status,created_at,finished_at',
+            'retryChildren' => fn ($query) => $query->latest()->select(['id', 'type', 'status', 'retry_of_worker_job_id', 'created_at', 'finished_at']),
+            'reviewSuggestions' => fn ($query) => $query->latest()->limit(50),
+        ]);
+
+        $logs = $workerJob->logs()
+            ->latest()
+            ->paginate(250)
+            ->through(fn ($log) => [
+                'id' => $log->id,
+                'stream' => $log->stream,
+                'level' => $log->level,
+                'event' => $log->event,
+                'paperless_document_id' => $log->paperless_document_id,
+                'phase' => $log->phase,
+                'message' => $log->message,
+                'context' => $log->context ?? [],
+                'created_at' => $log->created_at?->toISOString(),
+            ]);
+
+        $auditLogs = AuditLog::query()
+            ->where('target_type', 'worker_job')
+            ->where('target_id', (string) $workerJob->id)
+            ->latest()
+            ->limit(25)
+            ->get()
+            ->map(fn (AuditLog $auditLog) => [
+                'id' => $auditLog->id,
+                'event' => $auditLog->event,
+                'actor_user_id' => $auditLog->actor_user_id,
+                'metadata' => $auditLog->metadata ?? [],
+                'created_at' => $auditLog->created_at?->toISOString(),
+            ])
+            ->values();
+
+        $isAdmin = (bool) $request->user()?->is_admin;
+
+        return Inertia::render('worker/Show', [
+            'job' => [
+                'id' => $workerJob->id,
+                'type' => $workerJob->type,
+                'status' => $workerJob->status,
+                'payload' => $workerJob->payload ?? [],
+                'result' => $workerJob->result ?? [],
+                'progress' => $workerJob->progress ?? [],
+                'ingest' => data_get($workerJob->result, 'ingest', []),
+                'dispatch_key' => $workerJob->dispatch_key,
+                'dispatch_attempts' => $workerJob->dispatch_attempts,
+                'dispatched_at' => $workerJob->dispatched_at?->toISOString(),
+                'worker_id' => $workerJob->worker_id,
+                'lease_expires_at' => $workerJob->lease_expires_at?->toISOString(),
+                'heartbeat_at' => $workerJob->heartbeat_at?->toISOString(),
+                'retry_of_worker_job_id' => $workerJob->retry_of_worker_job_id,
+                'cancellation_requested_at' => $workerJob->cancellation_requested_at?->toISOString(),
+                'exit_code' => $workerJob->exit_code,
+                'error' => $workerJob->error,
+                'input_path' => $workerJob->input_path,
+                'output_path' => $workerJob->output_path,
+                'input_exists' => $workerJob->input_path ? is_file($workerJob->input_path) : false,
+                'output_exists' => $workerJob->output_path ? is_file($workerJob->output_path) : false,
+                'created_by' => $workerJob->createdBy ? [
+                    'id' => $workerJob->createdBy->id,
+                    'name' => $workerJob->createdBy->name,
+                    'email' => $workerJob->createdBy->email,
+                ] : null,
+                'created_at' => $workerJob->created_at?->toISOString(),
+                'started_at' => $workerJob->started_at?->toISOString(),
+                'finished_at' => $workerJob->finished_at?->toISOString(),
+            ],
+            'logs' => $logs,
+            'reviewSuggestions' => $workerJob->reviewSuggestions->map(fn ($suggestion) => [
+                'id' => $suggestion->id,
+                'paperless_document_id' => $suggestion->paperless_document_id,
+                'source_suggestion_id' => $suggestion->source_suggestion_id,
+                'dedupe_key' => $suggestion->dedupe_key,
+                'proposed_title' => $suggestion->proposed_title,
+                'status' => $suggestion->status,
+                'confidence' => $suggestion->confidence,
+                'created_at' => $suggestion->created_at?->toISOString(),
+            ])->values(),
+            'retryParent' => $workerJob->retryOf ? $this->jobLink($workerJob->retryOf) : null,
+            'retryChildren' => $workerJob->retryChildren->map(fn (WorkerJob $job) => $this->jobLink($job))->values(),
+            'auditLogs' => $auditLogs,
+            'isAdmin' => $isAdmin,
+            'actions' => $isAdmin ? [
+                'can_stop' => in_array($workerJob->status, [WorkerJob::STATUS_QUEUED, WorkerJob::STATUS_RUNNING, WorkerJob::STATUS_CANCELLING], true),
+                'can_retry' => in_array($workerJob->status, WorkerJob::terminalStatuses(), true),
+                'can_force_kill' => in_array($workerJob->status, WorkerJob::runningStatuses(), true),
+                'stop_url' => route('worker-jobs.stop', $workerJob),
+                'retry_url' => route('worker-jobs.retry', $workerJob),
+                'force_kill_url' => route('worker-jobs.force-kill', $workerJob),
+            ] : null,
+        ]);
+    }
+
     public function store(Request $request, StaleWorkerJobCanceller $staleCanceller, WorkerJobDispatcher $dispatcher): RedirectResponse
     {
         abort_unless($request->user()?->is_admin, 403);
@@ -244,5 +343,19 @@ class WorkerJobController extends Controller
         );
 
         return redirect()->route('worker-jobs.index');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function jobLink(WorkerJob $workerJob): array
+    {
+        return [
+            'id' => $workerJob->id,
+            'type' => $workerJob->type,
+            'status' => $workerJob->status,
+            'created_at' => $workerJob->created_at?->toISOString(),
+            'finished_at' => $workerJob->finished_at?->toISOString(),
+        ];
     }
 }

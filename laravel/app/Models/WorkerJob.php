@@ -316,6 +316,16 @@ class WorkerJob extends Model
         return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
+    public function retryOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'retry_of_worker_job_id');
+    }
+
+    public function retryChildren(): HasMany
+    {
+        return $this->hasMany(self::class, 'retry_of_worker_job_id');
+    }
+
     public function reviewSuggestions(): HasMany
     {
         return $this->hasMany(ReviewSuggestion::class);
