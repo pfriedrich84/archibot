@@ -9,6 +9,7 @@ use App\Http\Controllers\EmbeddingIndexController;
 use App\Http\Controllers\EmbeddingsController;
 use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\ErrorsController;
+use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
@@ -24,10 +25,7 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 Route::prefix(config('archibot.path_prefix'))->group(function () {
-    Route::get('/healthz', fn () => response()->json([
-        'status' => 'ok',
-        'app' => 'archibot',
-    ]))->name('healthz');
+    Route::get('/healthz', HealthCheckController::class)->name('healthz');
 
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
     Route::post('/webhook/new', [PaperlessWebhookController::class, 'new'])->name('webhook.new');

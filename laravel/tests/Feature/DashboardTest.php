@@ -25,13 +25,32 @@ class DashboardTest extends TestCase
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
         AppSetting::put('paperless.inbox_tag_id', '7');
+        AppSetting::put('worker_jobs.recovery.last_successful_at', now()->toISOString());
+        AppSetting::put('worker_jobs.recovery.last_error', 'previous recovery failure');
+        AppSetting::put('worker_jobs.recovery.last_error_at', now()->subMinute()->toISOString());
         Http::fake(['paperless.example/api/ui_settings/' => Http::response(['ok' => true], 200)]);
 
         $user = User::factory()->create(['paperless_token' => 'user-token']);
         ReviewSuggestion::factory()->count(2)->create();
         ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_REJECTED]);
         WorkerJob::factory()->create(['status' => WorkerJob::STATUS_RUNNING]);
-        WorkerJob::factory()->create(['status' => WorkerJob::STATUS_FAILED]);
+        WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatched_at' => now()->subMinutes(5),
+        ]);
+        WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_REINDEX,
+            'status' => WorkerJob::STATUS_CANCELLING,
+        ]);
+        WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_SUCCEEDED,
+            'finished_at' => now()->subMinutes(2),
+        ]);
+        WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_FAILED,
+            'finished_at' => now()->subMinute(),
+            'error' => 'classification failed',
+        ]);
         WebhookDelivery::query()->create([
             'source' => 'paperless',
             'event_type' => 'document.created',
@@ -122,9 +141,18 @@ class DashboardTest extends TestCase
                 ->where('status.paperless_url_configured', true)
                 ->where('status.paperless_available', true)
                 ->where('status.inbox_tag_id', 7)
+                ->where('status.user_paperless_token_present', true)
+                ->where('status.ollama_or_provider_configured', true)
+                ->where('status.ocr_mode', 'off')
                 ->where('counts.pending_reviews', 2)
-                ->where('counts.queued_or_running_workers', 1)
+                ->where('counts.queued_or_running_workers', 2)
+                ->where('counts.queued_worker_jobs', 1)
+                ->where('counts.running_worker_jobs', 1)
+                ->where('counts.cancelling_worker_jobs', 1)
                 ->where('counts.failed_workers', 1)
+                ->where('counts.failed_worker_jobs', 1)
+                ->where('counts.stale_queued_worker_jobs', 1)
+                ->where('counts.stale_running_worker_jobs', 1)
                 ->where('counts.queued_webhook_deliveries', 1)
                 ->where('counts.active_pipeline_runs', 1)
                 ->where('counts.blocked_pipeline_runs', 1)
@@ -136,10 +164,14 @@ class DashboardTest extends TestCase
                 ->where('embeddingIndex.document_count', 10)
                 ->where('embeddingIndex.embedded_count', 4)
                 ->where('embeddingIndex.failed_count', 1)
+                ->where('embeddingIndex.ready', false)
                 ->where('embeddingIndex.pending_build_commands', 1)
                 ->where('maintenance.pending_poll_commands', 1)
                 ->where('maintenance.pending_reindex_commands', 1)
                 ->where('maintenance.poll_interval_seconds', 600)
+                ->where('maintenance.document_processing_active', true)
+                ->where('maintenance.reindex_active', true)
+                ->where('maintenance.last_worker_recovery_error', 'previous recovery failure')
                 ->has('recentWebhookDeliveries', 2)
                 ->where('recentWebhookDeliveries.0.status', WebhookDelivery::STATUS_FAILED)
                 ->where('recentWebhookDeliveries.0.event_type', 'document.updated')
@@ -149,11 +181,14 @@ class DashboardTest extends TestCase
                 ->where('recentWebhookDeliveries.0.can_dismiss', true)
                 ->has('recentActorExecutions', 2)
                 ->has('recentPipelineRuns', 2)
+                ->where('lastSuccessfulWorkerJob.status', WorkerJob::STATUS_SUCCEEDED)
+                ->where('lastFailedWorkerJob.error', 'classification failed')
+                ->has('recentErrors', 2)
                 ->where('recentPipelineRuns.0.progress_total', 3)
                 ->where('recentPipelineRuns.0.progress_done', 1)
                 ->where('recentPipelineRuns.0.failed_items_count', 1)
                 ->where('recentPipelineRuns.0.can_retry_failed_items', false)
-                ->has('recentWorkerJobs', 2)
+                ->has('recentWorkerJobs', 5)
             );
     }
 

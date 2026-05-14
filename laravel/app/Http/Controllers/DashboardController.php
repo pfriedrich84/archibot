@@ -25,6 +25,14 @@ class DashboardController extends Controller
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $paperlessAvailable = null;
         $paperlessError = null;
+        $pendingRedispatchCutoff = now()->subSeconds((int) config('archibot_workers.pending_redispatch_seconds', 30));
+        $staleRunningCutoff = now()->subMinutes((int) config('archibot_workers.stale_running_minutes', 10));
+        $lastRecoverySuccess = AppSetting::getValue('worker_jobs.recovery.last_successful_at');
+        $lastRecoveryError = AppSetting::getValue('worker_jobs.recovery.last_error');
+        $lastRecoveryErrorAt = AppSetting::getValue('worker_jobs.recovery.last_error_at');
+        $llmProvider = $this->settingValue('llm.provider');
+        $ollamaUrl = $this->settingValue('ollama.url');
+        $ocrMode = $this->settingValue('ocr.mode');
 
         if ($paperlessUrl && $request->user()->paperless_token) {
             try {
@@ -50,13 +58,29 @@ class DashboardController extends Controller
             ->whereIn('status', Command::activeStatuses())
             ->count();
 
+        $lastSuccessfulWorkerJob = WorkerJob::query()
+            ->where('status', WorkerJob::STATUS_SUCCEEDED)
+            ->latest('finished_at')
+            ->latest()
+            ->first();
+        $lastFailedWorkerJob = WorkerJob::query()
+            ->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])
+            ->latest('finished_at')
+            ->latest()
+            ->first();
+
         return Inertia::render('Dashboard', [
             'status' => [
                 'setup_complete' => SetupState::current()->complete,
                 'paperless_url_configured' => filled($paperlessUrl),
+                'user_paperless_token_present' => filled($request->user()->paperless_token),
                 'paperless_available' => $paperlessAvailable,
                 'paperless_error' => $paperlessError,
                 'inbox_tag_id' => $inboxTagId,
+                'llm_provider' => $llmProvider,
+                'ollama_or_provider_configured' => filled($ollamaUrl) || filled($llmProvider),
+                'ocr_mode' => $ocrMode,
+                'active_provider_roles' => $this->activeProviderRoles(),
             ],
             'embeddingIndex' => [
                 'id' => $embeddingIndexState?->id,
@@ -68,6 +92,7 @@ class DashboardController extends Controller
                 'started_at' => $embeddingIndexState?->started_at?->toISOString(),
                 'completed_at' => $embeddingIndexState?->completed_at?->toISOString(),
                 'error' => $embeddingIndexState?->error,
+                'ready' => $embeddingIndexState?->status === 'ready' || $embeddingIndexState?->status === 'complete',
                 'pending_build_commands' => $pendingEmbeddingBuildCommands,
                 'build_url' => route('embedding-index.build'),
                 'mark_stale_url' => route('embedding-index.mark-stale'),
@@ -78,6 +103,17 @@ class DashboardController extends Controller
                 'pending_poll_commands' => $pendingPollCommands,
                 'pending_reindex_commands' => $pendingReindexCommands,
                 'poll_interval_seconds' => (int) config('archibot.poll_interval_seconds', 600),
+                'last_worker_recovery_successful_at' => $lastRecoverySuccess,
+                'last_worker_recovery_error' => $lastRecoveryError,
+                'last_worker_recovery_error_at' => $lastRecoveryErrorAt,
+                'document_processing_active' => WorkerJob::query()
+                    ->whereIn('type', WorkerJob::documentProcessingTypes())
+                    ->whereIn('status', WorkerJob::activeStatuses())
+                    ->exists(),
+                'reindex_active' => WorkerJob::query()
+                    ->whereIn('type', WorkerJob::blockingTypes())
+                    ->whereIn('status', WorkerJob::activeStatuses())
+                    ->exists(),
             ],
             'counts' => [
                 'pending_reviews' => ReviewSuggestion::query()
@@ -86,8 +122,32 @@ class DashboardController extends Controller
                 'queued_or_running_workers' => WorkerJob::query()
                     ->whereIn('status', [WorkerJob::STATUS_QUEUED, WorkerJob::STATUS_RUNNING])
                     ->count(),
+                'queued_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_QUEUED)
+                    ->count(),
+                'running_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_RUNNING)
+                    ->count(),
+                'cancelling_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_CANCELLING)
+                    ->count(),
                 'failed_workers' => WorkerJob::query()
                     ->where('status', WorkerJob::STATUS_FAILED)
+                    ->count(),
+                'failed_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_FAILED)
+                    ->count(),
+                'stale_queued_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_QUEUED)
+                    ->where(fn ($query) => $query
+                        ->whereNull('dispatched_at')
+                        ->orWhere('dispatched_at', '<', $pendingRedispatchCutoff))
+                    ->count(),
+                'stale_running_worker_jobs' => WorkerJob::query()
+                    ->where('status', WorkerJob::STATUS_RUNNING)
+                    ->where(fn ($query) => $query
+                        ->whereNull('heartbeat_at')
+                        ->orWhere('heartbeat_at', '<', $staleRunningCutoff))
                     ->count(),
                 'queued_webhook_deliveries' => WebhookDelivery::query()
                     ->where('status', WebhookDelivery::STATUS_QUEUED)
@@ -197,17 +257,105 @@ class DashboardController extends Controller
                         PipelineRun::STATUS_RETRYING,
                     ], true),
                 ]),
+            'lastSuccessfulWorkerJob' => $this->workerJobSummary($lastSuccessfulWorkerJob),
+            'lastFailedWorkerJob' => $this->workerJobSummary($lastFailedWorkerJob),
+            'recentErrors' => $this->recentErrors(),
             'recentWorkerJobs' => WorkerJob::query()
                 ->latest()
                 ->limit(5)
                 ->get()
-                ->map(fn (WorkerJob $job) => [
-                    'id' => $job->id,
-                    'type' => $job->type,
-                    'status' => $job->status,
-                    'created_at' => $job->created_at?->toISOString(),
-                    'finished_at' => $job->finished_at?->toISOString(),
-                ]),
+                ->map(fn (WorkerJob $job) => $this->workerJobSummary($job)),
         ]);
+    }
+
+    private function settingValue(string $key): ?string
+    {
+        $value = AppSetting::getValue($key);
+
+        if (filled($value)) {
+            return $value;
+        }
+
+        return config('archibot_settings.definitions')[$key]['default'] ?? null;
+    }
+
+    /** @return array<int, array{role: string, provider: string}> */
+    private function activeProviderRoles(): array
+    {
+        return collect([
+            'classification' => $this->settingValue('llm.classification_provider'),
+            'embedding' => $this->settingValue('llm.embedding_provider'),
+            'ocr' => $this->settingValue('llm.ocr_provider'),
+            'judge' => $this->settingValue('llm.judge_provider'),
+            'chat' => $this->settingValue('llm.chat_provider'),
+        ])
+            ->filter(fn (?string $provider): bool => filled($provider))
+            ->map(fn (string $provider, string $role): array => [
+                'role' => $role,
+                'provider' => $provider,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return array{id: int, type: string, status: string, created_at: ?string, started_at: ?string, finished_at: ?string, error: ?string}|null */
+    private function workerJobSummary(?WorkerJob $job): ?array
+    {
+        if (! $job) {
+            return null;
+        }
+
+        return [
+            'id' => $job->id,
+            'type' => $job->type,
+            'status' => $job->status,
+            'created_at' => $job->created_at?->toISOString(),
+            'started_at' => $job->started_at?->toISOString(),
+            'finished_at' => $job->finished_at?->toISOString(),
+            'error' => $job->error,
+        ];
+    }
+
+    /** @return array<int, array{source: string, id: int, status: string, message: ?string, occurred_at: ?string}> */
+    private function recentErrors(): array
+    {
+        $workerErrors = WorkerJob::query()
+            ->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])
+            ->latest('finished_at')
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(fn (WorkerJob $job): array => [
+                'source' => 'worker_job',
+                'id' => $job->id,
+                'status' => $job->status,
+                'message' => $job->error,
+                'occurred_at' => $job->finished_at?->toISOString() ?? $job->updated_at?->toISOString(),
+            ]);
+
+        $webhookErrors = WebhookDelivery::query()
+            ->whereIn('status', [
+                WebhookDelivery::STATUS_FAILED,
+                WebhookDelivery::STATUS_FAILED_PERMANENT,
+                WebhookDelivery::STATUS_BLOCKED,
+            ])
+            ->latest('processed_at')
+            ->latest('received_at')
+            ->limit(5)
+            ->get()
+            ->map(fn (WebhookDelivery $delivery): array => [
+                'source' => 'webhook_delivery',
+                'id' => $delivery->id,
+                'status' => $delivery->status,
+                'message' => $delivery->error,
+                'occurred_at' => $delivery->processed_at?->toISOString() ?? $delivery->received_at?->toISOString(),
+            ]);
+
+        return $workerErrors
+            ->concat($webhookErrors)
+            ->sortByDesc('occurred_at')
+            ->take(5)
+            ->values()
+            ->all();
     }
 }

@@ -21,15 +21,26 @@
     type DashboardStatus = {
         setup_complete: boolean;
         paperless_url_configured: boolean;
+        user_paperless_token_present: boolean;
         paperless_available: boolean | null;
         paperless_error: string | null;
         inbox_tag_id: number;
+        llm_provider: string | null;
+        ollama_or_provider_configured: boolean;
+        ocr_mode: string | null;
+        active_provider_roles: { role: string; provider: string }[];
     };
 
     type Counts = {
         pending_reviews: number;
         queued_or_running_workers: number;
+        queued_worker_jobs: number;
+        running_worker_jobs: number;
+        cancelling_worker_jobs: number;
         failed_workers: number;
+        failed_worker_jobs: number;
+        stale_queued_worker_jobs: number;
+        stale_running_worker_jobs: number;
         queued_webhook_deliveries: number;
         active_pipeline_runs: number;
         blocked_pipeline_runs: number;
@@ -48,6 +59,7 @@
         started_at: string | null;
         completed_at: string | null;
         error: string | null;
+        ready: boolean;
         pending_build_commands: number;
         build_url: string;
         mark_stale_url: string;
@@ -59,6 +71,11 @@
         pending_poll_commands: number;
         pending_reindex_commands: number;
         poll_interval_seconds: number;
+        last_worker_recovery_successful_at: string | null;
+        last_worker_recovery_error: string | null;
+        last_worker_recovery_error_at: string | null;
+        document_processing_active: boolean;
+        reindex_active: boolean;
     };
 
     type RecentWebhookDelivery = {
@@ -123,7 +140,17 @@
         type: string;
         status: string;
         created_at: string | null;
+        started_at: string | null;
         finished_at: string | null;
+        error: string | null;
+    };
+
+    type RecentError = {
+        source: string;
+        id: number;
+        status: string;
+        message: string | null;
+        occurred_at: string | null;
     };
 
     let {
@@ -134,6 +161,9 @@
         recentWebhookDeliveries,
         recentActorExecutions,
         recentPipelineRuns,
+        lastSuccessfulWorkerJob,
+        lastFailedWorkerJob,
+        recentErrors,
         recentWorkerJobs,
     }: {
         status: DashboardStatus;
@@ -143,6 +173,9 @@
         recentWebhookDeliveries: RecentWebhookDelivery[];
         recentActorExecutions: RecentActorExecution[];
         recentPipelineRuns: RecentPipelineRun[];
+        lastSuccessfulWorkerJob: RecentWorkerJob | null;
+        lastFailedWorkerJob: RecentWorkerJob | null;
+        recentErrors: RecentError[];
         recentWorkerJobs: RecentWorkerJob[];
     } = $props();
 
@@ -182,6 +215,10 @@
             <div class="mt-2 text-3xl font-semibold">
                 {counts.queued_or_running_workers}
             </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+                {counts.queued_worker_jobs} queued · {counts.running_worker_jobs}
+                running · {counts.cancelling_worker_jobs} cancelling
+            </div>
         </a>
         <a
             class="rounded-xl border p-4 hover:bg-muted/50"
@@ -190,6 +227,10 @@
             <div class="text-sm text-muted-foreground">Failed workers</div>
             <div class="mt-2 text-3xl font-semibold">
                 {counts.failed_workers}
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+                {counts.stale_queued_worker_jobs} stale queued · {counts.stale_running_worker_jobs}
+                stale running
             </div>
         </a>
     </div>
@@ -254,12 +295,47 @@
                 <dd>{status.paperless_url_configured ? 'Yes' : 'No'}</dd>
             </div>
             <div>
+                <dt class="text-muted-foreground">User Paperless token</dt>
+                <dd>
+                    {status.user_paperless_token_present
+                        ? 'Present'
+                        : 'Missing'}
+                </dd>
+            </div>
+            <div>
                 <dt class="text-muted-foreground">Paperless availability</dt>
                 <dd>{paperlessLabel}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Inbox tag reference</dt>
                 <dd>{status.inbox_tag_id || 'Not configured'}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">AI provider config</dt>
+                <dd>
+                    {status.ollama_or_provider_configured
+                        ? 'Present'
+                        : 'Missing'}
+                    {#if status.llm_provider}
+                        · {status.llm_provider}
+                    {/if}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">OCR mode</dt>
+                <dd>{status.ocr_mode ?? 'Not configured'}</dd>
+            </div>
+            <div class="md:col-span-2">
+                <dt class="text-muted-foreground">Active provider roles</dt>
+                <dd>
+                    {#if status.active_provider_roles.length}
+                        {status.active_provider_roles
+                            .map((role) => `${role.role}: ${role.provider}`)
+                            .join(' · ')}
+                    {:else}
+                        Using default provider
+                    {/if}
+                </dd>
             </div>
         </dl>
         {#if status.paperless_error}
@@ -311,6 +387,10 @@
             <div>
                 <dt class="text-muted-foreground">Status</dt>
                 <dd>{embeddingIndex.status}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Readiness</dt>
+                <dd>{embeddingIndex.ready ? 'Ready' : 'Not ready'}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Progress</dt>
@@ -392,7 +472,100 @@
                 <dt class="text-muted-foreground">Poll interval</dt>
                 <dd>{maintenance.poll_interval_seconds} seconds</dd>
             </div>
+            <div>
+                <dt class="text-muted-foreground">
+                    Document processing active
+                </dt>
+                <dd>{maintenance.document_processing_active ? 'Yes' : 'No'}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Reindex active</dt>
+                <dd>{maintenance.reindex_active ? 'Yes' : 'No'}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">
+                    Last worker recovery success
+                </dt>
+                <dd>
+                    {maintenance.last_worker_recovery_successful_at ??
+                        'Unknown'}
+                </dd>
+            </div>
+            <div class="md:col-span-3">
+                <dt class="text-muted-foreground">
+                    Last worker recovery error
+                </dt>
+                <dd>
+                    {#if maintenance.last_worker_recovery_error}
+                        {maintenance.last_worker_recovery_error}
+                        {#if maintenance.last_worker_recovery_error_at}
+                            · {maintenance.last_worker_recovery_error_at}
+                        {/if}
+                    {:else}
+                        None recorded
+                    {/if}
+                </dd>
+            </div>
         </dl>
+    </section>
+
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-3 font-semibold">Worker readiness</h2>
+        <dl class="grid gap-3 text-sm md:grid-cols-2">
+            <div>
+                <dt class="text-muted-foreground">
+                    Last successful worker job
+                </dt>
+                <dd>
+                    {#if lastSuccessfulWorkerJob}
+                        #{lastSuccessfulWorkerJob.id} · {lastSuccessfulWorkerJob.type}
+                        · {lastSuccessfulWorkerJob.finished_at ??
+                            'not finished'}
+                    {:else}
+                        None recorded
+                    {/if}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Last failed worker job</dt>
+                <dd>
+                    {#if lastFailedWorkerJob}
+                        #{lastFailedWorkerJob.id} · {lastFailedWorkerJob.type} · {lastFailedWorkerJob.finished_at ??
+                            'not finished'}
+                    {:else}
+                        None recorded
+                    {/if}
+                </dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="rounded-xl border">
+        <div class="border-b px-4 py-3 font-semibold">Recent errors</div>
+        {#each recentErrors as error (`${error.source}-${error.id}`)}
+            <div
+                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
+            >
+                <span class="font-medium">{error.source} {error.id}</span>
+                <span class="rounded-full bg-muted px-2 py-0.5"
+                    >{error.status}</span
+                >
+                {#if error.occurred_at}
+                    <span class="text-muted-foreground"
+                        >{error.occurred_at}</span
+                    >
+                {/if}
+                {#if error.message}
+                    <span class="basis-full text-destructive"
+                        >{error.message}</span
+                    >
+                {/if}
+            </div>
+        {:else}
+            <div class="p-8 text-center text-muted-foreground">
+                No recent errors.
+            </div>
+        {/each}
     </section>
 
     <section class="rounded-xl border">
