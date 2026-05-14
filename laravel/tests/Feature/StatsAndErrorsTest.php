@@ -2,8 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActorExecution;
 use App\Models\ChatSession;
 use App\Models\EntityApproval;
+use App\Models\OcrReview;
+use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WebhookDelivery;
@@ -21,9 +24,52 @@ class StatsAndErrorsTest extends TestCase
     public function test_authenticated_users_can_view_restored_stats_page(): void
     {
         $user = User::factory()->create();
-        ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_PENDING]);
-        EntityApproval::factory()->create(['status' => EntityApproval::STATUS_APPROVED]);
-        WorkerJob::factory()->create(['status' => WorkerJob::STATUS_FAILED]);
+        ReviewSuggestion::factory()->create([
+            'status' => ReviewSuggestion::STATUS_PENDING,
+            'confidence' => 92,
+            'judge_verdict' => 'accepted',
+        ]);
+        ReviewSuggestion::factory()->create([
+            'status' => ReviewSuggestion::STATUS_ACCEPTED,
+            'confidence' => 64,
+            'reviewed_at' => now(),
+        ]);
+        EntityApproval::factory()->create([
+            'type' => EntityApproval::TYPE_TAG,
+            'status' => EntityApproval::STATUS_APPROVED,
+        ]);
+        WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_REINDEX,
+            'status' => WorkerJob::STATUS_FAILED,
+            'finished_at' => now(),
+        ]);
+        OcrReview::query()->create([
+            'paperless_document_id' => 123,
+            'dedupe_key' => 'ocr-123',
+            'original_content' => 'original',
+            'ocr_content' => 'corrected',
+            'status' => OcrReview::STATUS_PENDING,
+        ]);
+        WebhookDelivery::query()->create([
+            'source' => 'paperless',
+            'event_type' => 'document.updated',
+            'paperless_document_id' => 123,
+            'dedupe_key' => 'stats-webhook-123',
+            'payload_hash' => str_repeat('f', 64),
+            'raw_payload' => ['document_id' => 123],
+            'status' => WebhookDelivery::STATUS_QUEUED,
+            'received_at' => now(),
+        ]);
+        PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'webhook',
+            'paperless_document_id' => 123,
+        ]);
+        ActorExecution::query()->create([
+            'actor_name' => 'handle_document_pipeline',
+            'status' => ActorExecution::STATUS_FAILED,
+        ]);
         ChatSession::query()->create([
             'id' => 'session123456789',
             'user_id' => $user->id,
@@ -40,6 +86,26 @@ class StatsAndErrorsTest extends TestCase
                 ->where('review.pending', 1)
                 ->where('entities.approved', 1)
                 ->where('workers.failed', 1)
+                ->where('reviewStatusCounts.pending', 1)
+                ->where('reviewStatusCounts.accepted', 1)
+                ->where('reviewConfidenceDistribution.85-100', 1)
+                ->where('reviewConfidenceDistribution.50-69', 1)
+                ->where('reviewJudgeCounts.accepted', 1)
+                ->where('entityApprovalMatrix.tag.approved', 1)
+                ->where('workerStatusCounts.failed', 1)
+                ->where('workerTypeMatrix.reindex.failed', 1)
+                ->where('ocrReviewStatusCounts.pending', 1)
+                ->where('webhookStatusCounts.queued', 1)
+                ->where('pipelineRunStatusCounts.running', 1)
+                ->where('pipelineRunTypeMatrix.document.running', 1)
+                ->where('actorStatusCounts.failed', 1)
+                ->where('actorNameMatrix.handle_document_pipeline.failed', 1)
+                ->has('dailyActivity', 7)
+                ->where('dailyActivity.6.reviews_created', 2)
+                ->where('dailyActivity.6.reviews_completed', 1)
+                ->where('dailyActivity.6.worker_jobs_finished', 1)
+                ->where('dailyActivity.6.webhook_deliveries', 1)
+                ->where('dailyActivity.6.pipeline_runs', 1)
                 ->where('chat.sessions', 1)
                 ->has('python.available')
             );
