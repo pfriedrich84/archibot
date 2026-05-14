@@ -54,6 +54,15 @@ php artisan storage:link >/dev/null 2>&1 || true
 echo "Starting Laravel queue worker"
 php artisan queue:work --sleep=3 --tries=1 --timeout="${QUEUE_WORKER_TIMEOUT:-900}" &
 
+# Periodically recover lost Laravel worker jobs after queue worker crashes or restarts.
+echo "Starting Laravel worker job recovery loop"
+(
+    while true; do
+        php artisan worker-jobs:recover --no-interaction || true
+        sleep "${ARCHIBOT_WORKER_RECOVERY_INTERVAL_SECONDS:-30}"
+    done
+) &
+
 # Start Dramatiq actors and the durable recovery bridge when RabbitMQ is configured.
 if [ -n "${DRAMATIQ_BROKER_URL:-}" ]; then
     echo "Starting Dramatiq worker"

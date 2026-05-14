@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AppSetting;
 use App\Services\Workers\WorkerJobRecovery;
 use Illuminate\Console\Command;
+use Throwable;
 
 class RecoverWorkerJobs extends Command
 {
@@ -30,7 +32,23 @@ class RecoverWorkerJobs extends Command
             $this->warn('Dry run: no worker jobs will be changed or dispatched.');
         }
 
-        $summary = $recovery->recoverAll($pendingSeconds, $runningMinutes);
+        try {
+            $summary = $recovery->recoverAll($pendingSeconds, $runningMinutes);
+        } catch (Throwable $exception) {
+            AppSetting::put('worker_jobs.recovery.last_error', $exception->getMessage());
+            AppSetting::put('worker_jobs.recovery.last_error_at', now()->toISOString());
+
+            $this->error('Worker job recovery failed: '.$exception->getMessage());
+
+            report($exception);
+
+            return self::FAILURE;
+        }
+
+        if (! $this->option('dry-run')) {
+            AppSetting::put('worker_jobs.recovery.last_successful_at', now()->toISOString());
+            AppSetting::put('worker_jobs.recovery.last_error', null);
+        }
 
         $this->info('Worker job recovery summary:');
         $this->line('Redispatched queued: '.$summary['redispatched_queued']);

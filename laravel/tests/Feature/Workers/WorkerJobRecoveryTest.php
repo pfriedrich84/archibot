@@ -3,8 +3,10 @@
 namespace Tests\Feature\Workers;
 
 use App\Jobs\RunPythonWorkerJob;
+use App\Models\AppSetting;
 use App\Models\WorkerJob;
 use App\Services\Workers\WorkerJobRecovery;
+use Exception;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -115,9 +117,10 @@ class WorkerJobRecoveryTest extends TestCase
         $this->assertSame(WorkerJob::STATUS_CANCELLED, $job->refresh()->status);
     }
 
-    public function test_recover_command_prints_summary(): void
+    public function test_recover_command_prints_summary_and_tracks_success(): void
     {
         Queue::fake();
+        AppSetting::put('worker_jobs.recovery.last_error', 'previous failure');
 
         WorkerJob::factory()->create([
             'status' => WorkerJob::STATUS_QUEUED,
@@ -132,6 +135,26 @@ class WorkerJobRecoveryTest extends TestCase
             ->expectsOutput('Failed running: 0')
             ->expectsOutput('Cancelled cancelling: 0')
             ->assertSuccessful();
+
+        $this->assertNotNull(AppSetting::getValue('worker_jobs.recovery.last_successful_at'));
+        $this->assertNull(AppSetting::getValue('worker_jobs.recovery.last_error'));
+    }
+
+    public function test_recover_command_tracks_failure(): void
+    {
+        $recovery = \Mockery::mock(WorkerJobRecovery::class);
+        $recovery->shouldReceive('recoverAll')
+            ->once()
+            ->andThrow(new Exception('database unavailable'));
+
+        $this->app->instance(WorkerJobRecovery::class, $recovery);
+
+        $this->artisan('worker-jobs:recover')
+            ->expectsOutput('Worker job recovery failed: database unavailable')
+            ->assertFailed();
+
+        $this->assertSame('database unavailable', AppSetting::getValue('worker_jobs.recovery.last_error'));
+        $this->assertNotNull(AppSetting::getValue('worker_jobs.recovery.last_error_at'));
     }
 
     public function test_recover_command_dry_run_does_not_dispatch_or_change_jobs(): void
