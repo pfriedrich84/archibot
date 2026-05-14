@@ -98,10 +98,9 @@ All Laravel code that creates worker jobs must go through one service. This give
 Add to `worker_jobs`:
 
 ```php
-$table->string('dedupe_key')->nullable()->after('type')->index();
-$table->timestamp('last_dispatched_at')->nullable()->after('cancellation_requested_at');
-$table->index(['dedupe_key', 'status']);
-$table->index(['status', 'last_dispatched_at']);
+$table->string('dispatch_key', 64)->nullable()->after('payload')->index();
+$table->unsignedInteger('dispatch_attempts')->default(0)->after('dispatch_key');
+$table->timestamp('dispatched_at')->nullable()->after('dispatch_attempts');
 ```
 
 2. Update `App\Models\WorkerJob`.
@@ -109,14 +108,16 @@ $table->index(['status', 'last_dispatched_at']);
 Add fillable fields:
 
 ```php
-'dedupe_key',
-'last_dispatched_at',
+'dispatch_key',
+'dispatch_attempts',
+'dispatched_at',
 ```
 
 Add cast:
 
 ```php
-'last_dispatched_at' => 'datetime',
+'dispatch_attempts' => 'integer',
+'dispatched_at' => 'datetime',
 ```
 
 Add helpers:
@@ -153,7 +154,7 @@ Responsibilities:
 - Create `worker_jobs` rows.
 - Write `AuditLog` entries.
 - Dispatch `RunPythonWorkerJob`.
-- Set `last_dispatched_at`.
+- Set `dispatched_at` and increment `dispatch_attempts`.
 
 Suggested API:
 
@@ -172,12 +173,12 @@ Active dedupe rule:
 
 ```php
 WorkerJob::query()
-    ->where('dedupe_key', $dedupeKey)
+    ->where('dispatch_key', $dispatchKey)
     ->whereIn('status', WorkerJob::activeStatuses())
     ->first();
 ```
 
-Only active jobs are deduplicated. Terminal jobs may share the same `dedupe_key`.
+Only active jobs are deduplicated. Terminal jobs may share the same `dispatch_key`.
 
 4. Replace direct `WorkerJob::query()->create()` usage in:
 
@@ -223,18 +224,9 @@ A job must not run twice in parallel. A running job must write heartbeats so rec
 Add:
 
 ```php
-$table->unsignedInteger('attempt')->default(0)->after('retry_of_worker_job_id');
-$table->unsignedInteger('max_attempts')->default(1)->after('attempt');
-$table->string('lease_owner')->nullable()->after('max_attempts')->index();
-$table->timestamp('lease_expires_at')->nullable()->after('lease_owner')->index();
-$table->timestamp('heartbeat_at')->nullable()->after('lease_expires_at')->index();
-$table->unsignedInteger('process_id')->nullable()->after('heartbeat_at');
-$table->timestamp('cancel_signal_sent_at')->nullable()->after('process_id');
-$table->timestamp('kill_after_at')->nullable()->after('cancel_signal_sent_at');
-$table->string('terminal_reason')->nullable()->after('kill_after_at');
-$table->index(['status', 'lease_expires_at']);
-$table->index(['status', 'heartbeat_at']);
-$table->index(['type', 'status']);
+$table->string('worker_id')->nullable()->after('dispatch_attempts')->index();
+$table->timestamp('lease_expires_at')->nullable()->after('worker_id')->index();
+$table->timestamp('heartbeat_at')->nullable()->after('lease_expires_at');
 ```
 
 2. Update `laravel/config/archibot_workers.php`.
@@ -344,14 +336,14 @@ Rule:
 
 ```text
 status = queued
-last_dispatched_at is null OR last_dispatched_at < now - pending_seconds
+dispatched_at is null OR dispatched_at < now - pending_seconds
 ```
 
 Action:
 
 ```php
 RunPythonWorkerJob::dispatch($job->id);
-$job->forceFill(['last_dispatched_at' => now()])->save();
+$job->markDispatched();
 $job->appendSystemLog('worker_job.redispatched', 'Queued worker job was redispatched by recovery.');
 ```
 
@@ -364,9 +356,9 @@ status = running
 heartbeat_at is null OR heartbeat_at < now - running_minutes
 ```
 
-If `attempt < max_attempts`, set back to queued and dispatch again.
+If `dispatch_attempts` is below configured `archibot_workers.max_dispatch_attempts`, clear lease metadata, set back to queued and dispatch again.
 
-If attempts are exhausted, mark failed with `terminal_reason = stale_running_timeout`.
+If attempts are exhausted, clear lease metadata and mark failed with an error/progress reason of `stale_running_timeout`.
 
 4. Integrate stale cancelling cleanup by reusing or refactoring `StaleWorkerJobCanceller`.
 
@@ -385,10 +377,10 @@ protected $signature = 'worker-jobs:recover
 
 Test cases:
 
-- redispatches queued job with null `last_dispatched_at`
+- redispatches queued job with null `dispatched_at`
 - does not redispatch fresh queued job
-- requeues stale running job when attempt is below max attempts
-- fails stale running job when attempts are exhausted
+- requeues stale running job when `dispatch_attempts` is below configured max dispatch attempts
+- fails stale running job when dispatch attempts are exhausted
 - stale cancelling job becomes cancelled
 - command prints summary
 
@@ -491,7 +483,7 @@ Rules:
 
 - admin only
 - only running or cancelling jobs
-- set `terminal_reason = force_killed_by_admin`
+- record `force_killed_by_admin` in existing error/progress metadata unless a later migration adds a dedicated terminal reason field
 - stop process if possible
 - status becomes cancelled or failed
 - write audit log
@@ -603,7 +595,7 @@ laravel/resources/js/pages/worker/Show.svelte
 Sections:
 
 - Header with job number, type, status and actions
-- Reliability data: attempt, lease owner, lease expiry, heartbeat, process ID, last dispatch, terminal reason
+- Reliability data: dispatch attempts, worker ID, lease expiry, heartbeat, last dispatch, terminal error/progress reason
 - Progress
 - Payload JSON
 - Result JSON

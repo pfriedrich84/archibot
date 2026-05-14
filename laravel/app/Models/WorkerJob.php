@@ -120,6 +120,19 @@ class WorkerJob extends Model
     /**
      * @return array<int, string>
      */
+    public static function terminalStatuses(): array
+    {
+        return [
+            self::STATUS_CANCELLED,
+            self::STATUS_SUCCEEDED,
+            self::STATUS_FAILED,
+            self::STATUS_PARTIALLY_FAILED,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
     public static function runningStatuses(): array
     {
         return [self::STATUS_RUNNING, self::STATUS_CANCELLING];
@@ -166,7 +179,7 @@ class WorkerJob extends Model
 
     public function isTerminal(): bool
     {
-        return ! $this->isActive();
+        return in_array($this->status, self::terminalStatuses(), true);
     }
 
     public function markDispatched(): void
@@ -264,6 +277,21 @@ class WorkerJob extends Model
         $this->refresh();
 
         return $updated === 1;
+    }
+
+    /** @param array<string, mixed> $context */
+    public function appendSystemLog(string $event, string $message, string $level = 'info', array $context = []): WorkerJobLog
+    {
+        return $this->logs()->create([
+            'stream' => 'system',
+            'level' => $level,
+            'event' => $event,
+            'phase' => is_array($this->progress) && is_scalar($this->progress['phase'] ?? null)
+                ? (string) $this->progress['phase']
+                : null,
+            'message' => $message,
+            'context' => $context,
+        ]);
     }
 
     public function isBlockingType(): bool
