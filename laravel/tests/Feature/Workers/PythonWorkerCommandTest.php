@@ -274,6 +274,46 @@ PHP);
         @unlink($script);
     }
 
+    public function test_worker_command_passes_force_for_supported_worker_types(): void
+    {
+        $command = app(PythonWorkerCommand::class);
+        $method = new \ReflectionMethod(PythonWorkerCommand::class, 'commandFor');
+        $method->setAccessible(true);
+
+        foreach ([
+            WorkerJob::TYPE_POLL,
+            WorkerJob::TYPE_PROCESS_DOCUMENT,
+            WorkerJob::TYPE_REINDEX_OCR,
+        ] as $type) {
+            $workerJob = WorkerJob::factory()->make([
+                'type' => $type,
+                'payload' => ['force' => true, 'paperless_document_id' => 123],
+            ]);
+
+            $argv = $method->invoke($command, $workerJob, '/tmp/input.json', '/tmp/output.json');
+
+            $this->assertContains('--input', $argv);
+            $this->assertContains('/tmp/input.json', $argv);
+            $this->assertContains('--output', $argv);
+            $this->assertContains('/tmp/output.json', $argv);
+            $this->assertContains('--force', $argv);
+        }
+    }
+
+    public function test_worker_command_does_not_pass_force_for_unsupported_worker_types(): void
+    {
+        $workerJob = WorkerJob::factory()->make([
+            'type' => WorkerJob::TYPE_REINDEX_EMBED,
+            'payload' => ['force' => true],
+        ]);
+        $method = new \ReflectionMethod(PythonWorkerCommand::class, 'commandFor');
+        $method->setAccessible(true);
+
+        $argv = $method->invoke(app(PythonWorkerCommand::class), $workerJob, '/tmp/input.json', '/tmp/output.json');
+
+        $this->assertNotContains('--force', $argv);
+    }
+
     public function test_sync_entity_approval_worker_updates_sync_status(): void
     {
         $script = $this->writeWorkerStub(<<<'PHP'

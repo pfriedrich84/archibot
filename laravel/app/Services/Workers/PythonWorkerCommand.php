@@ -395,7 +395,7 @@ class PythonWorkerCommand
     {
         $python = config('archibot_workers.python_binary', 'python');
 
-        return match ($workerJob->type) {
+        $command = match ($workerJob->type) {
             WorkerJob::TYPE_POLL => [$python, '-m', 'app.cli', 'poll', '--input', $input, '--output', $output],
             WorkerJob::TYPE_REINDEX => [$python, '-m', 'app.cli', 'reindex', '--input', $input, '--output', $output],
             WorkerJob::TYPE_REINDEX_OCR => [$python, '-m', 'app.cli', 'reindex-ocr', '--input', $input, '--output', $output],
@@ -405,5 +405,21 @@ class PythonWorkerCommand
             WorkerJob::TYPE_SYNC_ENTITY_APPROVAL => [$python, '-m', 'app.cli', 'sync-entity-approval', '--input', $input, '--output', $output],
             default => throw new RuntimeException("Unsupported worker job type [{$workerJob->type}]."),
         };
+
+        if ($this->shouldForce($workerJob)) {
+            $command[] = '--force';
+        }
+
+        return $command;
+    }
+
+    private function shouldForce(WorkerJob $workerJob): bool
+    {
+        return (bool) data_get($workerJob->payload, 'force', false)
+            && in_array($workerJob->type, [
+                WorkerJob::TYPE_POLL,
+                WorkerJob::TYPE_PROCESS_DOCUMENT,
+                WorkerJob::TYPE_REINDEX_OCR,
+            ], true);
     }
 }

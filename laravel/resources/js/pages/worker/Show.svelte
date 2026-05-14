@@ -121,6 +121,7 @@
         actions: {
             can_stop: boolean;
             can_retry: boolean;
+            can_retry_failed_only: boolean;
             can_force_kill: boolean;
             stop_url: string;
             retry_url: string;
@@ -213,10 +214,27 @@
                             <Button
                                 type="submit"
                                 variant="outline"
-                                disabled={processing}>Retry</Button
+                                disabled={processing}>Retry whole job</Button
                             >
                         {/snippet}
                     </Form>
+                    {#if actions.can_retry_failed_only}
+                        <Form method="post" action={actions.retry_url}>
+                            {#snippet children({ processing })}
+                                <input
+                                    type="hidden"
+                                    name="failed_only"
+                                    value="1"
+                                />
+                                <Button
+                                    type="submit"
+                                    variant="outline"
+                                    disabled={processing}
+                                    >Retry failed documents only</Button
+                                >
+                            {/snippet}
+                        </Form>
+                    {/if}
                 {/if}
             </div>
         {/if}

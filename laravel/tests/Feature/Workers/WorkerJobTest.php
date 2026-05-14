@@ -134,6 +134,22 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('workerJobShow(job.id).url', $indexPage);
     }
 
+    public function test_worker_job_index_exposes_full_control_labels(): void
+    {
+        $indexPage = file_get_contents(resource_path('js/pages/worker/Index.svelte'));
+        $showPage = file_get_contents(resource_path('js/pages/worker/Show.svelte'));
+
+        $this->assertIsString($indexPage);
+        $this->assertIsString($showPage);
+        $this->assertStringContainsString('Start inbox poll force', $indexPage);
+        $this->assertStringContainsString('Process document ID', $indexPage);
+        $this->assertStringContainsString('Force process document', $indexPage);
+        $this->assertStringContainsString('Start OCR reindex force', $indexPage);
+        $this->assertStringContainsString('Retry whole job', $indexPage);
+        $this->assertStringContainsString('Retry failed documents only', $indexPage);
+        $this->assertStringContainsString('Retry failed documents only', $showPage);
+    }
+
     public function test_queueing_worker_job_creates_record_dispatches_laravel_job_and_audit_log(): void
     {
         Queue::fake();
@@ -241,6 +257,49 @@ class WorkerJobTest extends TestCase
         Queue::assertPushed(RunPythonWorkerJob::class, 1);
     }
 
+    public function test_poll_force_payload_is_queued(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL, 'force' => '1'])
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $this->assertSame(['mode' => 'inbox', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
+    }
+
+    public function test_process_document_force_payload_is_queued(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.store'), [
+                'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
+                'paperless_document_id' => 123,
+                'force' => '1',
+            ])
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $this->assertSame([
+            'paperless_document_id' => 123,
+            'force' => true,
+        ], WorkerJob::query()->firstOrFail()->payload);
+    }
+
+    public function test_reindex_ocr_force_payload_is_queued(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_REINDEX_OCR, 'force' => '1'])
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $this->assertSame(['mode' => 'ocr', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
+    }
+
     public function test_retry_creates_new_dispatch_linked_to_original_job(): void
     {
         Queue::fake();
@@ -264,9 +323,57 @@ class WorkerJobTest extends TestCase
 
         $this->assertSame($original->id, $retry->retry_of_worker_job_id);
         $this->assertSame(WorkerJob::STATUS_QUEUED, $retry->status);
+        $this->assertSame(['mode' => 'inbox'], $retry->payload);
         $this->assertSame(1, $retry->dispatch_attempts);
         $this->assertNotNull($retry->dispatched_at);
         Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $retry->id);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'worker_job.retried',
+            'target_id' => (string) $retry->id,
+        ]);
+    }
+
+    public function test_retry_failed_documents_only_payload_is_queued_when_failed_document_ids_are_available(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+        $original = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_POLL,
+            'status' => WorkerJob::STATUS_PARTIALLY_FAILED,
+            'payload' => ['mode' => 'inbox', 'force' => false],
+        ]);
+        $original->logs()->create([
+            'stream' => 'stdout',
+            'level' => 'error',
+            'event' => 'document_failed',
+            'paperless_document_id' => 101,
+            'message' => 'Document 101 failed.',
+            'context' => [],
+        ]);
+        $original->logs()->create([
+            'stream' => 'stdout',
+            'level' => 'error',
+            'event' => 'document_failed',
+            'paperless_document_id' => 202,
+            'message' => 'Document 202 failed.',
+            'context' => [],
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.retry', $original), ['failed_only' => '1'])
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $retry = WorkerJob::query()
+            ->where('id', '!=', $original->id)
+            ->firstOrFail();
+
+        $this->assertSame($original->id, $retry->retry_of_worker_job_id);
+        $this->assertSame([
+            'mode' => 'inbox',
+            'force' => false,
+            'retry_document_ids' => [101, 202],
+            'retry_mode' => 'failed_only',
+        ], $retry->payload);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'worker_job.retried',
             'target_id' => (string) $retry->id,

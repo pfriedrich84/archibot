@@ -58,6 +58,7 @@ class WorkerJobController extends Controller
                 'created_at' => $job->created_at?->toISOString(),
                 'started_at' => $job->started_at?->toISOString(),
                 'finished_at' => $job->finished_at?->toISOString(),
+                'failed_document_ids' => $this->failedDocumentIds($job),
             ]);
 
         return Inertia::render('worker/Index', [
@@ -172,6 +173,7 @@ class WorkerJobController extends Controller
             'actions' => $isAdmin ? [
                 'can_stop' => in_array($workerJob->status, [WorkerJob::STATUS_QUEUED, WorkerJob::STATUS_RUNNING, WorkerJob::STATUS_CANCELLING], true),
                 'can_retry' => in_array($workerJob->status, WorkerJob::terminalStatuses(), true),
+                'can_retry_failed_only' => in_array($workerJob->status, WorkerJob::terminalStatuses(), true) && $this->failedDocumentIds($workerJob) !== [],
                 'can_force_kill' => in_array($workerJob->status, WorkerJob::runningStatuses(), true),
                 'stop_url' => route('worker-jobs.stop', $workerJob),
                 'retry_url' => route('worker-jobs.retry', $workerJob),
@@ -189,17 +191,20 @@ class WorkerJobController extends Controller
         $validated = $request->validate([
             'type' => ['required', Rule::in(WorkerJob::userQueueableTypes())],
             'paperless_document_id' => ['nullable', 'integer', 'min:1'],
+            'force' => ['nullable', 'boolean'],
         ]);
 
         if ($validated['type'] === WorkerJob::TYPE_PROCESS_DOCUMENT && empty($validated['paperless_document_id'])) {
             return back()->withErrors(['paperless_document_id' => 'Document id is required for process-document jobs.']);
         }
 
+        $force = $request->boolean('force');
+
         $payload = match ($validated['type']) {
-            WorkerJob::TYPE_PROCESS_DOCUMENT => ['paperless_document_id' => (int) $validated['paperless_document_id']],
-            WorkerJob::TYPE_POLL => ['mode' => 'inbox'],
+            WorkerJob::TYPE_PROCESS_DOCUMENT => ['paperless_document_id' => (int) $validated['paperless_document_id'], 'force' => $force],
+            WorkerJob::TYPE_POLL => ['mode' => 'inbox', 'force' => $force],
             WorkerJob::TYPE_REINDEX => ['mode' => 'full'],
-            WorkerJob::TYPE_REINDEX_OCR => ['mode' => 'ocr', 'force' => (bool) $request->boolean('force')],
+            WorkerJob::TYPE_REINDEX_OCR => ['mode' => 'ocr', 'force' => $force],
             WorkerJob::TYPE_REINDEX_EMBED => ['mode' => 'embed'],
             default => [],
         };
@@ -316,17 +321,22 @@ class WorkerJobController extends Controller
     {
         abort_unless($request->user()?->is_admin, 403);
 
-        $payload = $workerJob->payload ?? [];
-        $failedDocuments = collect($workerJob->logs ?? [])
-            ->filter(fn ($log) => in_array($log->event, ['document_failed', 'document_cancelled'], true))
-            ->pluck('paperless_document_id')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        $validated = $request->validate([
+            'failed_only' => ['nullable', 'boolean'],
+        ]);
 
-        if ($failedDocuments !== []) {
+        $payload = $workerJob->payload ?? [];
+        $failedDocuments = $this->failedDocumentIds($workerJob);
+        $retryFailedOnly = (bool) ($validated['failed_only'] ?? false);
+
+        if ($retryFailedOnly) {
+            if ($failedDocuments === []) {
+                return back()->withErrors(['failed_only' => 'No failed document references are available for this worker job.']);
+            }
+
             $payload['retry_document_ids'] = $failedDocuments;
+            $payload['retry_mode'] = 'failed_only';
+
             if ($workerJob->type === WorkerJob::TYPE_PROCESS_DOCUMENT) {
                 $payload['paperless_document_id'] = (int) $failedDocuments[0];
             }
@@ -339,10 +349,29 @@ class WorkerJobController extends Controller
             request: $request,
             retryOfWorkerJobId: $workerJob->id,
             auditEvent: 'worker_job.retried',
-            auditMetadata: ['retry_of_worker_job_id' => $workerJob->id],
+            auditMetadata: [
+                'retry_of_worker_job_id' => $workerJob->id,
+                'retry_mode' => $retryFailedOnly ? 'failed_only' : 'whole_job',
+            ],
         );
 
         return redirect()->route('worker-jobs.index');
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function failedDocumentIds(WorkerJob $workerJob): array
+    {
+        return $workerJob->logs()
+            ->whereIn('event', ['document_failed', 'document_cancelled'])
+            ->get()
+            ->map(fn ($log) => $log->paperless_document_id ?? data_get($log->context, 'document_id'))
+            ->filter(fn ($documentId) => is_numeric($documentId))
+            ->map(fn ($documentId) => (int) $documentId)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

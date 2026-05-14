@@ -72,6 +72,7 @@
             context: Record<string, unknown>;
             created_at: string | null;
         }[];
+        failed_document_ids: number[];
     };
 
     type Paginator<T> = {
@@ -169,6 +170,17 @@
                 </Form>
                 <Form method="post" action={store().url}>
                     {#snippet children({ processing })}
+                        <input type="hidden" name="type" value="poll" />
+                        <input type="hidden" name="force" value="1" />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}>Start inbox poll force</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={store().url}>
+                    {#snippet children({ processing })}
                         <input type="hidden" name="type" value="reindex" />
                         <Button
                             type="submit"
@@ -190,6 +202,18 @@
                 </Form>
                 <Form method="post" action={store().url}>
                     {#snippet children({ processing })}
+                        <input type="hidden" name="type" value="reindex_ocr" />
+                        <input type="hidden" name="force" value="1" />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Start OCR reindex force</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={store().url}>
+                    {#snippet children({ processing })}
                         <input
                             type="hidden"
                             name="type"
@@ -205,6 +229,43 @@
                 </Form>
             </div>
         </section>
+
+        <Form
+            {...store.form()}
+            class="grid max-w-2xl gap-4 rounded-xl border p-4"
+        >
+            {#snippet children({ errors, processing })}
+                <input type="hidden" name="type" value="process_document" />
+                <div class="grid gap-2">
+                    <Label for="quick_paperless_document_id"
+                        >Process document ID</Label
+                    >
+                    <Input
+                        id="quick_paperless_document_id"
+                        name="paperless_document_id"
+                        type="number"
+                        min="1"
+                        required
+                        placeholder="Paperless document reference"
+                    />
+                    <InputError message={errors.paperless_document_id} />
+                </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        name="force"
+                        value="1"
+                        class="h-4 w-4 rounded border-input"
+                    />
+                    Force process document
+                </label>
+                <InputError message={errors.force} />
+                <Button type="submit" disabled={processing} class="w-fit">
+                    {#if processing}<Spinner />{/if}
+                    Process document
+                </Button>
+            {/snippet}
+        </Form>
 
         <Form
             {...store.form()}
@@ -239,6 +300,17 @@
                     />
                     <InputError message={errors.paperless_document_id} />
                 </div>
+
+                <label class="flex items-center gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        name="force"
+                        value="1"
+                        class="h-4 w-4 rounded border-input"
+                    />
+                    Force poll, process document, or OCR reindex
+                </label>
+                <InputError message={errors.force} />
 
                 <Button type="submit" disabled={processing} class="w-fit">
                     {#if processing}<Spinner />{/if}
@@ -287,17 +359,39 @@
                             {/snippet}
                         </Form>
                     {/if}
-                    {#if isAdmin && ['failed', 'partially_failed', 'cancelled'].includes(job.status)}
+                    {#if isAdmin && ['succeeded', 'failed', 'partially_failed', 'cancelled'].includes(job.status)}
                         <Form method="post" action={actionUrl(job, 'retry')}>
                             {#snippet children({ processing })}
                                 <Button
                                     type="submit"
                                     size="sm"
                                     variant="outline"
-                                    disabled={processing}>Retry</Button
+                                    disabled={processing}
+                                    >Retry whole job</Button
                                 >
                             {/snippet}
                         </Form>
+                        {#if job.failed_document_ids.length > 0}
+                            <Form
+                                method="post"
+                                action={actionUrl(job, 'retry')}
+                            >
+                                {#snippet children({ processing })}
+                                    <input
+                                        type="hidden"
+                                        name="failed_only"
+                                        value="1"
+                                    />
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={processing}
+                                        >Retry failed documents only</Button
+                                    >
+                                {/snippet}
+                            </Form>
+                        {/if}
                     {/if}
                 </div>
                 {#if displayEntries(job.payload).length > 0}
