@@ -17,6 +17,7 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 - [`docs/prompts/pi-dev-event-driven-migration.md`](docs/prompts/pi-dev-event-driven-migration.md) — governing migration prompt for the event-driven architecture.
 - [`docs/implementation-plan-event-driven-archibot.md`](docs/implementation-plan-event-driven-archibot.md) — target architecture and migration plan.
+- [`docs/architecture/job-control-model.md`](docs/architecture/job-control-model.md) — current temporary job-control model and migration rules.
 - [`docs/architecture/`](docs/architecture/) — detailed architecture rules for webhooks, polling, progress, retries, observability and authorization.
 - [`docs/decisions/`](docs/decisions/) — accepted architecture decisions.
 - [`docs/governance/`](docs/governance/) — repository governance, agent workflow and review checklist.
@@ -38,5 +39,8 @@ Per-document reprocess must be possible manually through an admin Laravel button
 Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
 CLI commands must behave exactly like the corresponding Laravel UI actions: same backend, config source, durable state, progress semantics, storage target, and side effects. Never leave CLI on a legacy SQLite/subprocess path while the UI uses PostgreSQL/pgvector/event-driven flows.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
+Laravel `worker_jobs` is a temporary stabilization layer.
+Do not add permanent architecture only to `worker_jobs`.
+New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events` and Python actors.
 
 Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md).
