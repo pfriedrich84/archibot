@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
-use App\Models\AuditLog;
 use App\Models\WorkerJob;
+use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -38,30 +37,22 @@ class PaperlessWebhookController extends Controller
             ], 422);
         }
 
-        $workerJob = WorkerJob::query()->create([
-            'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => [
+        $jobPayload = [
+            'paperless_document_id' => $documentId,
+            'webhook_endpoint' => $endpoint,
+            'webhook_event' => Arr::get($payload, 'event'),
+        ];
+
+        $workerJob = app(WorkerJobDispatcher::class)->dispatch(
+            type: WorkerJob::TYPE_PROCESS_DOCUMENT,
+            payload: $jobPayload,
+            request: $request,
+            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_PROCESS_DOCUMENT, [
                 'paperless_document_id' => $documentId,
                 'webhook_endpoint' => $endpoint,
-                'webhook_event' => Arr::get($payload, 'event'),
-            ],
-        ]);
-
-        AuditLog::query()->create([
-            'event' => 'worker_job.queued',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $workerJob->id,
-            'metadata' => [
-                'type' => $workerJob->type,
-                'payload' => $workerJob->payload,
-                'source' => 'paperless_webhook',
-            ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        RunPythonWorkerJob::dispatch($workerJob->id);
+            ]),
+            auditMetadata: ['source' => 'paperless_webhook'],
+        );
 
         return response()->json([
             'status' => 'ok',

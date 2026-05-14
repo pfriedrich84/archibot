@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Workers;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
 use App\Services\Workers\StaleWorkerJobCanceller;
+use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -81,7 +81,7 @@ class WorkerJobController extends Controller
         ]);
     }
 
-    public function store(Request $request, StaleWorkerJobCanceller $staleCanceller): RedirectResponse
+    public function store(Request $request, StaleWorkerJobCanceller $staleCanceller, WorkerJobDispatcher $dispatcher): RedirectResponse
     {
         abort_unless($request->user()?->is_admin, 403);
 
@@ -105,27 +105,12 @@ class WorkerJobController extends Controller
             default => [],
         };
 
-        $workerJob = WorkerJob::query()->create([
-            'type' => $validated['type'],
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => $payload,
-            'created_by_user_id' => $request->user()->id,
-        ]);
-
-        AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
-            'event' => 'worker_job.queued',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $workerJob->id,
-            'metadata' => [
-                'type' => $workerJob->type,
-                'payload' => $payload,
-            ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        RunPythonWorkerJob::dispatch($workerJob->id);
+        $dispatcher->dispatch(
+            type: $validated['type'],
+            payload: $payload,
+            user: $request->user(),
+            request: $request,
+        );
 
         return redirect()->route('worker-jobs.index');
     }
@@ -161,7 +146,7 @@ class WorkerJobController extends Controller
         return redirect()->route('worker-jobs.index');
     }
 
-    public function retry(Request $request, WorkerJob $workerJob): RedirectResponse
+    public function retry(Request $request, WorkerJob $workerJob, WorkerJobDispatcher $dispatcher): RedirectResponse
     {
         abort_unless($request->user()?->is_admin, 403);
 
@@ -181,25 +166,15 @@ class WorkerJobController extends Controller
             }
         }
 
-        $retry = WorkerJob::query()->create([
-            'type' => $workerJob->type,
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => $payload,
-            'retry_of_worker_job_id' => $workerJob->id,
-            'created_by_user_id' => $request->user()->id,
-        ]);
-
-        AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
-            'event' => 'worker_job.retried',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $retry->id,
-            'metadata' => ['retry_of_worker_job_id' => $workerJob->id, 'payload' => $payload],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        RunPythonWorkerJob::dispatch($retry->id);
+        $dispatcher->dispatch(
+            type: $workerJob->type,
+            payload: $payload,
+            user: $request->user(),
+            request: $request,
+            retryOfWorkerJobId: $workerJob->id,
+            auditEvent: 'worker_job.retried',
+            auditMetadata: ['retry_of_worker_job_id' => $workerJob->id],
+        );
 
         return redirect()->route('worker-jobs.index');
     }

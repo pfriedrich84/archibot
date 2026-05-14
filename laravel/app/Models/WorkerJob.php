@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'type',
     'status',
     'payload',
+    'dispatch_key',
+    'dispatch_attempts',
+    'dispatched_at',
     'input_path',
     'output_path',
     'result',
@@ -63,6 +66,8 @@ class WorkerJob extends Model
             'payload' => 'array',
             'result' => 'array',
             'progress' => 'array',
+            'dispatch_attempts' => 'integer',
+            'dispatched_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'cancellation_requested_at' => 'datetime',
@@ -134,6 +139,29 @@ class WorkerJob extends Model
     public function scopeRunningOrCancelling(Builder $query): Builder
     {
         return $query->whereIn('status', self::runningStatuses());
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereIn('status', self::activeStatuses());
+    }
+
+    public function isActive(): bool
+    {
+        return in_array($this->status, self::activeStatuses(), true);
+    }
+
+    public function isTerminal(): bool
+    {
+        return ! $this->isActive();
+    }
+
+    public function markDispatched(): void
+    {
+        $this->forceFill([
+            'dispatch_attempts' => ((int) $this->dispatch_attempts) + 1,
+            'dispatched_at' => now(),
+        ])->save();
     }
 
     public function isBlockingType(): bool

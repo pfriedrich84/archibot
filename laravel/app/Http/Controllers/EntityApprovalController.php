@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\EntityApproval;
 use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -133,40 +133,34 @@ class EntityApprovalController extends Controller
 
     private function queueSync(Request $request, EntityApproval $entityApproval, string $action): void
     {
-        $workerJob = WorkerJob::query()->create([
-            'type' => WorkerJob::TYPE_SYNC_ENTITY_APPROVAL,
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => [
+        $payload = [
+            'entity_approval_id' => $entityApproval->id,
+            'action' => $action,
+            'type' => $entityApproval->type,
+            'name' => $entityApproval->name,
+            'paperless_id' => $entityApproval->paperless_id,
+        ];
+
+        $workerJob = app(WorkerJobDispatcher::class)->dispatch(
+            type: WorkerJob::TYPE_SYNC_ENTITY_APPROVAL,
+            payload: $payload,
+            user: $request->user(),
+            request: $request,
+            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_SYNC_ENTITY_APPROVAL, [
                 'entity_approval_id' => $entityApproval->id,
                 'action' => $action,
-                'type' => $entityApproval->type,
-                'name' => $entityApproval->name,
-                'paperless_id' => $entityApproval->paperless_id,
+            ]),
+            auditMetadata: [
+                'entity_approval_id' => $entityApproval->id,
+                'entity_type' => $entityApproval->type,
+                'action' => $action,
             ],
-            'created_by_user_id' => $request->user()->id,
-        ]);
+        );
 
         $entityApproval->forceFill([
             'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
             'sync_worker_job_id' => $workerJob->id,
         ])->save();
-
-        AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
-            'event' => 'worker_job.queued',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $workerJob->id,
-            'metadata' => [
-                'type' => $workerJob->type,
-                'entity_approval_id' => $entityApproval->id,
-                'entity_type' => $entityApproval->type,
-                'action' => $action,
-            ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        RunPythonWorkerJob::dispatch($workerJob->id);
     }
 
     /** @param array<string, mixed> $metadata */

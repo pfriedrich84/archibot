@@ -61,6 +61,9 @@ class WorkerJobTest extends TestCase
         $this->assertSame(WorkerJob::TYPE_POLL, $workerJob->type);
         $this->assertSame(WorkerJob::STATUS_QUEUED, $workerJob->status);
         $this->assertSame($user->id, $workerJob->created_by_user_id);
+        $this->assertNotNull($workerJob->dispatch_key);
+        $this->assertSame(1, $workerJob->dispatch_attempts);
+        $this->assertNotNull($workerJob->dispatched_at);
         Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $workerJob->id);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $user->id,
@@ -110,6 +113,50 @@ class WorkerJobTest extends TestCase
 
         $this->assertSame(WorkerJob::STATUS_CANCELLED, $stale->refresh()->status);
         $this->assertSame(WorkerJob::STATUS_CANCELLING, $fresh->refresh()->status);
+    }
+
+    public function test_queueing_duplicate_active_worker_job_reuses_existing_dispatch(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL]);
+        $this->actingAs($user)->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL]);
+
+        $this->assertSame(1, WorkerJob::query()->count());
+        Queue::assertPushed(RunPythonWorkerJob::class, 1);
+    }
+
+    public function test_retry_creates_new_dispatch_linked_to_original_job(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+        $original = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_POLL,
+            'status' => WorkerJob::STATUS_FAILED,
+            'payload' => ['mode' => 'inbox'],
+            'dispatch_key' => hash('sha256', 'existing'),
+            'dispatch_attempts' => 1,
+            'dispatched_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.retry', $original))
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $retry = WorkerJob::query()
+            ->where('id', '!=', $original->id)
+            ->firstOrFail();
+
+        $this->assertSame($original->id, $retry->retry_of_worker_job_id);
+        $this->assertSame(WorkerJob::STATUS_QUEUED, $retry->status);
+        $this->assertSame(1, $retry->dispatch_attempts);
+        $this->assertNotNull($retry->dispatched_at);
+        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $retry->id);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'worker_job.retried',
+            'target_id' => (string) $retry->id,
+        ]);
     }
 
     public function test_process_document_requires_document_id(): void

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\EmbeddingIndexState;
@@ -10,6 +9,7 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -126,7 +126,7 @@ class ReviewSuggestionController extends Controller
     {
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
 
-        $this->queueCommitWorker($request, $reviewSuggestion);
+        $this->queueCommitWorker($request, $reviewSuggestion, app(WorkerJobDispatcher::class));
 
         return redirect()->route('review.index');
     }
@@ -287,7 +287,7 @@ class ReviewSuggestionController extends Controller
 
             $this->review($request, $suggestion, $status);
             if ($status === ReviewSuggestion::STATUS_ACCEPTED) {
-                $this->queueCommitWorker($request, $suggestion);
+                $this->queueCommitWorker($request, $suggestion, app(WorkerJobDispatcher::class));
             }
             $changed++;
         }
@@ -297,7 +297,7 @@ class ReviewSuggestionController extends Controller
         return redirect()->route('review.index')->with('status', "Review bulk action completed: {$changed} changed, {$skipped} skipped.");
     }
 
-    private function queueCommitWorker(Request $request, ReviewSuggestion $reviewSuggestion): ?WorkerJob
+    private function queueCommitWorker(Request $request, ReviewSuggestion $reviewSuggestion, WorkerJobDispatcher $dispatcher): ?WorkerJob
     {
         if ($reviewSuggestion->source_suggestion_id === null) {
             $reviewSuggestion->forceFill([
@@ -307,48 +307,39 @@ class ReviewSuggestionController extends Controller
             return null;
         }
 
-        $workerJob = WorkerJob::query()->create([
-            'type' => WorkerJob::TYPE_COMMIT_REVIEW,
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => [
-                'review_suggestion_id' => $reviewSuggestion->id,
-                'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
-                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-                'title' => $reviewSuggestion->proposed_title,
-                'date' => $reviewSuggestion->proposed_date?->toDateString(),
-                'correspondent_id' => $reviewSuggestion->proposed_correspondent_id,
-                'doctype_id' => $reviewSuggestion->proposed_document_type_id,
-                'storage_path_id' => $reviewSuggestion->proposed_storage_path_id,
-                'tag_ids' => collect($reviewSuggestion->proposed_tags ?? [])
-                    ->pluck('id')
-                    ->filter(fn ($id) => is_numeric($id))
-                    ->map(fn ($id) => (int) $id)
-                    ->values()
-                    ->all(),
-            ],
-            'created_by_user_id' => $request->user()->id,
-        ]);
+        $payload = [
+            'review_suggestion_id' => $reviewSuggestion->id,
+            'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
+            'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+            'title' => $reviewSuggestion->proposed_title,
+            'date' => $reviewSuggestion->proposed_date?->toDateString(),
+            'correspondent_id' => $reviewSuggestion->proposed_correspondent_id,
+            'doctype_id' => $reviewSuggestion->proposed_document_type_id,
+            'storage_path_id' => $reviewSuggestion->proposed_storage_path_id,
+            'tag_ids' => collect($reviewSuggestion->proposed_tags ?? [])
+                ->pluck('id')
+                ->filter(fn ($id) => is_numeric($id))
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all(),
+        ];
 
-        AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
-            'event' => 'worker_job.queued',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $workerJob->id,
-            'metadata' => [
-                'type' => $workerJob->type,
+        $workerJob = $dispatcher->dispatch(
+            type: WorkerJob::TYPE_COMMIT_REVIEW,
+            payload: $payload,
+            user: $request->user(),
+            request: $request,
+            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_COMMIT_REVIEW, ['review_suggestion_id' => $reviewSuggestion->id]),
+            auditMetadata: [
                 'review_suggestion_id' => $reviewSuggestion->id,
                 'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
             ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
+        );
 
         $reviewSuggestion->forceFill([
             'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
             'commit_worker_job_id' => $workerJob->id,
         ])->save();
-
-        RunPythonWorkerJob::dispatch($workerJob->id);
 
         return $workerJob;
     }
