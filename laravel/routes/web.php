@@ -93,6 +93,8 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('stats', StatsController::class)->name('stats.index');
         Route::get('errors', ErrorsController::class)->name('errors.index');
 
+        Route::get('pipeline-runs', [PipelineRunController::class, 'index'])->name('pipeline-runs.index');
+        Route::get('pipeline-runs/{pipelineRun}', [PipelineRunController::class, 'show'])->name('pipeline-runs.show');
         Route::post('pipeline-runs/{pipelineRun}/retry', [PipelineRunController::class, 'retry'])->name('pipeline-runs.retry');
         Route::post('pipeline-runs/{pipelineRun}/retry-failed-items', [PipelineRunController::class, 'retryFailedItems'])->name('pipeline-runs.retry-failed-items');
         Route::post('pipeline-runs/{pipelineRun}/cancel', [PipelineRunController::class, 'cancel'])->name('pipeline-runs.cancel');

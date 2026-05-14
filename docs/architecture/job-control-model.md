@@ -197,6 +197,16 @@ Dramatiq actors will own durable execution of pipeline steps. Actors must:
 - honor cancellation and retry semantics;
 - treat RabbitMQ as transport, not the source of truth.
 
+## Pipeline Runs Visibility During Phase 13
+
+Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the future durable job view without replacing `worker_jobs` yet.
+
+The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery, related audit entries and best-effort links to temporary `worker_jobs`. These links let operators compare the temporary Laravel subprocess control plane with the future command/pipeline model while both exist.
+
+Until a specific flow is migrated to actors, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not start the RabbitMQ/Dramatiq actor migration and do not remove or weaken `worker_jobs` controls.
+
+As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired.
+
 ## Migration Plan
 
 1. Keep `worker_jobs` stable while Laravel job control is hardened.

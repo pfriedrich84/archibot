@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
@@ -53,6 +54,16 @@ class PipelineRun extends Model
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];
+    }
+
+    public function command(): BelongsTo
+    {
+        return $this->belongsTo(Command::class);
+    }
+
+    public function webhookDelivery(): BelongsTo
+    {
+        return $this->belongsTo(WebhookDelivery::class);
     }
 
     public function events(): HasMany

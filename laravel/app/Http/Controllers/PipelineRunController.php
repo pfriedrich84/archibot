@@ -7,12 +7,46 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
+use App\Models\WorkerJob;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class PipelineRunController extends Controller
 {
+    public function index(Request $request): Response
+    {
+        $runs = PipelineRun::query()
+            ->with(['command:id,type,status,created_at', 'webhookDelivery:id,source,event_type,status,paperless_document_id,received_at'])
+            ->withCount(['events', 'items'])
+            ->latest('updated_at')
+            ->latest('id')
+            ->paginate(25)
+            ->through(fn (PipelineRun $run) => $this->runPayload($request, $run, includeDetails: false));
+
+        return Inertia::render('pipeline-runs/Index', [
+            'runs' => $runs,
+            'isAdmin' => (bool) $request->user()?->is_admin,
+        ]);
+    }
+
+    public function show(Request $request, PipelineRun $pipelineRun): Response
+    {
+        $pipelineRun->load([
+            'command:id,type,status,payload,created_by_user_id,started_at,finished_at,error,created_at',
+            'webhookDelivery:id,source,event_type,status,paperless_document_id,dedupe_key,request_id,received_at,processed_at,error',
+            'events' => fn ($query) => $query->latest('created_at')->latest('id')->limit(50),
+            'items' => fn ($query) => $query->latest('updated_at')->latest('id')->limit(50),
+        ]);
+
+        return Inertia::render('pipeline-runs/Show', [
+            'run' => $this->runPayload($request, $pipelineRun, includeDetails: true),
+            'isAdmin' => (bool) $request->user()?->is_admin,
+        ]);
+    }
+
     public function retry(Request $request, PipelineRun $pipelineRun): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
@@ -129,6 +163,221 @@ class PipelineRunController extends Controller
         $this->audit($request, 'pipeline_run.cancel_requested', $pipelineRun);
 
         return back()->with('status', 'Pipeline cancellation requested.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runPayload(Request $request, PipelineRun $run, bool $includeDetails): array
+    {
+        $canRetry = (bool) $request->user()?->is_admin
+            && in_array($run->status, [
+                PipelineRun::STATUS_BLOCKED,
+                PipelineRun::STATUS_FAILED,
+                PipelineRun::STATUS_FAILED_PERMANENT,
+                PipelineRun::STATUS_PARTIALLY_FAILED,
+                PipelineRun::STATUS_CANCELLED,
+            ], true);
+        $canRetryFailedItems = (bool) $request->user()?->is_admin
+            && in_array($run->status, [PipelineRun::STATUS_FAILED, PipelineRun::STATUS_PARTIALLY_FAILED], true);
+        $canCancel = (bool) $request->user()?->is_admin
+            && in_array($run->status, [
+                PipelineRun::STATUS_PENDING,
+                PipelineRun::STATUS_QUEUED,
+                PipelineRun::STATUS_RUNNING,
+                PipelineRun::STATUS_RETRYING,
+            ], true);
+
+        $payload = [
+            'id' => $run->id,
+            'type' => $run->type,
+            'status' => $run->status,
+            'scope' => $run->scope,
+            'trigger_source' => $run->trigger_source,
+            'paperless_document_id' => $run->paperless_document_id,
+            'progress_total' => $run->progress_total,
+            'progress_done' => $run->progress_done,
+            'progress_failed' => $run->progress_failed,
+            'progress_skipped' => $run->progress_skipped,
+            'progress_current_phase' => $run->progress_current_phase,
+            'progress_phase_total' => $run->progress_phase_total,
+            'progress_phase_done' => $run->progress_phase_done,
+            'progress_message' => $run->progress_message,
+            'progress_updated_at' => $run->progress_updated_at?->toISOString(),
+            'retry_count' => $run->retry_count,
+            'max_retries' => $run->max_retries,
+            'next_retry_at' => $run->next_retry_at?->toISOString(),
+            'last_retry_at' => $run->last_retry_at?->toISOString(),
+            'retry_reason' => $run->retry_reason,
+            'retry_mode' => $run->retry_mode,
+            'reprocess_requested' => $run->reprocess_requested,
+            'reprocess_reason' => $run->reprocess_reason,
+            'reprocess_mode' => $run->reprocess_mode,
+            'started_at' => $run->started_at?->toISOString(),
+            'finished_at' => $run->finished_at?->toISOString(),
+            'created_at' => $run->created_at?->toISOString(),
+            'updated_at' => $run->updated_at?->toISOString(),
+            'error_type' => $run->error_type,
+            'error' => $run->error,
+            'events_count' => $run->events_count ?? $run->events()->count(),
+            'items_count' => $run->items_count ?? $run->items()->count(),
+            'show_url' => route('pipeline-runs.show', $run),
+            'retry_url' => route('pipeline-runs.retry', $run),
+            'retry_failed_items_url' => route('pipeline-runs.retry-failed-items', $run),
+            'cancel_url' => route('pipeline-runs.cancel', $run),
+            'can_retry' => $canRetry,
+            'can_retry_failed_items' => $canRetryFailedItems,
+            'can_cancel' => $canCancel,
+            'command' => $run->command ? [
+                'id' => $run->command->id,
+                'type' => $run->command->type,
+                'status' => $run->command->status,
+                'created_at' => $run->command->created_at?->toISOString(),
+            ] : null,
+            'webhook_delivery' => $run->webhookDelivery ? [
+                'id' => $run->webhookDelivery->id,
+                'source' => $run->webhookDelivery->source,
+                'event_type' => $run->webhookDelivery->event_type,
+                'status' => $run->webhookDelivery->status,
+                'paperless_document_id' => $run->webhookDelivery->paperless_document_id,
+                'show_url' => route('webhook-deliveries.show', $run->webhookDelivery),
+            ] : null,
+        ];
+
+        if ($includeDetails) {
+            $payload['command'] = $run->command ? array_merge($payload['command'], [
+                'payload' => $run->command->payload ?? [],
+                'created_by_user_id' => $run->command->created_by_user_id,
+                'started_at' => $run->command->started_at?->toISOString(),
+                'finished_at' => $run->command->finished_at?->toISOString(),
+                'error' => $run->command->error,
+            ]) : null;
+            $payload['webhook_delivery'] = $run->webhookDelivery ? array_merge($payload['webhook_delivery'], [
+                'dedupe_key' => $run->webhookDelivery->dedupe_key,
+                'request_id' => $run->webhookDelivery->request_id,
+                'received_at' => $run->webhookDelivery->received_at?->toISOString(),
+                'processed_at' => $run->webhookDelivery->processed_at?->toISOString(),
+                'error' => $run->webhookDelivery->error,
+            ]) : null;
+            $payload['events'] = $run->events->map(fn (PipelineEvent $event) => [
+                'id' => $event->id,
+                'event_type' => $event->event_type,
+                'level' => $event->level,
+                'message' => $event->message,
+                'paperless_document_id' => $event->paperless_document_id,
+                'webhook_delivery_id' => $event->webhook_delivery_id,
+                'command_id' => $event->command_id,
+                'payload' => $event->payload ?? [],
+                'created_at' => $event->created_at?->toISOString(),
+            ])->values();
+            $payload['items'] = $run->items->map(fn (PipelineItem $item) => [
+                'id' => $item->id,
+                'paperless_document_id' => $item->paperless_document_id,
+                'item_type' => $item->item_type,
+                'status' => $item->status,
+                'attempt' => $item->attempt,
+                'max_attempts' => $item->max_attempts,
+                'retry_reason' => $item->retry_reason,
+                'retry_mode' => $item->retry_mode,
+                'next_retry_at' => $item->next_retry_at?->toISOString(),
+                'last_retry_at' => $item->last_retry_at?->toISOString(),
+                'started_at' => $item->started_at?->toISOString(),
+                'finished_at' => $item->finished_at?->toISOString(),
+                'error' => $item->error,
+            ])->values();
+            $payload['linked_worker_jobs'] = $this->linkedWorkerJobs($run);
+            $payload['audit_logs'] = $this->linkedAuditLogs($run);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function linkedWorkerJobs(PipelineRun $run): array
+    {
+        return WorkerJob::query()
+            ->when($run->paperless_document_id !== null, function ($query) use ($run): void {
+                $documentId = $run->paperless_document_id;
+                $query->where(function ($query) use ($documentId): void {
+                    $query
+                        ->where('payload->paperless_document_id', $documentId)
+                        ->orWhere('payload->document_id', $documentId);
+                });
+            })
+            ->when($run->paperless_document_id === null, function ($query) use ($run): void {
+                $query->whereIn('type', $this->workerJobTypesForPipelineRun($run));
+            })
+            ->latest('updated_at')
+            ->limit(10)
+            ->get(['id', 'type', 'status', 'payload', 'dispatch_key', 'created_at', 'updated_at'])
+            ->map(fn (WorkerJob $job) => [
+                'id' => $job->id,
+                'type' => $job->type,
+                'status' => $job->status,
+                'paperless_document_id' => $job->paperlessDocumentId(),
+                'dispatch_key' => $job->dispatch_key,
+                'created_at' => $job->created_at?->toISOString(),
+                'updated_at' => $job->updated_at?->toISOString(),
+                'show_url' => route('worker-jobs.show', $job),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function workerJobTypesForPipelineRun(PipelineRun $run): array
+    {
+        return match ($run->type) {
+            'reindex' => [WorkerJob::TYPE_REINDEX, WorkerJob::TYPE_REINDEX_OCR, WorkerJob::TYPE_REINDEX_EMBED],
+            'embedding_index' => [WorkerJob::TYPE_REINDEX_EMBED],
+            'ocr_reindex' => [WorkerJob::TYPE_REINDEX_OCR],
+            'reconciliation' => [WorkerJob::TYPE_POLL],
+            'review_commit' => [WorkerJob::TYPE_COMMIT_REVIEW],
+            'entity_approval_sync' => [WorkerJob::TYPE_SYNC_ENTITY_APPROVAL],
+            default => [WorkerJob::TYPE_PROCESS_DOCUMENT, WorkerJob::TYPE_POLL],
+        };
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function linkedAuditLogs(PipelineRun $run): array
+    {
+        return AuditLog::query()
+            ->where(function ($query) use ($run): void {
+                $query
+                    ->where(fn ($query) => $query
+                        ->where('target_type', 'pipeline_run')
+                        ->where('target_id', (string) $run->id))
+                    ->orWhere('metadata->pipeline_run_id', $run->id);
+
+                if ($run->command_id !== null) {
+                    $query->orWhere('metadata->command_id', $run->command_id);
+                }
+
+                if ($run->webhook_delivery_id !== null) {
+                    $query->orWhere(fn ($query) => $query
+                        ->where('target_type', 'webhook_delivery')
+                        ->where('target_id', (string) $run->webhook_delivery_id));
+                }
+            })
+            ->latest('created_at')
+            ->limit(10)
+            ->get(['id', 'event', 'target_type', 'target_id', 'metadata', 'created_at'])
+            ->map(fn (AuditLog $log) => [
+                'id' => $log->id,
+                'event' => $log->event,
+                'target_type' => $log->target_type,
+                'target_id' => $log->target_id,
+                'metadata' => $log->metadata ?? [],
+                'created_at' => $log->created_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
     }
 
     private function documentProcessingGateOpen(PipelineRun $pipelineRun): bool

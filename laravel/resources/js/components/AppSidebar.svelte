@@ -38,6 +38,7 @@
     import { index as maintenanceIndex } from '@/routes/admin/maintenance';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as inboxIndex } from '@/routes/inbox';
+    import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     import { index as reviewIndex } from '@/routes/review';
     import { index as workerJobsIndex } from '@/routes/worker-jobs';
     import type { NavItem } from '@/types';
@@ -101,6 +102,11 @@
             title: 'Workers',
             href: workerJobsIndex(),
             icon: Workflow,
+        },
+        {
+            title: 'Pipeline runs',
+            href: pipelineRunsIndex(),
+            icon: FolderGit2,
         },
         {
             title: 'Webhooks',
