@@ -47,6 +47,8 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
         ("JUDGE_MODEL", "ollama_judge_model", "local-judge"),
         ("CLASSIFICATION_CONTEXT_WINDOW", "ollama_num_ctx", 4096),
         ("EMBEDDING_CONTEXT_WINDOW", "ollama_embed_num_ctx", 2048),
+        ("EMBEDDING_MAX_CHARS", "embed_max_chars", 12345),
+        ("EMBEDDING_DOCUMENT_TIMEOUT_SECONDS", "embedding_document_timeout_seconds", 123),
         ("OCR_CONTEXT_WINDOW", "ollama_ocr_num_ctx", 8192),
         ("OPENAI_BASE_URL", "ollama_url", "http://10.10.0.4:4000/v1"),
     ],

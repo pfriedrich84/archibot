@@ -34,6 +34,8 @@ When RabbitMQ is configured, Dramatiq actors and the event recovery bridge may a
 | `ARCHIBOT_WORKER_LEASE_SECONDS` | `300` | Lease duration while a queue worker owns a job. |
 | `ARCHIBOT_WORKER_HEARTBEAT_SECONDS` | `15` | Minimum interval between heartbeat writes during Python processing. |
 | `ARCHIBOT_STALE_CANCELLING_MINUTES` | `30` | Age after which cancelling jobs are marked cancelled by recovery. |
+| `EMBEDDING_DOCUMENT_TIMEOUT_SECONDS` | `180` | Per-document timeout for embedding reindex work. A timeout records `document_failed` and continues with the next document. |
+| `EMBEDDING_MAX_CHARS` | `6000` | Maximum title/content characters sent to the embedding model for each document. Larger documents are truncated for embedding/FTS indexing. |
 
 ## Recovery behavior
 
@@ -93,6 +95,14 @@ Then inspect:
 If `jobs` rows remain while `queue:work --once --verbose` is running, inspect the queue connection and worker logs before increasing redispatch settings.
 
 If runtime output still says `Pending Seconds: 30` after deploying this code, the running process is not using the intended default. Check for an old container image, run `php artisan config:clear`, remove any environment override such as `ARCHIBOT_PENDING_REDISPATCH_SECONDS=30`, and stop any stale recovery process that was started before the deploy.
+
+## Embedding reindex guardrails
+
+`reindex_embed` emits `PROGRESS` before each document starts with `document_started`, `document_id`, `document_title`, `document_index`, `document_total`, and `content_length`. This makes the currently slow document visible in the Laravel worker-job detail page.
+
+Large documents are bounded by `EMBEDDING_MAX_CHARS` before calling the embedding model. Slow embedding calls are bounded by `EMBEDDING_DOCUMENT_TIMEOUT_SECONDS`. If one document fails or times out, the job emits `document_failed`, records the failed document ID, and continues where safe. The final worker result includes `failed` and `failed_document_ids`; Laravel marks the worker job `partially_failed` when any documents failed.
+
+Large reindexes can still take a long time because each document requires an embedding request. Watch the current document progress and Ollama logs before assuming the worker is stuck.
 
 ## CLI-only Laravel reset
 

@@ -148,6 +148,7 @@ async def cmd_reindex_embed(
     progress.phase = "prepare"
     progress.job_id = job_id
     progress.job_type = job_type
+    progress.failed_document_ids = []
     indexer._emit_reindex_progress(event="job_started", message="Embedding reindex started")
 
     # Drop + recreate vec0 so dimension changes take effect, also clear FTS index
@@ -170,10 +171,19 @@ async def cmd_reindex_embed(
         progress.phase = "finished"
         progress.finished_at = datetime.now(tz=UTC).isoformat()
         indexer._emit_reindex_progress(
-            event="job_finished", message="Embedding reindex finished", indexed=count
+            event="job_finished",
+            message="Embedding reindex finished",
+            indexed=count,
+            failed=progress.failed,
+            failed_document_ids=progress.failed_document_ids or [],
         )
-        print(f"Embedding complete: {count} documents indexed.")
-        return {"indexed": count, "progress": progress.__dict__.copy()}
+        print(f"Embedding complete: {count} documents indexed, {progress.failed} failed.")
+        return {
+            "indexed": count,
+            "failed": progress.failed,
+            "failed_document_ids": progress.failed_document_ids or [],
+            "progress": progress.__dict__.copy(),
+        }
     finally:
         progress.running = False
         await paperless.aclose()

@@ -99,7 +99,14 @@ class Settings(BaseSettings):
     context_max_distance: float = 0.5  # 0 = no threshold/unlimited; 0.5 = default relevance cutoff
     hybrid_search_weight: float = 0.7  # 0.0 = FTS only, 1.0 = vector only, 0.7 = default blend
     max_doc_chars: int = 24000
-    embed_max_chars: int = 6000
+    embed_max_chars: int = Field(
+        default=6000,
+        validation_alias=AliasChoices("EMBEDDING_MAX_CHARS", "EMBED_MAX_CHARS"),
+    )
+    embedding_document_timeout_seconds: int = Field(
+        default=180,
+        validation_alias=AliasChoices("EMBEDDING_DOCUMENT_TIMEOUT_SECONDS"),
+    )
     auto_commit_confidence: int = 0  # 0 = immer manuell reviewen
 
     # --- LLM-as-Judge verification (optional second pass) ---

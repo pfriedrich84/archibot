@@ -16,7 +16,7 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import EMBED_DIM, get_conn
 from app.job_events import record_event
-from app.pipeline.context_builder import index_document
+from app.pipeline.context_builder import document_summary, store_embedding
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
     effective_ocr_mode,
@@ -46,6 +46,7 @@ class ReindexProgress:
     phase: str = "idle"
     job_id: str | None = None
     job_type: str | None = None
+    failed_document_ids: list[int] | None = None
 
 
 _reindex_progress = ReindexProgress()
@@ -73,6 +74,7 @@ def _emit_reindex_progress(**extra: object) -> None:
         "error": _reindex_progress.error,
         "started_at": _reindex_progress.started_at,
         "finished_at": _reindex_progress.finished_at,
+        "failed_document_ids": _reindex_progress.failed_document_ids or [],
         **extra,
     }
     print("PROGRESS " + json.dumps(payload, ensure_ascii=False, default=str), flush=True)
@@ -127,6 +129,7 @@ async def initial_index(
 
     # Update progress tracking with total count
     _reindex_progress.total = len(new_docs)
+    _reindex_progress.failed_document_ids = []
     _reindex_progress.phase = "embedding"
     _emit_reindex_progress(event="phase_started", message="Embedding phase started")
     record_event(
@@ -158,12 +161,56 @@ async def initial_index(
             cached = get_cached_ocr(doc.id)
             if cached:
                 doc = doc.model_copy(update={"content": cached})
-            await index_document(doc, ollama)
+
+            content_length = len(doc.content or "")
+            summary = document_summary(doc)
+            embedding_text = "\n".join(p for p in [doc.title or "", doc.content or ""] if p)
+            truncated = len(embedding_text) > len(summary)
+            _emit_reindex_progress(
+                event="document_started",
+                document_id=doc.id,
+                document_title=getattr(doc, "title", None),
+                document_index=i,
+                document_total=len(new_docs),
+                content_length=content_length,
+                embedding_max_chars=settings.embed_max_chars,
+                truncated=truncated,
+                message="Document embedding started",
+            )
+            record_event(
+                _reindex_progress.job_id,
+                _reindex_progress.job_type or "reindex",
+                "document_started",
+                "Dokument wird in den Embedding-Index aufgenommen.",
+                phase="embedding",
+                document_id=doc.id,
+                data={
+                    "document_index": i,
+                    "total": len(new_docs),
+                    "content_length": content_length,
+                    "embedding_max_chars": settings.embed_max_chars,
+                    "truncated": truncated,
+                },
+            )
+
+            if not summary.strip():
+                raise ValueError("document has no text to embed")
+
+            vec = await asyncio.wait_for(
+                ollama.embed(summary),
+                timeout=max(0.001, float(settings.embedding_document_timeout_seconds)),
+            )
+            store_embedding(doc, vec)
             count += 1
             _emit_reindex_progress(
                 event="document_done",
                 document_id=doc.id,
                 document_title=getattr(doc, "title", None),
+                document_index=i,
+                document_total=len(new_docs),
+                content_length=content_length,
+                embedding_max_chars=settings.embed_max_chars,
+                truncated=truncated,
                 message="Document embedded",
             )
             record_event(
@@ -177,13 +224,21 @@ async def initial_index(
             )
         except Exception as exc:
             _reindex_progress.failed += 1
-            log.warning("failed to index document", doc_id=doc.id, error=str(exc))
+            if _reindex_progress.failed_document_ids is None:
+                _reindex_progress.failed_document_ids = []
+            _reindex_progress.failed_document_ids.append(doc.id)
+            error = "embedding document timeout" if isinstance(exc, TimeoutError) else str(exc)
+            log.warning("failed to index document", doc_id=doc.id, error=error)
             _emit_reindex_progress(
                 event="document_failed",
                 document_id=doc.id,
                 document_title=getattr(doc, "title", None),
+                document_index=i,
+                document_total=len(new_docs),
+                content_length=len(doc.content or ""),
                 message="Document embedding failed",
-                error=str(exc),
+                error=error,
+                level="error",
             )
             record_event(
                 _reindex_progress.job_id,
@@ -193,7 +248,7 @@ async def initial_index(
                 phase="embedding",
                 level="error",
                 document_id=doc.id,
-                data={"error": str(exc), "done": i, "total": len(new_docs)},
+                data={"error": error, "done": i, "total": len(new_docs)},
             )
         finally:
             _reindex_progress.done = i
@@ -225,6 +280,7 @@ async def initial_index(
         data={
             "indexed": count,
             "failed": _reindex_progress.failed,
+            "failed_document_ids": _reindex_progress.failed_document_ids or [],
             "embed_retries": ollama.embed_retry_count,
         },
     )
