@@ -92,4 +92,17 @@ Then inspect:
 
 If `jobs` rows remain while `queue:work --once --verbose` is running, inspect the queue connection and worker logs before increasing redispatch settings.
 
+If runtime output still says `Pending Seconds: 30` after deploying this code, the running process is not using the intended default. Check for an old container image, run `php artisan config:clear`, remove any environment override such as `ARCHIBOT_PENDING_REDISPATCH_SECONDS=30`, and stop any stale recovery process that was started before the deploy.
+
+## CLI-only Laravel reset
+
+Destructive reset controls are intentionally not exposed in the Laravel GUI. Operators can reset Laravel operational and job-control state from a shell only:
+
+```bash
+cd laravel
+php artisan archibot:reset --yes
+```
+
+This clears Laravel runtime/job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, and entity approvals. Add `--include-config` only when intentionally clearing Laravel app settings and setup state too.
+
 Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ, and Dramatiq.

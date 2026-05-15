@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Jobs\RunMaintenanceResetCommand;
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\User;
@@ -24,72 +23,37 @@ class MaintenanceTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_wrong_reset_confirmation_is_rejected(): void
+    public function test_maintenance_page_no_longer_exposes_reset_controls(): void
     {
-        Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
-            ->from(route('admin.maintenance.index'))
-            ->post(route('admin.maintenance.reset'), [
-                'confirmation' => 'WRONG',
-            ])
-            ->assertRedirect(route('admin.maintenance.index'))
-            ->assertSessionHasErrors('confirmation');
+            ->get(route('admin.maintenance.index'))
+            ->assertOk()
+            ->assertDontSee('Queue database reset')
+            ->assertDontSee('RESET CONFIG');
 
-        Queue::assertNotPushed(RunMaintenanceResetCommand::class);
+        $this->assertStringNotContainsString('reset.form', file_get_contents(resource_path('js/pages/admin/Maintenance.svelte')));
+    }
+
+    public function test_gui_reset_route_is_removed_for_admin_and_non_admin_users(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['is_admin' => true]);
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($admin)
+            ->post('/admin/maintenance/reset', ['confirmation' => 'RESET'])
+            ->assertNotFound();
+
+        $this->actingAs($user)
+            ->post('/admin/maintenance/reset', ['confirmation' => 'RESET'])
+            ->assertNotFound();
+
+        Queue::assertNothingPushed();
         $this->assertDatabaseMissing('audit_logs', [
             'event' => 'maintenance.reset_requested',
         ]);
-    }
-
-    public function test_reset_database_queues_reset_job_and_writes_audit_log(): void
-    {
-        Queue::fake();
-        $admin = User::factory()->create(['is_admin' => true]);
-
-        $this->actingAs($admin)
-            ->post(route('admin.maintenance.reset'), [
-                'confirmation' => 'RESET',
-            ])
-            ->assertRedirect();
-
-        Queue::assertPushed(RunMaintenanceResetCommand::class, fn (RunMaintenanceResetCommand $job): bool => $job->includeConfig === false
-            && $job->actorUserId === $admin->id);
-
-        $this->assertDatabaseHas('audit_logs', [
-            'actor_user_id' => $admin->id,
-            'event' => 'maintenance.reset_requested',
-            'target_type' => 'maintenance_reset',
-            'target_id' => 'database',
-        ]);
-    }
-
-    public function test_reset_with_config_requires_reset_config_confirmation(): void
-    {
-        Queue::fake();
-        $admin = User::factory()->create(['is_admin' => true]);
-
-        $this->actingAs($admin)
-            ->from(route('admin.maintenance.index'))
-            ->post(route('admin.maintenance.reset'), [
-                'include_config' => '1',
-                'confirmation' => 'RESET',
-            ])
-            ->assertRedirect(route('admin.maintenance.index'))
-            ->assertSessionHasErrors('confirmation');
-
-        Queue::assertNotPushed(RunMaintenanceResetCommand::class);
-
-        $this->actingAs($admin)
-            ->post(route('admin.maintenance.reset'), [
-                'include_config' => '1',
-                'confirmation' => 'RESET CONFIG',
-            ])
-            ->assertRedirect();
-
-        Queue::assertPushed(RunMaintenanceResetCommand::class, fn (RunMaintenanceResetCommand $job): bool => $job->includeConfig === true
-            && $job->actorUserId === $admin->id);
     }
 
     public function test_recovery_now_runs_recovery_safely_and_writes_audit_log(): void
@@ -156,7 +120,7 @@ class MaintenanceTest extends TestCase
         $this->assertSame(4, AuditLog::query()->where('event', 'maintenance.worker_job_requested')->count());
     }
 
-    public function test_non_admin_cannot_dispatch_maintenance_worker_job_or_reset(): void
+    public function test_non_admin_cannot_dispatch_maintenance_worker_job(): void
     {
         Queue::fake();
         $user = User::factory()->create(['is_admin' => false]);
@@ -165,11 +129,31 @@ class MaintenanceTest extends TestCase
             ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_POLL])
             ->assertForbidden();
 
-        $this->actingAs($user)
-            ->post(route('admin.maintenance.reset'), ['confirmation' => 'RESET'])
-            ->assertForbidden();
-
         $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertNothingPushed();
+    }
+
+    public function test_cli_reset_clears_worker_job_state(): void
+    {
+        $workerJob = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_FAILED,
+        ]);
+        $workerJob->logs()->create([
+            'stream' => 'stdout',
+            'level' => 'error',
+            'event' => 'test_log',
+            'message' => 'old log',
+            'context' => [],
+        ]);
+
+        $this->assertDatabaseCount('worker_jobs', 1);
+        $this->assertDatabaseCount('worker_job_logs', 1);
+
+        $this->artisan('archibot:reset', ['--yes' => true])
+            ->expectsOutput('Archibot Laravel reset complete.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('worker_jobs', 0);
+        $this->assertDatabaseCount('worker_job_logs', 0);
     }
 }

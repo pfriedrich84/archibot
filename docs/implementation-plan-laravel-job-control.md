@@ -744,7 +744,8 @@ laravel/resources/js/pages/admin/Maintenance.svelte
 ```php
 Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
 Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
-Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])->name('admin.maintenance.reset');
+// Destructive reset is intentionally not routed through the GUI.
+// Operators use: php artisan archibot:reset --yes
 ```
 
 3. Implement features:
@@ -753,44 +754,23 @@ Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])-
 - Start poll reconciliation
 - Start reindex
 - Mark embedding index stale
-- Reset database
-- Reset database plus config
 
 4. Reset safety:
 
-For reset database:
-
-```text
-confirmation = RESET
-```
-
-For reset including config:
-
-```text
-confirmation = RESET CONFIG
-```
-
-Admin only.
-
-5. Audit logs:
-
-- `maintenance.reset_requested`
-- `maintenance.reset_completed`
-- `maintenance.reset_failed`
-
-6. Initially execute reset through the existing Python CLI, but not synchronously inside the HTTP request:
+Destructive reset controls are intentionally excluded from the GUI. Operators use the CLI-only Laravel reset command instead:
 
 ```bash
-python -m app.cli reset --yes
-python -m app.cli reset --yes --include-config
+php artisan archibot:reset --yes
+php artisan archibot:reset --yes --include-config
 ```
+
+The command clears Laravel operational/job-control state, including worker-job and queue tables.
 
 Tests:
 
-- non-admin forbidden
-- wrong confirmation rejected
-- reset command queued
-- audit log created
+- non-admin forbidden for GUI maintenance controls
+- reset route not available through the GUI
+- CLI reset clears Laravel worker-job state
 
 Commit:
 

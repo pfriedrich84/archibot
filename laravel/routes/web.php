@@ -124,7 +124,6 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
         Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
         Route::post('admin/maintenance/worker-jobs', [MaintenanceController::class, 'startWorkerJob'])->name('admin.maintenance.worker-jobs');
-        Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])->name('admin.maintenance.reset');
     });
 
     require __DIR__.'/settings.php';

@@ -27,7 +27,7 @@ All requested checks passed on `main` after the documentation cleanup:
 
 ## Operational risks to keep visible
 
-- Maintenance reset is admin-only, audited, confirmation-gated and queued, but it currently delegates to the Python legacy reset command. Treat it as legacy Python-state reset until either the UI wording is narrowed or a Laravel/PostgreSQL-aware reset path is designed.
+- Maintenance reset is no longer exposed in the Laravel GUI. Destructive reset is CLI-only via `php artisan archibot:reset --yes`, and that command clears Laravel worker/job-control state including `worker_jobs`, queue tables, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, and entity approvals.
 - Some Svelte navigation still uses hardcoded internal paths instead of generated route helpers. This is low-risk for the default deployment, but can matter for deployments using `archibot.path_prefix`.
 - The Python `archibot jobs` CLI still inspects job state through legacy assumptions; Laravel remains the canonical operator surface for job control.
 
@@ -44,10 +44,10 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 - Chat: recent activity remains empty compared with legacy audit-derived activity.
 - Settings: deployment-only settings remain intentionally outside Laravel settings.
 - Audit Logs: latest-100 view lacks filters/export/detail view.
-- Maintenance: reset semantics need clarification before declaring full parity.
+- Maintenance: destructive reset is intentionally excluded from GUI parity and remains operator-only CLI functionality.
 - MCP: no MCP server status/health page, per-token permissions UI, or direct rate-limit/write-tool status page.
 - Telegram: no connection status, test notification, or Telegram session-management UI.
 
 ## Readiness summary
 
-The current Laravel `worker_jobs` control plane is stable enough to enter Phase 13 planning, provided the event-driven migration continues to treat `worker_jobs` as temporary. Recommended next action is to begin the event-driven migration only after acknowledging the maintenance-reset wording/semantics risk and preserving Laravel as the canonical operator surface during the transition.
+The current Laravel `worker_jobs` control plane is stable enough to enter Phase 13 planning, provided the event-driven migration continues to treat `worker_jobs` as temporary and destructive reset remains a deliberate operator CLI action outside the GUI.

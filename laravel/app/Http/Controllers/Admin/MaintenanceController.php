@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RunMaintenanceResetCommand;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
 use App\Services\Workers\WorkerJobDispatcher;
@@ -88,40 +87,6 @@ class MaintenanceController extends Controller
         );
 
         return back()->with('status', 'Maintenance worker job #'.$workerJob->id.' queued.');
-    }
-
-    public function reset(Request $request): RedirectResponse
-    {
-        abort_unless((bool) $request->user()?->is_admin, 403);
-
-        $validated = $request->validate([
-            'include_config' => ['nullable', 'boolean'],
-            'confirmation' => ['required', 'string'],
-        ]);
-
-        $includeConfig = $request->boolean('include_config');
-        $expected = $includeConfig ? 'RESET CONFIG' : 'RESET';
-
-        if (($validated['confirmation'] ?? '') !== $expected) {
-            return back()->withErrors([
-                'confirmation' => 'Type '.$expected.' to confirm this reset.',
-            ]);
-        }
-
-        RunMaintenanceResetCommand::dispatch(
-            includeConfig: $includeConfig,
-            actorUserId: $request->user()->id,
-            requestIp: $request->ip(),
-            userAgent: $request->userAgent(),
-        );
-
-        $this->audit($request, 'maintenance.reset_requested', 'maintenance_reset', $includeConfig ? 'database_config' : 'database', [
-            'include_config' => $includeConfig,
-        ]);
-
-        return back()->with('status', $includeConfig
-            ? 'Database and config reset queued.'
-            : 'Database reset queued.');
     }
 
     /** @param array<string, mixed> $metadata */

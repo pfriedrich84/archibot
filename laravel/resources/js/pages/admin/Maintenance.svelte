@@ -15,15 +15,8 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
-    import InputError from '@/components/InputError.svelte';
     import { Button } from '@/components/ui/button';
-    import { Input } from '@/components/ui/input';
-    import { Label } from '@/components/ui/label';
-    import {
-        recoverWorkerJobs,
-        reset,
-        workerJobs,
-    } from '@/routes/admin/maintenance';
+    import { recoverWorkerJobs, workerJobs } from '@/routes/admin/maintenance';
 
     type AuditLog = {
         id: number;
@@ -86,7 +79,7 @@
 <div class="space-y-6">
     <Heading
         title="Admin maintenance"
-        description="Admin-only recovery, reindex and reset controls. Reset actions are queued and require explicit confirmation."
+        description="Admin-only recovery and reindex controls. Destructive reset is CLI-only for operators."
     />
 
     <section class="rounded-xl border p-4">
@@ -158,71 +151,6 @@
                     {/snippet}
                 </Form>
             {/each}
-        </div>
-    </section>
-
-    <section class="rounded-xl border border-destructive/40 p-4">
-        <h2 class="mb-3 font-semibold text-destructive">Reset database</h2>
-        <p class="mb-4 text-sm text-muted-foreground">
-            These actions are destructive. They are queued for the worker and
-            are not run in the HTTP request.
-        </p>
-        <div class="grid gap-4 lg:grid-cols-2">
-            <Form {...reset.form()} class="grid gap-3 rounded-lg border p-3">
-                {#snippet children({ errors, processing })}
-                    <input type="hidden" name="include_config" value="0" />
-                    <p class="font-medium">Reset database</p>
-                    <p class="text-sm text-muted-foreground">
-                        Type <span class="font-mono">RESET</span> to queue database
-                        reset.
-                    </p>
-                    <div class="grid gap-2">
-                        <Label for="reset_confirmation">Confirmation</Label>
-                        <Input
-                            id="reset_confirmation"
-                            name="confirmation"
-                            autocomplete="off"
-                        />
-                        <InputError message={errors.confirmation} />
-                    </div>
-                    <Button
-                        type="submit"
-                        variant="destructive"
-                        disabled={processing}
-                    >
-                        Queue database reset
-                    </Button>
-                {/snippet}
-            </Form>
-
-            <Form {...reset.form()} class="grid gap-3 rounded-lg border p-3">
-                {#snippet children({ errors, processing })}
-                    <input type="hidden" name="include_config" value="1" />
-                    <p class="font-medium">Reset database plus config</p>
-                    <p class="text-sm text-muted-foreground">
-                        Type <span class="font-mono">RESET CONFIG</span> to also remove
-                        configuration.
-                    </p>
-                    <div class="grid gap-2">
-                        <Label for="reset_config_confirmation"
-                            >Confirmation</Label
-                        >
-                        <Input
-                            id="reset_config_confirmation"
-                            name="confirmation"
-                            autocomplete="off"
-                        />
-                        <InputError message={errors.confirmation} />
-                    </div>
-                    <Button
-                        type="submit"
-                        variant="destructive"
-                        disabled={processing}
-                    >
-                        Queue database and config reset
-                    </Button>
-                {/snippet}
-            </Form>
         </div>
     </section>
 
