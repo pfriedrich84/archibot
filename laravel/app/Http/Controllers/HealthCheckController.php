@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AppSetting;
+use App\Models\WorkerJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,7 @@ class HealthCheckController extends Controller
         $checks = [
             'database' => $this->databaseCheck(),
             'worker_recovery' => $this->workerRecoveryCheck(),
+            'stale_queued_worker_jobs' => $this->staleQueuedWorkerJobsCheck(),
             'queue' => $this->queueCheck(),
             'paperless_config' => $this->paperlessConfigCheck(),
             'python_runtime' => $this->pythonRuntimeCheck(),
@@ -25,7 +27,7 @@ class HealthCheckController extends Controller
 
         if (in_array('error', $checks, true)) {
             $status = 'error';
-        } elseif (count(array_intersect($checks, ['stale', 'unknown', 'missing'])) > 0) {
+        } elseif (count(array_intersect($checks, ['stale', 'unknown', 'missing', 'warning'])) > 0) {
             $status = 'degraded';
         }
 
@@ -64,6 +66,18 @@ class HealthCheckController extends Controller
         $staleAfterSeconds = max(120, $intervalSeconds * 4);
 
         return $lastSuccess->greaterThanOrEqualTo(now()->subSeconds($staleAfterSeconds)) ? 'ok' : 'stale';
+    }
+
+    private function staleQueuedWorkerJobsCheck(): string
+    {
+        $pendingRedispatchCutoff = now()->subSeconds((int) config('archibot_workers.pending_redispatch_seconds', 900));
+
+        return WorkerJob::query()
+            ->where('status', WorkerJob::STATUS_QUEUED)
+            ->where(fn ($query) => $query
+                ->whereNull('dispatched_at')
+                ->orWhere('dispatched_at', '<', $pendingRedispatchCutoff))
+            ->exists() ? 'warning' : 'ok';
     }
 
     private function queueCheck(): string

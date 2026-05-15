@@ -52,6 +52,7 @@ class RecoverWorkerJobs extends Command
 
         $this->info('Worker job recovery summary:');
         $this->line('Redispatched queued: '.$summary['redispatched_queued']);
+        $this->line('Failed queued: '.$summary['failed_queued']);
         $this->line('Requeued running: '.$summary['requeued_running']);
         $this->line('Failed running: '.$summary['failed_running']);
         $this->line('Cancelled cancelling: '.$summary['cancelled_cancelling']);

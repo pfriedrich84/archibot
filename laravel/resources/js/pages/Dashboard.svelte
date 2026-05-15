@@ -74,6 +74,7 @@
         last_worker_recovery_successful_at: string | null;
         last_worker_recovery_error: string | null;
         last_worker_recovery_error_at: string | null;
+        worker_queue_warning: string | null;
         document_processing_active: boolean;
         reindex_active: boolean;
     };
@@ -460,6 +461,13 @@
                 </div>
             {/if}
         </div>
+        {#if maintenance.worker_queue_warning}
+            <div
+                class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+                {maintenance.worker_queue_warning}
+            </div>
+        {/if}
         <dl class="grid gap-3 text-sm md:grid-cols-3">
             <div>
                 <dt class="text-muted-foreground">Pending poll commands</dt>

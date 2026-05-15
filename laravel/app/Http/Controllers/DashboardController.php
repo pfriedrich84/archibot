@@ -25,7 +25,8 @@ class DashboardController extends Controller
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $paperlessAvailable = null;
         $paperlessError = null;
-        $pendingRedispatchCutoff = now()->subSeconds((int) config('archibot_workers.pending_redispatch_seconds', 30));
+        $pendingRedispatchSeconds = (int) config('archibot_workers.pending_redispatch_seconds', 900);
+        $pendingRedispatchCutoff = now()->subSeconds($pendingRedispatchSeconds);
         $staleRunningCutoff = now()->subMinutes((int) config('archibot_workers.stale_running_minutes', 10));
         $lastRecoverySuccess = AppSetting::getValue('worker_jobs.recovery.last_successful_at');
         $lastRecoveryError = AppSetting::getValue('worker_jobs.recovery.last_error');
@@ -68,6 +69,12 @@ class DashboardController extends Controller
             ->latest('finished_at')
             ->latest()
             ->first();
+        $staleQueuedWorkerJobs = WorkerJob::query()
+            ->where('status', WorkerJob::STATUS_QUEUED)
+            ->where(fn ($query) => $query
+                ->whereNull('dispatched_at')
+                ->orWhere('dispatched_at', '<', $pendingRedispatchCutoff))
+            ->count();
 
         return Inertia::render('Dashboard', [
             'status' => [
@@ -106,6 +113,9 @@ class DashboardController extends Controller
                 'last_worker_recovery_successful_at' => $lastRecoverySuccess,
                 'last_worker_recovery_error' => $lastRecoveryError,
                 'last_worker_recovery_error_at' => $lastRecoveryErrorAt,
+                'worker_queue_warning' => $staleQueuedWorkerJobs > 0
+                    ? "{$staleQueuedWorkerJobs} queued worker job(s) are stale. Check that Laravel queue workers are consuming jobs."
+                    : null,
                 'document_processing_active' => WorkerJob::query()
                     ->whereIn('type', WorkerJob::documentProcessingTypes())
                     ->whereIn('status', WorkerJob::activeStatuses())
@@ -137,12 +147,7 @@ class DashboardController extends Controller
                 'failed_worker_jobs' => WorkerJob::query()
                     ->where('status', WorkerJob::STATUS_FAILED)
                     ->count(),
-                'stale_queued_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_QUEUED)
-                    ->where(fn ($query) => $query
-                        ->whereNull('dispatched_at')
-                        ->orWhere('dispatched_at', '<', $pendingRedispatchCutoff))
-                    ->count(),
+                'stale_queued_worker_jobs' => $staleQueuedWorkerJobs,
                 'stale_running_worker_jobs' => WorkerJob::query()
                     ->where('status', WorkerJob::STATUS_RUNNING)
                     ->where(fn ($query) => $query

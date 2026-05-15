@@ -36,7 +36,7 @@ class DashboardTest extends TestCase
         WorkerJob::factory()->create(['status' => WorkerJob::STATUS_RUNNING]);
         WorkerJob::factory()->create([
             'status' => WorkerJob::STATUS_QUEUED,
-            'dispatched_at' => now()->subMinutes(5),
+            'dispatched_at' => now()->subMinutes(20),
         ]);
         WorkerJob::factory()->create([
             'type' => WorkerJob::TYPE_REINDEX,
@@ -172,6 +172,7 @@ class DashboardTest extends TestCase
                 ->where('maintenance.document_processing_active', true)
                 ->where('maintenance.reindex_active', true)
                 ->where('maintenance.last_worker_recovery_error', 'previous recovery failure')
+                ->where('maintenance.worker_queue_warning', '1 queued worker job(s) are stale. Check that Laravel queue workers are consuming jobs.')
                 ->has('recentWebhookDeliveries', 2)
                 ->where('recentWebhookDeliveries.0.status', WebhookDelivery::STATUS_FAILED)
                 ->where('recentWebhookDeliveries.0.event_type', 'document.updated')

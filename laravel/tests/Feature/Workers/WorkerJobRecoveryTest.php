@@ -16,6 +16,12 @@ class WorkerJobRecoveryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pending_redispatch_default_is_conservative_and_documented(): void
+    {
+        $this->assertSame(900, (int) config('archibot_workers.pending_redispatch_seconds'));
+        $this->assertStringContainsString('| `ARCHIBOT_PENDING_REDISPATCH_SECONDS` | `900` |', file_get_contents(base_path('../docs/developer/worker-jobs.md')));
+    }
+
     public function test_redispatches_queued_job_with_null_dispatched_at(): void
     {
         Queue::fake();
@@ -35,6 +41,27 @@ class WorkerJobRecoveryTest extends TestCase
         Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued) => $queued->workerJobId === $job->id);
     }
 
+    public function test_stale_queued_job_is_not_redispatched_again_on_next_recovery_tick(): void
+    {
+        Queue::fake();
+
+        $job = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatch_attempts' => 1,
+            'dispatched_at' => now()->subSeconds(31),
+        ]);
+
+        $firstCount = app(WorkerJobRecovery::class)->redispatchStaleQueued(30);
+        $secondCount = app(WorkerJobRecovery::class)->redispatchStaleQueued(30);
+
+        $this->assertSame(1, $firstCount);
+        $this->assertSame(0, $secondCount);
+        $job->refresh();
+        $this->assertSame(2, $job->dispatch_attempts);
+        $this->assertSame(1, $job->logs()->where('event', 'worker_job.redispatched')->count());
+        Queue::assertPushed(RunPythonWorkerJob::class, 1);
+    }
+
     public function test_does_not_redispatch_fresh_queued_job(): void
     {
         Queue::fake();
@@ -49,6 +76,48 @@ class WorkerJobRecoveryTest extends TestCase
 
         $this->assertSame(0, $count);
         $this->assertSame(1, $job->refresh()->dispatch_attempts);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_queued_job_redispatches_again_only_after_backoff_window(): void
+    {
+        Queue::fake();
+        Config::set('archibot_workers.max_dispatch_attempts', 5);
+
+        $job = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatch_attempts' => 2,
+            'dispatched_at' => now()->subSeconds(61),
+        ]);
+
+        $count = app(WorkerJobRecovery::class)->redispatchStaleQueued(30);
+
+        $this->assertSame(1, $count);
+        $this->assertSame(3, $job->refresh()->dispatch_attempts);
+        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued) => $queued->workerJobId === $job->id);
+    }
+
+    public function test_fails_queued_job_when_dispatch_attempts_are_exhausted(): void
+    {
+        Queue::fake();
+        Config::set('archibot_workers.max_dispatch_attempts', 2);
+
+        $job = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatch_attempts' => 2,
+            'dispatched_at' => now()->subHour(),
+        ]);
+
+        $summary = app(WorkerJobRecovery::class)->recoverAll(30, 10);
+
+        $this->assertSame(0, $summary['redispatched_queued']);
+        $this->assertSame(1, $summary['failed_queued']);
+        $job->refresh();
+        $this->assertSame(WorkerJob::STATUS_FAILED, $job->status);
+        $this->assertSame('queued_dispatch_attempts_exhausted', $job->error);
+        $this->assertSame('queued_dispatch_attempts_exhausted', $job->progress['reason']);
+        $this->assertSame('worker_job.queued_dispatch_failed', $job->logs()->firstOrFail()->event);
+        $this->assertNotNull($job->finished_at);
         Queue::assertNothingPushed();
     }
 
@@ -131,6 +200,7 @@ class WorkerJobRecoveryTest extends TestCase
         $this->artisan('worker-jobs:recover', ['--pending-seconds' => 30, '--running-minutes' => 10])
             ->expectsOutput('Worker job recovery summary:')
             ->expectsOutput('Redispatched queued: 1')
+            ->expectsOutput('Failed queued: 0')
             ->expectsOutput('Requeued running: 0')
             ->expectsOutput('Failed running: 0')
             ->expectsOutput('Cancelled cancelling: 0')
@@ -160,20 +230,28 @@ class WorkerJobRecoveryTest extends TestCase
     public function test_recover_command_dry_run_does_not_dispatch_or_change_jobs(): void
     {
         Queue::fake();
+        Config::set('archibot_workers.max_dispatch_attempts', 2);
 
-        $job = WorkerJob::factory()->create([
+        $redispatchableJob = WorkerJob::factory()->create([
             'status' => WorkerJob::STATUS_QUEUED,
             'dispatch_attempts' => 0,
             'dispatched_at' => null,
+        ]);
+        $exhaustedJob = WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatch_attempts' => 2,
+            'dispatched_at' => now()->subHour(),
         ]);
 
         $this->artisan('worker-jobs:recover', ['--pending-seconds' => 30, '--dry-run' => true])
             ->expectsOutput('Dry run: no worker jobs will be changed or dispatched.')
             ->expectsOutput('Redispatched queued: 1')
+            ->expectsOutput('Failed queued: 1')
             ->assertSuccessful();
 
-        $this->assertSame(0, $job->refresh()->dispatch_attempts);
-        $this->assertNull($job->dispatched_at);
+        $this->assertSame(0, $redispatchableJob->refresh()->dispatch_attempts);
+        $this->assertNull($redispatchableJob->dispatched_at);
+        $this->assertSame(WorkerJob::STATUS_QUEUED, $exhaustedJob->refresh()->status);
         Queue::assertNothingPushed();
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AppSetting;
+use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -30,6 +31,7 @@ class HealthCheckTest extends TestCase
                 'checks' => [
                     'database',
                     'worker_recovery',
+                    'stale_queued_worker_jobs',
                     'queue',
                     'paperless_config',
                     'python_runtime',
@@ -61,6 +63,25 @@ class HealthCheckTest extends TestCase
                 'status' => 'degraded',
                 'checks' => [
                     'worker_recovery' => 'unknown',
+                ],
+            ]);
+    }
+
+    public function test_healthz_warns_when_queued_worker_jobs_are_stale(): void
+    {
+        AppSetting::put('worker_jobs.recovery.last_successful_at', now()->toISOString());
+        WorkerJob::factory()->create([
+            'status' => WorkerJob::STATUS_QUEUED,
+            'dispatched_at' => now()->subMinutes(20),
+        ]);
+
+        $response = $this->get('/healthz');
+
+        $response->assertOk()
+            ->assertJson([
+                'status' => 'degraded',
+                'checks' => [
+                    'stale_queued_worker_jobs' => 'warning',
                 ],
             ]);
     }

@@ -237,7 +237,7 @@ Add:
 'lease_seconds' => (int) env('ARCHIBOT_WORKER_LEASE_SECONDS', 120),
 'heartbeat_seconds' => (int) env('ARCHIBOT_WORKER_HEARTBEAT_SECONDS', 10),
 'stale_running_minutes' => (int) env('ARCHIBOT_STALE_RUNNING_MINUTES', 10),
-'pending_redispatch_seconds' => (int) env('ARCHIBOT_PENDING_REDISPATCH_SECONDS', 30),
+'pending_redispatch_seconds' => (int) env('ARCHIBOT_PENDING_REDISPATCH_SECONDS', 900),
 'cancel_grace_seconds' => (int) env('ARCHIBOT_CANCEL_GRACE_SECONDS', 30),
 ```
 
