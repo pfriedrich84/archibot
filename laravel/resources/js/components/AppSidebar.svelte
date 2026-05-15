@@ -191,7 +191,7 @@
 
     <SidebarContent>
         <NavMain label="Platform" items={platformNavItems} />
-        <NavMain label="Master Data" items={masterDataNavItems} />
+        <NavMain label="Attributes" items={masterDataNavItems} />
         <NavMain label="Processing" items={processingNavItems} />
         <NavMain label="Settings" items={settingsNavItems} />
     </SidebarContent>
