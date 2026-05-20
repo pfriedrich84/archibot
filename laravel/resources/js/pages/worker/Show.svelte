@@ -140,7 +140,10 @@
         },
         { label: 'Dispatched at', value: formatDateTime(job.dispatched_at) },
         { label: 'Worker ID', value: job.worker_id ?? '—' },
-        { label: 'Lease expires at', value: formatDateTime(job.lease_expires_at) },
+        {
+            label: 'Lease expires at',
+            value: formatDateTime(job.lease_expires_at),
+        },
         { label: 'Heartbeat at', value: formatDateTime(job.heartbeat_at) },
         {
             label: 'Retry parent',
@@ -449,8 +452,8 @@
             {#each auditLogs as auditLog (auditLog.id)}
                 <div class="rounded-md bg-muted/40 p-3">
                     <div class="text-muted-foreground">
-                        {formatDateTime(auditLog.created_at)} · {auditLog.event} · actor {auditLog.actor_user_id ??
-                            'system'}
+                        {formatDateTime(auditLog.created_at)} · {auditLog.event} ·
+                        actor {auditLog.actor_user_id ?? 'system'}
                     </div>
                     {#if displayEntries(auditLog.metadata).length > 0}
                         <div class="mt-1 break-words">

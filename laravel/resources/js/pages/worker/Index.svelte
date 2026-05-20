@@ -120,7 +120,10 @@
         { label: 'Failed', value: String(readiness.failed) },
         {
             label: 'Last finished',
-            value: formatDateTime(readiness.last_finished_at, 'No finished job yet'),
+            value: formatDateTime(
+                readiness.last_finished_at,
+                'No finished job yet',
+            ),
         },
     ]);
 
@@ -497,8 +500,8 @@
                             {#each job.logs as log (log.id)}
                                 <div class="break-words">
                                     <span class="text-muted-foreground"
-                                        >{formatDateTime(log.created_at, '')} [{log.level}] {log.phase ??
-                                            log.stream}</span
+                                        >{formatDateTime(log.created_at, '')} [{log.level}]
+                                        {log.phase ?? log.stream}</span
                                     >
                                     {#if log.paperless_document_id}
                                         <span class="text-muted-foreground">

@@ -140,11 +140,15 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Received</dt>
-                <dd class="font-medium">{formatDateTime(delivery.received_at)}</dd>
+                <dd class="font-medium">
+                    {formatDateTime(delivery.received_at)}
+                </dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Processed</dt>
-                <dd class="font-medium">{formatDateTime(delivery.processed_at)}</dd>
+                <dd class="font-medium">
+                    {formatDateTime(delivery.processed_at)}
+                </dd>
             </div>
         </dl>
 

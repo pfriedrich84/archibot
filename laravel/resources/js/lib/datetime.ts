@@ -5,7 +5,8 @@ type DisplayPreferences = {
     date_format?: string | null;
 };
 
-const ISO_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const ISO_DATE_TIME_PATTERN =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const DEFAULT_FORMAT = 'dd.mm.yyyy hh:mm:ss';
 
 function preferences(): DisplayPreferences {
@@ -94,7 +95,9 @@ export function formatDateTime(
             const previous = format[offset - 1];
             const next = format[offset + token.length];
 
-            return previous === ':' || next === ':' ? parts.minute : parts.month;
+            return previous === ':' || next === ':'
+                ? parts.minute
+                : parts.month;
         },
     );
 }

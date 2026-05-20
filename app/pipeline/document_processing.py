@@ -1035,6 +1035,7 @@ async def phase_classify_publish_each(
             )
             log.error("document classify/publish failed", doc_id=doc.id, error=repr(exc))
             worker._write_error("classify", doc.id, exc)
+            phase_store_embeddings([doc], embed_results)
             _advance_poll_phase_progress()
 
     await ollama.unload_model(ollama.model, swap=True)

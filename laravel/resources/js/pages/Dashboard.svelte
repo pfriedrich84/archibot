@@ -221,7 +221,9 @@
         {
             label: 'Paperless token',
             ok: status.user_paperless_token_present,
-            detail: status.user_paperless_token_present ? 'Configured' : 'Missing',
+            detail: status.user_paperless_token_present
+                ? 'Configured'
+                : 'Missing',
             problem: status.user_paperless_token_present
                 ? undefined
                 : 'Add a Paperless API token for this user.',
@@ -232,13 +234,16 @@
             detail: paperlessLabel,
             problem:
                 status.paperless_available === false
-                    ? (status.paperless_error ?? 'Paperless is currently unreachable.')
+                    ? (status.paperless_error ??
+                      'Paperless is currently unreachable.')
                     : undefined,
         },
         {
             label: 'Inbox tag',
             ok: status.inbox_tag_id > 0,
-            detail: status.inbox_tag_id ? `Tag #${status.inbox_tag_id}` : 'Missing',
+            detail: status.inbox_tag_id
+                ? `Tag #${status.inbox_tag_id}`
+                : 'Missing',
             problem: status.inbox_tag_id
                 ? undefined
                 : 'Configure the inbox tag used to find incoming documents.',
@@ -404,7 +409,9 @@
                 <div class="rounded-lg border p-3">
                     <div class="flex items-center justify-between gap-3">
                         <div class="font-medium">{check.label}</div>
-                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                        <div
+                            class="flex items-center gap-2 text-xs text-muted-foreground"
+                        >
                             <span
                                 class="h-2.5 w-2.5 rounded-full {indicatorClass(
                                     check.ok,
@@ -420,8 +427,12 @@
         </div>
 
         {#if systemProblems.length}
-            <div class="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                <h3 class="text-sm font-medium text-destructive">Problems to fix</h3>
+            <div
+                class="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3"
+            >
+                <h3 class="text-sm font-medium text-destructive">
+                    Problems to fix
+                </h3>
                 <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
                     {#each systemProblems as problem (problem.label)}
                         <li>
@@ -509,11 +520,18 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Started</dt>
-                <dd>{formatDateTime(embeddingIndex.started_at, 'Not started')}</dd>
+                <dd>
+                    {formatDateTime(embeddingIndex.started_at, 'Not started')}
+                </dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Completed</dt>
-                <dd>{formatDateTime(embeddingIndex.completed_at, 'Not complete')}</dd>
+                <dd>
+                    {formatDateTime(
+                        embeddingIndex.completed_at,
+                        'Not complete',
+                    )}
+                </dd>
             </div>
         </dl>
         {#if embeddingIndex.error}
@@ -606,7 +624,9 @@
                     {#if maintenance.last_worker_recovery_error}
                         {maintenance.last_worker_recovery_error}
                         {#if maintenance.last_worker_recovery_error_at}
-                            · {formatDateTime(maintenance.last_worker_recovery_error_at)}
+                            · {formatDateTime(
+                                maintenance.last_worker_recovery_error_at,
+                            )}
                         {/if}
                     {:else}
                         None recorded
