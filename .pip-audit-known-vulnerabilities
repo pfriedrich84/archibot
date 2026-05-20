@@ -14,3 +14,5 @@ PYSEC-2025-49
 CVE-2024-6345
 # wheel (unpack path traversal — only affects wheel CLI unpack, not pip install)
 CVE-2026-24049
+# pyjwt (transitive CI environment package; pip-audit reports no fixed version)
+PYSEC-2025-183
