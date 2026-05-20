@@ -1079,6 +1079,7 @@ async def phase_classify_publish_each(
     )
     return classified, auto_committed, errored
 
+
 async def phase_classify(
     docs: list[PaperlessDocument],
     embed_results: dict[int, EmbeddingResult],
@@ -1110,7 +1111,6 @@ async def phase_classify(
         tags,
         cycle_id,
     )
-
 
 
 def phase_store_embeddings(

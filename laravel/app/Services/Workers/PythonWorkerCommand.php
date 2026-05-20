@@ -383,7 +383,7 @@ class PythonWorkerCommand
         $total = $this->integerResultValue($result, ['progress.total', 'result.progress.total']) ?? (($indexed ?? 0) + $failed);
         $succeeded = in_array($workerJob->status, [WorkerJob::STATUS_SUCCEEDED, WorkerJob::STATUS_PARTIALLY_FAILED], true);
 
-        $state = EmbeddingIndexState::query()->latest()->first() ?? new EmbeddingIndexState();
+        $state = EmbeddingIndexState::query()->latest()->first() ?? new EmbeddingIndexState;
         $state->forceFill([
             'status' => $succeeded && $failed === 0 ? EmbeddingIndexState::STATUS_COMPLETE : EmbeddingIndexState::STATUS_FAILED,
             'content_scope' => 'reviewed_documents',
@@ -397,8 +397,8 @@ class PythonWorkerCommand
     }
 
     /**
-     * @param array<string, mixed> $result
-     * @param array<int, string> $paths
+     * @param  array<string, mixed>  $result
+     * @param  array<int, string>  $paths
      */
     private function integerResultValue(array $result, array $paths): ?int
     {
