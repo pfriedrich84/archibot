@@ -138,6 +138,7 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Dashboard')
+                ->where('status.setup_complete', true)
                 ->where('status.paperless_url_configured', true)
                 ->where('status.paperless_available', true)
                 ->where('status.inbox_tag_id', 7)

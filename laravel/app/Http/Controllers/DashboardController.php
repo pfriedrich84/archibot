@@ -78,7 +78,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'status' => [
-                'setup_complete' => SetupState::current()->complete,
+                'setup_complete' => SetupState::current()->is_complete,
                 'paperless_url_configured' => filled($paperlessUrl),
                 'user_paperless_token_present' => filled($request->user()->paperless_token),
                 'paperless_available' => $paperlessAvailable,
