@@ -844,6 +844,241 @@ async def phase_postprocess_suggestions(
     return classified, auto_committed, errored
 
 
+def _effective_judge_model() -> str:
+    """Return the model that judge verification would call."""
+    return settings.ollama_judge_model.strip() or settings.ollama_model
+
+
+def _judge_uses_classifier_model() -> bool:
+    """Return True when judge verification will not introduce model swaps."""
+    return _effective_judge_model() == settings.ollama_model
+
+
+def _judge_required_for_result(result: ClassificationResult) -> bool:
+    """Return True when this document's confidence requires judge verification."""
+    if getattr(settings, "enable_judge_verification", False) is not True:
+        return False
+
+    threshold = getattr(settings, "judge_confidence_threshold", 101)
+    if not isinstance(threshold, int | float):
+        threshold = 101
+
+    return result.confidence < threshold
+
+
+async def phase_classify_publish_each(
+    docs: list[PaperlessDocument],
+    embed_results: dict[int, EmbeddingResult],
+    paperless: DocumentRepository,
+    ollama: LlmGateway,
+    correspondents: list[PaperlessEntity],
+    doctypes: list[PaperlessEntity],
+    storage_paths: list[PaperlessEntity],
+    tags: list[PaperlessEntity],
+    cycle_id: str,
+) -> tuple[int, int, int]:
+    """Publish each document as soon as doing so is safe for model residency.
+
+    Documents whose judge is disabled, skipped by confidence, or handled by the
+    classifier model are stored and published immediately. If a document really
+    needs a different judge model, only that document is deferred to the later
+    batch judge/store/postprocess path to avoid per-document model swaps.
+    """
+    from app import worker
+
+    log.info("phase classify/publish started", count=len(docs))
+    job_id = getattr(worker._poll_progress, "job_id", None)
+    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
+    classified = 0
+    auto_committed = 0
+    errored = 0
+    deferred: list[ClassificationDraft] = []
+    judge_uses_classifier_model = _judge_uses_classifier_model()
+
+    _set_poll_phase_progress("classify_publish", max(1, len(docs) * 5))
+    record_event(
+        job_id,
+        job_type,
+        "phase_started",
+        "Klassifizierung mit frühestmöglicher Veröffentlichung gestartet.",
+        phase="classify_publish",
+        data={
+            "documents": len(docs),
+            "classification_model": settings.ollama_model,
+            "judge_model": _effective_judge_model(),
+            "judge_uses_classifier_model": judge_uses_classifier_model,
+        },
+    )
+
+    for doc in docs:
+        if worker._poll_progress.cancelled:
+            log.info("poll cancelled during classify/publish phase")
+            break
+
+        er = embed_results.get(doc.id, EmbeddingResult())
+        context_docs = [r.document for r in er.similar_results]
+        record_event(
+            job_id,
+            job_type,
+            "classify_started",
+            f"Dokument #{doc.id}: Klassifizierung gestartet.",
+            phase="classify",
+            document_id=doc.id,
+        )
+        t0 = time.monotonic()
+        try:
+            initial_result, raw_response = await classifier.classify(
+                doc,
+                context_docs,
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+                ollama,
+            )
+            record_phase_timing(cycle_id, doc.id, "classify", t0, success=True)
+            record_event(
+                job_id,
+                job_type,
+                "classify_done",
+                f"Dokument #{doc.id}: klassifiziert ({initial_result.confidence}% Sicherheit).",
+                phase="classify",
+                level="success",
+                document_id=doc.id,
+                data={"confidence": initial_result.confidence},
+            )
+            _advance_poll_phase_progress()
+
+            judge_required = _judge_required_for_result(initial_result)
+            if judge_required and not judge_uses_classifier_model:
+                deferred.append(
+                    ClassificationDraft(
+                        doc, context_docs, er.similar_results, initial_result, raw_response
+                    )
+                )
+                record_event(
+                    job_id,
+                    job_type,
+                    "publish_deferred_for_judge_model",
+                    f"Dokument #{doc.id}: Veröffentlichung bis zur Batch-Judge-Phase verschoben.",
+                    phase="classify_publish",
+                    document_id=doc.id,
+                    data={
+                        "confidence": initial_result.confidence,
+                        "classification_model": settings.ollama_model,
+                        "judge_model": _effective_judge_model(),
+                    },
+                )
+                _advance_poll_phase_progress()
+                continue
+
+            judge = await maybe_run_judge(
+                doc,
+                initial_result,
+                raw_response,
+                context_docs,
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+                ollama,
+                cycle_id=cycle_id,
+            )
+            record_event(
+                job_id,
+                job_type,
+                "judge_done",
+                f"Dokument #{doc.id}: Judge-Prüfung abgeschlossen ({judge.verdict or 'nicht aktiv'}).",
+                phase="judge",
+                level="warning" if judge.verdict == "error" else "success",
+                document_id=doc.id,
+                data={"verdict": judge.verdict},
+            )
+            _advance_poll_phase_progress()
+
+            stored = await phase_store_suggestions(
+                [
+                    JudgedDraft(
+                        doc,
+                        context_docs,
+                        er.similar_results,
+                        initial_result,
+                        raw_response,
+                        judge,
+                    )
+                ],
+                correspondents,
+                doctypes,
+                storage_paths,
+                tags,
+            )
+            counts = await phase_postprocess_suggestions(stored, paperless, tags)
+            classified += counts[0]
+            auto_committed += counts[1]
+            errored += counts[2]
+
+            phase_store_embeddings([doc], embed_results)
+        except Exception as exc:
+            record_phase_timing(cycle_id, doc.id, "classify", t0, success=False)
+            errored += 1
+            worker._poll_progress.failed += 1
+            worker._poll_progress.done += 1
+            record_event(
+                job_id,
+                job_type,
+                "document_failed",
+                f"Dokument #{doc.id}: Prüfung fehlgeschlagen.",
+                phase="classify_publish",
+                level="error",
+                document_id=doc.id,
+                data={"error": str(exc)[:300]},
+            )
+            log.error("document classify/publish failed", doc_id=doc.id, error=repr(exc))
+            worker._write_error("classify", doc.id, exc)
+            _advance_poll_phase_progress()
+
+    await ollama.unload_model(ollama.model, swap=True)
+
+    if deferred:
+        record_event(
+            job_id,
+            job_type,
+            "phase_started",
+            "Batch-Judge für verschobene Dokumente gestartet.",
+            phase="judge",
+            data={"documents": len(deferred), "judge_model": _effective_judge_model()},
+        )
+        judged = await phase_judge(
+            deferred, ollama, correspondents, doctypes, storage_paths, tags, cycle_id
+        )
+        record_event(
+            job_id,
+            job_type,
+            "phase_finished",
+            "Batch-Judge für verschobene Dokumente abgeschlossen.",
+            phase="judge",
+            level="success",
+        )
+
+        stored = await phase_store_suggestions(
+            judged, correspondents, doctypes, storage_paths, tags
+        )
+        counts = await phase_postprocess_suggestions(stored, paperless, tags)
+        classified += counts[0]
+        auto_committed += counts[1]
+        errored += counts[2]
+        phase_store_embeddings([draft.document for draft in deferred], embed_results)
+
+    record_event(
+        job_id,
+        job_type,
+        "phase_finished",
+        "Klassifizierung mit frühestmöglicher Veröffentlichung abgeschlossen.",
+        phase="classify_publish",
+        level="success",
+    )
+    return classified, auto_committed, errored
+
 async def phase_classify(
     docs: list[PaperlessDocument],
     embed_results: dict[int, EmbeddingResult],
@@ -861,16 +1096,13 @@ async def phase_classify(
     embedding-store phases. New orchestration should call the split phases
     directly so GUI progress can expose each phase separately.
     """
-    from app import worker
-
-    job_id = getattr(worker._poll_progress, "job_id", None)
-    job_type = getattr(worker._poll_progress, "job_type", None) or "poll"
     if not isinstance(embed_results, dict):
         embed_results = {}
 
-    drafts = await phase_classify_only(
+    return await phase_classify_publish_each(
         docs,
         embed_results,
+        paperless,
         ollama,
         correspondents,
         doctypes,
@@ -878,93 +1110,7 @@ async def phase_classify(
         tags,
         cycle_id,
     )
-    record_event(
-        job_id,
-        job_type,
-        "phase_finished",
-        "Klassifizierung abgeschlossen.",
-        phase="classify",
-        level="success",
-    )
 
-    _set_poll_phase_progress("judge", len(drafts))
-    record_event(
-        job_id,
-        job_type,
-        "phase_started",
-        "Judge-Prüfung gestartet.",
-        phase="judge",
-        data={"documents": len(drafts)},
-    )
-    judged = await phase_judge(
-        drafts, ollama, correspondents, doctypes, storage_paths, tags, cycle_id
-    )
-    record_event(
-        job_id,
-        job_type,
-        "phase_finished",
-        "Judge-Prüfung abgeschlossen.",
-        phase="judge",
-        level="success",
-    )
-
-    _set_poll_phase_progress("store", len(judged))
-    record_event(
-        job_id,
-        job_type,
-        "phase_started",
-        "Vorschläge werden gespeichert.",
-        phase="store",
-        data={"documents": len(judged)},
-    )
-    stored = await phase_store_suggestions(judged, correspondents, doctypes, storage_paths, tags)
-    record_event(
-        job_id,
-        job_type,
-        "phase_finished",
-        "Vorschläge gespeichert.",
-        phase="store",
-        level="success",
-    )
-
-    _set_poll_phase_progress("postprocess", len(stored))
-    record_event(
-        job_id,
-        job_type,
-        "phase_started",
-        "Nachverarbeitung gestartet.",
-        phase="postprocess",
-        data={"documents": len(stored)},
-    )
-    counts = await phase_postprocess_suggestions(stored, paperless, tags)
-    record_event(
-        job_id,
-        job_type,
-        "phase_finished",
-        "Nachverarbeitung abgeschlossen.",
-        phase="postprocess",
-        level="success",
-    )
-
-    _set_poll_phase_progress("finalize", len(docs))
-    record_event(
-        job_id,
-        job_type,
-        "phase_started",
-        "Finalisierung gestartet.",
-        phase="finalize",
-        data={"documents": len(docs)},
-    )
-    phase_store_embeddings(docs, embed_results)
-    record_event(
-        job_id,
-        job_type,
-        "phase_finished",
-        "Finalisierung abgeschlossen.",
-        phase="finalize",
-        level="success",
-    )
-    return counts
 
 
 def phase_store_embeddings(

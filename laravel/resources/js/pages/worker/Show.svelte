@@ -20,6 +20,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
     import { displayEntries, formatDisplayValue } from '@/lib/display';
     import { show as reviewShow } from '@/routes/review';
     import { show as workerJobShow } from '@/routes/worker-jobs';
@@ -137,10 +138,10 @@
             label: 'Dispatch attempts',
             value: String(job.dispatch_attempts ?? 0),
         },
-        { label: 'Dispatched at', value: job.dispatched_at ?? '—' },
+        { label: 'Dispatched at', value: formatDateTime(job.dispatched_at) },
         { label: 'Worker ID', value: job.worker_id ?? '—' },
-        { label: 'Lease expires at', value: job.lease_expires_at ?? '—' },
-        { label: 'Heartbeat at', value: job.heartbeat_at ?? '—' },
+        { label: 'Lease expires at', value: formatDateTime(job.lease_expires_at) },
+        { label: 'Heartbeat at', value: formatDateTime(job.heartbeat_at) },
         {
             label: 'Retry parent',
             value: job.retry_of_worker_job_id
@@ -245,15 +246,15 @@
         <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
                 <dt class="text-sm text-muted-foreground">Created</dt>
-                <dd>{job.created_at ?? '—'}</dd>
+                <dd>{formatDateTime(job.created_at)}</dd>
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">Started</dt>
-                <dd>{job.started_at ?? '—'}</dd>
+                <dd>{formatDateTime(job.started_at)}</dd>
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">Finished</dt>
-                <dd>{job.finished_at ?? '—'}</dd>
+                <dd>{formatDateTime(job.finished_at)}</dd>
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">Created by</dt>
@@ -360,7 +361,7 @@
             {#each logs.data as log (log.id)}
                 <div class="rounded-md bg-muted/40 p-3">
                     <div class="flex flex-wrap gap-2 text-muted-foreground">
-                        <span>{log.created_at ?? '—'}</span>
+                        <span>{formatDateTime(log.created_at)}</span>
                         <span>[{log.level}]</span>
                         <span>{log.stream}</span>
                         {#if log.event}<span>{log.event}</span>{/if}
@@ -448,7 +449,7 @@
             {#each auditLogs as auditLog (auditLog.id)}
                 <div class="rounded-md bg-muted/40 p-3">
                     <div class="text-muted-foreground">
-                        {auditLog.created_at ?? '—'} · {auditLog.event} · actor {auditLog.actor_user_id ??
+                        {formatDateTime(auditLog.created_at)} · {auditLog.event} · actor {auditLog.actor_user_id ??
                             'system'}
                     </div>
                     {#if displayEntries(auditLog.metadata).length > 0}

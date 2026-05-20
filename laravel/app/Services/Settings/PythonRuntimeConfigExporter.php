@@ -108,6 +108,8 @@ class PythonRuntimeConfigExporter
             'PAPERLESS_PROCESSED_TAG_ID' => AppSetting::getValue('paperless.processed_tag_id'),
             'KEEP_INBOX_TAG' => AppSetting::getValue('paperless.keep_inbox_tag'),
             'GUI_BASE_URL' => AppSetting::getValue('gui.base_url'),
+            'GUI_DATE_FORMAT' => AppSetting::getValue('gui.date_format'),
+            'APP_TIMEZONE' => AppSetting::getValue('gui.timezone'),
             'ENABLE_TELEGRAM' => AppSetting::getValue('telegram.enable'),
             'TELEGRAM_BOT_TOKEN' => AppSetting::getValue('telegram.bot_token'),
             'TELEGRAM_CHAT_ID' => AppSetting::getValue('telegram.chat_id'),

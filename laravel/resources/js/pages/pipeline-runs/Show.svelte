@@ -17,6 +17,7 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
 
     type JsonObject = Record<string, unknown>;
 
@@ -230,7 +231,7 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Created</dt>
-                <dd class="font-medium">{run.created_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(run.created_at)}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Updated</dt>
@@ -238,11 +239,11 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Started</dt>
-                <dd class="font-medium">{run.started_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(run.started_at)}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Finished</dt>
-                <dd class="font-medium">{run.finished_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(run.finished_at)}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Retry</dt>
@@ -339,7 +340,7 @@
                     <div>
                         <dt class="text-muted-foreground">Received</dt>
                         <dd class="font-medium">
-                            {run.webhook_delivery.received_at ?? '—'}
+                            {formatDateTime(run.webhook_delivery.received_at)}
                         </dd>
                     </div>
                     <div>
@@ -363,7 +364,7 @@
             {#each run.events as event (event.id)}
                 <div class="rounded-md bg-muted/40 p-3">
                     <div class="flex flex-wrap gap-2 text-muted-foreground">
-                        <span>{event.created_at ?? '—'}</span>
+                        <span>{formatDateTime(event.created_at)}</span>
                         <span>[{event.level}]</span>
                         <span>{event.event_type}</span>
                         {#if event.command_id}<span
@@ -459,7 +460,7 @@
                     <div class="rounded-md bg-muted/40 p-3">
                         <div class="font-medium">{log.event}</div>
                         <div class="text-muted-foreground">
-                            {log.created_at ?? '—'} · {log.target_type}
+                            {formatDateTime(log.created_at)} · {log.target_type}
                             {log.target_id}
                         </div>
                         <pre class="mt-2 overflow-x-auto text-xs">{pretty(

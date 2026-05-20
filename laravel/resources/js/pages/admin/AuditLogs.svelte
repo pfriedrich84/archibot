@@ -14,6 +14,7 @@
 <script lang="ts">
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
     import { displayEntries, formatTarget } from '@/lib/display';
 
     type AuditLog = {
@@ -59,7 +60,7 @@
                 {#each logs as log (log.id)}
                     <tr class="border-t align-top">
                         <td class="px-4 py-3 whitespace-nowrap">
-                            {log.created_at ?? '—'}
+                            {formatDateTime(log.created_at)}
                         </td>
                         <td class="px-4 py-3 font-medium">{log.event}</td>
                         <td class="px-4 py-3">

@@ -16,6 +16,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
     import { recoverWorkerJobs, workerJobs } from '@/routes/admin/maintenance';
 
     type AuditLog = {
@@ -174,7 +175,7 @@
                         {#each recentAuditLogs as log (log.id)}
                             <tr class="border-b last:border-0">
                                 <td class="py-2 pr-3"
-                                    >{log.created_at ?? '-'}</td
+                                    >{formatDateTime(log.created_at, '-')}</td
                                 >
                                 <td class="py-2 pr-3 font-mono">{log.event}</td>
                                 <td class="py-2 pr-3">

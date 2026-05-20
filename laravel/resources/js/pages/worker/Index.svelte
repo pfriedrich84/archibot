@@ -21,6 +21,7 @@
     import { Input } from '@/components/ui/input';
     import { Label } from '@/components/ui/label';
     import { Spinner } from '@/components/ui/spinner';
+    import { formatDateTime } from '@/lib/datetime';
     import { displayEntries, formatDisplayValue } from '@/lib/display';
     import { show as reviewShow } from '@/routes/review';
     import {
@@ -119,7 +120,7 @@
         { label: 'Failed', value: String(readiness.failed) },
         {
             label: 'Last finished',
-            value: readiness.last_finished_at ?? 'No finished job yet',
+            value: formatDateTime(readiness.last_finished_at, 'No finished job yet'),
         },
     ]);
 
@@ -496,7 +497,7 @@
                             {#each job.logs as log (log.id)}
                                 <div class="break-words">
                                     <span class="text-muted-foreground"
-                                        >{log.created_at ?? ''} [{log.level}] {log.phase ??
+                                        >{formatDateTime(log.created_at, '')} [{log.level}] {log.phase ??
                                             log.stream}</span
                                     >
                                     {#if log.paperless_document_id}

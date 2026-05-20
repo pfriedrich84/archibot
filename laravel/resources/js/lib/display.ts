@@ -1,3 +1,5 @@
+import { formatDateTime, isIsoDateTime } from '@/lib/datetime';
+
 const SECRET_KEY_PATTERN =
     /(password|secret|token|key|credential|authorization|cookie)/i;
 
@@ -45,6 +47,10 @@ export function formatDisplayValue(value: unknown, key = ''): string {
 
     if (typeof value === 'boolean') {
         return value ? 'Yes' : 'No';
+    }
+
+    if (isIsoDateTime(value)) {
+        return formatDateTime(value);
     }
 
     if (Array.isArray(value)) {

@@ -2,6 +2,7 @@
 
 namespace App\Services\Workers;
 
+use App\Models\EmbeddingIndexState;
 use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
@@ -103,6 +104,10 @@ class PythonWorkerCommand
             $this->updateEntityApprovalSyncStatus($workerJob, $processSucceeded, is_array($result) ? $result : []);
         }
 
+        if (in_array($workerJob->type, [WorkerJob::TYPE_REINDEX, WorkerJob::TYPE_REINDEX_EMBED], true)) {
+            $this->updateEmbeddingIndexState($workerJob, is_array($result) ? $result : []);
+        }
+
         if (is_array($result)) {
             $ingestSummary = ($ingestor ?? app(WorkerResultIngestor::class))->ingest($workerJob);
 
@@ -195,6 +200,7 @@ class PythonWorkerCommand
             }
 
             $this->persistLog($workerJob, $type, $line);
+            $workerJob->heartbeatLease($workerId);
         }
     }
 
@@ -367,6 +373,43 @@ class PythonWorkerCommand
                     ? EntityApproval::SYNC_STATUS_SYNCED
                     : EntityApproval::SYNC_STATUS_FAILED,
             ]);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function updateEmbeddingIndexState(WorkerJob $workerJob, array $result): void
+    {
+        $indexed = $this->integerResultValue($result, ['indexed', 'result.indexed', 'progress.done', 'result.progress.done']);
+        $failed = $this->integerResultValue($result, ['failed', 'result.failed', 'progress.failed', 'result.progress.failed']) ?? 0;
+        $total = $this->integerResultValue($result, ['progress.total', 'result.progress.total']) ?? (($indexed ?? 0) + $failed);
+        $succeeded = in_array($workerJob->status, [WorkerJob::STATUS_SUCCEEDED, WorkerJob::STATUS_PARTIALLY_FAILED], true);
+
+        $state = EmbeddingIndexState::query()->latest()->first() ?? new EmbeddingIndexState();
+        $state->forceFill([
+            'status' => $succeeded && $failed === 0 ? EmbeddingIndexState::STATUS_COMPLETE : EmbeddingIndexState::STATUS_FAILED,
+            'content_scope' => 'reviewed_documents',
+            'started_at' => $workerJob->started_at,
+            'completed_at' => $workerJob->finished_at,
+            'document_count' => max(0, $total),
+            'embedded_count' => max(0, $indexed ?? 0),
+            'failed_count' => max(0, $failed),
+            'error' => $succeeded && $failed === 0 ? null : ($workerJob->error ?: 'Embedding reindex did not complete cleanly.'),
+        ])->save();
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     * @param array<int, string> $paths
+     */
+    private function integerResultValue(array $result, array $paths): ?int
+    {
+        foreach ($paths as $path) {
+            $value = data_get($result, $path);
+            if (is_numeric($value)) {
+                return (int) $value;
+            }
+        }
+
+        return null;
     }
 
     /**

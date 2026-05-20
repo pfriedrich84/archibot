@@ -20,6 +20,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - 🧠 Klassifikation via lokalem AI-Provider/Ollama (Default: `gemma4:e4b`, konfigurierbar)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
+- ⚡ Frühe Poll-Ergebnisse: Inbox-Polls veröffentlichen/auto-committen jedes Dokument direkt nach Klassifikation/Judge, sofern dafür kein separates Judge-Modell geladen werden muss
 - ✅ Review-GUI in der Svelte-Admin-App: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`), optional eingeschraenkt auf Dokumente mit `OCR_REQUESTED_TAG_ID`

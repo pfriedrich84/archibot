@@ -316,6 +316,22 @@ return [
             'default' => '',
             'help' => 'Public ArchiBot URL used in Telegram review links. Leave empty to let Python fall back to localhost and GUI_PORT.',
         ],
+        'gui.timezone' => [
+            'legacy' => 'app_timezone',
+            'group' => 'GUI',
+            'label' => 'Timezone',
+            'type' => 'text',
+            'default' => 'Europe/Vienna',
+            'help' => 'IANA timezone for displayed timestamps, e.g. Europe/Vienna.',
+        ],
+        'gui.date_format' => [
+            'legacy' => 'gui_date_format',
+            'group' => 'GUI',
+            'label' => 'Date/time format',
+            'type' => 'text',
+            'default' => 'dd.mm.yyyy hh:mm:ss',
+            'help' => 'Timestamp display format. Supported tokens: dd, mm, yyyy, hh, MM, ss (default: dd.mm.yyyy hh:mm:ss).',
+        ],
 
         'telegram.enable' => [
             'legacy' => 'enable_telegram',

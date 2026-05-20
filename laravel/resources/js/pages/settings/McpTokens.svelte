@@ -14,6 +14,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
 
     type McpToken = {
         id: number;
@@ -98,10 +99,12 @@
                 <div>
                     <div class="font-medium">{token.name}</div>
                     <div class="text-xs text-muted-foreground">
-                        Created {token.created_at ?? '—'} · Last used {token.last_used_at ??
-                            'never'}
+                        Created {formatDateTime(token.created_at)} · Last used {formatDateTime(
+                            token.last_used_at,
+                            'never',
+                        )}
                         {#if token.revoked_at}
-                            · Revoked {token.revoked_at}
+                            · Revoked {formatDateTime(token.revoked_at)}
                         {/if}
                     </div>
                 </div>

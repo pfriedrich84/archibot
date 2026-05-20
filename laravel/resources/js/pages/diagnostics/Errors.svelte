@@ -9,6 +9,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
     import { displayEntries } from '@/lib/display';
     import { index as errorsIndex } from '@/routes/errors';
 
@@ -169,7 +170,7 @@
                     {/if}
                     {#if job.finished_at}
                         <span class="text-muted-foreground"
-                            >finished {job.finished_at}</span
+                            >finished {formatDateTime(job.finished_at)}</span
                         >
                     {/if}
                 </div>
@@ -179,11 +180,11 @@
                 <dl class="grid gap-1 text-xs md:grid-cols-2">
                     <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
                         <dt class="text-muted-foreground">Created</dt>
-                        <dd>{job.created_at ?? '—'}</dd>
+                        <dd>{formatDateTime(job.created_at)}</dd>
                     </div>
                     <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
                         <dt class="text-muted-foreground">Started</dt>
-                        <dd>{job.started_at ?? '—'}</dd>
+                        <dd>{formatDateTime(job.started_at)}</dd>
                     </div>
                     {#each displayEntries(job.payload).slice(0, 4) as entry (entry.key)}
                         <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
@@ -289,11 +290,11 @@
                 <dl class="grid gap-1 text-xs md:grid-cols-2">
                     <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
                         <dt class="text-muted-foreground">Received</dt>
-                        <dd>{delivery.received_at ?? '—'}</dd>
+                        <dd>{formatDateTime(delivery.received_at)}</dd>
                     </div>
                     <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
                         <dt class="text-muted-foreground">Processed</dt>
-                        <dd>{delivery.processed_at ?? '—'}</dd>
+                        <dd>{formatDateTime(delivery.processed_at)}</dd>
                     </div>
                     <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
                         <dt class="text-muted-foreground">Dedupe</dt>
@@ -387,7 +388,7 @@
                     {/if}
                     {#if error.occurred_at}
                         <span class="text-muted-foreground">
-                            {error.occurred_at}
+                            {formatDateTime(error.occurred_at)}
                         </span>
                     {/if}
                 </div>

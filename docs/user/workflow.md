@@ -29,6 +29,12 @@ in Paperless-NGX.
 8b. Manuelles Review          GUI (/review) oder Telegram
          |
 9. PATCH nach Paperless         Metadaten-Update (Titel, Datum, Korrespondent, ...)
+
+Beim Inbox-Poll werden OCR und Embeddings weiterhin batchweise ausgefuehrt. Ab der
+Klassifikation veroeffentlicht ArchiBot Ergebnisse aber so frueh wie moeglich pro
+Dokument: Sobald ein Dokument klassifiziert ist und kein separates Judge-Modell
+fuer dieses Dokument geladen werden muss, wird der Vorschlag direkt gespeichert
+und entweder als Review sichtbar oder automatisch committet.
 ```
 
 ## Schritt fuer Schritt
@@ -80,8 +86,19 @@ Das LLM liefert strukturiertes JSON mit:
 
 #### Auto-Commit
 
-Wenn `AUTO_COMMIT_CONFIDENCE > 0` und der LLM-Confidence-Score darueber liegt,
-wird der Vorschlag automatisch committet — ohne manuelles Review.
+Wenn `AUTO_COMMIT_CONFIDENCE > 0` und der finale Confidence-Score darueber liegt,
+wird der Vorschlag automatisch committet — ohne manuelles Review. Im Inbox-Poll
+passiert das pro Dokument direkt nach Klassifikation/Judge, sobald das ohne
+zusaetzlichen Modellwechsel moeglich ist:
+
+- Judge ist deaktiviert → sofort speichern und ggf. auto-committen
+- Judge ist fuer das Dokument wegen hoher Confidence nicht relevant → sofort
+  speichern und ggf. auto-committen
+- Judge nutzt dasselbe Modell wie die Klassifikation → sofort judgen, speichern
+  und ggf. auto-committen
+- Judge braucht fuer dieses Dokument ein anderes Modell → nur dieses Dokument
+  wird bis zur Batch-Judge-Phase zurueckgestellt; danach erfolgt Review oder
+  Auto-Commit
 
 #### Judge-Verifikation (optional)
 
@@ -92,8 +109,11 @@ vorhanden sind. Verdikte: `agree`, `corrected`, `skipped`, `error`. Bei
 `corrected` ersetzt der Judge die Erst-Klassifikation; der Erst-Vorschlag bleibt
 als Snapshot im Review-Detail und in der DB als `original_proposed_json`.
 Standardmaessig nutzt der Judge dasselbe Modell (`OLLAMA_MODEL`) — kein
-zusaetzlicher GPU-Swap. Stats-Seite zeigt eine eigene "Judge Verification"-
-Dauer-Kachel und ein Verdict-Breakdown-Panel.
+zusaetzlicher GPU-Swap. Wenn ein eigenes `OLLAMA_JUDGE_MODEL` gesetzt ist,
+werden nur Dokumente mit tatsaechlich noetiger Judge-Pruefung bis zur
+Batch-Judge-Phase gesammelt; Dokumente, bei denen der Judge uebersprungen wird,
+werden trotzdem sofort veroeffentlicht/committet. Stats-Seite zeigt eine eigene
+"Judge Verification"-Dauer-Kachel und ein Verdict-Breakdown-Panel.
 
 ### 5. Commit nach Paperless
 

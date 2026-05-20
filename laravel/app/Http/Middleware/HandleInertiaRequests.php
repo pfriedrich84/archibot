@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AppSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -40,6 +41,10 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+            ],
+            'display' => [
+                'timezone' => AppSetting::getValue('gui.timezone', config('app.timezone', 'Europe/Vienna')),
+                'date_format' => AppSetting::getValue('gui.date_format', 'dd.mm.yyyy hh:mm:ss'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

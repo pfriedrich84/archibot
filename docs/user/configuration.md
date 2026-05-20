@@ -124,10 +124,10 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer das Chat-Modell (Tokens) |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
-| `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem Score (1–100) automatisch committen. |
+| `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem finalen Score (1–100) automatisch committen. Im Inbox-Poll erfolgt der Commit pro Dokument, sobald Klassifikation/Judge fuer dieses Dokument abgeschlossen ist. |
 | `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der jede Klassifikation prueft und ggf. korrigiert. Laeuft nur bei niedriger Confidence und vorhandenem Kontext. |
-| `JUDGE_CONFIDENCE_THRESHOLD` | `85` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. |
-| `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). |
+| `JUDGE_CONFIDENCE_THRESHOLD` | `85` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist; solche Dokumente koennen sofort veroeffentlicht/auto-committet werden. |
+| `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
 
 ## Worker
 
@@ -140,6 +140,8 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI; Runtime-/Container-Setting, muss in `.env` gepflegt werden |
+| `APP_TIMEZONE` / GUI `Timezone` | `Europe/Vienna` | Zeitzone fuer angezeigte Zeitstempel. In der Laravel-GUI als `gui.timezone` pflegbar. |
+| `GUI_DATE_FORMAT` / GUI `Date/time format` | `dd.mm.yyyy hh:mm:ss` | Anzeigeformat fuer Zeitstempel. Unterstuetzte Tokens: `dd`, `mm`, `yyyy`, `hh`, `MM`, `ss`; im Default-Kontext wird `mm` vor/nach `:` als Minuten interpretiert. |
 | `GUI_BASE_URL` | — | Externe ArchiBot-URL fuer Telegram-Review-Links; kann in `/admin/settings` gepflegt werden |
 | `GUI_DATE_FORMAT` | `%d.%m.%Y` | Datumsformat fuer benutzerseitige Anzeigen und Python-CLI-Ausgaben; muss in `.env` gepflegt werden |
 | `APP_TIMEZONE` | `Europe/Vienna` | Zeitzone fuer Laravel/PHP-Datumswerte sowie Python-Worker/CLI-Anzeigen; muss in `.env` gepflegt werden |

@@ -15,6 +15,7 @@
     import { Form, page } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
     import { index as reviewIndex } from '@/routes/review';
     import { index as workerJobsIndex } from '@/routes/worker-jobs';
 
@@ -183,6 +184,13 @@
 
     const isAdmin = $derived(Boolean(page.props.auth.user?.is_admin));
 
+    type SystemCheck = {
+        label: string;
+        ok: boolean | null;
+        detail: string;
+        problem?: string;
+    };
+
     const paperlessLabel = $derived(
         status.paperless_available === null
             ? 'Not checked'
@@ -190,6 +198,93 @@
               ? 'Available'
               : 'Unavailable',
     );
+
+    const systemChecks: SystemCheck[] = $derived([
+        {
+            label: 'Setup',
+            ok: status.setup_complete,
+            detail: status.setup_complete
+                ? 'Onboarding completed'
+                : 'Onboarding flag is incomplete',
+            problem: status.setup_complete
+                ? undefined
+                : 'Setup is not marked complete. If processing works, this is likely stale setup state rather than a runtime blocker.',
+        },
+        {
+            label: 'Paperless URL',
+            ok: status.paperless_url_configured,
+            detail: status.paperless_url_configured ? 'Configured' : 'Missing',
+            problem: status.paperless_url_configured
+                ? undefined
+                : 'Configure the Paperless URL before polling documents.',
+        },
+        {
+            label: 'Paperless token',
+            ok: status.user_paperless_token_present,
+            detail: status.user_paperless_token_present ? 'Configured' : 'Missing',
+            problem: status.user_paperless_token_present
+                ? undefined
+                : 'Add a Paperless API token for this user.',
+        },
+        {
+            label: 'Paperless API',
+            ok: status.paperless_available,
+            detail: paperlessLabel,
+            problem:
+                status.paperless_available === false
+                    ? (status.paperless_error ?? 'Paperless is currently unreachable.')
+                    : undefined,
+        },
+        {
+            label: 'Inbox tag',
+            ok: status.inbox_tag_id > 0,
+            detail: status.inbox_tag_id ? `Tag #${status.inbox_tag_id}` : 'Missing',
+            problem: status.inbox_tag_id
+                ? undefined
+                : 'Configure the inbox tag used to find incoming documents.',
+        },
+        {
+            label: 'AI provider',
+            ok: status.ollama_or_provider_configured,
+            detail: status.llm_provider ?? 'Default provider configured',
+            problem: status.ollama_or_provider_configured
+                ? undefined
+                : 'Configure Ollama or another LLM provider.',
+        },
+        {
+            label: 'OCR mode',
+            ok: status.ocr_mode ? true : null,
+            detail: status.ocr_mode ?? 'Not configured',
+        },
+    ]);
+
+    const systemProblems = $derived(
+        systemChecks.filter((check) => check.ok === false && check.problem),
+    );
+
+    function indicatorClass(ok: boolean | null): string {
+        if (ok === true) {
+            return 'bg-emerald-500';
+        }
+
+        if (ok === false) {
+            return 'bg-destructive';
+        }
+
+        return 'bg-amber-500';
+    }
+
+    function indicatorLabel(ok: boolean | null): string {
+        if (ok === true) {
+            return 'OK';
+        }
+
+        if (ok === false) {
+            return 'Problem';
+        }
+
+        return 'Check';
+    }
 </script>
 
 <AppHead title="Dashboard" />
@@ -286,64 +381,65 @@
     </div>
 
     <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">System status</h2>
-        <dl class="grid gap-3 text-sm md:grid-cols-2">
+        <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div>
-                <dt class="text-muted-foreground">Setup complete</dt>
-                <dd>{status.setup_complete ? 'Yes' : 'No'}</dd>
+                <h2 class="font-semibold">System status</h2>
+                <p class="text-sm text-muted-foreground">
+                    Runtime checks and actionable configuration problems.
+                </p>
             </div>
-            <div>
-                <dt class="text-muted-foreground">Paperless URL configured</dt>
-                <dd>{status.paperless_url_configured ? 'Yes' : 'No'}</dd>
+            <div
+                class="rounded-full px-3 py-1 text-xs font-medium {systemProblems.length
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}"
+            >
+                {systemProblems.length
+                    ? `${systemProblems.length} problem${systemProblems.length === 1 ? '' : 's'}`
+                    : 'All clear'}
             </div>
-            <div>
-                <dt class="text-muted-foreground">User Paperless token</dt>
-                <dd>
-                    {status.user_paperless_token_present
-                        ? 'Present'
-                        : 'Missing'}
-                </dd>
+        </div>
+
+        <div class="grid gap-3 text-sm md:grid-cols-2 lg:grid-cols-3">
+            {#each systemChecks as check (check.label)}
+                <div class="rounded-lg border p-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium">{check.label}</div>
+                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span
+                                class="h-2.5 w-2.5 rounded-full {indicatorClass(
+                                    check.ok,
+                                )}"
+                                aria-hidden="true"
+                            ></span>
+                            {indicatorLabel(check.ok)}
+                        </div>
+                    </div>
+                    <div class="mt-1 text-muted-foreground">{check.detail}</div>
+                </div>
+            {/each}
+        </div>
+
+        {#if systemProblems.length}
+            <div class="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <h3 class="text-sm font-medium text-destructive">Problems to fix</h3>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+                    {#each systemProblems as problem (problem.label)}
+                        <li>
+                            <span class="font-medium">{problem.label}:</span>
+                            {problem.problem}
+                        </li>
+                    {/each}
+                </ul>
             </div>
-            <div>
-                <dt class="text-muted-foreground">Paperless availability</dt>
-                <dd>{paperlessLabel}</dd>
+        {/if}
+
+        {#if status.active_provider_roles.length}
+            <div class="mt-4 text-xs text-muted-foreground">
+                Provider roles:
+                {status.active_provider_roles
+                    .map((role) => `${role.role}: ${role.provider}`)
+                    .join(' · ')}
             </div>
-            <div>
-                <dt class="text-muted-foreground">Inbox tag reference</dt>
-                <dd>{status.inbox_tag_id || 'Not configured'}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">AI provider config</dt>
-                <dd>
-                    {status.ollama_or_provider_configured
-                        ? 'Present'
-                        : 'Missing'}
-                    {#if status.llm_provider}
-                        · {status.llm_provider}
-                    {/if}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">OCR mode</dt>
-                <dd>{status.ocr_mode ?? 'Not configured'}</dd>
-            </div>
-            <div class="md:col-span-2">
-                <dt class="text-muted-foreground">Active provider roles</dt>
-                <dd>
-                    {#if status.active_provider_roles.length}
-                        {status.active_provider_roles
-                            .map((role) => `${role.role}: ${role.provider}`)
-                            .join(' · ')}
-                    {:else}
-                        Using default provider
-                    {/if}
-                </dd>
-            </div>
-        </dl>
-        {#if status.paperless_error}
-            <p class="mt-3 text-sm text-destructive">
-                {status.paperless_error}
-            </p>
         {/if}
     </section>
 
@@ -413,11 +509,11 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Started</dt>
-                <dd>{embeddingIndex.started_at ?? 'Not started'}</dd>
+                <dd>{formatDateTime(embeddingIndex.started_at, 'Not started')}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Completed</dt>
-                <dd>{embeddingIndex.completed_at ?? 'Not complete'}</dd>
+                <dd>{formatDateTime(embeddingIndex.completed_at, 'Not complete')}</dd>
             </div>
         </dl>
         {#if embeddingIndex.error}
@@ -496,8 +592,10 @@
                     Last worker recovery success
                 </dt>
                 <dd>
-                    {maintenance.last_worker_recovery_successful_at ??
-                        'Unknown'}
+                    {formatDateTime(
+                        maintenance.last_worker_recovery_successful_at,
+                        'Unknown',
+                    )}
                 </dd>
             </div>
             <div class="md:col-span-3">
@@ -508,7 +606,7 @@
                     {#if maintenance.last_worker_recovery_error}
                         {maintenance.last_worker_recovery_error}
                         {#if maintenance.last_worker_recovery_error_at}
-                            · {maintenance.last_worker_recovery_error_at}
+                            · {formatDateTime(maintenance.last_worker_recovery_error_at)}
                         {/if}
                     {:else}
                         None recorded
@@ -528,8 +626,10 @@
                 <dd>
                     {#if lastSuccessfulWorkerJob}
                         #{lastSuccessfulWorkerJob.id} · {lastSuccessfulWorkerJob.type}
-                        · {lastSuccessfulWorkerJob.finished_at ??
-                            'not finished'}
+                        · {formatDateTime(
+                            lastSuccessfulWorkerJob.finished_at,
+                            'not finished',
+                        )}
                     {:else}
                         None recorded
                     {/if}
@@ -539,8 +639,10 @@
                 <dt class="text-muted-foreground">Last failed worker job</dt>
                 <dd>
                     {#if lastFailedWorkerJob}
-                        #{lastFailedWorkerJob.id} · {lastFailedWorkerJob.type} · {lastFailedWorkerJob.finished_at ??
-                            'not finished'}
+                        #{lastFailedWorkerJob.id} · {lastFailedWorkerJob.type} · {formatDateTime(
+                            lastFailedWorkerJob.finished_at,
+                            'not finished',
+                        )}
                     {:else}
                         None recorded
                     {/if}
@@ -561,7 +663,7 @@
                 >
                 {#if error.occurred_at}
                     <span class="text-muted-foreground"
-                        >{error.occurred_at}</span
+                        >{formatDateTime(error.occurred_at)}</span
                     >
                 {/if}
                 {#if error.message}
@@ -606,12 +708,12 @@
                 {/if}
                 {#if delivery.received_at}
                     <span class="text-muted-foreground"
-                        >received {delivery.received_at}</span
+                        >received {formatDateTime(delivery.received_at)}</span
                     >
                 {/if}
                 {#if delivery.processed_at}
                     <span class="text-muted-foreground"
-                        >processed {delivery.processed_at}</span
+                        >processed {formatDateTime(delivery.processed_at)}</span
                     >
                 {/if}
                 {#if delivery.error}
@@ -825,11 +927,11 @@
                 >
                 {#if job.finished_at}
                     <span class="text-muted-foreground"
-                        >finished {job.finished_at}</span
+                        >finished {formatDateTime(job.finished_at)}</span
                     >
                 {:else if job.created_at}
                     <span class="text-muted-foreground"
-                        >created {job.created_at}</span
+                        >created {formatDateTime(job.created_at)}</span
                     >
                 {/if}
             </div>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Models\EmbeddingIndexState;
 use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
@@ -338,6 +339,56 @@ PHP);
 
         $this->assertSame(EntityApproval::SYNC_STATUS_SYNCED, $entity->refresh()->sync_status);
         $this->assertSame($workerJob->id, $entity->sync_worker_job_id);
+
+        @unlink($script);
+    }
+
+    public function test_successful_embedding_reindex_worker_updates_embedding_index_state(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode([
+    'ok' => true,
+    'result' => [
+        'indexed' => 7,
+        'failed' => 0,
+        'progress' => ['done' => 7, 'total' => 7, 'failed' => 0],
+    ],
+]));
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX_EMBED]);
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $state = EmbeddingIndexState::query()->firstOrFail();
+        $this->assertSame(EmbeddingIndexState::STATUS_COMPLETE, $state->status);
+        $this->assertSame(7, $state->document_count);
+        $this->assertSame(7, $state->embedded_count);
+        $this->assertSame(0, $state->failed_count);
+        $this->assertNull($state->error);
+
+        @unlink($script);
+    }
+
+    public function test_failed_embedding_reindex_worker_updates_embedding_index_state(): void
+    {
+        $script = $this->writeWorkerStub(<<<'PHP'
+$output = $argv[array_search('--output', $argv, true) + 1];
+file_put_contents($output, json_encode(['ok' => false, 'error' => 'boom']));
+fwrite(STDERR, 'boom');
+exit(1);
+PHP);
+
+        Config::set('archibot_workers.python_binary', $script);
+
+        $workerJob = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX]);
+        app(PythonWorkerCommand::class)->run($workerJob);
+
+        $state = EmbeddingIndexState::query()->firstOrFail();
+        $this->assertSame(EmbeddingIndexState::STATUS_FAILED, $state->status);
+        $this->assertSame('boom', $state->error);
 
         @unlink($script);
     }

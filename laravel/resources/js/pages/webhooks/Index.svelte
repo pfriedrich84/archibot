@@ -13,6 +13,7 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
 
     type SummaryEntry = {
         key: string;
@@ -95,8 +96,8 @@
                 </div>
 
                 <div class="grid gap-2 text-muted-foreground md:grid-cols-2">
-                    <div>Received: {delivery.received_at ?? '—'}</div>
-                    <div>Processed: {delivery.processed_at ?? '—'}</div>
+                    <div>Received: {formatDateTime(delivery.received_at)}</div>
+                    <div>Processed: {formatDateTime(delivery.processed_at)}</div>
                     <div class="break-all">
                         Dedupe: {delivery.dedupe_key ?? '—'}
                     </div>

@@ -17,6 +17,7 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
 
     type SummaryEntry = {
         key: string;
@@ -139,11 +140,11 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Received</dt>
-                <dd class="font-medium">{delivery.received_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(delivery.received_at)}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Processed</dt>
-                <dd class="font-medium">{delivery.processed_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(delivery.processed_at)}</dd>
             </div>
         </dl>
 
@@ -162,7 +163,7 @@
             {#each delivery.pipeline_events as event (event.id)}
                 <div class="rounded-md bg-muted/40 p-3">
                     <div class="flex flex-wrap gap-2 text-muted-foreground">
-                        <span>{event.created_at ?? '—'}</span>
+                        <span>{formatDateTime(event.created_at)}</span>
                         <span>[{event.level}]</span>
                         <span>{event.event_type}</span>
                         {#if event.pipeline_run_id}<span
