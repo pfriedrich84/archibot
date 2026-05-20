@@ -51,6 +51,7 @@
     } = $props();
 
     const auth = $derived(page.props.auth);
+    const build = $derived(page.props.build);
     const url = currentUrlState();
 
     const activeItemStyles =
@@ -180,6 +181,25 @@
             </div>
 
             <div class="ml-auto flex items-center space-x-2">
+                {#if build?.commit_short}
+                    <a
+                        href={`https://github.com/pfriedrich84/archibot/commit/${build.commit}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="hidden rounded-full border px-2 py-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground md:inline-flex"
+                        title={`Current build ${build.ref ? `${build.ref} @ ` : ''}${build.commit}`}
+                    >
+                        {build.ref ? `${build.ref}@` : ''}{build.commit_short}
+                    </a>
+                {:else}
+                    <span
+                        class="hidden rounded-full border px-2 py-1 text-xs text-muted-foreground md:inline-flex"
+                        title="Build commit is not available in this deployment"
+                    >
+                        build unknown
+                    </span>
+                {/if}
+
                 <div class="relative flex items-center space-x-1">
                     <Button
                         variant="ghost"

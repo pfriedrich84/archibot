@@ -46,6 +46,7 @@ jobs:
             sha="${PUSH_SHA}"
           fi
           echo "short_sha=${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
         env:
           EVENT_NAME: ${{ github.event_name }}
           PUSH_SHA: ${{ github.sha }}
@@ -68,3 +69,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ARCHIBOT_GIT_SHA=${{ steps.vars.outputs.sha }}
+            ARCHIBOT_GIT_REF=${{ github.event.workflow_run.head_branch || github.ref_name }}

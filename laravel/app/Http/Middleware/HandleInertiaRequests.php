@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\AppSetting;
+use App\Support\BuildInfo;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -46,6 +47,7 @@ class HandleInertiaRequests extends Middleware
                 'timezone' => AppSetting::getValue('gui.timezone', config('app.timezone', 'Europe/Vienna')),
                 'date_format' => AppSetting::getValue('gui.date_format', 'dd.mm.yyyy hh:mm:ss'),
             ],
+            'build' => BuildInfo::current(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }
