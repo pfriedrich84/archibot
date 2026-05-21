@@ -3,7 +3,6 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
-    import { displayEntries } from '@/lib/display';
     import { accept, reject } from '@/routes/review';
 
     type EntityOption = { id: number; name: string };
@@ -40,6 +39,166 @@
             storagePaths: EntityOption[];
         };
     } = $props();
+
+    const numericId = (value: unknown): number | null => {
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
+
+        const id = Number(value);
+
+        return Number.isInteger(id) && id > 0 ? id : null;
+    };
+
+    let selectedStoragePathId = $derived<number | ''>(
+        numericId(
+            suggestion.proposed.storage_path_id ??
+                suggestion.original.storage_path_id,
+        ) ?? '',
+    );
+
+    const selectedStoragePathName = $derived(
+        entityOptions.storagePaths.find(
+            (option) => option.id === selectedStoragePathId,
+        )?.name ??
+            (selectedStoragePathId ===
+            numericId(suggestion.proposed.storage_path_id)
+                ? String(suggestion.proposed.storage_path_name ?? '')
+                : ''),
+    );
+
+    const textValue = (value: unknown): string => {
+        if (value === null || value === undefined || value === '') {
+            return '—';
+        }
+
+        return String(value);
+    };
+
+    const entityValue = (
+        idValue: unknown,
+        nameValue: unknown,
+        options: EntityOption[],
+    ): string => {
+        const id = numericId(idValue);
+        const explicitName =
+            typeof nameValue === 'string' ? nameValue.trim() : '';
+        const optionName = id
+            ? options.find((option) => option.id === id)?.name
+            : '';
+        const label = explicitName || optionName || '';
+
+        if (label && id) {
+            return `${label} (#${id})`;
+        }
+
+        if (label) {
+            return label;
+        }
+
+        if (id) {
+            return `Unknown (#${id})`;
+        }
+
+        return '—';
+    };
+
+    const tagValues = (value: unknown): string => {
+        if (!Array.isArray(value) || value.length === 0) {
+            return '—';
+        }
+
+        return value
+            .map((tag) => {
+                if (typeof tag === 'string') {
+                    return tag;
+                }
+
+                if (!tag || typeof tag !== 'object') {
+                    return String(tag);
+                }
+
+                const record = tag as Record<string, unknown>;
+                const id = numericId(record.id);
+                const name =
+                    typeof record.name === 'string' ? record.name.trim() : '';
+
+                if (name && id) {
+                    return `${name} (#${id})`;
+                }
+
+                if (name) {
+                    return name;
+                }
+
+                if (id) {
+                    return `Unknown (#${id})`;
+                }
+
+                return String(tag);
+            })
+            .join(', ');
+    };
+
+    const originalRows = $derived([
+        { label: 'Title', value: textValue(suggestion.original.title) },
+        { label: 'Date', value: textValue(suggestion.original.date) },
+        {
+            label: 'Correspondent',
+            value: entityValue(
+                suggestion.original.correspondent_id,
+                suggestion.original.correspondent_name,
+                entityOptions.correspondents,
+            ),
+        },
+        {
+            label: 'Document type',
+            value: entityValue(
+                suggestion.original.document_type_id,
+                suggestion.original.document_type_name,
+                entityOptions.documentTypes,
+            ),
+        },
+        {
+            label: 'Storage path',
+            value: entityValue(
+                suggestion.original.storage_path_id,
+                suggestion.original.storage_path_name,
+                entityOptions.storagePaths,
+            ),
+        },
+        { label: 'Tags', value: tagValues(suggestion.original.tags) },
+    ]);
+
+    const proposedRows = $derived([
+        { label: 'Title', value: textValue(suggestion.proposed.title) },
+        { label: 'Date', value: textValue(suggestion.proposed.date) },
+        {
+            label: 'Correspondent',
+            value: entityValue(
+                suggestion.proposed.correspondent_id,
+                suggestion.proposed.correspondent_name,
+                entityOptions.correspondents,
+            ),
+        },
+        {
+            label: 'Document type',
+            value: entityValue(
+                suggestion.proposed.document_type_id,
+                suggestion.proposed.document_type_name,
+                entityOptions.documentTypes,
+            ),
+        },
+        {
+            label: 'Storage path',
+            value: entityValue(
+                suggestion.proposed.storage_path_id,
+                suggestion.proposed.storage_path_name,
+                entityOptions.storagePaths,
+            ),
+        },
+        { label: 'Tags', value: tagValues(suggestion.proposed.tags) },
+    ]);
 
     const isAdmin = $derived(Boolean(page.props.auth.user?.is_admin));
 </script>
@@ -98,29 +257,10 @@
         {/if}
     </div>
 
-    <section class="rounded-xl border p-4">
-        <div class="mb-3 flex items-center justify-between gap-3">
-            <h2 class="font-semibold">Document preview</h2>
-            <a
-                class="text-sm text-muted-foreground underline"
-                href={suggestion.preview_url}
-                target="_blank"
-                rel="noreferrer"
-            >
-                Open preview
-            </a>
-        </div>
-        <iframe
-            title={`Preview document ${suggestion.paperless_document_id}`}
-            src={suggestion.preview_url}
-            class="h-[70vh] w-full rounded-md border bg-white"
-        ></iframe>
-    </section>
-
     <div class="grid gap-4 md:grid-cols-2">
         <section class="rounded-xl border p-4">
             <h2 class="mb-3 font-semibold">Original</h2>
-            {#each displayEntries(suggestion.original) as entry (entry.key)}
+            {#each originalRows as entry (entry.label)}
                 <div
                     class="grid grid-cols-[10rem_1fr] gap-3 border-t py-2 text-sm first:border-t-0"
                 >
@@ -132,7 +272,7 @@
 
         <section class="rounded-xl border p-4">
             <h2 class="mb-3 font-semibold">Proposed</h2>
-            {#each displayEntries(suggestion.proposed) as entry (entry.key)}
+            {#each proposedRows as entry (entry.label)}
                 <div
                     class="grid grid-cols-[10rem_1fr] gap-3 border-t py-2 text-sm first:border-t-0"
                 >
@@ -182,7 +322,7 @@
                                     selected={option.id ===
                                         suggestion.proposed.correspondent_id}
                                 >
-                                    {option.name}
+                                    {option.name} (#{option.id})
                                 </option>
                             {/each}
                         </select>
@@ -212,7 +352,7 @@
                                     selected={option.id ===
                                         suggestion.proposed.document_type_id}
                                 >
-                                    {option.name}
+                                    {option.name} (#{option.id})
                                 </option>
                             {/each}
                         </select>
@@ -233,30 +373,18 @@
                         <span class="text-muted-foreground">Storage path</span>
                         <select
                             name="proposed_storage_path_id"
+                            bind:value={selectedStoragePathId}
                             class="h-9 rounded-md border bg-background px-3"
                         >
                             <option value="">No selected storage path</option>
                             {#each entityOptions.storagePaths as option (option.id)}
-                                <option
-                                    value={option.id}
-                                    selected={option.id ===
-                                        suggestion.proposed.storage_path_id}
-                                >
-                                    {option.name}
-                                </option>
+                                <option value={option.id}>{option.name}</option>
                             {/each}
                         </select>
-                    </label>
-                    <label class="grid gap-1 text-sm">
-                        <span class="text-muted-foreground"
-                            >Storage path name</span
-                        >
                         <input
+                            type="hidden"
                             name="proposed_storage_path_name"
-                            value={String(
-                                suggestion.proposed.storage_path_name ?? '',
-                            )}
-                            class="h-9 rounded-md border bg-background px-3"
+                            value={selectedStoragePathName}
                         />
                     </label>
                     <div class="md:col-span-2">
@@ -271,21 +399,34 @@
         </section>
     {/if}
 
-    {#if suggestion.reasoning}
-        <section class="rounded-xl border p-4">
-            <h2 class="mb-2 font-semibold">Reasoning</h2>
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-2 font-semibold">Classification reasoning</h2>
+        {#if suggestion.reasoning}
             <p class="whitespace-pre-wrap text-sm">{suggestion.reasoning}</p>
-        </section>
-    {/if}
+        {:else}
+            <p class="text-sm text-muted-foreground">
+                No classification reasoning was recorded for this suggestion.
+            </p>
+        {/if}
+    </section>
 
-    {#if suggestion.judge_reasoning}
-        <section class="rounded-xl border p-4">
-            <h2 class="mb-2 font-semibold">Judge reasoning</h2>
+    <section class="rounded-xl border p-4">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+            <h2 class="font-semibold">Judge reasoning</h2>
+            <span class="rounded-full bg-muted px-2 py-0.5 text-xs">
+                Verdict: {suggestion.judge_verdict ?? 'not recorded'}
+            </span>
+        </div>
+        {#if suggestion.judge_reasoning}
             <p class="whitespace-pre-wrap text-sm">
                 {suggestion.judge_reasoning}
             </p>
-        </section>
-    {/if}
+        {:else}
+            <p class="text-sm text-muted-foreground">
+                No judge reasoning was recorded for this suggestion.
+            </p>
+        {/if}
+    </section>
 
     {#if suggestion.status === 'pending'}
         <div class="flex gap-3">
@@ -336,4 +477,23 @@
             </Form>
         </section>
     {/if}
+
+    <section class="rounded-xl border p-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="font-semibold">Document preview</h2>
+            <a
+                class="text-sm text-muted-foreground underline"
+                href={suggestion.preview_url}
+                target="_blank"
+                rel="noreferrer"
+            >
+                Open preview
+            </a>
+        </div>
+        <iframe
+            title={`Preview document ${suggestion.paperless_document_id}`}
+            src={suggestion.preview_url}
+            class="h-[70vh] w-full rounded-md border bg-white"
+        ></iframe>
+    </section>
 </div>

@@ -2,6 +2,7 @@
 
 namespace App\Services\Chat;
 
+use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -9,11 +10,19 @@ use Symfony\Component\Process\Process;
 
 class PythonChatRag
 {
+    private PythonRuntimeConfigExporter $configExporter;
+
+    public function __construct(?PythonRuntimeConfigExporter $configExporter = null)
+    {
+        $this->configExporter = $configExporter ?? app(PythonRuntimeConfigExporter::class);
+    }
+
     /**
      * @param  array<int, array{role:string,content:string,sources?:array}>  $history
      */
     public function ask(string $question, array $history): ChatRagResult
     {
+        $this->configExporter->export();
         $directory = storage_path('app/chat-bridge');
         File::ensureDirectoryExists($directory);
 

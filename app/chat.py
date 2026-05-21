@@ -288,7 +288,7 @@ async def ask_stateless(
         for msg in history[-MAX_HISTORY:]
         if msg.get("role") in {"user", "assistant"} and isinstance(msg.get("content"), str)
     ]
-    return await ask(question, session, paperless, ollama)
+    return await ask(question, session, paperless, ollama, fail_soft=False)
 
 
 async def ask(
@@ -296,6 +296,8 @@ async def ask(
     session: ChatSession,
     paperless: PaperlessClient,
     ollama: OllamaClient,
+    *,
+    fail_soft: bool = True,
 ) -> ChatResult:
     """Full RAG pipeline: embed -> vector search -> format context -> LLM -> answer.
 
@@ -336,6 +338,8 @@ async def ask(
         answer = await ollama.chat(messages)
     except Exception as exc:
         log.error("chat LLM call failed", error=str(exc))
+        if not fail_soft:
+            raise
         answer = "Fehler bei der Verarbeitung. Bitte später erneut versuchen."
 
     # 5. Build sources list

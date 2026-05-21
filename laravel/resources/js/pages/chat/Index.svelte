@@ -106,11 +106,13 @@
         }
 
         const response = await fetch(sessionUrl(id), {
-            method: 'DELETE',
+            method: 'POST',
             headers: {
                 Accept: 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
                 'X-CSRF-TOKEN': csrfToken(),
             },
+            body: new URLSearchParams({ _method: 'DELETE' }),
         });
 
         if (!response.ok) {

@@ -15,6 +15,7 @@ from app.chat import (
     ChatSession,
     _sessions,
     ask,
+    ask_stateless,
     get_or_create_session,
     load_chat_system_prompt,
 )
@@ -219,6 +220,18 @@ class TestAskPipeline:
 
         assert "Fehler" in result.answer
         assert "connection refused" not in result.answer
+
+    @pytest.mark.asyncio()
+    async def test_ask_stateless_raises_llm_error_for_laravel_bridge(self):
+        mock_paperless = AsyncMock()
+        mock_ollama = AsyncMock()
+        mock_ollama.chat = AsyncMock(side_effect=Exception("connection refused"))
+
+        with (
+            patch("app.chat.find_similar_by_query_text", return_value=[]),
+            pytest.raises(Exception, match="connection refused"),
+        ):
+            await ask_stateless("Frage", [], mock_paperless, mock_ollama)
 
     @pytest.mark.asyncio()
     async def test_entity_cache_reused_across_calls(self):

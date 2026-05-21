@@ -92,9 +92,13 @@ class ChatController extends Controller
             $result = $rag->ask($question, $history);
             $answer = $result->answer;
             $sources = $result->sources;
-        } catch (Throwable) {
-            $answer = 'Fehler bei der Verarbeitung. Bitte später erneut versuchen.';
-            $sources = [];
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Chat backend failed. Please check the AI provider and Paperless configuration.',
+                'session_id' => $chatSession->id,
+            ], 502);
         }
 
         $chatSession->messages()->create([

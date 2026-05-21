@@ -109,6 +109,58 @@ class ChatTest extends TestCase
         $this->assertDatabaseMissing('chat_sessions', ['id' => $session->id]);
     }
 
+    public function test_chat_session_can_be_deleted_with_method_spoofed_post(): void
+    {
+        $user = User::factory()->create();
+        $session = ChatSession::query()->create([
+            'id' => 'session123456789',
+            'user_id' => $user->id,
+            'origin' => 'web',
+            'title' => 'Question',
+            'preview' => 'Answer',
+            'last_active_at' => now(),
+        ]);
+        $session->messages()->create(['role' => 'assistant', 'content' => 'Answer', 'sources' => []]);
+
+        $this->actingAs($user)
+            ->postJson(route('chat.destroy', $session->id), ['_method' => 'DELETE'])
+            ->assertOk()
+            ->assertJsonPath('deleted', true);
+
+        $this->assertDatabaseMissing('chat_sessions', ['id' => $session->id]);
+        $this->assertDatabaseMissing('chat_messages', ['chat_session_id' => $session->id]);
+    }
+
+    public function test_chat_backend_failure_returns_error_without_fake_assistant_message(): void
+    {
+        $user = User::factory()->create();
+        $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
+        {
+            public function ask(string $question, array $history): ChatRagResult
+            {
+                throw new \RuntimeException('connection refused');
+            }
+        });
+
+        $response = $this->actingAs($user)
+            ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'Chat backend failed. Please check the AI provider and Paperless configuration.');
+
+        $sessionId = $response->json('session_id');
+        $this->assertNotEmpty($sessionId);
+        $this->assertDatabaseHas('chat_messages', [
+            'chat_session_id' => $sessionId,
+            'role' => 'user',
+            'content' => 'Was steht in der Rechnung?',
+        ]);
+        $this->assertDatabaseMissing('chat_messages', [
+            'chat_session_id' => $sessionId,
+            'role' => 'assistant',
+            'content' => 'Fehler bei der Verarbeitung. Bitte später erneut versuchen.',
+        ]);
+    }
+
     public function test_empty_question_is_rejected(): void
     {
         $user = User::factory()->create();
