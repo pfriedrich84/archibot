@@ -17,10 +17,12 @@ class EmbeddingIndexSnapshot
     public function forRequest(Request $request): array
     {
         $state = EmbeddingIndexState::query()->latest()->first();
-        $embeddedCount = DocumentEmbedding::query()
+        $pgvectorEmbeddedCount = DocumentEmbedding::query()
             ->distinct()
             ->count('paperless_document_id');
         $storedRows = DocumentEmbedding::query()->count();
+        $stateEmbeddedCount = $state?->embedded_count ?? 0;
+        $embeddedCount = max($pgvectorEmbeddedCount, $stateEmbeddedCount);
         $documentCount = $state?->document_count;
         $documentCountError = null;
 
@@ -51,12 +53,13 @@ class EmbeddingIndexSnapshot
         return [
             'id' => $state?->id,
             'status' => $ready ? EmbeddingIndexState::STATUS_COMPLETE : $status,
-            'embedding_model' => $state?->embedding_model,
+            'embedding_model' => $state?->embedding_model ?: AppSetting::getValue('embedding.model'),
             'dimensions' => $state?->dimensions,
             'document_count' => $documentCount ?? 0,
             'document_count_known' => $documentCount !== null,
             'embedded_count' => $embeddedCount,
             'stored_embedding_rows' => $storedRows,
+            'pgvector_embedded_count' => $pgvectorEmbeddedCount,
             'missing_count' => $missingCount,
             'failed_count' => $failedCount,
             'started_at' => $state?->started_at?->toISOString(),

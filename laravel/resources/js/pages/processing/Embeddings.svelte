@@ -25,6 +25,7 @@
         document_count_known: boolean;
         embedded_count: number;
         stored_embedding_rows: number;
+        pgvector_embedded_count: number;
         missing_count: number | null;
         failed_count: number;
         started_at: string | null;
@@ -193,6 +194,11 @@
             <div class="mt-2 text-3xl font-semibold">
                 {snapshot.stored_embedding_rows}
             </div>
+            {#if snapshot.pgvector_embedded_count !== snapshot.embedded_count}
+                <div class="mt-1 text-xs text-muted-foreground">
+                    Progress is reported by the completed embedding index state.
+                </div>
+            {/if}
         </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Model / dimensions</div>

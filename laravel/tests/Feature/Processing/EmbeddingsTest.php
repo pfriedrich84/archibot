@@ -65,6 +65,33 @@ class EmbeddingsTest extends TestCase
             );
     }
 
+    public function test_embeddings_page_uses_completed_state_counts_when_legacy_reindex_succeeded(): void
+    {
+        AppSetting::put('embedding.model', 'qwen3-embedding:4b');
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'document_count' => 138,
+            'embedded_count' => 138,
+            'failed_count' => 0,
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('processing/Embeddings')
+                ->where('snapshot.status', EmbeddingIndexState::STATUS_COMPLETE)
+                ->where('snapshot.ready', true)
+                ->where('snapshot.embedding_model', 'qwen3-embedding:4b')
+                ->where('snapshot.document_count', 138)
+                ->where('snapshot.embedded_count', 138)
+                ->where('snapshot.pgvector_embedded_count', 0)
+                ->where('snapshot.missing_count', 0)
+            );
+    }
+
     public function test_embeddings_page_infers_ready_from_pgvector_rows_when_state_is_missing(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
