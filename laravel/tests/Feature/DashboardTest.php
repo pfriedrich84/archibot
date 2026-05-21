@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ActorExecution;
 use App\Models\AppSetting;
 use App\Models\Command;
+use App\Models\DocumentEmbedding;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
@@ -117,6 +118,15 @@ class DashboardTest extends TestCase
             'embedded_count' => 4,
             'failed_count' => 1,
         ]);
+        foreach (range(1, 4) as $documentId) {
+            DocumentEmbedding::query()->create([
+                'paperless_document_id' => $documentId,
+                'content_hash' => "hash-{$documentId}",
+                'embedding_model' => 'nomic-embed-text',
+                'dimensions' => 1024,
+                'embedding' => [0.1, 0.2],
+            ]);
+        }
         Command::query()->create([
             'type' => 'embedding_index_build',
             'status' => 'pending',

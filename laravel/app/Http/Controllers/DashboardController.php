@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\ActorExecution;
 use App\Models\AppSetting;
 use App\Models\Command;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
@@ -13,13 +12,14 @@ use App\Models\SetupState;
 use App\Models\WebhookDelivery;
 use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Support\EmbeddingIndexSnapshot;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots): Response
     {
         $paperlessUrl = AppSetting::getValue('paperless.url');
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
@@ -45,7 +45,7 @@ class DashboardController extends Controller
             }
         }
 
-        $embeddingIndexState = EmbeddingIndexState::query()->latest()->first();
+        $embeddingIndexSnapshot = $embeddingSnapshots->forRequest($request);
         $pendingEmbeddingBuildCommands = Command::query()
             ->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)
             ->whereIn('status', Command::activeStatuses())
@@ -90,16 +90,7 @@ class DashboardController extends Controller
                 'active_provider_roles' => $this->activeProviderRoles(),
             ],
             'embeddingIndex' => [
-                'id' => $embeddingIndexState?->id,
-                'status' => $embeddingIndexState?->status ?? 'missing',
-                'embedding_model' => $embeddingIndexState?->embedding_model,
-                'document_count' => $embeddingIndexState?->document_count ?? 0,
-                'embedded_count' => $embeddingIndexState?->embedded_count ?? 0,
-                'failed_count' => $embeddingIndexState?->failed_count ?? 0,
-                'started_at' => $embeddingIndexState?->started_at?->toISOString(),
-                'completed_at' => $embeddingIndexState?->completed_at?->toISOString(),
-                'error' => $embeddingIndexState?->error,
-                'ready' => $embeddingIndexState?->status === 'ready' || $embeddingIndexState?->status === 'complete',
+                ...$embeddingIndexSnapshot,
                 'pending_build_commands' => $pendingEmbeddingBuildCommands,
                 'build_url' => route('embedding-index.build'),
                 'mark_stale_url' => route('embedding-index.mark-stale'),

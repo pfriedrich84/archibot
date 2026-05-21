@@ -3,50 +3,95 @@
 namespace Tests\Feature\Processing;
 
 use App\Models\AppSetting;
+use App\Models\DocumentEmbedding;
+use App\Models\EmbeddingIndexState;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
-use PDO;
 use Tests\TestCase;
 
 class EmbeddingsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_embeddings_page_resolves_paperless_entity_names(): void
+    public function test_embeddings_page_uses_pgvector_embedding_status_not_python_database(): void
     {
-        $dbPath = tempnam(sys_get_temp_dir(), 'archibot_embeddings_');
-        $pdo = new PDO('sqlite:'.$dbPath);
-        $pdo->exec('CREATE TABLE doc_embedding_meta (document_id INTEGER, title TEXT, correspondent INTEGER, doctype INTEGER, storage_path INTEGER, tags_json TEXT, created_date TEXT, indexed_at TEXT)');
-        $pdo->exec("INSERT INTO doc_embedding_meta VALUES (123, 'Invoice', 10, 20, 30, '[7]', '2026-05-05', '2026-05-07T10:00:00Z')");
-
-        putenv('ARCHIBOT_PYTHON_DB_PATH='.$dbPath);
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::fake([
-            'paperless.example/api/correspondents/*' => Http::response(['results' => [['id' => 10, 'name' => 'ACME GmbH']]], 200),
-            'paperless.example/api/document_types/*' => Http::response(['results' => [['id' => 20, 'name' => 'Invoice']]], 200),
-            'paperless.example/api/storage_paths/*' => Http::response(['results' => [['id' => 30, 'name' => 'Archive']]], 200),
-            'paperless.example/api/tags/*' => Http::response(['results' => [['id' => 7, 'name' => 'Inbox']]], 200),
+            'paperless.example/api/documents/*' => Http::response(['count' => 3, 'results' => [['id' => 1]]], 200),
+        ]);
+
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'qwen3-embedding:4b',
+            'dimensions' => 2560,
+            'document_count' => 3,
+            'embedded_count' => 2,
+            'failed_count' => 0,
+        ]);
+        DocumentEmbedding::query()->create([
+            'paperless_document_id' => 10,
+            'content_hash' => 'hash-10',
+            'embedding_model' => 'qwen3-embedding:4b',
+            'dimensions' => 2560,
+            'embedding' => [0.1, 0.2],
+        ]);
+        DocumentEmbedding::query()->create([
+            'paperless_document_id' => 11,
+            'content_hash' => 'hash-11',
+            'embedding_model' => 'qwen3-embedding:4b',
+            'dimensions' => 2560,
+            'embedding' => [0.3, 0.4],
         ]);
 
         $user = User::factory()->create(['paperless_token' => 'user-token']);
 
-        try {
-            $this->actingAs($user)
-                ->get(route('embeddings.index'))
-                ->assertOk()
-                ->assertInertia(fn (Assert $page) => $page
-                    ->component('processing/Embeddings')
-                    ->where('snapshot.total_embedded', 1)
-                    ->where('snapshot.items.0.correspondent_name', 'ACME GmbH')
-                    ->where('snapshot.items.0.doctype_name', 'Invoice')
-                    ->where('snapshot.items.0.storage_path_name', 'Archive')
-                    ->where('snapshot.items.0.tags.0.name', 'Inbox')
-                );
-        } finally {
-            putenv('ARCHIBOT_PYTHON_DB_PATH');
-            @unlink($dbPath);
-        }
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('processing/Embeddings')
+                ->where('snapshot.status', EmbeddingIndexState::STATUS_COMPLETE)
+                ->where('snapshot.embedding_model', 'qwen3-embedding:4b')
+                ->where('snapshot.dimensions', 2560)
+                ->where('snapshot.document_count', 3)
+                ->where('snapshot.embedded_count', 2)
+                ->where('snapshot.stored_embedding_rows', 2)
+                ->where('snapshot.missing_count', 1)
+                ->where('snapshot.failed_count', 0)
+                ->missing('snapshot.db_path')
+                ->missing('snapshot.items')
+            );
+    }
+
+    public function test_embeddings_page_infers_ready_from_pgvector_rows_when_state_is_missing(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/*' => Http::response(['count' => 1, 'results' => [['id' => 1]]], 200),
+        ]);
+
+        DocumentEmbedding::query()->create([
+            'paperless_document_id' => 10,
+            'content_hash' => 'hash-10',
+            'embedding_model' => 'qwen3-embedding:4b',
+            'dimensions' => 2560,
+            'embedding' => [0.1, 0.2],
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('processing/Embeddings')
+                ->where('snapshot.status', EmbeddingIndexState::STATUS_COMPLETE)
+                ->where('snapshot.ready', true)
+                ->where('snapshot.document_count', 1)
+                ->where('snapshot.embedded_count', 1)
+                ->where('snapshot.missing_count', 0)
+            );
     }
 }

@@ -16,20 +16,22 @@
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
     import { Spinner } from '@/components/ui/spinner';
-    import { store } from '@/routes/worker-jobs';
 
-    type EmbeddingItem = {
-        document_id: number;
-        title: string | null;
-        correspondent: number | null;
-        correspondent_name: string | null;
-        doctype: number | null;
-        doctype_name: string | null;
-        storage_path: number | null;
-        storage_path_name: string | null;
-        tags: { id: number | null; name: string | null }[];
-        created_date: string | null;
-        indexed_at: string | null;
+    type Snapshot = {
+        status: string;
+        embedding_model: string | null;
+        dimensions: number | null;
+        document_count: number;
+        document_count_known: boolean;
+        embedded_count: number;
+        stored_embedding_rows: number;
+        missing_count: number | null;
+        failed_count: number;
+        started_at: string | null;
+        completed_at: string | null;
+        error: string | null;
+        document_count_error: string | null;
+        ready: boolean;
     };
 
     type WorkerJob = {
@@ -52,17 +54,26 @@
         finished_at: string | null;
     };
 
+    type EmbeddingBuildCommand = {
+        id: number;
+        status: string;
+        error: string | null;
+        created_at: string | null;
+        updated_at: string | null;
+    };
+
     let {
         snapshot,
         latestReindexJob,
+        latestEmbeddingBuildCommand,
+        buildUrl,
+        markStaleUrl,
     }: {
-        snapshot: {
-            db_path: string;
-            error: string | null;
-            total_embedded: number;
-            items: EmbeddingItem[];
-        };
+        snapshot: Snapshot;
         latestReindexJob: WorkerJob | null;
+        latestEmbeddingBuildCommand: EmbeddingBuildCommand | null;
+        buildUrl: string;
+        markStaleUrl: string;
     } = $props();
 
     const progressPercent = $derived(
@@ -78,6 +89,17 @@
             : 0,
     );
 
+    const knownDocumentCount = $derived(
+        snapshot.document_count_known
+            ? String(snapshot.document_count)
+            : 'Unknown',
+    );
+    const missingCount = $derived(
+        snapshot.missing_count === null
+            ? 'Unknown'
+            : String(snapshot.missing_count),
+    );
+
     onMount(() => {
         const interval = window.setInterval(() => {
             if (
@@ -87,7 +109,11 @@
                 )
             ) {
                 router.reload({
-                    only: ['snapshot', 'latestReindexJob'],
+                    only: [
+                        'snapshot',
+                        'latestReindexJob',
+                        'latestEmbeddingBuildCommand',
+                    ],
                 });
             }
         }, 3000);
@@ -102,148 +128,175 @@
     <div class="flex flex-wrap items-start justify-between gap-4">
         <Heading
             title="Embeddings"
-            description="Vector index status and recently indexed Paperless documents. This replaces the old /app/embeddings status page."
+            description="PostgreSQL/pgvector embedding index status for Paperless documents. Legacy Python SQLite metadata is no longer used here."
         />
 
-        <Form {...store.form()}>
-            {#snippet children({ processing })}
-                <input type="hidden" name="type" value="reindex" />
-                <Button type="submit" disabled={processing}>
-                    {#if processing}<Spinner />{/if}
-                    Rebuild embeddings
-                </Button>
-            {/snippet}
-        </Form>
+        <div class="flex flex-wrap gap-2">
+            <Form method="post" action={buildUrl}>
+                {#snippet children({ processing })}
+                    <Button type="submit" disabled={processing}>
+                        {#if processing}<Spinner />{/if}
+                        Start / resume embedding build
+                    </Button>
+                {/snippet}
+            </Form>
+            <Form method="post" action={markStaleUrl}>
+                {#snippet children({ processing })}
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing}
+                    >
+                        Mark stale
+                    </Button>
+                {/snippet}
+            </Form>
+        </div>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-3">
+    <div class="grid gap-4 md:grid-cols-4">
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Index status</div>
+            <div class="mt-2 text-2xl font-semibold">
+                {snapshot.ready ? 'Ready' : snapshot.status}
+            </div>
+        </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Documents found</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {knownDocumentCount}
+            </div>
+        </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Embedded documents</div>
             <div class="mt-2 text-3xl font-semibold">
-                {snapshot.total_embedded}
+                {snapshot.embedded_count}
             </div>
         </div>
-        <div class="rounded-xl border p-4 md:col-span-2">
-            <div class="text-sm text-muted-foreground">Python database</div>
-            <code class="mt-2 block break-all text-sm">{snapshot.db_path}</code>
-            {#if snapshot.error}
-                <div
-                    class="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                >
-                    {snapshot.error}
-                </div>
-            {/if}
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Not yet embedded</div>
+            <div class="mt-2 text-3xl font-semibold">{missingCount}</div>
         </div>
     </div>
 
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3">
-            <div class="font-medium">Processing status</div>
-            <div class="text-sm text-muted-foreground">
-                Latest reindex / embedding worker job.
+    <section class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Failed embeddings</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {snapshot.failed_count}
             </div>
         </div>
-
-        {#if latestReindexJob}
-            <div class="space-y-3 p-4 text-sm">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium"
-                        >Worker job {latestReindexJob.id} · {latestReindexJob.type}</span
-                    >
-                    <span class="rounded-full bg-muted px-2 py-0.5"
-                        >{latestReindexJob.status}</span
-                    >
-                    <span class="text-muted-foreground">
-                        Phase: {latestReindexJob.progress.phase ?? '—'} · {latestReindexJob
-                            .progress.done ?? 0}/{latestReindexJob.progress
-                            .total ?? 0}
-                    </span>
-                    {#if latestReindexJob.progress.failed}
-                        <span class="text-destructive"
-                            >{latestReindexJob.progress.failed} failed</span
-                        >
-                    {/if}
-                </div>
-
-                {#if (latestReindexJob.progress.total ?? 0) > 0}
-                    <div class="h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                            class="h-full bg-primary"
-                            style={`width: ${progressPercent}%`}
-                        ></div>
-                    </div>
-                {/if}
-
-                {#if latestReindexJob.progress.message || latestReindexJob.progress.document_id}
-                    <div class="text-muted-foreground">
-                        {latestReindexJob.progress.message ?? 'Last update'}
-                        {#if latestReindexJob.progress.document_title}
-                            · {latestReindexJob.progress.document_title}
-                        {:else if latestReindexJob.progress.document_id}
-                            · Document reference {latestReindexJob.progress
-                                .document_id}
-                        {/if}
-                    </div>
-                {/if}
-
-                {#if latestReindexJob.error}
-                    <div class="text-destructive">{latestReindexJob.error}</div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">
+                Stored pgvector rows
+            </div>
+            <div class="mt-2 text-3xl font-semibold">
+                {snapshot.stored_embedding_rows}
+            </div>
+        </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Model / dimensions</div>
+            <div class="mt-2 text-sm font-medium">
+                {snapshot.embedding_model ?? 'Not recorded'}
+                {#if snapshot.dimensions}
+                    · {snapshot.dimensions} dimensions
                 {/if}
             </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No reindex job has been queued yet.
-            </div>
-        {/if}
+        </div>
     </section>
 
+    {#if snapshot.error || snapshot.document_count_error}
+        <section
+            class="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+        >
+            {snapshot.error ?? snapshot.document_count_error}
+        </section>
+    {/if}
+
     <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            Recent embeddings ({snapshot.items.length} shown)
+        <div class="border-b px-4 py-3">
+            <div class="font-medium">Embedding build status</div>
+            <div class="text-sm text-muted-foreground">
+                Durable pgvector build command and latest legacy reindex worker,
+                if any.
+            </div>
         </div>
 
-        {#each snapshot.items as item (item.document_id)}
-            <div class="grid gap-2 border-b p-4 text-sm last:border-b-0">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium"
-                        >{item.title ||
-                            `Document reference ${item.document_id}`}</span
-                    >
-                    {#if item.created_date}
-                        <span class="text-muted-foreground"
-                            >{item.created_date}</span
-                        >
+        <div class="space-y-4 p-4 text-sm">
+            {#if latestEmbeddingBuildCommand}
+                <div class="rounded-md border p-3">
+                    <div class="font-medium">
+                        Embedding build command {latestEmbeddingBuildCommand.id}
+                    </div>
+                    <div class="text-muted-foreground">
+                        Status: {latestEmbeddingBuildCommand.status}
+                        {#if latestEmbeddingBuildCommand.updated_at}
+                            · Updated {latestEmbeddingBuildCommand.updated_at}
+                        {/if}
+                    </div>
+                    {#if latestEmbeddingBuildCommand.error}
+                        <div class="mt-2 text-destructive">
+                            {latestEmbeddingBuildCommand.error}
+                        </div>
                     {/if}
                 </div>
+            {:else}
                 <div class="text-muted-foreground">
-                    Paperless document reference {item.document_id}
+                    No pgvector embedding build command has been queued yet.
                 </div>
-                <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {#if item.correspondent}<span
-                            >Correspondent: {item.correspondent_name ??
-                                `reference ${item.correspondent}`}</span
-                        >{/if}
-                    {#if item.doctype}<span
-                            >Type: {item.doctype_name ??
-                                `reference ${item.doctype}`}</span
-                        >{/if}
-                    {#if item.storage_path}<span
-                            >Storage: {item.storage_path_name ??
-                                `reference ${item.storage_path}`}</span
-                        >{/if}
-                    {#if item.tags.length > 0}<span
-                            >Tags: {item.tags
-                                .map((tag) => tag.name ?? `reference ${tag.id}`)
-                                .join(', ')}</span
-                        >{/if}
-                    {#if item.indexed_at}<span>Indexed {item.indexed_at}</span
-                        >{/if}
+            {/if}
+
+            {#if latestReindexJob}
+                <div class="rounded-md border p-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium"
+                            >Legacy worker job {latestReindexJob.id} · {latestReindexJob.type}</span
+                        >
+                        <span class="rounded-full bg-muted px-2 py-0.5"
+                            >{latestReindexJob.status}</span
+                        >
+                        <span class="text-muted-foreground">
+                            Phase: {latestReindexJob.progress.phase ?? '—'} · {latestReindexJob
+                                .progress.done ?? 0}/{latestReindexJob.progress
+                                .total ?? 0}
+                        </span>
+                        {#if latestReindexJob.progress.failed}
+                            <span class="text-destructive"
+                                >{latestReindexJob.progress.failed} failed</span
+                            >
+                        {/if}
+                    </div>
+
+                    {#if (latestReindexJob.progress.total ?? 0) > 0}
+                        <div
+                            class="mt-3 h-2 overflow-hidden rounded-full bg-muted"
+                        >
+                            <div
+                                class="h-full bg-primary"
+                                style={`width: ${progressPercent}%`}
+                            ></div>
+                        </div>
+                    {/if}
+
+                    {#if latestReindexJob.progress.message || latestReindexJob.progress.document_id}
+                        <div class="mt-2 text-muted-foreground">
+                            {latestReindexJob.progress.message ?? 'Last update'}
+                            {#if latestReindexJob.progress.document_title}
+                                · {latestReindexJob.progress.document_title}
+                            {:else if latestReindexJob.progress.document_id}
+                                · Document reference {latestReindexJob.progress
+                                    .document_id}
+                            {/if}
+                        </div>
+                    {/if}
+
+                    {#if latestReindexJob.error}
+                        <div class="mt-2 text-destructive">
+                            {latestReindexJob.error}
+                        </div>
+                    {/if}
                 </div>
-            </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No embeddings indexed yet.
-            </div>
-        {/each}
+            {/if}
+        </div>
     </section>
 </div>

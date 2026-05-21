@@ -46,6 +46,31 @@ class PaperlessClient
         return $this->request($token)->get('/api/ui_settings/')->status() < 500;
     }
 
+    public function documentCount(string $token): int
+    {
+        $response = $this->request($token)->get('/api/documents/', [
+            'page_size' => 1,
+        ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not fetch Paperless document count.');
+        }
+
+        $payload = $response->json();
+
+        if (is_array($payload) && is_numeric($payload['count'] ?? null)) {
+            return (int) $payload['count'];
+        }
+
+        if (is_array($payload)) {
+            $items = $payload['results'] ?? $payload;
+
+            return is_array($items) ? count($items) : 0;
+        }
+
+        throw new RuntimeException('Paperless documents response was not JSON.');
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
