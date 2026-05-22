@@ -18,9 +18,9 @@ class ChatController extends Controller
         return Inertia::render('chat/Index', [
             'initialPayload' => $this->snapshot($request),
             'endpoints' => [
-                'index' => route('chat.index'),
-                'ask' => route('chat.ask'),
-                'session' => route('chat.show', ['session' => '__SESSION__']),
+                'index' => route('chat.index', [], false),
+                'ask' => route('chat.ask', [], false),
+                'session' => route('chat.show', ['session' => '__SESSION__'], false),
             ],
         ]);
     }

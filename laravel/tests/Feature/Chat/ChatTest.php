@@ -25,6 +25,9 @@ class ChatTest extends TestCase
                 ->component('chat/Index')
                 ->has('initialPayload.sessions')
                 ->has('initialPayload.recent_activity')
+                ->where('endpoints.index', '/api/v1/chat')
+                ->where('endpoints.ask', '/api/v1/chat/ask')
+                ->where('endpoints.session', '/api/v1/chat/sessions/__SESSION__')
             );
     }
 
