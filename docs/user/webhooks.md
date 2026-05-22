@@ -1,55 +1,56 @@
 # Webhook-Konfiguration
 
-Anleitung zur Einrichtung von Webhooks, damit Paperless-NGX den Classifier sofort nach dem Einlesen oder Aendern eines Dokuments benachrichtigt — als Alternative oder Ergaenzung zum Polling.
+Anleitung zur Einrichtung von Webhooks, damit Paperless-NGX ArchiBot sofort nach dem Einlesen oder Aendern eines Dokuments benachrichtigt — als Alternative oder Ergaenzung zum Polling.
 
 ## Ueberblick
 
-Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig; der Default ist `0`, also kein automatisches Polling. Mit Webhooks wird die Verarbeitung **sofort** ausgeloest, ohne auf einen Poll zu warten.
+Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig. Mit Webhooks wird die Verarbeitung sofort ausgeloest, ohne auf einen Poll zu warten.
 
-**Zwei Webhook-Endpoints:**
+**Empfohlener Webhook-Endpoint:**
 
 | Endpoint | Zweck |
 |----------|-------|
-| `POST /webhook/new` | Volle Pipeline: OCR + Embedding + Klassifikation + Suggestion |
-| `POST /webhook/edit` | Dokument erneut ueber den `process-document` Worker verarbeiten |
+| `POST /webhook` | Paperless-Dokumentereignis empfangen, Delivery speichern, deduplizieren und Verarbeitung einreihen |
+
+`/webhook` ist der einfache Alias fuer den event-driven Endpoint. Der aeltere Endpoint `/api/webhooks/paperless` bleibt kompatibel. Legacy-Endpoints `/webhook/new` und `/webhook/edit` existieren weiterhin, schreiben aber keine Webhook-Delivery-Eintraege.
 
 **Polling und Webhooks koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
 
 ## Voraussetzungen
 
 - Paperless-NGX >= 2.0
-- Der Classifier-Container muss fuer Paperless erreichbar sein (gleiches Docker-Netzwerk oder Netzwerk-Route)
-- Optional: ein Webhook-Secret fuer Authentifizierung
+- Der ArchiBot-Container muss fuer Paperless erreichbar sein (gleiches Docker-Netzwerk oder Netzwerk-Route)
+- Optional, aber empfohlen: ein Webhook-Secret fuer Authentifizierung
 
-## 1. Classifier konfigurieren
+## 1. ArchiBot konfigurieren
 
-In der `.env` des Classifiers:
+In der `.env`:
 
 ```env
 # Webhook-Secret (empfohlen). Leerer String = keine Authentifizierung.
 WEBHOOK_SECRET=mein-geheimer-webhook-token
 ```
 
-Die Webhook-Endpoints sind sofort aktiv — es gibt keinen Feature-Toggle. Die Authentifizierung greift nur, wenn `WEBHOOK_SECRET` gesetzt ist.
+Alternativ kann fuer den event-driven Endpoint `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die Authentifizierung greift nur, wenn ein Secret gesetzt ist.
 
 ## 2. Paperless-NGX konfigurieren
 
-Paperless-NGX unterstuetzt **Workflow-Webhooks** direkt in der GUI — kein Script
-und keine Datei-Mounts noetig.
+Paperless-NGX unterstuetzt Workflow-Webhooks direkt in der GUI — kein Script und keine Datei-Mounts noetig.
 
-**Zwei Workflows konfigurieren:**
+**Ein Webhook fuer alle relevanten Dokument-Events:**
 
-| Workflow | Trigger | Webhook-URL | Zweck |
-|----------|---------|-------------|-------|
-| 1 | Dokument hinzugefuegt | `http://<host>:8088/webhook/new` | Volle Verarbeitung (OCR + Embedding + Klassifikation) |
-| 2 | Dokument geaendert | `http://<host>:8088/webhook/edit` | Dokument erneut ueber den `process-document` Worker verarbeiten |
+| Trigger | Webhook-URL | Zweck |
+|---------|-------------|-------|
+| Dokument hinzugefuegt und Dokument geaendert | `http://<host>:8088/webhook` | Delivery speichern, deduplizieren und Verarbeitung einreihen |
+
+Du kannst in Paperless einen Workflow mit mehreren Triggern oder zwei Workflows mit derselben URL konfigurieren. ArchiBot erkennt das Ereignis aus dem Payload.
 
 **Einstellungen pro Workflow:**
 
 - **Aktionstyp:** Webhook
-- **Webhook-URL:** siehe Tabelle oben
+- **Webhook-URL:** `http://<host>:8088/webhook`
 - **Webhook-Payload als JSON senden:** AN
-- **Dokument einbeziehen:** AN (optional — der Classifier holt das Dokument sowieso via API)
+- **Dokument einbeziehen:** AN (optional — ArchiBot holt das Dokument sowieso via API)
 - **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
 
 **Payload-Format** (wird automatisch von Paperless gesendet):
@@ -71,27 +72,29 @@ und keine Datei-Mounts noetig.
 }
 ```
 
-Beide Endpoints akzeptieren sowohl dieses Workflow-Format als auch das Legacy-Format
-(`{"document_id": 123}`).
+Der Endpoint akzeptiert sowohl dieses Workflow-Format als auch das Legacy-Format:
+
+```json
+{"document_id": 123}
+```
 
 ## 3. Netzwerk-Setup
 
-Der Classifier muss fuer Paperless ueber das Netzwerk erreichbar sein.
+Der ArchiBot-Container muss fuer Paperless ueber das Netzwerk erreichbar sein.
 
 ### Gleicher Docker-Compose-Stack
 
-Wenn Paperless und der Classifier im selben `docker-compose.yml` laufen, koennen sie sich ueber den Service-Namen erreichen:
+Wenn Paperless und ArchiBot im selben `docker-compose.yml` laufen, koennen sie sich ueber den Service-Namen erreichen:
 
-```
-http://archibot:8088/webhook/new
-http://archibot:8088/webhook/edit
+```text
+http://archibot:8088/webhook
 ```
 
 ### Separate Docker-Compose-Stacks
 
-Wenn Paperless und der Classifier in unterschiedlichen Stacks laufen, muessen sie ein gemeinsames Docker-Netzwerk teilen.
+Wenn Paperless und ArchiBot in unterschiedlichen Stacks laufen, muessen sie ein gemeinsames Docker-Netzwerk teilen.
 
-**Im Classifier `docker-compose.yml`:**
+**Im ArchiBot `docker-compose.yml`:**
 
 ```yaml
 services:
@@ -107,33 +110,31 @@ networks:
 
 ### Verschiedene Hosts
 
-Wenn Paperless und der Classifier auf verschiedenen Maschinen laufen, muss der Classifier-Port (default: 8088) erreichbar sein:
+Wenn Paperless und ArchiBot auf verschiedenen Maschinen laufen, muss der ArchiBot-Port (default: 8088) erreichbar sein:
 
-```
-http://classifier-host:8088/webhook/new
-http://classifier-host:8088/webhook/edit
+```text
+http://classifier-host:8088/webhook
 ```
 
-> **Hinweis:** Die Webhook-Endpoints sind nicht durch Basic-Auth geschuetzt (bewusst, damit Paperless ohne Credentials senden kann). Die Authentifizierung erfolgt ausschliesslich ueber den `X-Webhook-Secret` Header.
+> **Hinweis:** Die Webhook-Endpoints sind nicht durch Basic-Auth geschuetzt. Die Authentifizierung erfolgt ueber den `X-Webhook-Secret` Header.
 
 ## Webhook-Referenz
 
-### POST /webhook/new — Volle Verarbeitung
+### POST /webhook — empfohlener Paperless-Webhook
 
-Verarbeitet ein Dokument mit der vollen Pipeline: OCR-Korrektur, Embedding,
-Klassifikation, Suggestion-Erstellung, optional Auto-Commit und Telegram.
+Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, dedupliziert identische Lieferungen und reiht die Verarbeitung ein.
 
 **Header:**
 
 | Header | Wert | Pflicht? |
 |---|---|---|
 | `Content-Type` | `application/json` | Ja |
-| `X-Webhook-Secret` | Wert von `WEBHOOK_SECRET` | Nur wenn `WEBHOOK_SECRET` gesetzt |
+| `X-Webhook-Secret` | Wert von `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Nur wenn ein Secret gesetzt ist |
 
 **Body** (Workflow-Format oder Legacy-Format):
 
 ```json
-{"event": "document_created", "object": {"id": 123, ...}}
+{"event": "document_created", "object": {"id": 123}}
 ```
 
 ```json
@@ -144,31 +145,21 @@ Klassifikation, Suggestion-Erstellung, optional Auto-Commit und Telegram.
 
 | Status | Bedeutung |
 |---|---|
-| `200` | Worker-Job wurde erfolgreich in Laravel eingereiht |
+| `200` | Webhook-Delivery wurde gespeichert oder als Duplikat erkannt |
 | `403` | Webhook-Secret ungueltig |
 | `422` | Body ungueltig (fehlende/falsche `document_id`) |
 
-### POST /webhook/edit — Erneute Dokumentverarbeitung
+### Kompatibilitaets-Endpoints
 
-Reiht wie `/webhook/new` einen Laravel Worker-Job ein, der das Dokument ueber den
-bestehenden Python-CLI-Vertrag `process-document` verarbeitet. Nutzen: wenn ein
-Dokument in Paperless geaendert wurde und ArchiBot es erneut betrachten soll.
+`POST /api/webhooks/paperless` ist weiterhin derselbe event-driven Handler wie `/webhook`.
 
-**Header und Body:** Identisch zu `/webhook/new`.
-
-**Responses:**
-
-| Status | Bedeutung |
-|---|---|
-| `200` | Worker-Job wurde erfolgreich in Laravel eingereiht |
-| `403` | Webhook-Secret ungueltig |
-| `422` | Body ungueltig |
+`POST /webhook/new` und `POST /webhook/edit` bleiben fuer alte Installationen verfuegbar, schreiben aber direkt Worker-Jobs und keine `webhook_deliveries`. Fuer neue Setups immer `/webhook` verwenden.
 
 ## Fehlerbehebung
 
 ### Webhook kommt nicht an
 
-1. **Netzwerk pruefen:** Kann Paperless den Classifier erreichen?
+1. **Netzwerk pruefen:** Kann Paperless ArchiBot erreichen?
    ```bash
    # Aus dem Paperless-Container heraus testen:
    docker exec paperless curl -s http://archibot:8088/healthz
@@ -180,18 +171,22 @@ Dokument in Paperless geaendert wurde und ArchiBot es erneut betrachten soll.
    docker logs paperless 2>&1 | grep -i "webhook"
    ```
 
+3. **Webhook-Delivery-Liste pruefen:** Neue Setups mit `/webhook` erscheinen in ArchiBot unter Webhook Deliveries.
+
 ### 403 Forbidden
 
 Das Webhook-Secret stimmt nicht ueberein. Pruefen:
-- `WEBHOOK_SECRET` in der Classifier `.env`
+
+- `WEBHOOK_SECRET` / `PAPERLESS_WEBHOOK_SECRET` in der ArchiBot `.env`
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
 
 ### Dokument wird nicht verarbeitet
 
+- Ist die Webhook-Delivery in ArchiBot sichtbar?
 - Hat das Dokument den Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`)?
-- Wurde es bereits verarbeitet? (Idempotenz-Check — pruefen unter `/inbox`)
-- Button "Reprocess" in der Inbox-GUI erzwingt erneute Verarbeitung
+- Wurde es bereits verarbeitet? Der Idempotenz-Check kann doppelte Arbeit verhindern.
+- Button "Reprocess" in der Inbox-GUI erzwingt erneute Verarbeitung.
 
 ## Webhook vs. Polling
 
@@ -200,6 +195,6 @@ Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 | **Latenz** | Bis zu `POLL_INTERVAL_SECONDS` | Sofort nach Consume |
 | **Zuverlaessigkeit** | Sehr hoch (holt alles nach) | Abhaengig von Netzwerk |
 | **Setup** | Keine Konfiguration noetig | Workflow in Paperless noetig |
-| **Empfehlung** | Immer aktiv als Fallback | Zusaetzlich fuer schnelle Reaktion |
+| **Empfehlung** | Aktiv als Fallback | Zusaetzlich fuer schnelle Reaktion |
 
 **Empfohlenes Setup:** Beides aktiviert. Der Webhook sorgt fuer sofortige Verarbeitung, der Poll dient als Sicherheitsnetz falls ein Webhook verloren geht.

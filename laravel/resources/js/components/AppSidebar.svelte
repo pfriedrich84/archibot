@@ -161,13 +161,21 @@
         },
     ]);
 
-    const footerNavItems: NavItem[] = [
+    const build = $derived(page.props.build);
+    const buildHoverText = $derived(
+        build?.commit_short
+            ? `Repository · current build ${build.ref ? `${build.ref}@` : ''}${build.commit_short}`
+            : 'Repository · build unknown',
+    );
+
+    const footerNavItems: NavItem[] = $derived([
         {
             title: 'Repository',
             href: 'https://github.com/pfriedrich84/archibot',
             icon: FolderGit2,
+            tooltip: buildHoverText,
         },
-    ];
+    ]);
 </script>
 
 <Sidebar collapsible="icon" variant="inset">

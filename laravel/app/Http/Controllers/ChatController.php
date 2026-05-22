@@ -95,10 +95,16 @@ class ChatController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return response()->json([
+            $payload = [
                 'message' => 'Chat backend failed. Please check the AI provider and Paperless configuration.',
                 'session_id' => $chatSession->id,
-            ], 502);
+            ];
+
+            if ($this->canSeeDiagnostics($request)) {
+                $payload['detail'] = $this->sanitizeDiagnostic($exception->getMessage());
+            }
+
+            return response()->json($payload, 502);
         }
 
         $chatSession->messages()->create([
@@ -191,6 +197,19 @@ class ChatController extends Controller
     private function titleFromQuestion(string $question): string
     {
         return Str::limit(preg_replace('/\s+/', ' ', trim($question)) ?: 'Neuer Chat', 80);
+    }
+
+    private function canSeeDiagnostics(Request $request): bool
+    {
+        return (bool) config('app.debug') || (bool) $request->user()?->is_admin;
+    }
+
+    private function sanitizeDiagnostic(string $message): string
+    {
+        $message = preg_replace('/(Authorization:\s*Bearer\s+)[^\s]+/i', '$1[redacted]', $message) ?? $message;
+        $message = preg_replace('/([?&](?:token|api[_-]?key)=)[^&\s]+/i', '$1[redacted]', $message) ?? $message;
+
+        return Str::limit(trim($message) ?: 'No backend detail was provided.', 500);
     }
 
     private function trimHistory(ChatSession $session): void

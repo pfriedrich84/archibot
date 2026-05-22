@@ -65,13 +65,20 @@
         },
     ];
 
-    const rightNavItems: NavItem[] = [
+    const buildHoverText = $derived(
+        build?.commit_short
+            ? `Repository · current build ${build.ref ? `${build.ref}@` : ''}${build.commit_short}`
+            : 'Repository · build unknown',
+    );
+
+    const rightNavItems: NavItem[] = $derived([
         {
             title: 'Repository',
             href: 'https://github.com/pfriedrich84/archibot',
             icon: Folder,
+            tooltip: buildHoverText,
         },
-    ];
+    ]);
 </script>
 
 <div>
@@ -181,25 +188,6 @@
             </div>
 
             <div class="ml-auto flex items-center space-x-2">
-                {#if build?.commit_short}
-                    <a
-                        href={`https://github.com/pfriedrich84/archibot/commit/${build.commit}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="hidden rounded-full border px-2 py-1 font-mono text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground md:inline-flex"
-                        title={`Current build ${build.ref ? `${build.ref} @ ` : ''}${build.commit}`}
-                    >
-                        {build.ref ? `${build.ref}@` : ''}{build.commit_short}
-                    </a>
-                {:else}
-                    <span
-                        class="hidden rounded-full border px-2 py-1 text-xs text-muted-foreground md:inline-flex"
-                        title="Build commit is not available in this deployment"
-                    >
-                        build unknown
-                    </span>
-                {/if}
-
                 <div class="relative flex items-center space-x-1">
                     <Button
                         variant="ghost"
@@ -223,6 +211,8 @@
                                                 rel="noopener noreferrer"
                                                 {...props}
                                                 class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9 group cursor-pointer"
+                                                title={item.tooltip ??
+                                                    item.title}
                                             >
                                                 <span class="sr-only"
                                                     >{item.title}</span
@@ -234,7 +224,7 @@
                                         {/snippet}
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>{item.title}</p>
+                                        <p>{item.tooltip ?? item.title}</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>

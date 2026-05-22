@@ -136,7 +136,7 @@ class ChatTest extends TestCase
 
     public function test_chat_backend_failure_returns_error_without_fake_assistant_message(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
         {
             public function ask(string $question, array $history): ChatRagResult
@@ -148,7 +148,8 @@ class ChatTest extends TestCase
         $response = $this->actingAs($user)
             ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
             ->assertStatus(502)
-            ->assertJsonPath('message', 'Chat backend failed. Please check the AI provider and Paperless configuration.');
+            ->assertJsonPath('message', 'Chat backend failed. Please check the AI provider and Paperless configuration.')
+            ->assertJsonPath('detail', 'connection refused');
 
         $sessionId = $response->json('session_id');
         $this->assertNotEmpty($sessionId);
@@ -162,6 +163,24 @@ class ChatTest extends TestCase
             'role' => 'assistant',
             'content' => 'Fehler bei der Verarbeitung. Bitte später erneut versuchen.',
         ]);
+    }
+
+    public function test_chat_backend_diagnostics_are_hidden_from_non_admins(): void
+    {
+        config(['app.debug' => false]);
+        $user = User::factory()->create(['is_admin' => false]);
+        $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
+        {
+            public function ask(string $question, array $history): ChatRagResult
+            {
+                throw new \RuntimeException('provider detail');
+            }
+        });
+
+        $this->actingAs($user)
+            ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
+            ->assertStatus(502)
+            ->assertJsonMissingPath('detail');
     }
 
     public function test_empty_question_is_rejected(): void

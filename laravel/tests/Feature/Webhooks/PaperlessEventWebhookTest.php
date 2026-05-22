@@ -13,9 +13,9 @@ class PaperlessEventWebhookTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_event_webhook_persists_delivery_and_received_event(): void
+    public function test_simple_webhook_alias_persists_delivery_and_received_event(): void
     {
-        $this->postJson(route('api.webhooks.paperless'), [
+        $this->postJson(route('webhook.paperless'), [
             'event' => 'document_created',
             'document' => ['modified' => '2026-05-08T12:00:00Z'],
             'object' => ['id' => 42],
@@ -36,6 +36,25 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame('webhook.received', $event->event_type);
         $this->assertSame($delivery->id, $event->webhook_delivery_id);
         $this->assertSame(42, $event->paperless_document_id);
+    }
+
+    public function test_event_webhook_persists_delivery_and_received_event(): void
+    {
+        $this->postJson(route('api.webhooks.paperless'), [
+            'event' => 'document_created',
+            'document_id' => 43,
+        ])->assertOk()->assertJson([
+            'status' => 'queued',
+            'duplicate' => false,
+            'document_id' => 43,
+        ]);
+
+        $this->assertDatabaseHas('webhook_deliveries', [
+            'source' => 'paperless',
+            'event_type' => 'document_created',
+            'paperless_document_id' => 43,
+            'status' => WebhookDelivery::STATUS_QUEUED,
+        ]);
     }
 
     public function test_event_webhook_redacts_persisted_secrets_but_hashes_original_payload(): void

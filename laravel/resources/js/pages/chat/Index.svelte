@@ -238,8 +238,13 @@
             const payload = await response.json().catch(() => ({}));
 
             if (!response.ok) {
+                const message =
+                    payload.message ?? 'Question could not be answered.';
+
                 throw new Error(
-                    payload.message ?? 'Question could not be answered.',
+                    payload.detail
+                        ? `${message} Detail: ${payload.detail}`
+                        : message,
                 );
             }
 

@@ -27,6 +27,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::prefix(config('archibot.path_prefix'))->group(function () {
     Route::get('/healthz', HealthCheckController::class)->name('healthz');
 
+    Route::post('/webhook', PaperlessEventWebhookController::class)->name('webhook.paperless');
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
     Route::post('/webhook/new', [PaperlessWebhookController::class, 'new'])->name('webhook.new');
     Route::post('/webhook/edit', [PaperlessWebhookController::class, 'edit'])->name('webhook.edit');
