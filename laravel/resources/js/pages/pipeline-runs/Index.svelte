@@ -13,6 +13,7 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDateTime } from '@/lib/datetime';
 
     type LinkedCommand = {
         id: number;
@@ -119,7 +120,7 @@
                     <div>Phase: {run.progress_current_phase ?? '—'}</div>
                     <div>Events: {run.events_count}</div>
                     <div>Items: {run.items_count}</div>
-                    <div>Updated: {run.updated_at ?? '—'}</div>
+                    <div>Updated: {formatDateTime(run.updated_at)}</div>
                     <div>
                         Command: {#if run.command}#{run.command.id} · {run
                                 .command.type} · {run.command

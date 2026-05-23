@@ -42,6 +42,6 @@
         </div>
     {/if}
 </button>
-{#if name}
-    <input type="hidden" {name} {value} />
+{#if name && checked}
+    <input type="hidden" {name} value={value ?? '1'} />
 {/if}

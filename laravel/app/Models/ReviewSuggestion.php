@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -69,6 +70,33 @@ class ReviewSuggestion extends Model
             'original_proposed_snapshot' => 'array',
             'reviewed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Query for the latest review suggestion per Paperless document.
+     *
+     * Keep review-page and dashboard counting logic on this single shared base
+     * query so both screens report the same user-facing queue size.
+     *
+     * @return Builder<ReviewSuggestion>
+     */
+    public static function latestPerDocumentQuery(): Builder
+    {
+        return self::query()->whereIn('id', self::query()
+            ->selectRaw('MAX(id)')
+            ->groupBy('paperless_document_id'));
+    }
+
+    /** @return Builder<ReviewSuggestion> */
+    public static function pendingReviewQueueQuery(): Builder
+    {
+        return self::latestPerDocumentQuery()
+            ->where('status', self::STATUS_PENDING);
+    }
+
+    public static function pendingReviewQueueCount(): int
+    {
+        return self::pendingReviewQueueQuery()->count();
     }
 
     public function workerJob(): BelongsTo

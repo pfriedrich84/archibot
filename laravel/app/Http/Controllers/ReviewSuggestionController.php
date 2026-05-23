@@ -37,15 +37,11 @@ class ReviewSuggestionController extends Controller
         }
 
         $status = $filters['status'] ?? ReviewSuggestion::STATUS_PENDING;
-        $query = ReviewSuggestion::query();
+        $query = $status === ReviewSuggestion::STATUS_PENDING
+            ? ReviewSuggestion::pendingReviewQueueQuery()
+            : ReviewSuggestion::query();
 
-        if ($status === ReviewSuggestion::STATUS_PENDING) {
-            $query->whereIn('id', ReviewSuggestion::query()
-                ->selectRaw('MAX(id)')
-                ->groupBy('paperless_document_id'));
-        }
-
-        if ($status !== 'all') {
+        if ($status !== 'all' && $status !== ReviewSuggestion::STATUS_PENDING) {
             $query->where('status', $status);
         }
         if (isset($filters['min_conf'])) {
@@ -116,9 +112,11 @@ class ReviewSuggestionController extends Controller
 
     public function show(Request $request, ReviewSuggestion $reviewSuggestion): Response
     {
+        $entityOptions = $this->entityOptions($request);
+
         return Inertia::render('review/Show', [
-            'suggestion' => $this->detail($reviewSuggestion),
-            'entityOptions' => $this->entityOptions($request),
+            'suggestion' => $this->detail($reviewSuggestion, $entityOptions),
+            'entityOptions' => $entityOptions,
         ]);
     }
 
@@ -389,6 +387,24 @@ class ReviewSuggestionController extends Controller
         }
     }
 
+    /**
+     * @param  array<int, array{id: int, name: string}>  $options
+     */
+    private function entityName(array $options, ?int $id): ?string
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        foreach ($options as $option) {
+            if ((int) $option['id'] === $id) {
+                return (string) $option['name'];
+            }
+        }
+
+        return null;
+    }
+
     private function assertReviewable(ReviewSuggestion $suggestion): void
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
@@ -421,8 +437,11 @@ class ReviewSuggestionController extends Controller
             'confidence' => $suggestion->confidence,
             'original_title' => $suggestion->original_title,
             'proposed_title' => $suggestion->proposed_title,
+            'proposed_correspondent_id' => $suggestion->proposed_correspondent_id,
             'proposed_correspondent_name' => $suggestion->proposed_correspondent_name,
+            'proposed_document_type_id' => $suggestion->proposed_document_type_id,
             'proposed_document_type_name' => $suggestion->proposed_document_type_name,
+            'proposed_storage_path_id' => $suggestion->proposed_storage_path_id,
             'proposed_storage_path_name' => $suggestion->proposed_storage_path_name,
             'judge_verdict' => $suggestion->judge_verdict,
             'created_at' => $suggestion->created_at?->toISOString(),
@@ -430,9 +449,10 @@ class ReviewSuggestionController extends Controller
     }
 
     /**
+     * @param  array{correspondents: array<int, array{id: int, name: string}>, documentTypes: array<int, array{id: int, name: string}>, storagePaths: array<int, array{id: int, name: string}>}  $entityOptions
      * @return array<string, mixed>
      */
-    private function detail(ReviewSuggestion $suggestion): array
+    private function detail(ReviewSuggestion $suggestion, array $entityOptions): array
     {
         return [
             ...$this->summary($suggestion),
@@ -443,8 +463,11 @@ class ReviewSuggestionController extends Controller
                 'title' => $suggestion->original_title,
                 'date' => $suggestion->original_date?->toDateString(),
                 'correspondent_id' => $suggestion->original_correspondent_id,
+                'correspondent_name' => $this->entityName($entityOptions['correspondents'], $suggestion->original_correspondent_id),
                 'document_type_id' => $suggestion->original_document_type_id,
+                'document_type_name' => $this->entityName($entityOptions['documentTypes'], $suggestion->original_document_type_id),
                 'storage_path_id' => $suggestion->original_storage_path_id,
+                'storage_path_name' => $this->entityName($entityOptions['storagePaths'], $suggestion->original_storage_path_id),
                 'tags' => $suggestion->original_tags ?? [],
             ],
             'proposed' => [

@@ -14,6 +14,8 @@
 <script lang="ts">
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import { formatDate } from '@/lib/datetime';
+    import { paperlessLabel } from '@/lib/paperless';
     import { show as reviewShow } from '@/routes/review';
 
     type InboxDocument = {
@@ -86,8 +88,7 @@
     <div
         class="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground"
     >
-        Inbox tag: {inboxTagName ??
-            `reference ${inboxTagId || 'not configured'}`}
+        Inbox tag: {paperlessLabel(inboxTagId, inboxTagName)}
     </div>
 
     {#if error}
@@ -111,19 +112,19 @@
                     </span>
                     {#if document.created_date}
                         <span class="text-muted-foreground">
-                            {document.created_date}
+                            {formatDate(document.created_date)}
                         </span>
                     {/if}
                 </div>
                 <div class="text-xs text-muted-foreground">
-                    Document reference {document.id} · Correspondent: {document.correspondent_name ??
-                        (document.correspondent_id
-                            ? `reference ${document.correspondent_id}`
-                            : '—')} · Type: {document.document_type_name ??
-                        (document.document_type_id
-                            ? `reference ${document.document_type_id}`
-                            : '—')} · Tags: {document.tags
-                        .map((tag) => tag.name ?? `reference ${tag.id}`)
+                    Document reference {document.id} · Correspondent: {paperlessLabel(
+                        document.correspondent_id,
+                        document.correspondent_name,
+                    )} · Type: {paperlessLabel(
+                        document.document_type_id,
+                        document.document_type_name,
+                    )} · Tags: {document.tags
+                        .map((tag) => paperlessLabel(tag.id, tag.name))
                         .join(', ') || '—'}
                 </div>
                 {#if document.review}

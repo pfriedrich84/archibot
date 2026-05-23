@@ -14,6 +14,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { paperlessLabel } from '@/lib/paperless';
 
     type EntityApproval = {
         id: number;
@@ -145,7 +146,10 @@
             <div class="border-b p-4 text-sm last:border-b-0">
                 <span class="font-medium">{entity.name}</span>
                 <span class="text-muted-foreground">
-                    · Paperless reference {entity.paperless_id ?? '—'} · Python sync
+                    · Paperless entity {paperlessLabel(
+                        entity.paperless_id,
+                        entity.name,
+                    )} · Python sync
                     {entity.sync_status ?? '—'}</span
                 >
             </div>

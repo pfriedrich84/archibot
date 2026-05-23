@@ -1,11 +1,15 @@
 <script lang="ts">
     import { Form, page } from '@inertiajs/svelte';
+    import { untrack } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDate } from '@/lib/datetime';
+    import { numericId, paperlessLabel } from '@/lib/paperless';
+    import type { PaperlessEntityOption } from '@/lib/paperless';
     import { accept, reject } from '@/routes/review';
 
-    type EntityOption = { id: number; name: string };
+    type EntityOption = PaperlessEntityOption;
 
     type Suggestion = {
         id: number;
@@ -40,21 +44,20 @@
         };
     } = $props();
 
-    const numericId = (value: unknown): number | null => {
-        if (value === null || value === undefined || value === '') {
-            return null;
-        }
-
-        const id = Number(value);
-
-        return Number.isInteger(id) && id > 0 ? id : null;
-    };
-
-    let selectedStoragePathId = $derived<number | ''>(
-        numericId(
-            suggestion.proposed.storage_path_id ??
-                suggestion.original.storage_path_id,
-        ) ?? '',
+    let selectedCorrespondentId = $state<number | ''>(
+        untrack(() => numericId(suggestion.proposed.correspondent_id) ?? ''),
+    );
+    let selectedDocumentTypeId = $state<number | ''>(
+        untrack(() => numericId(suggestion.proposed.document_type_id) ?? ''),
+    );
+    let selectedStoragePathId = $state<number | ''>(
+        untrack(
+            () =>
+                numericId(
+                    suggestion.proposed.storage_path_id ??
+                        suggestion.original.storage_path_id,
+                ) ?? '',
+        ),
     );
 
     const selectedStoragePathName = $derived(
@@ -75,33 +78,14 @@
         return String(value);
     };
 
+    const dateValue = (value: unknown): string =>
+        formatDate(typeof value === 'string' ? value : null);
+
     const entityValue = (
         idValue: unknown,
         nameValue: unknown,
         options: EntityOption[],
-    ): string => {
-        const id = numericId(idValue);
-        const explicitName =
-            typeof nameValue === 'string' ? nameValue.trim() : '';
-        const optionName = id
-            ? options.find((option) => option.id === id)?.name
-            : '';
-        const label = explicitName || optionName || '';
-
-        if (label && id) {
-            return `${label} (#${id})`;
-        }
-
-        if (label) {
-            return label;
-        }
-
-        if (id) {
-            return `Unknown (#${id})`;
-        }
-
-        return '—';
-    };
+    ): string => paperlessLabel(idValue, nameValue, options);
 
     const tagValues = (value: unknown): string => {
         if (!Array.isArray(value) || value.length === 0) {
@@ -142,7 +126,7 @@
 
     const originalRows = $derived([
         { label: 'Title', value: textValue(suggestion.original.title) },
-        { label: 'Date', value: textValue(suggestion.original.date) },
+        { label: 'Date', value: dateValue(suggestion.original.date) },
         {
             label: 'Correspondent',
             value: entityValue(
@@ -172,7 +156,7 @@
 
     const proposedRows = $derived([
         { label: 'Title', value: textValue(suggestion.proposed.title) },
-        { label: 'Date', value: textValue(suggestion.proposed.date) },
+        { label: 'Date', value: dateValue(suggestion.proposed.date) },
         {
             label: 'Correspondent',
             value: entityValue(
@@ -313,16 +297,13 @@
                         <span class="text-muted-foreground">Correspondent</span>
                         <select
                             name="proposed_correspondent_id"
+                            bind:value={selectedCorrespondentId}
                             class="h-9 rounded-md border bg-background px-3"
                         >
                             <option value="">No selected correspondent</option>
                             {#each entityOptions.correspondents as option (option.id)}
-                                <option
-                                    value={option.id}
-                                    selected={option.id ===
-                                        suggestion.proposed.correspondent_id}
-                                >
-                                    {option.name} (#{option.id})
+                                <option value={option.id}>
+                                    {paperlessLabel(option.id, option.name)}
                                 </option>
                             {/each}
                         </select>
@@ -343,16 +324,13 @@
                         <span class="text-muted-foreground">Document type</span>
                         <select
                             name="proposed_document_type_id"
+                            bind:value={selectedDocumentTypeId}
                             class="h-9 rounded-md border bg-background px-3"
                         >
                             <option value="">No selected document type</option>
                             {#each entityOptions.documentTypes as option (option.id)}
-                                <option
-                                    value={option.id}
-                                    selected={option.id ===
-                                        suggestion.proposed.document_type_id}
-                                >
-                                    {option.name} (#{option.id})
+                                <option value={option.id}>
+                                    {paperlessLabel(option.id, option.name)}
                                 </option>
                             {/each}
                         </select>
@@ -378,7 +356,9 @@
                         >
                             <option value="">No selected storage path</option>
                             {#each entityOptions.storagePaths as option (option.id)}
-                                <option value={option.id}>{option.name}</option>
+                                <option value={option.id}>
+                                    {paperlessLabel(option.id, option.name)}
+                                </option>
                             {/each}
                         </select>
                         <input

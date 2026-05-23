@@ -7,6 +7,7 @@ type DisplayPreferences = {
 
 const ISO_DATE_TIME_PATTERN =
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_FORMAT = 'dd.mm.yyyy hh:mm:ss';
 
 function preferences(): DisplayPreferences {
@@ -49,6 +50,34 @@ function partsFor(date: Date, timezone: string): Record<string, string> {
 
 export function isIsoDateTime(value: unknown): value is string {
     return typeof value === 'string' && ISO_DATE_TIME_PATTERN.test(value);
+}
+
+export function formatDate(
+    value: string | null | undefined,
+    fallback = '—',
+): string {
+    if (!value) {
+        return fallback;
+    }
+
+    if (!ISO_DATE_PATTERN.test(value)) {
+        return formatDateTime(value, fallback);
+    }
+
+    const [year, month, day] = value.split('-');
+    const format = userFormat().replace(/[\sT,]+[hH][hH]?.*$/, '');
+
+    return format.replace(/yyyy|YYYY|dd|DD|mm/g, (token) => {
+        if (token === 'yyyy' || token === 'YYYY') {
+            return year;
+        }
+
+        if (token === 'dd' || token === 'DD') {
+            return day;
+        }
+
+        return month;
+    });
 }
 
 export function formatDateTime(

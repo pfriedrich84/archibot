@@ -14,6 +14,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
 
     type OcrReview = {
         id: number;
@@ -69,7 +70,9 @@
                     </div>
                     <h2 class="font-medium">OCR review {review.id}</h2>
                     <p class="text-sm text-muted-foreground">
-                        Status: {review.status}
+                        Status: {review.status} · Created {formatDateTime(
+                            review.created_at,
+                        )}
                         {#if review.write_back_error}
                             · Last write-back failed
                         {/if}

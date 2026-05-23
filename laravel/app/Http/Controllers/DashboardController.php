@@ -131,9 +131,7 @@ class DashboardController extends Controller
                     ->exists(),
             ],
             'counts' => [
-                'pending_reviews' => ReviewSuggestion::query()
-                    ->where('status', ReviewSuggestion::STATUS_PENDING)
-                    ->count(),
+                'pending_reviews' => ReviewSuggestion::pendingReviewQueueCount(),
                 'queued_or_running_workers' => WorkerJob::query()
                     ->whereIn('status', [WorkerJob::STATUS_QUEUED, WorkerJob::STATUS_RUNNING])
                     ->count(),

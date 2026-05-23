@@ -227,7 +227,9 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Progress updated</dt>
-                <dd class="font-medium">{run.progress_updated_at ?? '—'}</dd>
+                <dd class="font-medium">
+                    {formatDateTime(run.progress_updated_at)}
+                </dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Created</dt>
@@ -235,7 +237,7 @@
             </div>
             <div>
                 <dt class="text-muted-foreground">Updated</dt>
-                <dd class="font-medium">{run.updated_at ?? '—'}</dd>
+                <dd class="font-medium">{formatDateTime(run.updated_at)}</dd>
             </div>
             <div>
                 <dt class="text-muted-foreground">Started</dt>

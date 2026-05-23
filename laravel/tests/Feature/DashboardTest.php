@@ -34,6 +34,14 @@ class DashboardTest extends TestCase
         $user = User::factory()->create(['paperless_token' => 'user-token']);
         ReviewSuggestion::factory()->count(2)->create();
         ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_REJECTED]);
+        $stalePendingSuggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 999,
+            'status' => ReviewSuggestion::STATUS_PENDING,
+        ]);
+        ReviewSuggestion::factory()->create([
+            'paperless_document_id' => $stalePendingSuggestion->paperless_document_id,
+            'status' => ReviewSuggestion::STATUS_ACCEPTED,
+        ]);
         WorkerJob::factory()->create(['status' => WorkerJob::STATUS_RUNNING]);
         WorkerJob::factory()->create([
             'status' => WorkerJob::STATUS_QUEUED,

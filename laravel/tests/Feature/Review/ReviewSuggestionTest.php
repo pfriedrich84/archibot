@@ -106,7 +106,14 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_authenticated_users_can_view_review_detail(): void
     {
-        $user = User::factory()->create();
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/correspondents/*' => Http::response(['results' => [['id' => 7, 'name' => 'Original sender']]], 200),
+            'paperless.example/api/document_types/*' => Http::response(['results' => [['id' => 8, 'name' => 'Invoice']]], 200),
+            'paperless.example/api/storage_paths/*' => Http::response(['results' => [['id' => 9, 'name' => 'Archive']]], 200),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
         $workerJob = WorkerJob::factory()->create();
         $commitWorkerJob = WorkerJob::factory()->create();
         $suggestion = ReviewSuggestion::factory()->create([
@@ -114,6 +121,9 @@ class ReviewSuggestionTest extends TestCase
             'reasoning' => 'Classifier reasoning',
             'worker_job_id' => $workerJob->id,
             'commit_worker_job_id' => $commitWorkerJob->id,
+            'original_correspondent_id' => 7,
+            'original_document_type_id' => 8,
+            'original_storage_path_id' => 9,
         ]);
 
         $this->actingAs($user)
@@ -126,6 +136,9 @@ class ReviewSuggestionTest extends TestCase
                 ->where('suggestion.worker_job_url', route('worker-jobs.show', $workerJob))
                 ->where('suggestion.commit_worker_job_url', route('worker-jobs.show', $commitWorkerJob))
                 ->where('suggestion.original.title', 'Original document title')
+                ->where('suggestion.original.correspondent_name', 'Original sender')
+                ->where('suggestion.original.document_type_name', 'Invoice')
+                ->where('suggestion.original.storage_path_name', 'Archive')
             );
     }
 

@@ -16,6 +16,8 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { formatDateTime } from '@/lib/datetime';
+    import { paperlessLabel } from '@/lib/paperless';
     import { toUrl } from '@/lib/utils';
     import { show } from '@/routes/review';
 
@@ -27,8 +29,11 @@
         judge_verdict: string | null;
         original_title: string | null;
         proposed_title: string | null;
+        proposed_correspondent_id: number | null;
         proposed_correspondent_name: string | null;
+        proposed_document_type_id: number | null;
         proposed_document_type_name: string | null;
+        proposed_storage_path_id: number | null;
         proposed_storage_path_name: string | null;
         created_at: string | null;
     };
@@ -229,6 +234,7 @@
                 <div class="space-y-1">
                     <div class="text-sm text-muted-foreground">
                         Paperless document reference {suggestion.paperless_document_id}
+                        · Created {formatDateTime(suggestion.created_at)}
                         {#if suggestion.confidence !== null}
                             · {suggestion.confidence}% confidence
                         {/if}
@@ -243,13 +249,18 @@
                             'Untitled document'}
                     </h2>
                     <p class="text-sm text-muted-foreground">
-                        {suggestion.proposed_correspondent_name ??
-                            'No correspondent suggested'}
-                        · {suggestion.proposed_document_type_name ??
-                            'No document type suggested'}
-                        {#if suggestion.proposed_storage_path_name}
-                            · {suggestion.proposed_storage_path_name}
-                        {/if}
+                        {paperlessLabel(
+                            suggestion.proposed_correspondent_id,
+                            suggestion.proposed_correspondent_name,
+                        )}
+                        · {paperlessLabel(
+                            suggestion.proposed_document_type_id,
+                            suggestion.proposed_document_type_name,
+                        )}
+                        · {paperlessLabel(
+                            suggestion.proposed_storage_path_id,
+                            suggestion.proposed_storage_path_name,
+                        )}
                     </p>
                 </div>
 

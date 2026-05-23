@@ -16,6 +16,7 @@
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
     import { Spinner } from '@/components/ui/spinner';
+    import { formatDateTime } from '@/lib/datetime';
 
     type Snapshot = {
         status: string;
@@ -237,7 +238,9 @@
                     <div class="text-muted-foreground">
                         Status: {latestEmbeddingBuildCommand.status}
                         {#if latestEmbeddingBuildCommand.updated_at}
-                            · Updated {latestEmbeddingBuildCommand.updated_at}
+                            · Updated {formatDateTime(
+                                latestEmbeddingBuildCommand.updated_at,
+                            )}
                         {/if}
                     </div>
                     {#if latestEmbeddingBuildCommand.error}

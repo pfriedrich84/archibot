@@ -74,6 +74,18 @@ class AdminSettingsTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_clear_boolean_settings_when_checkbox_is_unchecked(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        AppSetting::put('classification.enable_judge_verification', '1');
+
+        $this->actingAs($admin)->patch(route('admin.settings.update'), [
+            '__settings_keys' => ['classification.enable_judge_verification'],
+        ])->assertRedirect();
+
+        $this->assertSame('0', AppSetting::getValue('classification.enable_judge_verification'));
+    }
+
     public function test_admin_subpage_update_preserves_settings_from_other_sections(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
