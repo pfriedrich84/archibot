@@ -26,6 +26,7 @@
         paperless_available: boolean | null;
         paperless_error: string | null;
         inbox_tag_id: number;
+        inbox_tag_label: string | null;
         llm_provider: string | null;
         ollama_or_provider_configured: boolean;
         ocr_mode: string | null;
@@ -242,7 +243,8 @@
             label: 'Inbox tag',
             ok: status.inbox_tag_id > 0,
             detail: status.inbox_tag_id
-                ? `Tag #${status.inbox_tag_id}`
+                ? (status.inbox_tag_label ??
+                  `Unknown Paperless tag (#${status.inbox_tag_id})`)
                 : 'Missing',
             problem: status.inbox_tag_id
                 ? undefined

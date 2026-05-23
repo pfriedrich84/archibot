@@ -25,6 +25,7 @@ class DashboardController extends Controller
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $paperlessAvailable = null;
         $paperlessError = null;
+        $inboxTagLabel = null;
         $pendingRedispatchSeconds = (int) config('archibot_workers.pending_redispatch_seconds', 900);
         $pendingRedispatchCutoff = now()->subSeconds($pendingRedispatchSeconds);
         $staleRunningCutoff = now()->subMinutes((int) config('archibot_workers.stale_running_minutes', 10));
@@ -37,8 +38,20 @@ class DashboardController extends Controller
 
         if ($paperlessUrl && $request->user()->paperless_token) {
             try {
-                $paperlessAvailable = app(PaperlessClient::class, ['baseUrl' => $paperlessUrl])
-                    ->ping($request->user()->paperless_token);
+                $client = app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+                $paperlessAvailable = $client->ping($request->user()->paperless_token);
+
+                if ($paperlessAvailable && $inboxTagId > 0) {
+                    try {
+                        $inboxTag = collect($client->tags($request->user()->paperless_token))
+                            ->firstWhere('id', $inboxTagId);
+                        $inboxTagLabel = is_array($inboxTag)
+                            ? sprintf('%s (#%s)', $inboxTag['name'] ?? 'Unnamed tag', $inboxTag['id'])
+                            : null;
+                    } catch (\Throwable) {
+                        $inboxTagLabel = null;
+                    }
+                }
             } catch (\Throwable $exception) {
                 $paperlessAvailable = false;
                 $paperlessError = $exception->getMessage();
@@ -84,6 +97,7 @@ class DashboardController extends Controller
                 'paperless_available' => $paperlessAvailable,
                 'paperless_error' => $paperlessError,
                 'inbox_tag_id' => $inboxTagId,
+                'inbox_tag_label' => $inboxTagLabel,
                 'llm_provider' => $llmProvider,
                 'ollama_or_provider_configured' => filled($ollamaUrl) || filled($llmProvider),
                 'ocr_mode' => $ocrMode,

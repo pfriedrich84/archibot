@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Services\Ollama\OllamaClient;
+use App\Services\Paperless\PaperlessClient;
 use App\Services\Settings\PythonRuntimeConfigExporter;
 use App\Services\Settings\SettingsCatalog;
 use Illuminate\Http\RedirectResponse;
@@ -19,13 +20,38 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function edit(Request $request, SettingsCatalog $catalog): Response
+    public function edit(Request $request, SettingsCatalog $catalog, ?string $section = null): Response
     {
         $this->authorizeAdmin($request);
 
+        $allGroups = $catalog->groupedForDisplay();
+        $sections = collect($allGroups)
+            ->map(fn (array $group): array => [
+                'name' => $group['name'],
+                'slug' => $group['slug'],
+                'count' => count($group['settings']),
+                'href' => route('admin.settings.edit', ['section' => $group['slug']]),
+            ])
+            ->push([
+                'name' => 'System prompts',
+                'slug' => 'prompts',
+                'count' => count($this->promptSpecs()),
+                'href' => route('admin.settings.edit', ['section' => 'prompts']),
+            ])
+            ->values()
+            ->all();
+
+        $activeSection = $section ?: ($sections[0]['slug'] ?? 'paperless');
+        abort_unless(collect($sections)->contains('slug', $activeSection), 404);
+
         return Inertia::render('admin/Settings', [
-            'groups' => $catalog->groupedForDisplay(),
-            'prompts' => $this->promptPayloads(),
+            'groups' => $activeSection === 'prompts'
+                ? []
+                : collect($allGroups)->where('slug', $activeSection)->values()->all(),
+            'sections' => $sections,
+            'activeSection' => $activeSection,
+            'prompts' => $activeSection === 'prompts' ? $this->promptPayloads() : [],
+            'paperlessTagOptions' => $this->paperlessTagOptions($request),
         ]);
     }
 
@@ -70,9 +96,18 @@ class SettingsController extends Controller
         $this->authorizeAdmin($request);
 
         $definitions = $catalog->definitions();
+        $requestedKeys = collect($request->input('__settings_keys', []))
+            ->filter(fn (mixed $key): bool => is_string($key) && array_key_exists($key, $definitions))
+            ->values();
+
+        if ($requestedKeys->isEmpty()) {
+            $requestedKeys = collect(array_keys($definitions));
+        }
+
         $rules = [];
 
-        foreach ($definitions as $key => $definition) {
+        foreach ($requestedKeys as $key) {
+            $definition = $definitions[$key];
             $inputName = $catalog->inputNameForKey($key);
             $type = $definition['type'] ?? 'text';
             $fieldRules = [(bool) ($definition['required'] ?? false) ? 'required' : 'nullable'];
@@ -103,7 +138,8 @@ class SettingsController extends Controller
         $validated = $request->validate($rules);
         $changes = [];
 
-        foreach ($definitions as $key => $definition) {
+        foreach ($requestedKeys as $key) {
+            $definition = $definitions[$key];
             $inputName = $catalog->inputNameForKey($key);
             $sensitive = (bool) Arr::get($definition, 'sensitive', false);
             $oldValue = AppSetting::getValue($key);
@@ -263,6 +299,30 @@ class SettingsController extends Controller
         }
 
         return $profiles;
+    }
+
+    /** @return array<int, array{id: int, label: string}> */
+    private function paperlessTagOptions(Request $request): array
+    {
+        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $token = $request->user()?->paperless_token;
+
+        if (! $paperlessUrl || ! $token) {
+            return [];
+        }
+
+        try {
+            return collect(app(PaperlessClient::class, ['baseUrl' => $paperlessUrl])->tags($token))
+                ->map(fn (array $tag): array => [
+                    'id' => (int) $tag['id'],
+                    'label' => sprintf('%s (#%s)', $tag['name'] ?? 'Unnamed tag', $tag['id']),
+                ])
+                ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values()
+                ->all();
+        } catch (\RuntimeException) {
+            return [];
+        }
     }
 
     /** @return array<int, array<string, mixed>> */

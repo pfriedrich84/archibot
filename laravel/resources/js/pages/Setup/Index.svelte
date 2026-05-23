@@ -282,7 +282,7 @@
                             <option value="">Select inbox tag</option>
                             {#each tags as tag (tag.id)}
                                 <option value={String(tag.id)}
-                                    >{tag.name}</option
+                                    >{tag.name} (#{tag.id})</option
                                 >
                             {/each}
                         </select>
@@ -302,7 +302,7 @@
                             <option value="">None</option>
                             {#each tags as tag (tag.id)}
                                 <option value={String(tag.id)}
-                                    >{tag.name}</option
+                                    >{tag.name} (#{tag.id})</option
                                 >
                             {/each}
                         </select>
@@ -324,7 +324,7 @@
                             <option value="">None</option>
                             {#each tags as tag (tag.id)}
                                 <option value={String(tag.id)}
-                                    >{tag.name}</option
+                                    >{tag.name} (#{tag.id})</option
                                 >
                             {/each}
                         </select>

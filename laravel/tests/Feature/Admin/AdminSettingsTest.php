@@ -27,10 +27,29 @@ class AdminSettingsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/Settings')
                 ->has('groups')
-                ->has('prompts')
+                ->has('sections')
+                ->where('activeSection', 'paperless')
+                ->where('sections.0.name', 'Paperless')
                 ->where('groups.0.name', 'Paperless')
                 ->where('groups.0.settings.0.key', 'paperless.url')
                 ->where('groups.0.settings.0.value', 'https://paperless.test')
+            );
+    }
+
+    public function test_admin_settings_can_show_a_single_section(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'embedding']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/Settings')
+                ->where('activeSection', 'embedding')
+                ->has('groups', 1)
+                ->where('groups.0.name', 'Embedding')
+                ->where('groups.0.settings.0.key', 'embedding.model')
+                ->where('prompts', [])
             );
     }
 
@@ -53,6 +72,21 @@ class AdminSettingsTest extends TestCase
             'event' => 'admin_settings.updated',
             'target_type' => 'app_settings',
         ]);
+    }
+
+    public function test_admin_subpage_update_preserves_settings_from_other_sections(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        AppSetting::put('paperless.url', 'https://paperless-kept.test');
+        AppSetting::put('embedding.hybrid_search_weight', '0.4');
+
+        $this->actingAs($admin)->patch(route('admin.settings.update'), [
+            '__settings_keys' => ['embedding.hybrid_search_weight'],
+            'embedding_hybrid_search_weight' => '0.8',
+        ])->assertRedirect();
+
+        $this->assertSame('https://paperless-kept.test', AppSetting::getValue('paperless.url'));
+        $this->assertSame('0.8', AppSetting::getValue('embedding.hybrid_search_weight'));
     }
 
     public function test_admin_can_update_telegram_and_mcp_runtime_settings(): void

@@ -33,6 +33,7 @@ class SettingsCatalog
                     'key' => $key,
                     'input_name' => Str::slug(str_replace('.', '_', $key), '_'),
                     'group' => $definition['group'],
+                    'group_slug' => Str::slug($definition['group']),
                     'label' => $definition['label'],
                     'type' => $definition['type'] ?? 'text',
                     'options' => $definition['options'] ?? [],
@@ -44,11 +45,13 @@ class SettingsCatalog
                     'min' => $definition['min'] ?? null,
                     'max' => $definition['max'] ?? null,
                     'step' => $definition['step'] ?? null,
+                    'entity' => $definition['entity'] ?? null,
                 ];
             })
             ->groupBy('group')
             ->map(fn (Collection $settings, string $group): array => [
                 'name' => $group,
+                'slug' => Str::slug($group),
                 'settings' => $settings->values()->all(),
             ])
             ->values()

@@ -18,16 +18,18 @@ return [
         'paperless.inbox_tag_id' => [
             'legacy' => 'paperless_inbox_tag_id',
             'group' => 'Paperless',
-            'label' => 'Inbox tag ID',
+            'label' => 'Inbox tag',
             'type' => 'number',
+            'entity' => 'paperless_tag',
             'default' => '0',
-            'help' => 'Paperless tag ID used as inbox.',
+            'help' => 'Paperless tag used as inbox. Display as Label (#ID); never expose a bare numeric tag ID in the GUI.',
         ],
         'paperless.processed_tag_id' => [
             'legacy' => 'paperless_processed_tag_id',
             'group' => 'Paperless',
-            'label' => 'Processed tag ID',
+            'label' => 'Processed tag',
             'type' => 'number',
+            'entity' => 'paperless_tag',
             'default' => '',
             'help' => 'Optional Paperless tag added after commit.',
         ],
@@ -139,8 +141,9 @@ return [
         'ocr.requested_tag_id' => [
             'legacy' => 'ocr_requested_tag_id',
             'group' => 'OCR',
-            'label' => 'OCR requested tag ID',
+            'label' => 'OCR requested tag',
             'type' => 'number',
+            'entity' => 'paperless_tag',
             'default' => '0',
         ],
         'ocr.text_model' => [
