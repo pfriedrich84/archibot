@@ -13,7 +13,8 @@ typer<=0.24.1
 # ArchiBot no longer imports these web transport packages directly, but the
 # upstream mcp package currently declares them even when using stdio transport.
 mcp<=1.27.0
-starlette<=1.0.0
+# starlette 1.0.1 is a security fix for PYSEC-2026-161 (allowed as age exception)
+starlette<=1.0.1
 uvicorn<=0.46.0
 sse-starlette<=3.3.4
 python-multipart<=0.0.27
