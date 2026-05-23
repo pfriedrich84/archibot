@@ -25,6 +25,8 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization.
 - [`decisions/`](decisions/) — akzeptierte Architekturentscheidungen.
 - [`governance/repository-governance.md`](governance/repository-governance.md) — Repository-Governance fuer den Umbau.
+- [`governance/trust-boundaries.md`](governance/trust-boundaries.md) — Runtime-, CI-, Tooling- und Integrationsgrenzen.
+- [`governance/release-governance.md`](governance/release-governance.md) — Release-, Rollback- und Provenance-Erwartungen.
 - [`governance/agent-workflow.md`](governance/agent-workflow.md) — Agenten- und Subagenten-Workflow.
 - [`governance/review-checklist.md`](governance/review-checklist.md) — Review-Checkliste fuer Migrationaenderungen.
 

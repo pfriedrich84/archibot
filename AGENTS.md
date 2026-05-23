@@ -20,7 +20,9 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 - [`docs/architecture/job-control-model.md`](docs/architecture/job-control-model.md) — current temporary job-control model and migration rules.
 - [`docs/architecture/`](docs/architecture/) — detailed architecture rules for webhooks, polling, progress, retries, observability and authorization.
 - [`docs/decisions/`](docs/decisions/) — accepted architecture decisions.
-- [`docs/governance/`](docs/governance/) — repository governance, agent workflow and review checklist.
+- [`docs/governance/`](docs/governance/) — repository governance, trust boundaries, release governance, agent workflow and review checklist.
+- [`docs/governance/trust-boundaries.md`](docs/governance/trust-boundaries.md) — runtime, CI, tool, and integration trust boundaries.
+- [`docs/governance/release-governance.md`](docs/governance/release-governance.md) — release, rollback, and provenance expectations.
 - [`docs/developer/architecture.md`](docs/developer/architecture.md) — current architecture and data flow.
 - [`docs/user/workflow.md`](docs/user/workflow.md) — review, approval, and whitelist workflow.
 - [`docs/user/configuration.md`](docs/user/configuration.md) — environment and runtime configuration.

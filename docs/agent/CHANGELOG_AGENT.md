@@ -1,5 +1,12 @@
 # Agent Governance Changelog
 
+## 2026-05-23
+
+- Added explicit governance docs for trust boundaries and release/rollback expectations.
+- Added CODEOWNERS for default repository ownership and high-risk governance/automation surfaces.
+- Updated the governance assessment after an active scan of docs, CI, Docker, dependency manifests, and workflow files.
+- Recorded the rule that `pyproject.toml`, `constraints.txt`, and Dockerfile Python install bounds should stay aligned.
+
 ## 2026-05-13
 
 - Updated governance, user, and developer docs to reflect local OpenAI-compatible/LiteLLM provider support alongside native Ollama.

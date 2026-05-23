@@ -12,11 +12,14 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 
 ## Source of truth
 
+- Agent operating contract: `AGENTS.md`, with modular instructions in `docs/agent/`.
 - Target architecture: `docs/implementation-plan-event-driven-archibot.md`.
 - Non-negotiable migration prompt: `docs/prompts/pi-dev-event-driven-migration.md`.
 - Architecture details: `docs/architecture/`.
 - ADRs: `docs/decisions/`.
 - Current phase status: `docs/implementation-notes/event-driven-phase-status.md` when present.
+- Trust boundaries: `docs/governance/trust-boundaries.md`.
+- Release expectations: `docs/governance/release-governance.md`.
 
 ## Commit scope
 
@@ -32,3 +35,19 @@ Use small logical commits by layer where possible:
 ## Review rule
 
 Every change must be checked against `docs/governance/review-checklist.md` and the non-negotiable architecture rules in the migration prompt.
+
+Changes to CI, GitHub Actions, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, or AI-provider routing must also be checked against `docs/governance/trust-boundaries.md`.
+
+Release-impacting changes must also be checked against `docs/governance/release-governance.md`.
+
+## Documentation topology
+
+- `AGENTS.md` is the canonical entrypoint for coding agents.
+- `docs/agent/` contains durable operating rules, checks, memory, anti-patterns, safety, and definition-of-done guidance.
+- `docs/decisions/` contains accepted architecture decisions for the event-driven migration.
+- `docs/architecture/` contains detailed target contracts and invariants.
+- `docs/developer/` contains implementation references for maintainers.
+- `docs/user/` contains operator and end-user documentation.
+- `docs/governance/` contains collaboration, review, trust-boundary, and release-governance guidance.
+
+Avoid moving or renaming documents unless the target ownership is obvious and the benefit outweighs review noise.

@@ -42,6 +42,8 @@ Use this checklist for every migration change.
 - Pipeline events are persisted for user-facing/audit state.
 - Structured logs include relevant correlation IDs.
 - Secrets, full OCR text, full document contents and full LLM prompts are not logged.
+- New or changed trust boundaries are documented in `docs/governance/trust-boundaries.md`.
+- Release, rollback, migration or provenance impact is documented when relevant.
 
 ## Validation
 

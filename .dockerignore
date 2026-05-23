@@ -23,6 +23,7 @@ laravel/.env.*
 laravel/vendor
 laravel/node_modules
 laravel/public/build
+laravel/bootstrap/cache/*.php
 laravel/storage/framework/views
 laravel/.phpunit.cache
 laravel/.phpunit.result.cache

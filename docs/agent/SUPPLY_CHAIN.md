@@ -9,6 +9,8 @@ ArchiBot already includes multiple supply-chain controls:
 - Known vulnerability allowlist file: `.pip-audit-known-vulnerabilities`.
 - CI security/audit steps for pip-audit, Docker build, Grype, and Trivy.
 - Docker linting with Hadolint.
+- Trust-boundary documentation in [`../governance/trust-boundaries.md`](../governance/trust-boundaries.md).
+- Release and rollback expectations in [`../governance/release-governance.md`](../governance/release-governance.md).
 
 ## Rules for dependency changes
 
@@ -42,5 +44,7 @@ Docker/runtime image changes should include when available:
 docker build -t archibot-local-check .
 grype archibot-local-check --only-fixed --fail-on high
 ```
+
+When changing dependency bounds, keep `pyproject.toml`, `constraints.txt`, and the dependency install list in `Dockerfile` aligned unless there is a documented reason for a narrower runtime bound.
 
 If a scanner is unavailable locally, say so and rely on CI for that specific scan.

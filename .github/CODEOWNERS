@@ -1,0 +1,13 @@
+# Default repository ownership.
+* @pfriedrich84
+
+# High-risk governance and automation surfaces.
+/.github/ @pfriedrich84
+/AGENTS.md @pfriedrich84
+/docs/agent/ @pfriedrich84
+/docs/governance/ @pfriedrich84
+/docs/decisions/ @pfriedrich84
+/Dockerfile @pfriedrich84
+/docker-compose.yml @pfriedrich84
+/constraints.txt @pfriedrich84
+/pyproject.toml @pfriedrich84
