@@ -264,7 +264,7 @@ async def _poll_loop() -> None:
     """Background task: poll Telegram for callback queries and messages."""
     log.info("telegram poll loop started")
     while True:
-        updates = await _telegram.get_updates(timeout=settings.telegram_poll_interval)
+        updates = await _telegram.get_updates(timeout=5)
         for update in updates:
             try:
                 if "callback_query" in update:

@@ -22,7 +22,6 @@ def test_prompts_dir_prefers_source_tree():
     [
         ("PAPERLESS_INBOX_TAG_ID", "paperless_inbox_tag_id", 0),
         ("PAPERLESS_PROCESSED_TAG_ID", "paperless_processed_tag_id", None),
-        ("ENABLE_TELEGRAM", "enable_telegram", False),
         ("OLLAMA_MODEL_SWAP_DELAY", "ollama_model_swap_delay", 8.0),
     ],
 )

@@ -462,6 +462,59 @@ def test_suggestion_row_maps_to_laravel_review_ingestion_shape() -> None:
     }
 
 
+def test_chat_ask_accepts_direct_chat_bridge_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps({"question": "Was steht in der Rechnung?", "history": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["cli", "chat-ask", "--input", str(input_path), "--output", str(output_path)]
+    )
+
+    mock_cmd = AsyncMock(return_value={"answer": "Die Antwort.", "sources": []})
+
+    with patch("app.cli.COMMANDS", {"chat-ask": ("desc", mock_cmd)}):
+        from app.cli import main
+
+        main()
+
+    mock_cmd.assert_called_once_with("Was steht in der Rechnung?", [])
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["answer"] == "Die Antwort."
+
+
+def test_chat_ask_accepts_worker_payload_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps({"id": 41, "type": "chat-ask", "payload": {"question": "Hallo", "history": []}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["cli", "chat-ask", "--input", str(input_path), "--output", str(output_path)]
+    )
+
+    mock_cmd = AsyncMock(return_value={"answer": "Antwort", "sources": []})
+
+    with patch("app.cli.COMMANDS", {"chat-ask": ("desc", mock_cmd)}):
+        from app.cli import main
+
+        main()
+
+    mock_cmd.assert_called_once_with("Hallo", [])
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["job_id"] == 41
+    assert payload["answer"] == "Antwort"
+
+
 def test_main_worker_contract_writes_failure_output(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -119,16 +119,10 @@ class Settings(BaseSettings):
 
     # --- GUI ---
     gui_port: int = 8088
-    gui_base_url: str = ""  # e.g. "https://classifier.local:8088" for Telegram links
+    gui_base_url: str = ""  # e.g. "https://classifier.local:8088" for external links
     gui_date_format: str = "%d.%m.%Y"
     app_timezone: str = "Europe/Vienna"
     cors_allowed_origins: str = ""  # comma-separated list, empty = disabled
-
-    # --- Telegram ---
-    enable_telegram: bool = False
-    telegram_bot_token: str = ""
-    telegram_chat_id: str = ""
-    telegram_poll_interval: int = 5  # seconds between getUpdates calls
 
     # --- Webhook ---
     webhook_secret: str = ""  # if set, POST /webhook/paperless requires this token
@@ -299,7 +293,6 @@ _SENSITIVE_STRING_SETTINGS = {
     "openai_api_key",
     "paperless_token",
     "paperless_webhook_secret",
-    "telegram_bot_token",
     "webhook_secret",
 }
 
@@ -788,7 +781,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "GUI",
         "External Base URL",
         "url",
-        help="External URL for Telegram links (e.g. https://classifier.local:8088)",
+        help="External URL for links generated outside the web UI (e.g. https://classifier.local:8088)",
     ),
     "gui_date_format": _fm(
         "GUI",
@@ -805,31 +798,6 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "GUI",
         "CORS Allowed Origins",
         help="Comma-separated allowlist of origins for cross-origin browser access. Empty = disabled.",
-    ),
-    # --- Telegram ---
-    "enable_telegram": _fm(
-        "Telegram",
-        "Enable Telegram",
-        "bool",
-        restart="component",
-        help="Enable Telegram notifications and inline approval",
-    ),
-    "telegram_bot_token": _fm(
-        "Telegram",
-        "Bot Token",
-        "password",
-        restart="component",
-        help="Telegram Bot API token from @BotFather",
-        sensitive=True,
-    ),
-    "telegram_chat_id": _fm(
-        "Telegram", "Chat ID", restart="component", help="Telegram chat/group ID for notifications"
-    ),
-    "telegram_poll_interval": _fm(
-        "Telegram",
-        "Poll Interval (seconds)",
-        "number",
-        help="Seconds between Telegram getUpdates calls",
     ),
     # --- Webhook ---
     "webhook_secret": _fm(

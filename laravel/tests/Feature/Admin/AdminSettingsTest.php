@@ -101,17 +101,14 @@ class AdminSettingsTest extends TestCase
         $this->assertSame('0.8', AppSetting::getValue('embedding.hybrid_search_weight'));
     }
 
-    public function test_admin_can_update_telegram_and_mcp_runtime_settings(): void
+    public function test_admin_can_update_mcp_runtime_settings(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
+        file_put_contents(config('archibot_settings.import_paths')[0], "ENABLE_TELEGRAM=1\nTELEGRAM_BOT_TOKEN=old-secret\n");
 
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
             'paperless_url' => 'https://paperless.test',
             'gui_base_url' => 'https://archibot.example',
-            'telegram_enable' => '1',
-            'telegram_bot_token' => 'telegram-secret',
-            'telegram_chat_id' => '-1001234567890',
-            'telegram_poll_interval' => '7',
             'mcp_api_key' => 'legacy-mcp-secret',
             'mcp_laravel_auth_enabled' => '1',
             'mcp_laravel_path' => '/app/laravel',
@@ -120,16 +117,14 @@ class AdminSettingsTest extends TestCase
         ]);
 
         $response->assertRedirect();
-        $this->assertSame('1', AppSetting::getValue('telegram.enable'));
-        $this->assertSame('telegram-secret', AppSetting::getValue('telegram.bot_token'));
         $this->assertSame('legacy-mcp-secret', AppSetting::getValue('mcp.api_key'));
 
         $runtimeConfig = file_get_contents(config('archibot_settings.import_paths')[0]);
         $this->assertStringContainsString('GUI_BASE_URL=https://archibot.example', $runtimeConfig);
-        $this->assertStringContainsString('ENABLE_TELEGRAM=1', $runtimeConfig);
-        $this->assertStringContainsString('TELEGRAM_BOT_TOKEN=telegram-secret', $runtimeConfig);
-        $this->assertStringContainsString('TELEGRAM_CHAT_ID=-1001234567890', $runtimeConfig);
-        $this->assertStringContainsString('TELEGRAM_POLL_INTERVAL=7', $runtimeConfig);
+        $this->assertStringNotContainsString('ENABLE_TELEGRAM=', $runtimeConfig);
+        $this->assertStringNotContainsString('TELEGRAM_BOT_TOKEN=', $runtimeConfig);
+        $this->assertStringNotContainsString('TELEGRAM_CHAT_ID=', $runtimeConfig);
+        $this->assertStringNotContainsString('TELEGRAM_POLL_INTERVAL=', $runtimeConfig);
         $this->assertStringContainsString('MCP_API_KEY=legacy-mcp-secret', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_AUTH_ENABLED=1', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_PATH=/app/laravel', $runtimeConfig);

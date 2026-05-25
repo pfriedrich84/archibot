@@ -317,7 +317,7 @@ return [
             'label' => 'External base URL',
             'type' => 'url',
             'default' => '',
-            'help' => 'Public ArchiBot URL used in Telegram review links. Leave empty to let Python fall back to localhost and GUI_PORT.',
+            'help' => 'Public ArchiBot URL used for links generated outside the web UI.'
         ],
         'gui.timezone' => [
             'legacy' => 'app_timezone',
@@ -336,39 +336,6 @@ return [
             'help' => 'Timestamp display format. Supported tokens: dd, mm, yyyy, hh, MM, ss (default: dd.mm.yyyy hh:mm:ss).',
         ],
 
-        'telegram.enable' => [
-            'legacy' => 'enable_telegram',
-            'group' => 'Telegram',
-            'label' => 'Enable Telegram notifications',
-            'type' => 'bool',
-            'default' => '0',
-            'help' => 'Optional notification and inline approval channel. Laravel web review remains canonical.',
-        ],
-        'telegram.bot_token' => [
-            'legacy' => 'telegram_bot_token',
-            'group' => 'Telegram',
-            'label' => 'Bot token',
-            'type' => 'password',
-            'default' => '',
-            'sensitive' => true,
-            'help' => 'Telegram Bot API token from @BotFather. Write-only after saving.',
-        ],
-        'telegram.chat_id' => [
-            'legacy' => 'telegram_chat_id',
-            'group' => 'Telegram',
-            'label' => 'Chat ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Telegram chat or group ID for ArchiBot notifications.',
-        ],
-        'telegram.poll_interval' => [
-            'legacy' => 'telegram_poll_interval',
-            'group' => 'Telegram',
-            'label' => 'Poll interval seconds',
-            'type' => 'number',
-            'default' => '5',
-            'help' => 'Seconds between Telegram getUpdates calls.',
-        ],
 
         'webhook.secret' => [
             'legacy' => 'webhook_secret',

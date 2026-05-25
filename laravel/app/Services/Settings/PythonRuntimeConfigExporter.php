@@ -23,6 +23,10 @@ class PythonRuntimeConfigExporter
         $path = $this->configPath();
         $values = $this->readExisting($path);
 
+        foreach ($this->deprecatedRuntimeKeys() as $key) {
+            unset($values[$key]);
+        }
+
         foreach ($this->runtimeValues($overrides) as $key => $value) {
             if ($value === null) {
                 continue;
@@ -90,6 +94,19 @@ class PythonRuntimeConfigExporter
     }
 
     /**
+     * @return array<int, string>
+     */
+    private function deprecatedRuntimeKeys(): array
+    {
+        return [
+            'ENABLE_TELEGRAM',
+            'TELEGRAM_BOT_TOKEN',
+            'TELEGRAM_CHAT_ID',
+            'TELEGRAM_POLL_INTERVAL',
+        ];
+    }
+
+    /**
      * @param  array<string, string|null>  $overrides
      * @return array<string, string|null>
      */
@@ -110,10 +127,6 @@ class PythonRuntimeConfigExporter
             'GUI_BASE_URL' => AppSetting::getValue('gui.base_url'),
             'GUI_DATE_FORMAT' => AppSetting::getValue('gui.date_format'),
             'APP_TIMEZONE' => AppSetting::getValue('gui.timezone'),
-            'ENABLE_TELEGRAM' => AppSetting::getValue('telegram.enable'),
-            'TELEGRAM_BOT_TOKEN' => AppSetting::getValue('telegram.bot_token'),
-            'TELEGRAM_CHAT_ID' => AppSetting::getValue('telegram.chat_id'),
-            'TELEGRAM_POLL_INTERVAL' => AppSetting::getValue('telegram.poll_interval'),
             'OCR_REQUESTED_TAG_ID' => AppSetting::getValue('ocr.requested_tag_id'),
             'OCR_MODE' => AppSetting::getValue('ocr.mode'),
             'LLM_PROVIDER' => AppSetting::getValue('llm.provider'),

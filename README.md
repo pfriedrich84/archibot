@@ -27,8 +27,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - ⏱️ Robuste AI-Provider-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ PostgreSQL-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
-- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über Python/MCP/Telegram-Runtime; die Laravel-Oberfläche wird schrittweise erweitert
-- 🤖 Telegram-Bot: Vorschläge annehmen/ablehnen + RAG-Chat für Dokument-Fragen (optional)
+- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über die Laravel-Oberfläche und Python/MCP-Runtime
 - 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
 - 🚀 Laravel/Svelte Setup-Wizard: Geführtes Onboarding beim ersten Start (`/setup`) mit direkter Paperless-NGX-Anmeldung
 - 📥 Inbox-View: Posteingang mit Dokumenten-Karten (`/inbox`)

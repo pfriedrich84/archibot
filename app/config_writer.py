@@ -193,24 +193,6 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         set_clients(getattr(app.state, "paperless", None), getattr(app.state, "ollama", None))
         actions.append("Worker clients updated")
 
-    # --- Telegram client ---
-    telegram_fields = {"enable_telegram", "telegram_bot_token", "telegram_chat_id"}
-    if changed_keys & telegram_fields:
-        from app.clients.telegram import TelegramClient
-        from app.telegram_handler import start_telegram, stop_telegram
-
-        stop_telegram()
-        old = getattr(app.state, "telegram", None)
-        if old:
-            await old.aclose()
-        new_tg = TelegramClient()
-        app.state.telegram = new_tg
-        paperless = getattr(app.state, "paperless", None)
-        ollama = getattr(app.state, "ollama", None)
-        if paperless:
-            start_telegram(new_tg, paperless, ollama)
-        actions.append("Telegram client recreated")
-
     # --- Scheduler ---
     if "poll_interval_seconds" in changed_keys:
         scheduler = getattr(app.state, "scheduler", None)

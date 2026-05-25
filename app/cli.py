@@ -850,6 +850,12 @@ def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _chat_contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
+    """Return Chat/RAG payload from either worker-style or direct chat bridge input."""
+    payload = _contract_payload(input_payload)
+    return payload if payload else input_payload
+
+
 def _contract_document_id(input_payload: dict[str, object]) -> int | None:
     payload = _contract_payload(input_payload)
     raw = payload.get("paperless_document_id") or payload.get("document_id")
@@ -1028,7 +1034,7 @@ def main() -> None:
                     cmd_func(*_contract_entity_approval(input_payload))
                 )
             elif cmd_name == "chat-ask":
-                payload = _contract_payload(input_payload)
+                payload = _chat_contract_payload(input_payload)
                 question = payload.get("question")
                 history = payload.get("history", [])
                 if not isinstance(question, str) or not question.strip():

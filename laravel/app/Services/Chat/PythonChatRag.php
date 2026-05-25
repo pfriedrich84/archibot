@@ -31,8 +31,11 @@ class PythonChatRag
         $outputPath = $directory."/chat-{$token}.out.json";
 
         file_put_contents($inputPath, json_encode([
-            'question' => $question,
-            'history' => $history,
+            'type' => 'chat-ask',
+            'payload' => [
+                'question' => $question,
+                'history' => $history,
+            ],
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
 
         try {

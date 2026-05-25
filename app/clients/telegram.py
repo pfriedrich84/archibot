@@ -8,8 +8,6 @@ from typing import Any
 import httpx
 import structlog
 
-from app.config import settings
-
 log = structlog.get_logger(__name__)
 
 
@@ -21,8 +19,8 @@ class TelegramClient:
         token: str | None = None,
         chat_id: str | None = None,
     ) -> None:
-        self.token = token or settings.telegram_bot_token
-        self.chat_id = chat_id or settings.telegram_chat_id
+        self.token = token or ""
+        self.chat_id = chat_id or ""
         self._base = f"https://api.telegram.org/bot{self.token}"
         self._client = httpx.AsyncClient(timeout=30.0)
         self._offset: int = 0  # for long-polling getUpdates
@@ -34,7 +32,7 @@ class TelegramClient:
 
     @property
     def enabled(self) -> bool:
-        return bool(settings.enable_telegram and self.token and self.chat_id)
+        return False
 
     # ------------------------------------------------------------------
     # Sending

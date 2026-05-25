@@ -80,11 +80,6 @@ services:
       OCR_VISION_DPI: ${OCR_VISION_DPI:-150}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
 
-      # --- Telegram (legacy Python runtime until Laravel per-user flow is complete) ---
-      ENABLE_TELEGRAM: ${ENABLE_TELEGRAM:-false}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      TELEGRAM_POLL_INTERVAL: ${TELEGRAM_POLL_INTERVAL:-5}
 
       # --- MCP ---
       ENABLE_MCP: ${ENABLE_MCP:-false}
