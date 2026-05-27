@@ -341,7 +341,7 @@ Empfohlene Branch-Namen:
 arch/event-driven-foundation
 arch/postgres-pgvector
 arch/dramatiq-skeleton
-webhook/paperless-ingestion
+arch/paperless-webhook-ingestion
 pipeline/process-document
 pipeline/inbox-reconciliation
 pipeline/reindex
