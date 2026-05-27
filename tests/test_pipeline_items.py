@@ -84,3 +84,22 @@ def test_progress_from_pipeline_items_derives_counts(monkeypatch):
 
     assert pipeline_items.progress_from_pipeline_items(1) == (3, 1, 1, 0)
     assert calls[0][1] == {"pipeline_run_id": 1}
+
+
+def test_start_or_resume_pipeline_item_uses_stable_item_key(monkeypatch):
+    calls = []
+    row = {"id": 6, "status": "running", "attempt": 2}
+    monkeypatch.setattr(pipeline_items, "engine", lambda: FakeEngine(calls, row))
+    monkeypatch.setattr(pipeline_items, "sql_text", lambda statement: statement)
+
+    item = pipeline_items.start_or_resume_pipeline_item(
+        pipeline_run_id=1,
+        item_type="classification",
+        item_key="classification:42",
+        paperless_document_id=42,
+    )
+
+    assert item == pipeline_items.PipelineItemRecord(id=6, status="running", attempt=2)
+    statement, params = calls[0]
+    assert "ON CONFLICT (pipeline_run_id, item_key)" in statement
+    assert params["item_key"] == "classification:42"
