@@ -52,6 +52,22 @@ docker build -t archibot-local-check .
 grype archibot-local-check --only-fixed --fail-on high
 ```
 
+## Graphify knowledge graph artifacts
+
+Commit only the small agent-useful Graphify artifact set:
+
+- `.graphify/GRAPH_REPORT.md`
+- `.graphify/graph.json`
+- `.graphify/scope.json`
+
+Do not commit `.graphify/cache/`, manifests with local absolute paths, HTML exports, or other runtime state unless explicitly reviewed and approved. Before committing graph artifacts, run:
+
+```bash
+python3 scripts/check_graphify_artifacts.py
+```
+
+Graphify-only commits under `.graphify/**` are ignored by CI push triggers so refreshing the agent graph does not build or publish Docker images.
+
 ## Documentation-only changes
 
 Usually no test suite is required. Still verify that links, command examples, and referenced paths are correct.

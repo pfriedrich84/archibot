@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: ["**"]
+    paths-ignore:
+      - ".graphify/**"
   pull_request:
     branches: [main]
 
@@ -86,6 +88,9 @@ jobs:
 
       - name: Worker runtime import check
         run: python -c "import app.cli; import app.mcp_server"
+
+      - name: Graphify artifact check
+        run: python scripts/check_graphify_artifacts.py
 
       - name: DB schema check
         run: python -c "from app.db import init_db; init_db()"
