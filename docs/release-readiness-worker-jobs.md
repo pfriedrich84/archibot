@@ -27,7 +27,7 @@ All requested checks passed on `main` after the documentation cleanup:
 
 ## Operational risks to keep visible
 
-- Maintenance reset is no longer exposed in the Laravel GUI. Destructive reset is CLI-only via `php artisan archibot:reset --yes`, and that command clears Laravel worker/job-control state including `worker_jobs`, queue tables, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, and entity approvals.
+- Maintenance reset is no longer exposed in the Laravel GUI. Destructive reset is CLI-only via `archibot reset --yes`, which delegates to `php artisan archibot:reset --yes` and clears Laravel/PostgreSQL worker/job-control, pipeline, embedding, audit, chat, session/cache, webhook, review, OCR and entity-approval state.
 - Some Svelte navigation still uses hardcoded internal paths instead of generated route helpers. This is low-risk for the default deployment, but can matter for deployments using `archibot.path_prefix`.
 - The Python `archibot jobs` CLI still inspects job state through legacy assumptions; Laravel remains the canonical operator surface for job control.
 

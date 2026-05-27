@@ -178,14 +178,13 @@ vorhanden sind, wird die Retry-Payload auf diese Paperless-IDs eingeschraenkt.
 
 ### `reset` — Container zuruecksetzen
 
-Loescht die gesamte Datenbank (Vorschlaege, Embeddings, OCR-Cache, Fehler,
-Audit-Log, Tag-Whitelist/Blacklist) und erstellt eine leere DB neu.
+Setzt die ArchiBot-Laufzeitdaten ueber den kanonischen Laravel/PostgreSQL-Pfad zurueck. Der Python-CLI-Einstieg `archibot reset` bleibt fuer Operatoren erhalten, delegiert im Hintergrund aber an `php artisan archibot:reset` und entfernt alte Python-SQLite-Dateien nur noch als Legacy-Cleanup nach erfolgreichem PostgreSQL-Reset.
 
 ```bash
-# Nur Datenbank zuruecksetzen (Config behalten)
+# PostgreSQL/Laravel-Laufzeitdaten zuruecksetzen (Config behalten)
 archibot reset --yes
 
-# Datenbank + Config-Overrides zuruecksetzen (Werkseinstellungen)
+# PostgreSQL/Laravel-Laufzeitdaten + Config/Setup-State zuruecksetzen
 archibot reset --yes --include-config
 ```
 
@@ -193,12 +192,13 @@ archibot reset --yes --include-config
 | Flag | Beschreibung |
 |------|-------------|
 | `--yes` | **Pflicht.** Bestaetigt den Reset (keine interaktive Abfrage). |
-| `--include-config` | Loescht zusaetzlich `config.env` und alle Backups. Verbindungseinstellungen (Paperless-URL, Token, Ollama-URL) gehen dabei verloren. |
+| `--include-config` | Loescht zusaetzlich Laravel-Config/Setup-State sowie Legacy-`config.env` und Backups. Verbindungseinstellungen (Paperless-URL, Token, Ollama-URL) gehen dabei verloren. |
 
 **Was passiert:**
-1. `classifier.db`, `-wal` und `-shm` Dateien werden geloescht
-2. Optional: `config.env` und `config.bak.*` Backups werden geloescht
-3. Eine leere Datenbank mit dem vollstaendigen Schema wird erstellt
+1. `archibot reset` ruft im Hintergrund `php artisan archibot:reset --yes` auf
+2. Laravel leert die PostgreSQL/Laravel-Laufzeittabellen, inklusive Job-, Pipeline-, Embedding-, Audit-, Chat-, Session- und Cache-State
+3. Optional: Laravel-Config/Setup-State sowie Legacy-`config.env` und `config.bak.*` Backups werden geloescht
+4. Alte `classifier.db`, `-wal` und `-shm` Dateien werden nur als Legacy-Cleanup entfernt
 
 **Was NICHT geloescht wird:**
 - `.env` (Docker-Compose Umgebungsvariablen)

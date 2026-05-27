@@ -106,13 +106,19 @@ Large reindexes can still take a long time because each document requires an emb
 
 ## CLI-only Laravel reset
 
-Destructive reset controls are intentionally not exposed in the Laravel GUI. Operators can reset Laravel operational and job-control state from a shell only:
+Destructive reset controls are intentionally not exposed in the Laravel GUI. Operators should use the stable ArchiBot CLI command; it delegates to the Laravel/PostgreSQL reset in the background:
+
+```bash
+archibot reset --yes
+```
+
+Equivalent direct Laravel command:
 
 ```bash
 cd laravel
 php artisan archibot:reset --yes
 ```
 
-This clears Laravel runtime/job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, and entity approvals. Add `--include-config` only when intentionally clearing Laravel app settings and setup state too.
+This clears Laravel/PostgreSQL runtime and job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, sessions/cache, chat state, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, entity approvals, audit logs, embedding index state, document embeddings, and LLM call history. Add `--include-config` only when intentionally clearing Laravel app settings, setup state, MCP tokens, and legacy config files too.
 
 Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ, and Dramatiq.

@@ -14,8 +14,8 @@ Usage::
     python -m app.cli jobs status 12   # Show one Laravel worker job
     python -m app.cli jobs stop 12     # Request cooperative stop/cancel
     python -m app.cli jobs retry 12    # Queue a retry row for a job
-    python -m app.cli reset --yes      # Delete DB and recreate clean schema
-    python -m app.cli reset --yes --include-config  # Also delete config.env
+    python -m app.cli reset --yes      # Reset through Laravel/PostgreSQL
+    python -m app.cli reset --yes --include-config  # Also clear config/setup state
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import json
 import logging
 import signal
 import sqlite3
+import subprocess
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -38,7 +39,7 @@ import structlog
 from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.db import init_db, mark_setup_required
+from app.db import init_db
 
 
 def _configure_logging() -> None:
@@ -468,13 +469,20 @@ async def cmd_chat_ask(question: str, history: list[dict[str, Any]]) -> dict[str
         await ollama.aclose()
 
 
-def cmd_reset(include_config: bool = False) -> None:
-    """Delete all persistent state and recreate a clean database."""
+def _laravel_artisan_path() -> Path | None:
+    """Return the Laravel artisan path used for PostgreSQL-owned CLI actions."""
+    candidates = [
+        Path("/app/laravel/artisan"),
+        Path(__file__).resolve().parents[1] / "laravel" / "artisan",
+    ]
+    return next((path for path in candidates if path.exists()), None)
+
+
+def _delete_legacy_reset_files(include_config: bool) -> None:
+    """Remove old Python SQLite/config files after the canonical Laravel reset succeeds."""
     log = structlog.get_logger("reset")
     data_dir = Path(settings.data_dir)
     db_path = settings.db_path
-
-    # Build file list
     targets: list[Path] = [
         db_path,
         db_path.parent / f"{db_path.name}-wal",
@@ -485,28 +493,38 @@ def cmd_reset(include_config: bool = False) -> None:
         targets.append(data_dir / "config.env")
         targets.extend(data_dir.glob("config.bak.*"))
 
-    # Only existing files
-    existing = [p for p in targets if p.exists()]
+    existing = [path for path in targets if path.exists()]
+    if not existing:
+        return
 
-    if existing:
-        print("Deleting:")
-        for p in existing:
-            print(f"  {p}")
-    else:
-        print("No existing state files found.")
+    print("Removing legacy Python SQLite/config files:")
+    for path in existing:
+        path.unlink()
+        log.info("deleted_legacy_file", path=str(path))
+        print(f"  {path}")
 
-    for p in existing:
-        p.unlink()
-        log.info("deleted", path=str(p))
 
-    # Recreate clean DB and force onboarding on next app start.
-    init_db()
-    if db_path.exists():
-        try:
-            mark_setup_required()
-        except sqlite3.Error as exc:
-            log.warning("could not persist setup-required marker", error=str(exc))
-    print(f"Reset complete. Clean database created at {db_path}")
+def cmd_reset(include_config: bool = False) -> None:
+    """Reset via the canonical Laravel/PostgreSQL reset path, keeping the CLI entrypoint."""
+    artisan = _laravel_artisan_path()
+    if artisan is None:
+        print(
+            "Reset is Laravel/PostgreSQL-owned, but Laravel artisan was not found. "
+            "Run from the container with: cd /app/laravel && php artisan archibot:reset --yes",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    command = ["php", str(artisan), "archibot:reset", "--yes"]
+    if include_config:
+        command.append("--include-config")
+
+    result = subprocess.run(command, cwd=artisan.parent, check=False)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+    _delete_legacy_reset_files(include_config=include_config)
+    print("Reset complete via Laravel/PostgreSQL.")
 
 
 def _laravel_db_path() -> Path:
@@ -672,7 +690,7 @@ COMMANDS = {
         cmd_chat_ask,
     ),
     "jobs": ("List/status/stop/retry persistent Laravel worker jobs", None),
-    "reset": ("Delete all state and recreate empty DB (--yes required)", None),
+    "reset": ("Reset via Laravel/PostgreSQL (--yes required)", None),
 }
 
 
@@ -928,7 +946,7 @@ def main() -> None:
         cmd_jobs(sys.argv[2:])
         return
 
-    # reset is synchronous and must NOT call init_db() before deletion
+    # reset delegates to Laravel/PostgreSQL and must NOT call init_db() first
     if cmd_name == "reset":
         extra_args = sys.argv[2:]
         if "--yes" not in extra_args:

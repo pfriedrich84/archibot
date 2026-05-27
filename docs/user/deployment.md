@@ -76,7 +76,7 @@ docker run --rm -v classifier-data:/data -v $(pwd):/backup \
 
 ### Reset
 
-Container-State zuruecksetzen: siehe [CLI-Dokumentation](../developer/cli.md#reset).
+Container-State zuruecksetzen: siehe [CLI-Dokumentation](../developer/cli.md#reset). Der Operator-Befehl `archibot reset` bleibt gueltig; er delegiert im Container an den Laravel/PostgreSQL-Reset.
 
 ```bash
 # Nur DB zuruecksetzen

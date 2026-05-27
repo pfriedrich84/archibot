@@ -745,7 +745,8 @@ laravel/resources/js/pages/admin/Maintenance.svelte
 Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
 Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
 // Destructive reset is intentionally not routed through the GUI.
-// Operators use: php artisan archibot:reset --yes
+// Operators use: archibot reset --yes
+// The Python CLI delegates to php artisan archibot:reset.
 ```
 
 3. Implement features:
@@ -757,14 +758,14 @@ Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::cla
 
 4. Reset safety:
 
-Destructive reset controls are intentionally excluded from the GUI. Operators use the CLI-only Laravel reset command instead:
+Destructive reset controls are intentionally excluded from the GUI. Operators use the stable ArchiBot CLI command:
 
 ```bash
-php artisan archibot:reset --yes
-php artisan archibot:reset --yes --include-config
+archibot reset --yes
+archibot reset --yes --include-config
 ```
 
-The command clears Laravel operational/job-control state, including worker-job and queue tables.
+The Python CLI delegates to `php artisan archibot:reset` and clears Laravel/PostgreSQL operational state, including worker-job, queue, pipeline, embedding, audit, chat, session/cache, webhook, review, OCR and entity-approval state.
 
 Tests:
 

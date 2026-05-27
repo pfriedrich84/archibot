@@ -31,5 +31,6 @@ Evidence-based constraints for ArchiBot changes.
 - The migration target standardizes state and vector search on PostgreSQL/pgvector.
 - Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
 - CLI commands must not diverge from Laravel UI behavior. If a UI action uses PostgreSQL/pgvector, RabbitMQ/Dramatiq, Laravel-managed settings, or durable pipeline state, the matching CLI command must use that same path or delegate to it; do not keep a separate SQLite/legacy implementation.
+- `archibot reset` remains supported for operators, but reset state is PostgreSQL/Laravel-owned and the Python CLI must delegate to Laravel rather than recreating legacy SQLite state.
 - Do not introduce a permanent `legacy|dramatiq` backend compatibility mode.
 - Keep Laravel and Python aligned on the shared PostgreSQL pipeline state model.

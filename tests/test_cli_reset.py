@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -13,14 +14,21 @@ from app.cli import cmd_reset
 
 @pytest.fixture()
 def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Set DATA_DIR to a temp directory and mock init_db."""
+    """Set DATA_DIR to a temp directory and mock the Laravel reset runner."""
     monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
-    monkeypatch.setattr("app.cli.init_db", MagicMock())
+    artisan = tmp_path / "laravel" / "artisan"
+    artisan.parent.mkdir()
+    artisan.write_text("<?php // fake artisan")
+    monkeypatch.setattr("app.cli._laravel_artisan_path", lambda: artisan)
+    monkeypatch.setattr(
+        "app.cli.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0)),
+    )
     return tmp_path
 
 
 def _create_db_files(data_dir: Path) -> tuple[Path, Path, Path]:
-    """Create fake DB + WAL/SHM files and return their paths."""
+    """Create fake legacy DB + WAL/SHM files and return their paths."""
     db = data_dir / "classifier.db"
     wal = data_dir / "classifier.db-wal"
     shm = data_dir / "classifier.db-shm"
@@ -30,8 +38,19 @@ def _create_db_files(data_dir: Path) -> tuple[Path, Path, Path]:
     return db, wal, shm
 
 
-def test_reset_deletes_db_and_recreates(data_dir: Path) -> None:
-    """DB + WAL/SHM files are deleted and init_db() is called."""
+def test_reset_delegates_to_laravel_postgres(data_dir: Path) -> None:
+    """The Python CLI keeps the command but runs the Laravel/PostgreSQL reset."""
+    cmd_reset(include_config=False)
+
+    from app.cli import subprocess as patched_subprocess
+
+    patched_subprocess.run.assert_called_once()
+    args = patched_subprocess.run.call_args.args[0]
+    assert args[-2:] == ["archibot:reset", "--yes"]
+
+
+def test_reset_deletes_legacy_sqlite_files_after_laravel_reset(data_dir: Path) -> None:
+    """Legacy SQLite files are cleanup only, not the canonical reset target."""
     db, wal, shm = _create_db_files(data_dir)
 
     cmd_reset(include_config=False)
@@ -39,10 +58,6 @@ def test_reset_deletes_db_and_recreates(data_dir: Path) -> None:
     assert not db.exists()
     assert not wal.exists()
     assert not shm.exists()
-
-    from app.cli import init_db as patched_init_db
-
-    patched_init_db.assert_called_once()
 
 
 def test_reset_include_config(data_dir: Path) -> None:
@@ -57,6 +72,10 @@ def test_reset_include_config(data_dir: Path) -> None:
 
     cmd_reset(include_config=True)
 
+    from app.cli import subprocess as patched_subprocess
+
+    args = patched_subprocess.run.call_args.args[0]
+    assert "--include-config" in args
     assert not config_env.exists()
     assert not bak1.exists()
     assert not bak2.exists()
@@ -73,13 +92,26 @@ def test_reset_without_include_config_keeps_env(data_dir: Path) -> None:
     assert config_env.exists()
 
 
-def test_reset_idempotent(data_dir: Path) -> None:
-    """No error when no state files exist; init_db() is still called."""
-    cmd_reset(include_config=False)
+def test_reset_stops_when_laravel_reset_fails(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Legacy cleanup does not run when the canonical Laravel reset fails."""
+    db, _, _ = _create_db_files(data_dir)
+    monkeypatch.setattr(
+        "app.cli.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=2)),
+    )
 
-    from app.cli import init_db as patched_init_db
+    with pytest.raises(SystemExit, match="2"):
+        cmd_reset(include_config=False)
 
-    patched_init_db.assert_called_once()
+    assert db.exists()
+
+
+def test_reset_requires_laravel_artisan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI must not silently fall back to the legacy SQLite reset."""
+    monkeypatch.setattr("app.cli._laravel_artisan_path", lambda: None)
+
+    with pytest.raises(SystemExit, match="1"):
+        cmd_reset(include_config=False)
 
 
 def test_reset_requires_yes_flag(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,6 +6,7 @@ use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MaintenanceCommandTest extends TestCase
@@ -91,5 +92,39 @@ class MaintenanceCommandTest extends TestCase
 
         $this->assertDatabaseCount('commands', 0);
         $this->assertDatabaseCount('embedding_index_state', 0);
+    }
+
+    public function test_cli_reset_clears_postgresql_operational_state(): void
+    {
+        DB::table('embedding_index_state')->insert([
+            'status' => 'complete',
+            'embedding_model' => 'nomic-embed-text',
+            'document_count' => 1,
+            'embedded_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('document_embeddings')->insert([
+            'paperless_document_id' => 123,
+            'content_hash' => 'hash',
+            'embedding_model' => 'nomic-embed-text',
+            'dimensions' => 3,
+            'embedding' => json_encode([0.1, 0.2, 0.3]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('audit_logs')->insert([
+            'event' => 'test.event',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('archibot:reset', ['--yes' => true])
+            ->expectsOutputToContain('Archibot Laravel reset complete.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('embedding_index_state', 0);
+        $this->assertDatabaseCount('document_embeddings', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 }

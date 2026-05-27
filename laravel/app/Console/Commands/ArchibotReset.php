@@ -12,27 +12,38 @@ class ArchibotReset extends Command
         {--yes : Confirm the destructive reset}
         {--include-config : Also clear Laravel app settings and setup state}';
 
-    protected $description = 'CLI-only destructive reset for Laravel operational and job-control state.';
+    protected $description = 'CLI-only destructive reset for Laravel/PostgreSQL operational state.';
 
     /** @var array<int, string> */
     private array $operationalTables = [
         'worker_job_logs',
         'worker_jobs',
         'jobs',
+        'job_batches',
         'failed_jobs',
+        'cache_locks',
+        'cache',
+        'sessions',
+        'chat_messages',
+        'chat_sessions',
         'pipeline_items',
         'pipeline_events',
         'actor_executions',
         'commands',
         'pipeline_runs',
         'webhook_deliveries',
+        'document_embeddings',
+        'embedding_index_state',
+        'llm_calls',
         'entity_approvals',
         'ocr_reviews',
         'review_suggestions',
+        'audit_logs',
     ];
 
     /** @var array<int, string> */
     private array $configTables = [
+        'mcp_tokens',
         'app_settings',
         'setup_states',
     ];

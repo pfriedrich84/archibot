@@ -40,6 +40,7 @@ Only admins may control jobs via Laravel actions guarded by `is_admin()`.
 Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks.
 Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
 CLI commands must behave exactly like the corresponding Laravel UI actions: same backend, config source, durable state, progress semantics, storage target, and side effects. Never leave CLI on a legacy SQLite/subprocess path while the UI uses PostgreSQL/pgvector/event-driven flows.
+Reset is PostgreSQL/Laravel-owned: keep the `archibot reset` CLI entrypoint for operators, but it must delegate to `php artisan archibot:reset` in the background and must never silently reset only legacy SQLite state.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 Laravel `worker_jobs` is a temporary stabilization layer.
 Do not add permanent architecture only to `worker_jobs`.
