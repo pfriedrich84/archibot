@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.jobs.webhook_delivery import engine
+from app.jobs.database import engine
 
 
 @dataclass(frozen=True)

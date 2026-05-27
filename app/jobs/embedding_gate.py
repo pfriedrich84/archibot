@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.jobs.webhook_delivery import engine
+from app.jobs.database import engine
 
 
 def sql_text(statement: str):
