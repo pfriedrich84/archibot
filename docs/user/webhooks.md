@@ -12,7 +12,7 @@ Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig. Mit Web
 |----------|-------|
 | `POST /webhook` | Paperless-Dokumentereignis empfangen, Delivery speichern, deduplizieren und Verarbeitung einreihen |
 
-`/webhook` ist der einfache Alias fuer den event-driven Endpoint. Der aeltere Endpoint `/api/webhooks/paperless` bleibt kompatibel. Legacy-Endpoints `/webhook/new` und `/webhook/edit` existieren weiterhin, schreiben aber keine Webhook-Delivery-Eintraege.
+`/webhook` ist der einfache Alias fuer den event-driven Endpoint. `/api/webhooks/paperless` ist der kanonische event-driven Endpoint und bleibt kompatibel. Legacy-Endpoints `/webhook/new` und `/webhook/edit` sind nicht mehr Ziel der Architektur und duerfen fuer neue Setups nicht verwendet werden.
 
 **Polling und Webhooks koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
 
@@ -148,12 +148,13 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 | `200` | Webhook-Delivery wurde gespeichert oder als Duplikat erkannt |
 | `403` | Webhook-Secret ungueltig |
 | `422` | Body ungueltig (fehlende/falsche `document_id`) |
+| `5xx` | Delivery wurde ggf. gespeichert, aber die nachgelagerte Einreihung ist fehlgeschlagen; Paperless soll den Webhook erneut versuchen |
 
 ### Kompatibilitaets-Endpoints
 
-`POST /api/webhooks/paperless` ist weiterhin derselbe event-driven Handler wie `/webhook`.
+`POST /api/webhooks/paperless` ist derselbe event-driven Handler wie `/webhook` und der kanonische Endpoint fuer neue Setups.
 
-`POST /webhook/new` und `POST /webhook/edit` bleiben fuer alte Installationen verfuegbar, schreiben aber direkt Worker-Jobs und keine `webhook_deliveries`. Fuer neue Setups immer `/webhook` verwenden.
+`POST /webhook/new` und `POST /webhook/edit` sind Legacy-Endpoints und koennen entfernt werden. Sie duerfen nicht als neuer Integrationspunkt dokumentiert oder erweitert werden.
 
 ## Fehlerbehebung
 

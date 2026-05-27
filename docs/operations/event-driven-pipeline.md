@@ -231,4 +231,4 @@ Live integration smoke checklist:
 
 ## Legacy path note
 
-The target endpoint is `/api/webhooks/paperless`. Existing legacy routes such as `/webhook/new` and `/webhook/edit` still exist during migration but must not be extended for the new architecture.
+The target endpoint is `/api/webhooks/paperless` with `/webhook` as the simple alias. Legacy routes such as `/webhook/new` and `/webhook/edit` may be removed and must not be extended for the new architecture. If downstream enqueue fails after a delivery is persisted, return a non-2xx response so Paperless retries.

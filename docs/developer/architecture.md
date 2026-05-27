@@ -119,7 +119,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 
 - Berechnet Embedding des Zieldokuments via konfiguriertem AI-Provider (`qwen3-embedding:4b` bzw. Provider-Alias wie `qwen3-embedding-4b-local`, Dim via `OLLAMA_EMBED_DIM`/Auto)
 - KNN-Suche in `doc_embeddings` (pgvector) findet die aehnlichsten Dokumente
-- **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — nur reviewte/bestaetigte Dokumente mit zuverlaessigen Metadaten dienen als Referenz
+- **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — als vertrauenswuerdiger Klassifikationskontext gelten Paperless-Dokumente ohne den konfigurierten Inbox-/Posteingang-Tag
 - Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Tags, Speicherpfad)
 
 ### 4. Klassifikation
