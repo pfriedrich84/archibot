@@ -8,6 +8,7 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Models\WorkerJob;
+use App\Services\Pipeline\DocumentPipelineStarter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -58,19 +59,23 @@ class PipelineRunController extends Controller
             PipelineRun::STATUS_CANCELLED,
         ], true), 409);
 
-        $gateOpen = $this->documentProcessingGateOpen($pipelineRun);
+        $gate = app(DocumentPipelineStarter::class)->gateAttributes(
+            $this->documentProcessingGateOpen($pipelineRun),
+            'queued',
+            'Manual admin retry queued.',
+        );
         $pipelineRun->forceFill([
-            'status' => $gateOpen ? PipelineRun::STATUS_PENDING : PipelineRun::STATUS_BLOCKED,
-            'progress_current_phase' => $gateOpen ? 'queued' : 'blocked',
-            'progress_message' => $gateOpen ? 'Manual admin retry queued.' : 'Waiting for embedding index to complete.',
+            'status' => $gate['status'],
+            'progress_current_phase' => $gate['progress_current_phase'],
+            'progress_message' => $gate['progress_message'],
             'progress_updated_at' => now(),
             'retry_count' => $pipelineRun->retry_count + 1,
             'last_retry_at' => now(),
             'retry_reason' => 'manual_admin_retry',
             'retry_mode' => 'manual',
             'next_retry_at' => null,
-            'error_type' => $gateOpen ? null : 'embedding_index_not_ready',
-            'error' => $gateOpen ? null : 'Waiting for embedding index to complete.',
+            'error_type' => $gate['error_type'],
+            'error' => $gate['error'],
             'finished_at' => null,
         ])->save();
 
@@ -104,11 +109,15 @@ class PipelineRunController extends Controller
             'updated_at' => now(),
         ]);
 
-        $gateOpen = $this->documentProcessingGateOpen($pipelineRun);
+        $gate = app(DocumentPipelineStarter::class)->gateAttributes(
+            $this->documentProcessingGateOpen($pipelineRun),
+            'retry_failed_items',
+            "Manual admin retry queued for {$failedItemCount} failed pipeline item(s).",
+        );
         $pipelineRun->forceFill([
-            'status' => $gateOpen ? PipelineRun::STATUS_PENDING : PipelineRun::STATUS_BLOCKED,
-            'progress_current_phase' => $gateOpen ? 'retry_failed_items' : 'blocked',
-            'progress_message' => $gateOpen ? "Manual admin retry queued for {$failedItemCount} failed pipeline item(s)." : 'Waiting for embedding index to complete.',
+            'status' => $gate['status'],
+            'progress_current_phase' => $gate['progress_current_phase'],
+            'progress_message' => $gate['progress_message'],
             'progress_failed' => max(0, $pipelineRun->progress_failed - $failedItemCount),
             'progress_updated_at' => now(),
             'retry_count' => $pipelineRun->retry_count + 1,
@@ -116,8 +125,8 @@ class PipelineRunController extends Controller
             'retry_reason' => 'manual_admin_retry_failed_items',
             'retry_mode' => 'manual',
             'next_retry_at' => null,
-            'error_type' => $gateOpen ? null : 'embedding_index_not_ready',
-            'error' => $gateOpen ? null : 'Waiting for embedding index to complete.',
+            'error_type' => $gate['error_type'],
+            'error' => $gate['error'],
             'finished_at' => null,
         ])->save();
 

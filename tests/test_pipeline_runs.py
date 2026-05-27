@@ -13,8 +13,9 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, calls):
+    def __init__(self, calls, created=True):
         self.calls = calls
+        self.created = created
 
     def __enter__(self):
         return self
@@ -24,18 +25,19 @@ class FakeConnection:
 
     def execute(self, statement, params):
         self.calls.append((statement, params))
-        return FakeResult({"id": 77, "status": params.get("status", "pending")})
+        return FakeResult({"id": 77, "status": params.get("status", "pending"), "created": self.created})
 
 
 class FakeEngine:
-    def __init__(self, calls):
+    def __init__(self, calls, created=True):
         self.calls = calls
+        self.created = created
 
     def begin(self):
-        return FakeConnection(self.calls)
+        return FakeConnection(self.calls, self.created)
 
     def connect(self):
-        return FakeConnection(self.calls)
+        return FakeConnection(self.calls, self.created)
 
 
 def test_upsert_document_pipeline_run_persists_blocked_run(monkeypatch):
@@ -53,7 +55,7 @@ def test_upsert_document_pipeline_run_persists_blocked_run(monkeypatch):
         blocked_reason="embedding_index_not_ready",
     )
 
-    assert run == pipeline_runs.PipelineRunRecord(id=77, status="blocked")
+    assert run == pipeline_runs.PipelineRunRecord(id=77, status="blocked", created=True)
     params = calls[0][1]
     assert params["trigger_source"] == "webhook"
     assert params["paperless_document_id"] == 42
@@ -76,7 +78,7 @@ def test_upsert_document_pipeline_run_persists_pending_run(monkeypatch):
         status="pending",
     )
 
-    assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending")
+    assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending", created=True)
     params = calls[0][1]
     assert params["trigger_source"] == "poll"
     assert params["progress_current_phase"] == "queued"
@@ -216,3 +218,27 @@ def test_mark_pipeline_run_pending_clears_blocked_state(monkeypatch):
     pipeline_runs.mark_pipeline_run_pending(42)
 
     assert calls[0][1] == {"pipeline_run_id": 42, "message": "Waiting for document actor."}
+
+
+def test_upsert_document_pipeline_run_reports_coalesced_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pipeline_runs, "engine", lambda: FakeEngine(calls, created=False))
+    monkeypatch.setattr(pipeline_runs, "sql_text", lambda statement: statement)
+
+    run = pipeline_runs.upsert_document_pipeline_run(
+        trigger_source="poll",
+        paperless_document_id=7,
+        paperless_modified=None,
+        content_hash="hash",
+        pipeline_dedupe_key="dedupe",
+        status="pending",
+        webhook_delivery_id=10,
+        command_id=11,
+        requested_by_user_id=12,
+    )
+
+    assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending", created=False)
+    params = calls[0][1]
+    assert params["webhook_delivery_id"] == 10
+    assert params["command_id"] == 11
+    assert params["requested_by_user_id"] == 12

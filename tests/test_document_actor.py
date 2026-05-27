@@ -36,6 +36,7 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
             max_retries=5,
         ),
     )
+    monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
     monkeypatch.setattr(
         document,
         "start_pipeline_item",
@@ -145,6 +146,7 @@ def test_document_actor_schedules_retry_for_transient_failure(monkeypatch):
         "mark_pipeline_run_status",
         lambda *args, **kwargs: None,
     )
+    monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
     monkeypatch.setattr(
         document,
         "start_pipeline_item",
@@ -226,3 +228,67 @@ def test_document_actor_fails_when_run_is_missing(monkeypatch):
         )
     ]
     assert events[0][0] == ("actor.failed",)
+
+
+def test_document_actor_rechecks_embedding_gate_before_fetch(monkeypatch):
+    statuses = []
+    finishes = []
+    events = []
+    fetches = []
+
+    monkeypatch.setattr(
+        document,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=22, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+    monkeypatch.setattr(
+        document,
+        "load_document_pipeline_run",
+        lambda pipeline_run_id: DocumentPipelineRunRecord(
+            id=pipeline_run_id,
+            status="pending",
+            paperless_document_id=42,
+            paperless_modified=None,
+            content_hash=None,
+            retry_count=0,
+            max_retries=5,
+        ),
+    )
+    monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: False)
+    monkeypatch.setattr(
+        document,
+        "_fetch_paperless_document",
+        lambda paperless_document_id: fetches.append(paperless_document_id),
+    )
+    monkeypatch.setattr(
+        document,
+        "mark_pipeline_run_status",
+        lambda *args, **kwargs: statuses.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
+    )
+    monkeypatch.setattr(
+        document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
+
+    document._handle_document_pipeline_impl(123)
+
+    assert fetches == []
+    assert statuses == [
+        (
+            (123,),
+            {
+                "status": "blocked",
+                "phase": "blocked",
+                "message": "Waiting for embedding index to complete.",
+                "error_type": "embedding_index_not_ready",
+                "error": "Waiting for embedding index to complete.",
+            },
+        )
+    ]
+    assert finishes[0][1]["status"] == "blocked"
+    assert finishes[0][1]["error_type"] == "embedding_index_not_ready"
+    assert events[0][0] == ("pipeline.blocked.embedding_index_not_ready",)
