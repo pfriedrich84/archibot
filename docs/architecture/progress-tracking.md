@@ -214,6 +214,7 @@ pipeline_items
 - pipeline_run_id
 - paperless_document_id
 - item_type
+- item_key            stable per-run phase key for idempotent retries, e.g. `classification:123`
 - status              pending | running | succeeded | failed | skipped
 - attempt
 - error
@@ -222,6 +223,8 @@ pipeline_items
 - created_at
 - updated_at
 ```
+
+Document actor phases must use stable `item_key` values so retrying a crashed run resumes the same phase items instead of double-counting progress.
 
 Then progress is derived as:
 

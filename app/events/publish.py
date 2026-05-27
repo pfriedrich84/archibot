@@ -2,11 +2,34 @@
 
 from __future__ import annotations
 
+import json
+from datetime import date, datetime
 from typing import Any
 
 import structlog
 
+from app.jobs.database import engine
+
 log = structlog.get_logger(__name__)
+
+
+def sql_text(statement: str):
+    try:
+        from sqlalchemy import text
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        raise RuntimeError("sqlalchemy is required for PostgreSQL-backed pipeline events") from exc
+
+    return text(statement)
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return str(value)
+
+
+def _payload_json(payload: dict[str, Any] | None) -> str:
+    return json.dumps(payload or {}, ensure_ascii=False, default=_json_default)
 
 
 def publish_pipeline_event(
@@ -19,13 +42,49 @@ def publish_pipeline_event(
     message: str | None = None,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    """Publish a pipeline event.
+    """Publish a durable pipeline event and mirror it to structured logs.
 
-    The first migration step keeps this helper intentionally small. Once the
-    PostgreSQL session layer is fully wired, this function will insert into
-    `pipeline_events`. For now it mirrors the contract to structured logs so
-    actors can be built against one helper without logging secrets/content.
+    Callers must keep payloads redacted: identifiers, counts, distances,
+    statuses, and short error summaries only. Do not include full OCR text,
+    document content, prompts, secrets, or raw LLM responses.
     """
+    statement = sql_text(
+        """
+        INSERT INTO pipeline_events (
+            pipeline_run_id,
+            webhook_delivery_id,
+            event_type,
+            paperless_document_id,
+            level,
+            message,
+            payload,
+            created_at
+        ) VALUES (
+            :pipeline_run_id,
+            :webhook_delivery_id,
+            :event_type,
+            :paperless_document_id,
+            :level,
+            :message,
+            CAST(:payload AS jsonb),
+            CURRENT_TIMESTAMP
+        )
+        """
+    )
+    with engine().begin() as connection:
+        connection.execute(
+            statement,
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "webhook_delivery_id": webhook_delivery_id,
+                "event_type": event_type,
+                "paperless_document_id": paperless_document_id,
+                "level": level,
+                "message": message,
+                "payload": _payload_json(payload),
+            },
+        )
+
     log.bind(
         event_type=event_type,
         pipeline_run_id=pipeline_run_id,

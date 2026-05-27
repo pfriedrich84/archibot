@@ -11,6 +11,7 @@ from app.jobs.database import engine
 class PipelineItemRecord:
     id: int
     status: str
+    attempt: int = 1
 
 
 def sql_text(statement: str):
@@ -74,7 +75,81 @@ def start_pipeline_item(
     if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
         raise RuntimeError("pipeline item insert did not return a row")
 
-    return PipelineItemRecord(id=int(row["id"]), status=str(row["status"]))
+    return PipelineItemRecord(
+        id=int(row["id"]), status=str(row["status"]), attempt=int(row.get("attempt", 1))
+    )
+
+
+def start_or_resume_pipeline_item(
+    *,
+    pipeline_run_id: int,
+    item_type: str,
+    item_key: str,
+    paperless_document_id: int | None = None,
+    max_attempts: int = 5,
+) -> PipelineItemRecord:
+    """Start or resume a phase item identified by a stable per-run key."""
+    statement = sql_text(
+        """
+        INSERT INTO pipeline_items (
+            pipeline_run_id,
+            paperless_document_id,
+            item_type,
+            item_key,
+            status,
+            attempt,
+            max_attempts,
+            started_at,
+            finished_at,
+            error,
+            created_at,
+            updated_at
+        ) VALUES (
+            :pipeline_run_id,
+            :paperless_document_id,
+            :item_type,
+            :item_key,
+            'running',
+            1,
+            :max_attempts,
+            CURRENT_TIMESTAMP,
+            NULL,
+            NULL,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (pipeline_run_id, item_key)
+        DO UPDATE SET
+            status = 'running',
+            attempt = pipeline_items.attempt + 1,
+            max_attempts = EXCLUDED.max_attempts,
+            started_at = CURRENT_TIMESTAMP,
+            finished_at = NULL,
+            error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING id, status, attempt
+        """
+    )
+    with engine().begin() as connection:
+        row = (
+            connection.execute(
+                statement,
+                {
+                    "pipeline_run_id": pipeline_run_id,
+                    "paperless_document_id": paperless_document_id,
+                    "item_type": item_type,
+                    "item_key": item_key,
+                    "max_attempts": max_attempts,
+                },
+            )
+            .mappings()
+            .first()
+        )
+
+    if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
+        raise RuntimeError("pipeline item upsert did not return a row")
+
+    return PipelineItemRecord(id=int(row["id"]), status=str(row["status"]), attempt=int(row["attempt"]))
 
 
 def finish_pipeline_item(item_id: int, *, status: str, error: str | None = None) -> None:
