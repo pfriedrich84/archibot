@@ -11,6 +11,7 @@ from app.jobs.database import engine
 class EmbeddingIndexBuild:
     id: int
     status: str
+    already_running: bool = False
 
 
 def sql_text(statement: str):
@@ -24,6 +25,37 @@ def sql_text(statement: str):
     return text(statement)
 
 
+def load_latest_embedding_index_build() -> EmbeddingIndexBuild | None:
+    statement = sql_text(
+        """
+        SELECT id, status
+        FROM embedding_index_state
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    with engine().begin() as connection:
+        row = connection.execute(statement).mappings().first()
+    if row is None:
+        return None
+    return EmbeddingIndexBuild(id=int(row["id"]), status=str(row["status"]))
+
+
+def load_embedding_index_build(build_id: int) -> EmbeddingIndexBuild | None:
+    statement = sql_text(
+        """
+        SELECT id, status
+        FROM embedding_index_state
+        WHERE id = :build_id
+        """
+    )
+    with engine().begin() as connection:
+        row = connection.execute(statement, {"build_id": build_id}).mappings().first()
+    if row is None:
+        return None
+    return EmbeddingIndexBuild(id=int(row["id"]), status=str(row["status"]))
+
+
 def start_embedding_index_build(
     *,
     embedding_model: str | None,
@@ -31,8 +63,17 @@ def start_embedding_index_build(
     content_scope: str | None,
     document_count: int = 0,
 ) -> EmbeddingIndexBuild:
-    """Create a durable embedding-index build row in `building` state."""
-    statement = sql_text(
+    """Create a durable embedding-index build row unless one is already building."""
+    running_statement = sql_text(
+        """
+        SELECT id, status
+        FROM embedding_index_state
+        WHERE status = 'building'
+        ORDER BY started_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    insert_statement = sql_text(
         """
         INSERT INTO embedding_index_state (
             status,
@@ -61,9 +102,14 @@ def start_embedding_index_build(
         """
     )
     with engine().begin() as connection:
+        running = connection.execute(running_statement).mappings().first()
+        if running is not None:
+            return EmbeddingIndexBuild(
+                id=int(running["id"]), status=str(running["status"]), already_running=True
+            )
         row = (
             connection.execute(
-                statement,
+                insert_statement,
                 {
                     "embedding_model": embedding_model,
                     "dimensions": dimensions,

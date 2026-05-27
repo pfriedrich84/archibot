@@ -151,6 +151,17 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
                     tags=[],
                     modified=None,
                 ),
+                SimpleNamespace(
+                    id=3,
+                    title="Inbox",
+                    content="Do not trust",
+                    created_date=None,
+                    correspondent=None,
+                    document_type=None,
+                    storage_path=None,
+                    tags=[99],
+                    modified=None,
+                ),
             ]
 
         async def aclose(self):
@@ -179,7 +190,50 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
     )
     monkeypatch.setattr(embedding, "store_document_embedding", lambda item: stored.append(item))
 
+    monkeypatch.setattr(embedding.settings, "paperless_inbox_tag_id", 99)
+
     assert await embedding._build_pgvector_embeddings(55, None, 77) == (2, 2, 0)
     assert [item.paperless_document_id for item in stored] == [1, 2]
+    assert all(item.trusted_for_context for item in stored)
     assert progresses[-1] == ((55,), {"document_count": 2, "embedded_count": 2, "failed_count": 0})
     assert len(actor_progresses) == 2
+
+
+def test_embedding_actor_skips_when_build_already_running(monkeypatch):
+    actor_finishes = []
+    events = []
+    build_calls = []
+
+    monkeypatch.setattr(
+        embedding,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=77, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+    monkeypatch.setattr(
+        embedding,
+        "start_embedding_index_build",
+        lambda **kwargs: EmbeddingIndexBuild(id=55, status="building", already_running=True),
+    )
+    monkeypatch.setattr(
+        embedding,
+        "finish_actor_execution",
+        lambda *args, **kwargs: actor_finishes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        embedding, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
+
+    async def fake_build(build_id, limit, actor_execution_id):
+        build_calls.append(build_id)
+        return (0, 0, 0)
+
+    monkeypatch.setattr(embedding, "_build_pgvector_embeddings", fake_build)
+
+    embedding._build_initial_embedding_index_impl(limit=12)
+
+    assert build_calls == []
+    assert actor_finishes[0][1]["status"] == "skipped"
+    assert actor_finishes[0][1]["error_type"] == "embedding_index_already_building"
+    assert events[0][1]["payload"]["already_running"] is True
