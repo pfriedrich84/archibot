@@ -35,10 +35,14 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Dramatiq, RabbitMQ, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
+Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; legacy `/webhook/new` and `/webhook/edit` are removable and must not be extended.
+Webhook enqueue failures after durable delivery persistence should return non-2xx so Paperless retries.
 Document processing must never start before the embedding index is complete.
+Only documents without the configured inbox tag are trusted classification context; embedding builds for classification context should index only those trusted documents.
+Event-driven document processing must preserve existing `auto_commit_confidence` behavior.
 Progress, retry and recovery state must be durable in PostgreSQL.
-Only admins may control jobs via Laravel actions guarded by `is_admin()`.
-Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks.
+Only admins may control jobs via Laravel actions guarded by `is_admin()`. Non-admin users may work on review suggestions only when they have Paperless rights to change the corresponding document.
+Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks; explicit user-selected force reprocess always creates a new pipeline run.
 Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
 CLI commands must behave exactly like the corresponding Laravel UI actions: same backend, config source, durable state, progress semantics, storage target, and side effects. Never leave CLI on a legacy SQLite/subprocess path while the UI uses PostgreSQL/pgvector/event-driven flows.
 Reset is PostgreSQL/Laravel-owned: keep the `archibot reset` CLI entrypoint for operators, but it must delegate to `php artisan archibot:reset` in the background and must never silently reset only legacy SQLite state.
