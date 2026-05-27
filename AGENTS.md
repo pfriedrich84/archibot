@@ -35,7 +35,7 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Dramatiq, RabbitMQ, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
-Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; legacy `/webhook/new` and `/webhook/edit` are removable and must not be extended.
+Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; removed legacy webhook routes must not be reintroduced or extended.
 Webhook enqueue failures after durable delivery persistence should return non-2xx so Paperless retries.
 Document processing must never start before the embedding index is complete.
 Only documents without the configured inbox tag are trusted classification context; embedding builds for classification context should index only those trusted documents.

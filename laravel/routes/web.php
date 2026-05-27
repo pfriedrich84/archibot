@@ -14,7 +14,6 @@ use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
 use App\Http\Controllers\PaperlessEventWebhookController;
-use App\Http\Controllers\PaperlessWebhookController;
 use App\Http\Controllers\PipelineRunController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
@@ -29,8 +28,6 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
     Route::post('/webhook', PaperlessEventWebhookController::class)->name('webhook.paperless');
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
-    Route::post('/webhook/new', [PaperlessWebhookController::class, 'new'])->name('webhook.new');
-    Route::post('/webhook/edit', [PaperlessWebhookController::class, 'edit'])->name('webhook.edit');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
     Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])->name('setup.paperless-tags');
