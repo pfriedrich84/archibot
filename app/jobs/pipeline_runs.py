@@ -228,6 +228,22 @@ def list_cancel_requested_pipeline_run_ids(limit: int = 100) -> list[int]:
     return [int(row["id"]) for row in rows]
 
 
+def is_pipeline_run_cancel_requested(pipeline_run_id: int) -> bool:
+    """Return True when an admin requested cancellation for a run."""
+    statement = sql_text(
+        """
+        SELECT 1
+        FROM pipeline_runs
+        WHERE id = :pipeline_run_id
+          AND status = 'cancel_requested'
+        LIMIT 1
+        """
+    )
+    with engine().connect() as connection:
+        row = connection.execute(statement, {"pipeline_run_id": pipeline_run_id}).first()
+    return row is not None
+
+
 def mark_pipeline_run_cancelled(
     pipeline_run_id: int, message: str = "Pipeline run cancelled by admin request."
 ) -> None:

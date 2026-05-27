@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from app.jobs.database import engine
-from app.models import ClassificationResult
+from app.models import ClassificationResult, PaperlessEntity
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,107 @@ def _json(value: Any) -> str:
 def _json_default(value: object) -> str:
     if isinstance(value, datetime | date):
         return value.isoformat()
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "__dict__"):
+        return vars(value)
     return str(value)
+
+
+def _safe_context_documents(context_documents: list[Any] | None) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in context_documents or []:
+        document = getattr(item, "document", item)
+        items.append(
+            {
+                "id": getattr(document, "id", None),
+                "title": getattr(document, "title", None),
+                "distance": getattr(item, "distance", None),
+            }
+        )
+    return items
+
+
+def _entity_id(name: str | None, entities: list[PaperlessEntity] | None) -> int | None:
+    if not name:
+        return None
+    normalized = name.strip().casefold()
+    if not normalized:
+        return None
+    for entity in entities or []:
+        if entity.name.strip().casefold() == normalized:
+            return int(entity.id)
+    return None
+
+
+def _proposed_tags(result: ClassificationResult, tags: list[PaperlessEntity] | None) -> list[dict[str, Any]]:
+    proposed: list[dict[str, Any]] = []
+    for tag in result.tags:
+        item = tag.model_dump()
+        tag_id = _entity_id(tag.name, tags)
+        if tag_id is not None:
+            item["id"] = tag_id
+        proposed.append(item)
+    return proposed
+
+
+def _raw_payload(raw_response: str) -> Any:
+    try:
+        return json.loads(raw_response)
+    except json.JSONDecodeError:
+        return {"raw": raw_response}
+
+
+def _upsert_entity_approval(
+    *,
+    connection,
+    suggestion_id: int,
+    entity_type: str,
+    name: str | None,
+    resolved_id: int | None,
+) -> None:
+    if not name or resolved_id is not None:
+        return
+    clean_name = name.strip()
+    if not clean_name:
+        return
+    params = {"type": entity_type, "name": clean_name, "source_review_suggestion_id": suggestion_id}
+    update = sql_text(
+        """
+        UPDATE entity_approvals
+        SET source_review_suggestion_id = COALESCE(
+                source_review_suggestion_id,
+                :source_review_suggestion_id
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE type = :type
+          AND name = :name
+        """
+    )
+    result = connection.execute(update, params)
+    if getattr(result, "rowcount", 0):
+        return
+
+    insert = sql_text(
+        """
+        INSERT INTO entity_approvals (
+            type,
+            name,
+            status,
+            source_review_suggestion_id,
+            created_at,
+            updated_at
+        ) VALUES (
+            :type,
+            :name,
+            'pending',
+            :source_review_suggestion_id,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(insert, params)
 
 
 def store_review_suggestion(
@@ -44,20 +144,28 @@ def store_review_suggestion(
     document: Any,
     result: ClassificationResult,
     raw_response: str,
-    context_documents: list[dict[str, Any]] | None = None,
+    context_documents: list[Any] | None = None,
     pipeline_run_id: int | None = None,
+    correspondents: list[PaperlessEntity] | None = None,
+    doctypes: list[PaperlessEntity] | None = None,
+    storage_paths: list[PaperlessEntity] | None = None,
+    tags: list[PaperlessEntity] | None = None,
+    judge_verdict: str | None = None,
+    judge_reasoning: str | None = None,
+    original_proposed_json: str | None = None,
 ) -> StoredReviewSuggestion:
-    """Persist a pending Laravel review suggestion from an event-driven actor."""
-    proposed_tags = [tag.model_dump() for tag in result.tags]
-    raw_payload: Any
-    try:
-        raw_payload = json.loads(raw_response)
-    except json.JSONDecodeError:
-        raw_payload = {"raw": raw_response}
+    """Persist or update a Laravel review suggestion from an event-driven actor."""
+    proposed_correspondent_id = _entity_id(result.correspondent, correspondents)
+    proposed_document_type_id = _entity_id(result.document_type, doctypes)
+    proposed_storage_path_id = _entity_id(result.storage_path, storage_paths)
+    proposed_tags = _proposed_tags(result, tags)
+    dedupe_key = f"pipeline_run:{pipeline_run_id}" if pipeline_run_id is not None else None
 
     statement = sql_text(
         """
         INSERT INTO review_suggestions (
+            dedupe_key,
+            pipeline_run_id,
             paperless_document_id,
             status,
             confidence,
@@ -71,14 +179,22 @@ def store_review_suggestion(
             proposed_title,
             proposed_date,
             proposed_correspondent_name,
+            proposed_correspondent_id,
             proposed_document_type_name,
+            proposed_document_type_id,
             proposed_storage_path_name,
+            proposed_storage_path_id,
             proposed_tags,
             context_documents,
             raw_response,
+            judge_verdict,
+            judge_reasoning,
+            original_proposed_snapshot,
             created_at,
             updated_at
         ) VALUES (
+            :dedupe_key,
+            :pipeline_run_id,
             :paperless_document_id,
             'pending',
             :confidence,
@@ -92,22 +208,56 @@ def store_review_suggestion(
             :proposed_title,
             :proposed_date,
             :proposed_correspondent_name,
+            :proposed_correspondent_id,
             :proposed_document_type_name,
+            :proposed_document_type_id,
             :proposed_storage_path_name,
+            :proposed_storage_path_id,
             CAST(:proposed_tags AS jsonb),
             CAST(:context_documents AS jsonb),
             CAST(:raw_response AS jsonb),
+            :judge_verdict,
+            :judge_reasoning,
+            CAST(:original_proposed_snapshot AS jsonb),
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
         )
+        ON CONFLICT (dedupe_key)
+        DO UPDATE SET
+            confidence = EXCLUDED.confidence,
+            reasoning = EXCLUDED.reasoning,
+            proposed_title = EXCLUDED.proposed_title,
+            proposed_date = EXCLUDED.proposed_date,
+            proposed_correspondent_name = EXCLUDED.proposed_correspondent_name,
+            proposed_correspondent_id = EXCLUDED.proposed_correspondent_id,
+            proposed_document_type_name = EXCLUDED.proposed_document_type_name,
+            proposed_document_type_id = EXCLUDED.proposed_document_type_id,
+            proposed_storage_path_name = EXCLUDED.proposed_storage_path_name,
+            proposed_storage_path_id = EXCLUDED.proposed_storage_path_id,
+            proposed_tags = EXCLUDED.proposed_tags,
+            context_documents = EXCLUDED.context_documents,
+            raw_response = EXCLUDED.raw_response,
+            judge_verdict = EXCLUDED.judge_verdict,
+            judge_reasoning = EXCLUDED.judge_reasoning,
+            original_proposed_snapshot = EXCLUDED.original_proposed_snapshot,
+            updated_at = CURRENT_TIMESTAMP
         RETURNING id, status
         """
     )
+    original_snapshot: Any = None
+    if original_proposed_json:
+        try:
+            original_snapshot = json.loads(original_proposed_json)
+        except json.JSONDecodeError:
+            original_snapshot = {"raw": original_proposed_json}
+
     with engine().begin() as connection:
         row = (
             connection.execute(
                 statement,
                 {
+                    "dedupe_key": dedupe_key,
+                    "pipeline_run_id": pipeline_run_id,
                     "paperless_document_id": paperless_document_id,
                     "confidence": result.confidence,
                     "reasoning": result.reasoning,
@@ -120,19 +270,119 @@ def store_review_suggestion(
                     "proposed_title": result.title,
                     "proposed_date": result.date,
                     "proposed_correspondent_name": result.correspondent,
+                    "proposed_correspondent_id": proposed_correspondent_id,
                     "proposed_document_type_name": result.document_type,
+                    "proposed_document_type_id": proposed_document_type_id,
                     "proposed_storage_path_name": result.storage_path,
+                    "proposed_storage_path_id": proposed_storage_path_id,
                     "proposed_tags": _json(proposed_tags),
-                    "context_documents": _json(context_documents or []),
-                    "raw_response": _json(raw_payload),
-                    "pipeline_run_id": pipeline_run_id,
+                    "context_documents": _json(_safe_context_documents(context_documents)),
+                    "raw_response": _json(_raw_payload(raw_response)),
+                    "judge_verdict": judge_verdict,
+                    "judge_reasoning": judge_reasoning,
+                    "original_proposed_snapshot": _json(original_snapshot),
                 },
             )
             .mappings()
             .first()
         )
+        if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
+            raise RuntimeError("review suggestion upsert did not return a row")
+        suggestion_id = int(row["id"])
+        _upsert_entity_approval(
+            connection=connection,
+            suggestion_id=suggestion_id,
+            entity_type="correspondent",
+            name=result.correspondent,
+            resolved_id=proposed_correspondent_id,
+        )
+        _upsert_entity_approval(
+            connection=connection,
+            suggestion_id=suggestion_id,
+            entity_type="document_type",
+            name=result.document_type,
+            resolved_id=proposed_document_type_id,
+        )
+        for tag in proposed_tags:
+            _upsert_entity_approval(
+                connection=connection,
+                suggestion_id=suggestion_id,
+                entity_type="tag",
+                name=tag.get("name"),
+                resolved_id=tag.get("id"),
+            )
 
-    if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
-        raise RuntimeError("review suggestion insert did not return a row")
+    return StoredReviewSuggestion(id=suggestion_id, status=str(row["status"]))
 
-    return StoredReviewSuggestion(id=int(row["id"]), status=str(row["status"]))
+
+def _unresolved_fields_for_auto_commit(review_suggestion_id: int) -> list[str]:
+    statement = sql_text(
+        """
+        SELECT proposed_correspondent_name,
+               proposed_correspondent_id,
+               proposed_document_type_name,
+               proposed_document_type_id,
+               proposed_storage_path_name,
+               proposed_storage_path_id,
+               proposed_tags
+        FROM review_suggestions
+        WHERE id = :review_suggestion_id
+        """
+    )
+    with engine().connect() as connection:
+        row = connection.execute(statement, {"review_suggestion_id": review_suggestion_id}).mappings().first()
+    if row is None:
+        return ["review_suggestion"]
+    unresolved: list[str] = []
+    if row["proposed_correspondent_name"] and row["proposed_correspondent_id"] is None:
+        unresolved.append("correspondent")
+    if row["proposed_document_type_name"] and row["proposed_document_type_id"] is None:
+        unresolved.append("document_type")
+    if row["proposed_storage_path_name"] and row["proposed_storage_path_id"] is None:
+        unresolved.append("storage_path")
+    proposed_tags = row["proposed_tags"] or []
+    if not isinstance(proposed_tags, list):
+        try:
+            proposed_tags = json.loads(proposed_tags)
+        except (TypeError, json.JSONDecodeError):
+            proposed_tags = []
+    if any(isinstance(tag, dict) and tag.get("name") and tag.get("id") is None for tag in proposed_tags):
+        unresolved.append("tags")
+    return unresolved
+
+
+def mark_review_suggestion_auto_accepted(
+    review_suggestion_id: int, *, reason: str, confidence: int
+) -> tuple[bool, list[str]]:
+    """Mark a suggestion accepted/queued for commit if all proposed entities resolve."""
+    unresolved = _unresolved_fields_for_auto_commit(review_suggestion_id)
+    if unresolved:
+        return False, unresolved
+    statement = sql_text(
+        """
+        UPDATE review_suggestions
+        SET status = 'accepted',
+            reviewed_at = CURRENT_TIMESTAMP,
+            commit_status = 'queued',
+            raw_response = COALESCE(raw_response, '{}'::jsonb) || CAST(:auto_payload AS jsonb),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :review_suggestion_id
+        """
+    )
+    with engine().begin() as connection:
+        connection.execute(
+            statement,
+            {
+                "review_suggestion_id": review_suggestion_id,
+                "auto_payload": _json(
+                    {
+                        "auto_commit": {
+                            "reason": reason,
+                            "confidence": confidence,
+                            "queued_at": datetime.now(UTC).isoformat(),
+                        }
+                    }
+                ),
+            },
+        )
+    return True, []
