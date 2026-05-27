@@ -41,6 +41,7 @@ docs/                 User/developer documentation
 docs/agent/           Tool-neutral agent instructions
 tests/                Python test suite
 scripts/              Maintenance and CI helper scripts
+.graphify/            Committed agent knowledge-graph artifacts plus ignored local runtime state
 ```
 
 ## Canonical docs
@@ -55,6 +56,7 @@ Read these instead of expanding this file with duplicate details:
 - [`../developer/mcp.md`](../developer/mcp.md) — MCP server/tools.
 - [`../user/webhooks.md`](../user/webhooks.md) — Paperless webhook integration.
 - [`../user/deployment.md`](../user/deployment.md) — deployment notes.
+- [`../../.graphify/GRAPH_REPORT.md`](../../.graphify/GRAPH_REPORT.md) — high-level Graphify repository graph report for agent orientation.
 
 ## Agent docs
 

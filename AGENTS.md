@@ -29,6 +29,7 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 - [`docs/user/installation.md`](docs/user/installation.md) — Docker-first installation and local development.
 - [`docs/agent/SUPPLY_CHAIN.md`](docs/agent/SUPPLY_CHAIN.md) — dependency and container safety guidance.
 - [`docs/agent/AUTORESEARCH.md`](docs/agent/AUTORESEARCH.md) — optional metric-driven experiment workflow.
+- [`.graphify/GRAPH_REPORT.md`](.graphify/GRAPH_REPORT.md) — committed knowledge-graph summary for repository orientation; use `.graphify/graph.json` through Graphify tools rather than reading raw JSON manually.
 
 ## Event-driven migration summary
 
@@ -46,4 +47,4 @@ Laravel `worker_jobs` is a temporary stabilization layer.
 Do not add permanent architecture only to `worker_jobs`.
 New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events` and Python actors.
 
-Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md).
+Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md). Graphify-only artifact refreshes must pass `python3 scripts/check_graphify_artifacts.py` and should commit only `.graphify/GRAPH_REPORT.md`, `.graphify/graph.json`, and `.graphify/scope.json`.

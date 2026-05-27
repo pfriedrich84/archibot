@@ -6,6 +6,7 @@ ArchiBot releases are Docker-first and should remain traceable to a reviewed Git
 
 - `main` is the trusted release branch for the `latest` container tag.
 - The Docker publish workflow builds from the CI-tested commit SHA after the `CI` workflow succeeds.
+- Graphify-only artifact refreshes under `.graphify/**` are ignored by CI push triggers and must not build or publish Docker images.
 - SHA-derived image tags are preferred for rollback and operational traceability.
 
 ## Required checks before publishing or announcing a release
@@ -16,6 +17,7 @@ Use the relevant checks from `docs/agent/CHECKS.md`. For release-impacting chang
 - Laravel backend tests, frontend lint, format, type check, and build.
 - Docker build plus Grype and Trivy scans.
 - Documentation link checks for docs-only or governance-heavy changes.
+- Graphify artifact checks for committed `.graphify/` refreshes.
 
 If any check is skipped locally, note why and rely on CI only for that specific unavailable capability.
 

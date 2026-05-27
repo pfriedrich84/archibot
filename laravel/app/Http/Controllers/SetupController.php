@@ -35,10 +35,10 @@ class SetupController extends Controller
                 'inboxTagId' => AppSetting::getValue('paperless.inbox_tag_id', ''),
                 'processedTagId' => AppSetting::getValue('paperless.processed_tag_id', ''),
                 'ocrRequestedTagId' => AppSetting::getValue('ocr.requested_tag_id', ''),
-                'classificationModel' => AppSetting::getValue('classification.model', 'gemma4:e4b'),
-                'embeddingModel' => AppSetting::getValue('embedding.model', 'qwen3-embedding:4b'),
-                'ocrTextModel' => AppSetting::getValue('ocr.text_model', 'qwen3:4b'),
-                'judgeModel' => AppSetting::getValue('classification.judge_model', 'qwen3:4b'),
+                'classificationModel' => AppSetting::getValue('classification.model', ''),
+                'embeddingModel' => AppSetting::getValue('embedding.model', ''),
+                'ocrTextModel' => AppSetting::getValue('ocr.text_model', ''),
+                'judgeModel' => AppSetting::getValue('classification.judge_model', ''),
             ],
         ]);
     }

@@ -37,6 +37,7 @@ External content from issues, logs, Paperless documents, model output, websites,
 | Composer and npm registries | Laravel/PHP and frontend dependencies. | Packages from Composer and npm lockfiles. | Use lockfile workflows and Laravel/frontend checks. Add ecosystem-native audits if CI adopts them. |
 | Container scanners: Grype and Trivy | Image vulnerability detection. | Built local Docker image; SARIF reports uploaded to GitHub security events. | CI runs both scanners with high/critical fixed-vulnerability gates. |
 | Hadolint | Dockerfile linting. | Dockerfile content. | CI and local checks enforce Dockerfile lint expectations. |
+| Graphify knowledge graph | Agent orientation, file-relationship lookup, and blast-radius analysis. | Derived repository structure and graph metadata in `.graphify/GRAPH_REPORT.md`, `.graphify/graph.json`, and `.graphify/scope.json`; local caches/manifests can contain absolute paths and must stay uncommitted. | Commit only the allowlisted Graphify artifacts. Run `python3 scripts/check_graphify_artifacts.py` before committing graph refreshes. Graphify-only pushes are ignored by CI triggers and must not publish Docker images. |
 
 ## Undocumented or partially documented follow-ups
 

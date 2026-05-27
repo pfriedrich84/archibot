@@ -9,6 +9,7 @@ Use the following tooling by default when it is available and relevant:
 1. GitHub MCP for repository context.
 2. Context7 MCP for current dependency and framework documentation.
 3. Project-native quality checks for linting, type checking, tests, builds, Docker validation, and supply-chain checks.
+4. Graphify for optional repository knowledge-graph orientation and blast-radius analysis when `.graphify/` artifacts are useful.
 
 Serena MCP is optional and must only be used when there is a strong, concrete reason.
 
@@ -55,6 +56,17 @@ Rules:
 - Do not rely on outdated model memory for dependency-specific behavior when Context7 is available.
 - Prefer version-aware documentation over generic examples.
 - Keep implementation decisions aligned with the dependencies and versions used by this repository.
+
+## Graphify
+
+Use Graphify when the committed knowledge graph can speed up architecture orientation, file-relationship questions, or blast-radius analysis. Start with [`.graphify/GRAPH_REPORT.md`](../../.graphify/GRAPH_REPORT.md) or Graphify query/review commands; do not dump raw `.graphify/graph.json` into chat.
+
+Rules:
+
+- Treat Graphify output as an analysis aid, not source of truth; confirm important conclusions against source files before editing.
+- Commit only `.graphify/GRAPH_REPORT.md`, `.graphify/graph.json`, and `.graphify/scope.json` unless the maintainer explicitly approves more artifacts.
+- Before committing graph artifacts, run `python3 scripts/check_graphify_artifacts.py` from the repository root.
+- Graphify-only commits under `.graphify/**` are intentionally ignored by CI push triggers so refreshing the agent graph does not build or publish Docker images.
 
 ## Project-native quality checks
 

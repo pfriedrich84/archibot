@@ -57,14 +57,67 @@
     let processedTagId = $state((() => defaults.processedTagId ?? '')());
     let ocrRequestedTagId = $state((() => defaults.ocrRequestedTagId ?? '')());
     let classificationModel = $state(
-        (() => defaults.classificationModel ?? 'gemma4:e4b')(),
+        (() => defaults.classificationModel ?? '')(),
     );
-    let embeddingModel = $state(
-        (() => defaults.embeddingModel ?? 'qwen3-embedding:4b')(),
-    );
-    let ocrTextModel = $state((() => defaults.ocrTextModel ?? 'qwen3:4b')());
-    let judgeModel = $state((() => defaults.judgeModel ?? 'qwen3:4b')());
+    let embeddingModel = $state((() => defaults.embeddingModel ?? '')());
+    let ocrTextModel = $state((() => defaults.ocrTextModel ?? '')());
+    let judgeModel = $state((() => defaults.judgeModel ?? '')());
     let ocrMode = $state('off');
+
+    type SetupStep =
+        | 'reset-token'
+        | 'paperless'
+        | 'tags'
+        | 'provider'
+        | 'models';
+    const setupSteps = $derived([
+        ...(requiresResetToken
+            ? [{ id: 'reset-token' as const, label: 'Reset token' }]
+            : []),
+        { id: 'paperless' as const, label: 'Paperless' },
+        { id: 'tags' as const, label: 'Tags' },
+        { id: 'provider' as const, label: 'AI provider' },
+        { id: 'models' as const, label: 'Models' },
+    ]);
+    const initialActiveStep = (): SetupStep =>
+        requiresResetToken ? 'reset-token' : 'paperless';
+    let activeStep = $state<SetupStep>(initialActiveStep());
+
+    function nextStep() {
+        const currentIndex = setupSteps.findIndex(
+            (step) => step.id === activeStep,
+        );
+        activeStep = setupSteps[
+            Math.min(currentIndex + 1, setupSteps.length - 1)
+        ]?.id as SetupStep;
+    }
+
+    function previousStep() {
+        const currentIndex = setupSteps.findIndex(
+            (step) => step.id === activeStep,
+        );
+        activeStep = setupSteps[Math.max(currentIndex - 1, 0)]?.id as SetupStep;
+    }
+
+    function bestModel(current: string, kind: 'chat' | 'embedding') {
+        if (current && models.includes(current)) {
+            return current;
+        }
+
+        if (kind === 'embedding') {
+            return (
+                models.find((model) => /embed|embedding/i.test(model)) ??
+                models[0] ??
+                ''
+            );
+        }
+
+        return (
+            models.find((model) => !/embed|embedding/i.test(model)) ??
+            models[0] ??
+            ''
+        );
+    }
 
     const csrfToken = () =>
         document
@@ -130,10 +183,10 @@
                 },
             );
             models = data.items;
-            classificationModel ||= models[0] ?? '';
-            embeddingModel ||= models[0] ?? '';
-            ocrTextModel ||= models[0] ?? '';
-            judgeModel ||= models[0] ?? '';
+            classificationModel = bestModel(classificationModel, 'chat');
+            embeddingModel = bestModel(embeddingModel, 'embedding');
+            ocrTextModel = bestModel(ocrTextModel, 'chat');
+            judgeModel = bestModel(judgeModel, 'chat');
         } catch (error) {
             modelError = error instanceof Error ? error.message : String(error);
         } finally {
@@ -160,11 +213,36 @@
         action="/setup"
         method="post"
         resetOnSuccess={['password', 'setup_token']}
+        novalidate
         class="grid gap-6 rounded-xl border bg-card p-6 shadow-sm"
     >
         {#snippet children({ errors, processing })}
+            <nav
+                class="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"
+                aria-label="Setup steps"
+            >
+                {#each setupSteps as step, index (step.id)}
+                    <Button
+                        type="button"
+                        variant={activeStep === step.id ? 'default' : 'outline'}
+                        class="justify-start"
+                        onclick={() => (activeStep = step.id)}
+                    >
+                        <span
+                            class="flex size-6 items-center justify-center rounded-full bg-background/20 text-xs"
+                        >
+                            {index + 1}
+                        </span>
+                        {step.label}
+                    </Button>
+                {/each}
+            </nav>
+
             {#if requiresResetToken}
-                <section class="grid gap-2">
+                <section
+                    class:hidden={activeStep !== 'reset-token'}
+                    class="grid gap-2"
+                >
                     <Label for="setup_token">Temporary setup token</Label>
                     <PasswordInput
                         id="setup_token"
@@ -178,12 +256,18 @@
                         >. It expires after 10 minutes.
                     </p>
                     <InputError message={errors.setup_token} />
+                    <div class="flex justify-end">
+                        <Button type="button" onclick={nextStep}>Next</Button>
+                    </div>
                 </section>
             {/if}
 
-            <section class="grid gap-4">
+            <section
+                class:hidden={activeStep !== 'paperless'}
+                class="grid gap-4"
+            >
                 <div>
-                    <h2 class="text-lg font-semibold">1. Paperless-NGX</h2>
+                    <h2 class="text-lg font-semibold">Paperless-NGX</h2>
                     <p class="text-sm text-muted-foreground">
                         Use an active Paperless admin/superuser account. The URL
                         is prefilled from your environment when available.
@@ -258,11 +342,22 @@
                 {#if tagError}
                     <p class="text-sm text-destructive">{tagError}</p>
                 {/if}
+                <div class="flex justify-between gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onclick={previousStep}>Back</Button
+                    >
+                    <Button type="button" onclick={nextStep}>Next</Button>
+                </div>
             </section>
 
-            <section class="grid gap-4 border-t pt-6">
+            <section
+                class:hidden={activeStep !== 'tags'}
+                class="grid gap-4 border-t pt-6"
+            >
                 <div>
-                    <h2 class="text-lg font-semibold">2. Paperless tags</h2>
+                    <h2 class="text-lg font-semibold">Paperless tags</h2>
                     <p class="text-sm text-muted-foreground">
                         Select tags by their readable Paperless names. Only the
                         inbox tag is required.
@@ -331,11 +426,22 @@
                         <InputError message={errors.ocr_requested_tag_id} />
                     </div>
                 </div>
+                <div class="flex justify-between gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onclick={previousStep}>Back</Button
+                    >
+                    <Button type="button" onclick={nextStep}>Next</Button>
+                </div>
             </section>
 
-            <section class="grid gap-4 border-t pt-6">
+            <section
+                class:hidden={activeStep !== 'provider'}
+                class="grid gap-4 border-t pt-6"
+            >
                 <div>
-                    <h2 class="text-lg font-semibold">3. AI provider</h2>
+                    <h2 class="text-lg font-semibold">AI provider</h2>
                     <p class="text-sm text-muted-foreground">
                         Use native Ollama or a local OpenAI-compatible endpoint
                         such as LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp, or
@@ -418,58 +524,98 @@
                 {#if modelError}
                     <p class="text-sm text-destructive">{modelError}</p>
                 {/if}
+                <div class="flex justify-between gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onclick={previousStep}>Back</Button
+                    >
+                    <Button type="button" onclick={nextStep}>Next</Button>
+                </div>
+            </section>
 
-                <datalist id="ollama-models">
-                    {#each models as model (model)}
-                        <option value={model}></option>
-                    {/each}
-                </datalist>
+            <section
+                class:hidden={activeStep !== 'models'}
+                class="grid gap-4 border-t pt-6"
+            >
+                <div>
+                    <h2 class="text-lg font-semibold">Models</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Choose from the models returned by your provider. If the
+                        provider returns no models, go back to the AI provider
+                        tab and check the base URL or token.
+                    </p>
+                    {#if models.length > 0}
+                        <p class="mt-2 text-sm text-muted-foreground">
+                            Loaded {models.length} models. Selected:
+                            {classificationModel || 'none'} / {embeddingModel ||
+                                'none'}.
+                        </p>
+                    {/if}
+                </div>
 
                 <div class="grid gap-4 md:grid-cols-2">
                     <div class="grid gap-2">
                         <Label for="classification_model">
                             Classification model
                         </Label>
-                        <Input
+                        <select
                             id="classification_model"
                             name="classification_model"
                             required
-                            list="ollama-models"
-                            value={classificationModel}
-                            oninput={(event) =>
-                                (classificationModel =
-                                    event.currentTarget.value)}
-                            placeholder="model:tag"
-                        />
+                            bind:value={classificationModel}
+                            class="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                            <option value=""
+                                >{models.length > 0
+                                    ? 'Select classification model'
+                                    : 'Load models first'}</option
+                            >
+                            {#each models as model (model)}
+                                <option value={model}>{model}</option>
+                            {/each}
+                        </select>
                         <InputError message={errors.classification_model} />
                     </div>
 
                     <div class="grid gap-2">
                         <Label for="embedding_model">Embedding model</Label>
-                        <Input
+                        <select
                             id="embedding_model"
                             name="embedding_model"
                             required
-                            list="ollama-models"
-                            value={embeddingModel}
-                            oninput={(event) =>
-                                (embeddingModel = event.currentTarget.value)}
-                            placeholder="model:tag"
-                        />
+                            bind:value={embeddingModel}
+                            class="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                            <option value=""
+                                >{models.length > 0
+                                    ? 'Select embedding model'
+                                    : 'Load models first'}</option
+                            >
+                            {#each models as model (model)}
+                                <option value={model}>{model}</option>
+                            {/each}
+                        </select>
                         <InputError message={errors.embedding_model} />
                     </div>
 
                     <div class="grid gap-2">
                         <Label for="ocr_text_model">OCR text model</Label>
-                        <Input
+                        <select
                             id="ocr_text_model"
                             name="ocr_text_model"
-                            list="ollama-models"
-                            value={ocrTextModel}
-                            oninput={(event) =>
-                                (ocrTextModel = event.currentTarget.value)}
-                            placeholder="model:tag"
-                        />
+                            bind:value={ocrTextModel}
+                            class="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                            <option value=""
+                                >{models.length > 0
+                                    ? 'None / select OCR text model'
+                                    : 'Load models first'}</option
+                            >
+                            {#each models as model (model)}
+                                <option value={model}>{model}</option>
+                            {/each}
+                        </select>
                         <InputError message={errors.ocr_text_model} />
                     </div>
 
@@ -477,15 +623,21 @@
                         <Label for="classification_judge_model">
                             Judge model
                         </Label>
-                        <Input
+                        <select
                             id="classification_judge_model"
                             name="classification_judge_model"
-                            list="ollama-models"
-                            value={judgeModel}
-                            oninput={(event) =>
-                                (judgeModel = event.currentTarget.value)}
-                            placeholder="model:tag"
-                        />
+                            bind:value={judgeModel}
+                            class="h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                            <option value=""
+                                >{models.length > 0
+                                    ? 'None / select judge model'
+                                    : 'Load models first'}</option
+                            >
+                            {#each models as model (model)}
+                                <option value={model}>{model}</option>
+                            {/each}
+                        </select>
                         <InputError
                             message={errors.classification_judge_model}
                         />
@@ -507,12 +659,19 @@
                     </select>
                     <InputError message={errors.ocr_mode} />
                 </div>
-            </section>
 
-            <Button type="submit" disabled={processing} class="w-full">
-                {#if processing}<Spinner />{/if}
-                Complete setup
-            </Button>
+                <div class="flex justify-between gap-3">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onclick={previousStep}>Back</Button
+                    >
+                    <Button type="submit" disabled={processing}>
+                        {#if processing}<Spinner />{/if}
+                        Complete setup
+                    </Button>
+                </div>
+            </section>
         {/snippet}
     </Form>
 </div>

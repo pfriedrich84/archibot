@@ -1,6 +1,6 @@
 # Repository Governance Assessment
 
-Date: 2026-05-23
+Date: 2026-05-27
 
 ## Maturity summary
 
@@ -41,7 +41,12 @@ Date: 2026-05-23
 - CI covers Python lint/tests/security, Laravel tests/frontend checks, Docker build, Hadolint, Grype, and Trivy.
 - Python supply-chain posture is strong: constraints, pip-audit, known-vulnerability allowlist, and dependency-age checks.
 - Trust boundaries and release expectations are now explicitly documented.
+- Committed Graphify artifacts provide an agent-readable knowledge graph while guardrails keep local caches/manifests out of Git and prevent Graphify-only pushes from building Docker images.
 - CODEOWNERS now gives GitHub a default owner for high-risk governance and automation surfaces.
+
+## Drift and findings from the 2026-05-27 scan
+
+- **Resolved:** `AGENTS.md` and related governance docs now describe committed Graphify artifacts, the required artifact safety check, and the rule that Graphify-only commits should not trigger Docker image builds.
 
 ## Drift and findings from the 2026-05-23 scan
 
