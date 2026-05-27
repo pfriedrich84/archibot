@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.clients.paperless import PaperlessClient
-from app.jobs.webhook_delivery import engine
+from app.jobs.database import engine
 
 
 @dataclass(frozen=True)

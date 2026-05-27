@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from app.config import settings
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
-
-_engine: Engine | None = None
+from app.jobs.database import engine
 
 
 @dataclass(frozen=True)
@@ -21,23 +16,6 @@ class WebhookDeliveryRecord:
     paperless_modified: str | None
     status: str
     normalized_payload: dict[str, Any]
-
-
-def engine() -> Engine:
-    global _engine
-    if _engine is None:
-        try:
-            from sqlalchemy import create_engine
-        except (
-            ModuleNotFoundError
-        ) as exc:  # pragma: no cover - dependency is installed in target image
-            raise RuntimeError(
-                "sqlalchemy is required for PostgreSQL-backed webhook actors"
-            ) from exc
-
-        _engine = create_engine(settings.database_url, pool_pre_ping=True)
-    return _engine
-
 
 def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | None:
     """Load the normalized state needed by the webhook Dramatiq actor."""

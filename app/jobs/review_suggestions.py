@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from app.jobs.webhook_delivery import engine
+from app.jobs.database import engine
 from app.models import ClassificationResult
 
 
