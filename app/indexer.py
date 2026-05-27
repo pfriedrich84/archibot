@@ -1,4 +1,9 @@
-"""Initial and re-index jobs for the document embedding store."""
+"""Legacy re-index jobs for document embeddings.
+
+Target event-driven embedding builds use PostgreSQL/pgvector helpers in
+``app.actors.embedding`` and ``app.jobs.document_embeddings``. This module is
+kept for legacy CLI progress/OCR orchestration during migration.
+"""
 
 from __future__ import annotations
 
@@ -14,8 +19,9 @@ import structlog
 from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.db import EMBED_DIM, get_conn
+from app.db import get_conn
 from app.job_events import record_event
+from app.jobs.document_embeddings import is_trusted_document
 from app.pipeline.context_builder import document_summary, store_embedding
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
@@ -117,15 +123,10 @@ async def initial_index(
     log.info("starting initial embedding index", limit=limit)
     docs = await paperless.list_all_documents(limit=limit)
 
-    # Determine which docs already have embeddings
-    with get_conn() as conn:
-        rows = conn.execute("SELECT document_id FROM doc_embedding_meta").fetchall()
-    indexed_ids = {r["document_id"] for r in rows}
-
-    new_docs = [d for d in docs if d.id not in indexed_ids]
-    log.info(
-        "documents to index", total=len(docs), already_indexed=len(indexed_ids), new=len(new_docs)
-    )
+    # PostgreSQL/pgvector is the target context store. Build only trusted
+    # documents; PostgreSQL upsert semantics handle existing embeddings.
+    new_docs = [document for document in docs if is_trusted_document(document)]
+    log.info("documents to index", total=len(docs), trusted=len(new_docs))
 
     # Update progress tracking with total count
     _reindex_progress.total = len(new_docs)
@@ -138,7 +139,7 @@ async def initial_index(
         "phase_started",
         f"Embedding-Index wird für {len(new_docs)} Dokumente aufgebaut.",
         phase="embedding",
-        data={"total": len(new_docs), "already_indexed": len(indexed_ids)},
+        data={"total": len(new_docs), "trusted_scope": "without_inbox_tag"},
     )
 
     ollama.embed_retry_count = 0
@@ -311,7 +312,7 @@ async def reindex_all(
     Use this when the embedding model changes.
     """
     try:
-        log.info("starting full reindex — clearing existing embeddings and FTS index")
+        log.info("starting full reindex — rebuilding PostgreSQL/pgvector embeddings")
         _reindex_progress.phase = "prepare"
         record_event(
             _reindex_progress.job_id,
@@ -320,17 +321,9 @@ async def reindex_all(
             "Reindex gestartet.",
             phase="prepare",
         )
-        with get_conn() as conn:
-            conn.execute("DELETE FROM doc_embedding_meta")
-            # Drop + recreate vec0 table so dimension changes take effect
-            conn.execute("DROP TABLE IF EXISTS doc_embeddings")
-            conn.execute(
-                f"""CREATE VIRTUAL TABLE doc_embeddings USING vec0(
-                    document_id INTEGER PRIMARY KEY,
-                    embedding   FLOAT[{EMBED_DIM}]
-                )"""
-            )
-            conn.execute("DELETE FROM doc_fts")
+        # PostgreSQL/pgvector upsert semantics replace matching embeddings for
+        # the active content hash/model/dimension. Legacy SQLite vector tables
+        # are no longer rebuilt by the target reindex path.
 
         # --- Phase 0: OCR correction (before embedding) ---
         ocr_mode = effective_ocr_mode()

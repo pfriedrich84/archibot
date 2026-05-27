@@ -13,6 +13,10 @@ from app.dramatiq_broker import dramatiq, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.jobs.document_embeddings import (
+    document_embedding_text,
+    find_similar_with_precomputed_embedding,
+)
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_items import (
     finish_pipeline_item,
@@ -56,15 +60,29 @@ async def _classify_document(document):
         doctypes = await paperless.list_document_types()
         storage_paths = await paperless.list_storage_paths()
         tags = await paperless.list_tags()
-        return await classify(
+        context_documents = []
+        text = document_embedding_text(document.title, document.content)
+        if text.strip():
+            try:
+                embedding = await ollama.embed(text)
+                similar = await find_similar_with_precomputed_embedding(document, embedding, paperless)
+                context_documents = [item.document for item in similar]
+            except Exception as exc:
+                log.warning(
+                    "document context search failed",
+                    paperless_document_id=document.id,
+                    error_type=type(exc).__name__,
+                )
+        result, raw_response = await classify(
             document,
-            [],
+            context_documents,
             correspondents,
             doctypes,
             storage_paths,
             tags,
             ollama,
         )
+        return result, raw_response, context_documents
     finally:
         await ollama.aclose()
         await paperless.aclose()
@@ -198,7 +216,7 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             item_type="classification",
             paperless_document_id=run.paperless_document_id,
         )
-        result, raw_response = run_async(_classify_document(document))
+        result, raw_response, context_documents = run_async(_classify_document(document))
         finish_pipeline_item(classify_item.id, status="succeeded")
         _update_item_derived_progress(
             pipeline_run_id=pipeline_run_id,
@@ -234,7 +252,7 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             document=document,
             result=result,
             raw_response=raw_response,
-            context_documents=[],
+            context_documents=context_documents,
             pipeline_run_id=pipeline_run_id,
         )
         finish_pipeline_item(review_item.id, status="succeeded")

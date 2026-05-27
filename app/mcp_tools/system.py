@@ -8,6 +8,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
 from app.db import get_conn
+from app.jobs.document_embeddings import count_document_embeddings
 from app.mcp_tools._auth import check_api_key
 from app.mcp_tools._deps import get_deps, get_paperless
 
@@ -41,10 +42,13 @@ def register(mcp: FastMCP) -> None:
             errors = conn.execute(
                 "SELECT COUNT(*) FROM errors WHERE occurred_at > datetime('now', '-24 hours')"
             ).fetchone()[0]
-            embedded = conn.execute("SELECT COUNT(*) FROM doc_embedding_meta").fetchone()[0]
             pending_tags = conn.execute(
                 "SELECT COUNT(*) FROM tag_whitelist WHERE approved = 0"
             ).fetchone()[0]
+        try:
+            embedded = count_document_embeddings()
+        except Exception:
+            embedded = 0
 
         return json.dumps(
             {

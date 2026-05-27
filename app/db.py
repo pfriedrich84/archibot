@@ -1,4 +1,9 @@
-"""SQLite setup with sqlite-vec extension and schema migrations."""
+"""Legacy SQLite setup for non-target local state.
+
+PostgreSQL/pgvector is the target classification-context store. The SQLite
+embedding tables in this module are retained only for legacy migration/test
+compatibility until remaining legacy state is migrated.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,7 @@ from app.config import settings
 
 log = structlog.get_logger(__name__)
 
-# Embedding dimension for sqlite-vec. Resolved from model defaults or explicit config.
+# Legacy SQLite embedding dimension. Target pgvector dimensions are stored per row.
 EMBED_DIM = settings.ollama_embed_dim_resolved
 
 
@@ -149,14 +154,14 @@ CREATE TABLE IF NOT EXISTS errors (
 CREATE INDEX IF NOT EXISTS idx_errors_doc ON errors(document_id);
 
 -- =========================================================================
--- Embeddings for context similarity (sqlite-vec virtual table)
+-- Legacy embeddings for migration compatibility (not target context store)
 -- =========================================================================
 CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings USING vec0(
     document_id INTEGER PRIMARY KEY,
     embedding   FLOAT[{EMBED_DIM}]
 );
 
--- Metadata table shadowing doc_embeddings for human-readable lookups + filtering
+-- Legacy metadata shadowing doc_embeddings for migration compatibility
 CREATE TABLE IF NOT EXISTS doc_embedding_meta (
     document_id  INTEGER PRIMARY KEY,
     title        TEXT,
@@ -169,7 +174,7 @@ CREATE TABLE IF NOT EXISTS doc_embedding_meta (
 );
 
 -- =========================================================================
--- Full-text search index (FTS5) for hybrid search (vector + keyword)
+-- Legacy full-text search index retained for migration compatibility
 -- =========================================================================
 CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5(
     title,
@@ -260,7 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_job_events_created ON job_events(created_at);
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
-    """Open a connection with sqlite-vec loaded."""
+    """Open a legacy SQLite connection with sqlite-vec loaded."""
     conn = sqlite3.connect(str(db_path), isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.enable_load_extension(True)
@@ -323,11 +328,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_embed_dim(conn: sqlite3.Connection) -> None:
-    """Recreate doc_embeddings if EMBED_DIM changed (e.g. 768 → 1024).
+    """Recreate legacy SQLite doc_embeddings if EMBED_DIM changed.
 
-    vec0 virtual tables have a fixed dimension at creation; CREATE IF NOT
-    EXISTS silently keeps the old schema.  We detect the mismatch by
-    inspecting sqlite_master and rebuild if needed.
+    Target classification context uses PostgreSQL/pgvector. This migration is
+    retained only so existing legacy SQLite databases remain readable during
+    the broader state migration.
     """
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='doc_embeddings'"

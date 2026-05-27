@@ -27,7 +27,7 @@ docker exec -it archibot archibot <command> [flags]
 
 ### `reindex` — Voller Reindex
 
-Loescht alle Embeddings und baut den gesamten Index neu auf.
+Baut den PostgreSQL/pgvector-Embedding-Index neu auf.
 Fuehrt optional OCR-Korrektur durch (wenn `OCR_MODE != off`).
 
 ```bash
@@ -35,9 +35,9 @@ archibot reindex
 ```
 
 **Was passiert:**
-1. Alle Eintraege in `doc_embeddings` und `doc_embedding_meta` werden geloescht
+1. Die Embedding-Gate-State wird auf `building` gesetzt
 2. Phase 0: OCR-Korrektur fuer alle Dokumente (wenn aktiviert), Ergebnisse in `doc_ocr_cache`
-3. Phase 1: Embedding fuer jedes Dokument berechnen und in die Vektor-DB schreiben
+3. Phase 1: Embeddings fuer vertrauenswuerdige Dokumente ohne Inbox-/Posteingang-Tag berechnen und in PostgreSQL/pgvector schreiben
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, bei beschaedigter Vektor-DB,
 oder beim ersten Setup.
@@ -75,16 +75,15 @@ Mit `--force` wenn vorhandene Korrekturen unbrauchbar sind und neu erzeugt werde
 
 ### `reindex-embed` — Nur Embeddings neu berechnen
 
-Loescht alle Embeddings und berechnet sie neu. Nutzt gecachte OCR-Texte
-aus `doc_ocr_cache` (falls vorhanden), fuehrt aber keine neue OCR-Korrektur durch.
+Startet einen PostgreSQL/pgvector-Embedding-Build fuer vertrauenswuerdige Dokumente ohne Inbox-/Posteingang-Tag. Nutzt gecachte OCR-Texte aus `doc_ocr_cache` (falls vorhanden), fuehrt aber keine neue OCR-Korrektur durch.
 
 ```bash
 archibot reindex-embed
 ```
 
 **Was passiert:**
-1. `doc_embeddings` und `doc_embedding_meta` werden geleert
-2. Fuer jedes Dokument: OCR-Cache pruefen, dann Embedding berechnen
+1. Ein dauerhafter Embedding-Build wird in PostgreSQL gestartet
+2. Fuer jedes vertrauenswuerdige Dokument: OCR-Cache pruefen, dann Embedding berechnen und in `document_embeddings` speichern
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, wenn OCR-Cache
 bereits aktuell ist.

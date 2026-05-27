@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +9,7 @@ from typing import Any
 from app import db
 from app.config import FIELD_META, needs_setup, settings
 from app.indexer import get_reindex_progress
+from app.jobs.document_embeddings import count_document_embeddings, list_document_embedding_rows
 from app.worker import _has_embedding_index, get_poll_progress
 
 
@@ -290,25 +290,23 @@ def get_embeddings_snapshot(
     storage_path_names = storage_path_names or {}
     tag_names = tag_names or {}
 
-    with db.get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
-        rows = conn.execute(
-            """
-            SELECT document_id, title, correspondent, doctype, storage_path, tags_json, created_date, indexed_at
-            FROM doc_embedding_meta
-            ORDER BY indexed_at DESC, document_id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+    try:
+        total, rows = list_document_embedding_rows(limit)
+    except Exception:
+        total, rows = 0, []
     items = []
     for row in rows:
-        item = dict(row)
-        try:
-            tags = json.loads(item.pop("tags_json") or "[]")
-        except json.JSONDecodeError:
-            tags = []
-        tag_ids = tags if isinstance(tags, list) else []
+        item = {
+            "document_id": row.paperless_document_id,
+            "title": row.title,
+            "correspondent": row.correspondent_id,
+            "doctype": row.document_type_id,
+            "storage_path": row.storage_path_id,
+            "created_date": row.created_date,
+            "indexed_at": row.updated_at,
+            "trusted_for_context": row.trusted_for_context,
+        }
+        tag_ids = row.tags
         item["correspondent_name"] = correspondent_names.get(item["correspondent"])
         item["doctype_name"] = doctype_names.get(item["doctype"])
         item["storage_path_name"] = storage_path_names.get(item["storage_path"])
@@ -321,7 +319,10 @@ def get_stats_snapshot() -> dict[str, Any]:
     with db.get_conn() as conn:
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM processed_documents").fetchone()["c"]
         total_errors = conn.execute("SELECT COUNT(*) AS c FROM errors").fetchone()["c"]
-        embedded = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
+        try:
+            embedded = count_document_embeddings()
+        except Exception:
+            embedded = 0
 
         auto_row = conn.execute(
             """
@@ -427,7 +428,10 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "SELECT COUNT(*) AS c FROM doctype_whitelist WHERE approved = 0"
         ).fetchone()["c"]
         total_docs = conn.execute("SELECT COUNT(*) AS c FROM processed_documents").fetchone()["c"]
-        embedded = conn.execute("SELECT COUNT(*) AS c FROM doc_embedding_meta").fetchone()["c"]
+        try:
+            embedded = count_document_embeddings()
+        except Exception:
+            embedded = 0
         inbox_pending = conn.execute(
             "SELECT COUNT(*) AS c FROM processed_documents WHERE status = 'pending'"
         ).fetchone()["c"]
