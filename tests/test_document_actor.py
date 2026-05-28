@@ -371,7 +371,9 @@ def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
     monkeypatch.setattr(
         document,
         "start_actor_execution",
-        lambda **kwargs: ActorExecutionHandle(id=22, actor_name=kwargs["actor_name"], started_monotonic=0),
+        lambda **kwargs: ActorExecutionHandle(
+            id=22, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
     )
     monkeypatch.setattr(
         document,
@@ -388,14 +390,22 @@ def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
     )
     monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
     monkeypatch.setattr(document, "is_pipeline_run_cancel_requested", lambda pipeline_run_id: False)
-    monkeypatch.setattr(document, "start_pipeline_item", lambda **kwargs: PipelineItemRecord(id=len(accepted) + len(events) + 1, status="running"))
+    monkeypatch.setattr(
+        document,
+        "start_pipeline_item",
+        lambda **kwargs: PipelineItemRecord(id=len(accepted) + len(events) + 1, status="running"),
+    )
     monkeypatch.setattr(document, "finish_pipeline_item", lambda *args, **kwargs: None)
-    monkeypatch.setattr(document, "progress_from_pipeline_items", lambda pipeline_run_id: (4, 4, 0, 0))
+    monkeypatch.setattr(
+        document, "progress_from_pipeline_items", lambda pipeline_run_id: (4, 4, 0, 0)
+    )
     monkeypatch.setattr(document, "update_pipeline_run_progress", lambda *args: None)
     monkeypatch.setattr(document, "update_actor_execution_progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(document, "mark_pipeline_run_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(document, "finish_actor_execution", lambda *args, **kwargs: None)
-    monkeypatch.setattr(document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(
+        document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
 
     fetched_document = SimpleNamespace(title="Doc", content="Text")
     outcome = document.DocumentClassificationOutcome(
@@ -411,7 +421,9 @@ def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
         def close(self):
             return None
 
-    monkeypatch.setattr(document, "_fetch_paperless_document", lambda paperless_document_id: FakeCoroutine())
+    monkeypatch.setattr(
+        document, "_fetch_paperless_document", lambda paperless_document_id: FakeCoroutine()
+    )
     monkeypatch.setattr(document, "_classify_document", lambda fetched_document: FakeCoroutine())
     monkeypatch.setattr(document, "run_async", lambda coroutine: run_async_results.pop(0))
     monkeypatch.setattr(
@@ -427,7 +439,9 @@ def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
 
     import app.jobs.recovery as recovery
 
-    monkeypatch.setattr(recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id))
+    monkeypatch.setattr(
+        recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id)
+    )
 
     document._handle_document_pipeline_impl(123)
 
@@ -444,7 +458,9 @@ def test_document_actor_auto_commit_skips_unresolved_entities(monkeypatch):
     monkeypatch.setattr(
         document,
         "start_actor_execution",
-        lambda **kwargs: ActorExecutionHandle(id=22, actor_name=kwargs["actor_name"], started_monotonic=0),
+        lambda **kwargs: ActorExecutionHandle(
+            id=22, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
     )
     monkeypatch.setattr(
         document,
@@ -461,14 +477,20 @@ def test_document_actor_auto_commit_skips_unresolved_entities(monkeypatch):
     )
     monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
     monkeypatch.setattr(document, "is_pipeline_run_cancel_requested", lambda pipeline_run_id: False)
-    monkeypatch.setattr(document, "start_pipeline_item", lambda **kwargs: PipelineItemRecord(id=9, status="running"))
+    monkeypatch.setattr(
+        document, "start_pipeline_item", lambda **kwargs: PipelineItemRecord(id=9, status="running")
+    )
     monkeypatch.setattr(document, "finish_pipeline_item", lambda *args, **kwargs: None)
-    monkeypatch.setattr(document, "progress_from_pipeline_items", lambda pipeline_run_id: (4, 3, 0, 1))
+    monkeypatch.setattr(
+        document, "progress_from_pipeline_items", lambda pipeline_run_id: (4, 3, 0, 1)
+    )
     monkeypatch.setattr(document, "update_pipeline_run_progress", lambda *args: None)
     monkeypatch.setattr(document, "update_actor_execution_progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(document, "mark_pipeline_run_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(document, "finish_actor_execution", lambda *args, **kwargs: None)
-    monkeypatch.setattr(document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(
+        document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
+    )
 
     fetched_document = SimpleNamespace(title="Doc", content="Text")
     outcome = document.DocumentClassificationOutcome(
@@ -484,15 +506,27 @@ def test_document_actor_auto_commit_skips_unresolved_entities(monkeypatch):
         def close(self):
             return None
 
-    monkeypatch.setattr(document, "_fetch_paperless_document", lambda paperless_document_id: FakeCoroutine())
+    monkeypatch.setattr(
+        document, "_fetch_paperless_document", lambda paperless_document_id: FakeCoroutine()
+    )
     monkeypatch.setattr(document, "_classify_document", lambda fetched_document: FakeCoroutine())
     monkeypatch.setattr(document, "run_async", lambda coroutine: run_async_results.pop(0))
-    monkeypatch.setattr(document, "store_review_suggestion", lambda **kwargs: StoredReviewSuggestion(id=77, status="pending"))
-    monkeypatch.setattr(document, "mark_review_suggestion_auto_accepted", lambda suggestion_id, **kwargs: (False, ["correspondent"]))
+    monkeypatch.setattr(
+        document,
+        "store_review_suggestion",
+        lambda **kwargs: StoredReviewSuggestion(id=77, status="pending"),
+    )
+    monkeypatch.setattr(
+        document,
+        "mark_review_suggestion_auto_accepted",
+        lambda suggestion_id, **kwargs: (False, ["correspondent"]),
+    )
 
     import app.jobs.recovery as recovery
 
-    monkeypatch.setattr(recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id))
+    monkeypatch.setattr(
+        recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id)
+    )
 
     document._handle_document_pipeline_impl(123)
 
@@ -540,18 +574,29 @@ def test_classify_document_applies_ocr_locally(monkeypatch):
     monkeypatch.setattr(document, "PaperlessClient", FakePaperless)
     monkeypatch.setattr(document, "OllamaClient", FakeOllama)
     monkeypatch.setattr(document, "effective_ocr_mode", lambda: "text")
-    monkeypatch.setattr(document, "should_run_ocr_for_document", lambda *args, **kwargs: (True, "no_filter"))
+    monkeypatch.setattr(
+        document, "should_run_ocr_for_document", lambda *args, **kwargs: (True, "no_filter")
+    )
     monkeypatch.setattr(document, "maybe_correct_ocr", fake_maybe_correct)
-    monkeypatch.setattr(document, "cache_ocr_correction", lambda *args, **kwargs: captured.setdefault("cached", args))
+    monkeypatch.setattr(
+        document,
+        "cache_ocr_correction",
+        lambda *args, **kwargs: captured.setdefault("cached", args),
+    )
     monkeypatch.setattr(document, "find_similar_with_precomputed_embedding", fake_find_similar)
     monkeypatch.setattr(document, "classify", fake_classify)
+
     async def fake_judge(*args, **kwargs):
-        return SimpleNamespace(result=args[1], verdict="skipped", reasoning=None, original_proposed_json=None)
+        return SimpleNamespace(
+            result=args[1], verdict="skipped", reasoning=None, original_proposed_json=None
+        )
 
     monkeypatch.setattr(document, "maybe_run_judge", fake_judge)
 
     outcome = document.run_async(
-        document._classify_document(PaperlessDocument(id=42, title="Target", content="Broken OCR", tags=[]))
+        document._classify_document(
+            PaperlessDocument(id=42, title="Target", content="Broken OCR", tags=[])
+        )
     )
 
     assert outcome.ocr_corrected is True

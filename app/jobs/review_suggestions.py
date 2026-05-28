@@ -68,7 +68,9 @@ def _entity_id(name: str | None, entities: list[PaperlessEntity] | None) -> int 
     return None
 
 
-def _proposed_tags(result: ClassificationResult, tags: list[PaperlessEntity] | None) -> list[dict[str, Any]]:
+def _proposed_tags(
+    result: ClassificationResult, tags: list[PaperlessEntity] | None
+) -> list[dict[str, Any]]:
     proposed: list[dict[str, Any]] = []
     for tag in result.tags:
         item = tag.model_dump()
@@ -330,7 +332,11 @@ def _unresolved_fields_for_auto_commit(review_suggestion_id: int) -> list[str]:
         """
     )
     with engine().connect() as connection:
-        row = connection.execute(statement, {"review_suggestion_id": review_suggestion_id}).mappings().first()
+        row = (
+            connection.execute(statement, {"review_suggestion_id": review_suggestion_id})
+            .mappings()
+            .first()
+        )
     if row is None:
         return ["review_suggestion"]
     unresolved: list[str] = []
@@ -346,7 +352,9 @@ def _unresolved_fields_for_auto_commit(review_suggestion_id: int) -> list[str]:
             proposed_tags = json.loads(proposed_tags)
         except (TypeError, json.JSONDecodeError):
             proposed_tags = []
-    if any(isinstance(tag, dict) and tag.get("name") and tag.get("id") is None for tag in proposed_tags):
+    if any(
+        isinstance(tag, dict) and tag.get("name") and tag.get("id") is None for tag in proposed_tags
+    ):
         unresolved.append("tags")
     return unresolved
 

@@ -115,13 +115,23 @@ def test_store_review_suggestion_resolves_known_entities_and_stages_unknown(monk
 
     review_suggestions.store_review_suggestion(
         paperless_document_id=42,
-        document=SimpleNamespace(title="Original", created_date=None, correspondent=None, document_type=None, storage_path=None, tags=[]),
+        document=SimpleNamespace(
+            title="Original",
+            created_date=None,
+            correspondent=None,
+            document_type=None,
+            storage_path=None,
+            tags=[],
+        ),
         result=ClassificationResult(
             title="Proposed",
             correspondent="Known Corr",
             document_type="Unknown Type",
             storage_path="Known Path",
-            tags=[ProposedTag(name="Known Tag", confidence=90), ProposedTag(name="New Tag", confidence=80)],
+            tags=[
+                ProposedTag(name="Known Tag", confidence=90),
+                ProposedTag(name="New Tag", confidence=80),
+            ],
             confidence=91,
         ),
         raw_response="{}",
@@ -139,7 +149,10 @@ def test_store_review_suggestion_resolves_known_entities_and_stages_unknown(monk
     assert params["proposed_storage_path_id"] == 3
     assert '"id": 4' in params["proposed_tags"]
     approval_params = [params for _, params in calls[1:]]
-    assert any(item["type"] == "document_type" and item["name"] == "Unknown Type" for item in approval_params)
+    assert any(
+        item["type"] == "document_type" and item["name"] == "Unknown Type"
+        for item in approval_params
+    )
     assert any(item["type"] == "tag" and item["name"] == "New Tag" for item in approval_params)
 
 
