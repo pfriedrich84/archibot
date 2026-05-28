@@ -380,6 +380,7 @@ def mark_pipeline_run_pending(
             progress_updated_at = CURRENT_TIMESTAMP,
             error_type = NULL,
             error = NULL,
+            finished_at = NULL,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
         """

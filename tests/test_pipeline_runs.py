@@ -219,6 +219,8 @@ def test_mark_pipeline_run_pending_clears_blocked_state(monkeypatch):
 
     pipeline_runs.mark_pipeline_run_pending(42)
 
+    statement = calls[0][0]
+    assert "finished_at = NULL" in statement
     assert calls[0][1] == {"pipeline_run_id": 42, "message": "Waiting for document actor."}
 
 
