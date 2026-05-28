@@ -136,6 +136,13 @@ class AdminSettingsTest extends TestCase
         $this->assertStringContainsString('MCP_LARAVEL_PATH=/app/laravel', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_PHP_BINARY=php8.3', $runtimeConfig);
         $this->assertStringContainsString('MCP_CLASSIFY_RATE_LIMIT=25', $runtimeConfig);
+
+        foreach (config('archibot_settings.definitions') as $definition) {
+            if (! is_array($definition) || ! isset($definition['legacy'])) {
+                continue;
+            }
+            $this->assertStringContainsString(strtoupper($definition['legacy']).'=', $runtimeConfig);
+        }
     }
 
     public function test_admin_can_load_ai_models_for_default_provider(): void

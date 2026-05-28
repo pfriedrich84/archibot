@@ -118,47 +118,45 @@ class PythonRuntimeConfigExporter
             ->oldest('id')
             ->first();
 
-        return array_merge([
-            'PAPERLESS_URL' => AppSetting::getValue('paperless.url'),
-            'PAPERLESS_TOKEN' => $admin?->paperless_token,
-            'PAPERLESS_INBOX_TAG_ID' => AppSetting::getValue('paperless.inbox_tag_id'),
-            'PAPERLESS_PROCESSED_TAG_ID' => AppSetting::getValue('paperless.processed_tag_id'),
-            'KEEP_INBOX_TAG' => AppSetting::getValue('paperless.keep_inbox_tag'),
-            'GUI_BASE_URL' => AppSetting::getValue('gui.base_url'),
-            'GUI_DATE_FORMAT' => AppSetting::getValue('gui.date_format'),
-            'APP_TIMEZONE' => AppSetting::getValue('gui.timezone'),
-            'OCR_REQUESTED_TAG_ID' => AppSetting::getValue('ocr.requested_tag_id'),
-            'OCR_MODE' => AppSetting::getValue('ocr.mode'),
-            'LLM_PROVIDER' => AppSetting::getValue('llm.provider'),
-            'OLLAMA_URL' => AppSetting::getValue('ollama.url'),
-            'OPENAI_API_KEY' => AppSetting::getValue('llm.openai_api_key'),
-            'AI_PROVIDER_PROFILES' => AppSetting::getValue('llm.provider_profiles'),
-            'CLASSIFICATION_PROVIDER' => AppSetting::getValue('llm.classification_provider'),
-            'EMBEDDING_PROVIDER' => AppSetting::getValue('llm.embedding_provider'),
-            'OCR_PROVIDER' => AppSetting::getValue('llm.ocr_provider'),
-            'JUDGE_PROVIDER' => AppSetting::getValue('llm.judge_provider'),
-            'CHAT_PROVIDER' => AppSetting::getValue('llm.chat_provider'),
-            'ENABLE_JUDGE_VERIFICATION' => AppSetting::getValue('classification.enable_judge_verification'),
-            'JUDGE_CONFIDENCE_THRESHOLD' => AppSetting::getValue('classification.judge_confidence_threshold'),
-            'AUTO_COMMIT_CONFIDENCE' => AppSetting::getValue('classification.auto_commit_confidence'),
-            'CLASSIFICATION_MODEL' => AppSetting::getValue('classification.model'),
-            'EMBEDDING_MODEL' => AppSetting::getValue('embedding.model'),
-            'OCR_TEXT_MODEL' => AppSetting::getValue('ocr.text_model'),
-            'JUDGE_MODEL' => AppSetting::getValue('classification.judge_model'),
-            'OLLAMA_MODEL' => AppSetting::getValue('classification.model'),
-            'OLLAMA_EMBED_MODEL' => AppSetting::getValue('embedding.model'),
-            'OLLAMA_OCR_MODEL' => AppSetting::getValue('ocr.text_model'),
-            'OLLAMA_JUDGE_MODEL' => AppSetting::getValue('classification.judge_model'),
-            'MCP_TRANSPORT' => AppSetting::getValue('mcp.transport'),
-            'MCP_PORT' => AppSetting::getValue('mcp.port'),
-            'MCP_HOST' => AppSetting::getValue('mcp.host'),
-            'MCP_ENABLE_WRITE' => AppSetting::getValue('mcp.enable_write'),
-            'MCP_API_KEY' => AppSetting::getValue('mcp.api_key'),
-            'MCP_LARAVEL_AUTH_ENABLED' => AppSetting::getValue('mcp.laravel_auth_enabled'),
-            'MCP_LARAVEL_PATH' => AppSetting::getValue('mcp.laravel_path'),
-            'MCP_LARAVEL_PHP_BINARY' => AppSetting::getValue('mcp.laravel_php_binary'),
-            'MCP_CLASSIFY_RATE_LIMIT' => AppSetting::getValue('mcp.classify_rate_limit'),
-        ], $overrides);
+        return array_merge(
+            $this->managedRuntimeValues(),
+            [
+                'PAPERLESS_TOKEN' => $admin?->paperless_token,
+                // Preferred role-based aliases. Legacy OLLAMA_* keys are
+                // exported automatically from archibot_settings definitions.
+                'CLASSIFICATION_MODEL' => AppSetting::getValue('classification.model'),
+                'EMBEDDING_MODEL' => AppSetting::getValue('embedding.model'),
+                'OCR_TEXT_MODEL' => AppSetting::getValue('ocr.text_model'),
+                'JUDGE_MODEL' => AppSetting::getValue('classification.judge_model'),
+            ],
+            $overrides,
+        );
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function managedRuntimeValues(): array
+    {
+        $values = [];
+        $definitions = config('archibot_settings.definitions', []);
+        if (! is_array($definitions)) {
+            return $values;
+        }
+
+        foreach ($definitions as $settingKey => $definition) {
+            if (! is_array($definition) || ! isset($definition['legacy']) || ! is_string($definition['legacy'])) {
+                continue;
+            }
+
+            $legacyKey = strtoupper($definition['legacy']);
+            if ($legacyKey === '') {
+                continue;
+            }
+            $values[$legacyKey] = AppSetting::getValue((string) $settingKey);
+        }
+
+        return $values;
     }
 
     private function sanitize(string $value): string
