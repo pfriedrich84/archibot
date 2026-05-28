@@ -33,7 +33,7 @@ def test_cmd_poll_passes_force() -> None:
 
     with (
         patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.OllamaClient", return_value=mock_ollama),
+        patch("app.cli.create_ai_provider", return_value=mock_ollama),
         patch("app.worker.poll_inbox", mock_poll),
         patch("app.cli.asyncio.get_running_loop", return_value=_FakeLoop()),
     ):

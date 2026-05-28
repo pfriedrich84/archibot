@@ -177,7 +177,7 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
             return None
 
     monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
-    monkeypatch.setattr(embedding, "OllamaClient", FakeOllama)
+    monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
     monkeypatch.setattr(
         embedding,
         "update_embedding_index_progress",

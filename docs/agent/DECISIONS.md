@@ -8,6 +8,7 @@ Lightweight decisions that guide future implementation. Use ADRs in `docs/develo
 - **Manual review and approval flows are product safety boundaries.** Do not bypass them in convenience features without explicit product/security review.
 - **Local-first AI is the default.** Native Ollama and local OpenAI-compatible providers are documented local paths; cloud AI dependencies require explicit approval.
 - **OpenAI-compatible embeddings set `encoding_format: "float"`.** This is required for LiteLLM/llama.cpp compatibility and prevents provider failures caused by omitted or null encoding formats.
+- **AI-provider is the processing seam.** Native Ollama is one adapter behind the neutral AI-provider Module; legacy `OLLAMA_*` setting names remain supported for compatibility and do not imply Ollama-only processing architecture.
 - **Documentation is split by audience.** Agent guidance belongs in `docs/agent/`, contributor implementation docs in `docs/developer/`, and operator/user material in `docs/user/`.
 - **Trusted classification context means absence of the inbox tag.** Event-driven embeddings should index only Paperless documents without the configured inbox tag; inbox-tagged documents must not be embedded for trusted classification context.
 - **Event-driven processing preserves configured auto-commit behavior.** The new Document processing Module should support existing `auto_commit_confidence` semantics while keeping review and permission safeguards intact.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.jobs.document_embeddings import (
@@ -21,6 +20,7 @@ from app.jobs.document_embeddings import (
 )
 from app.models import PaperlessDocument
 from app.pipeline.context_types import SimilarDocument, document_summary
+from app.pipeline.ports import AiProviderGateway
 
 log = structlog.get_logger(__name__)
 
@@ -51,7 +51,7 @@ def store_embedding(doc: PaperlessDocument, embedding: list[float]) -> None:
     )
 
 
-async def index_document(doc: PaperlessDocument, ollama: OllamaClient) -> None:
+async def index_document(doc: PaperlessDocument, ollama: AiProviderGateway) -> None:
     """Compute and persist an embedding for a single trusted document."""
     text = document_summary(doc)
     if not text.strip():
@@ -78,7 +78,7 @@ async def find_similar_with_precomputed_embedding(
 async def find_similar_with_distances(
     doc: PaperlessDocument,
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     limit: int | None = None,
 ) -> list[SimilarDocument]:
     """Return up to ``limit`` similar trusted documents with distances."""
@@ -98,7 +98,7 @@ async def find_similar_with_distances(
 async def find_similar_documents(
     doc: PaperlessDocument,
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     limit: int | None = None,
 ) -> list[PaperlessDocument]:
     """Return similar trusted documents without distance metadata."""
@@ -124,7 +124,7 @@ async def _load_similar(
 async def find_similar_by_query_text_filtered(
     query_text: str,
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     limit: int | None = None,
     *,
     exclude_id: int | None = None,
@@ -160,7 +160,7 @@ async def find_similar_by_query_text_filtered(
 async def find_similar_by_query_text(
     query_text: str,
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     limit: int | None = None,
 ) -> list[SimilarDocument]:
     """Embed raw query text and find similar trusted documents."""

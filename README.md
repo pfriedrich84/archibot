@@ -17,7 +17,7 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 ## Features
 
 - 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
-- 🧠 Klassifikation via lokalem AI-Provider/Ollama (Default: `gemma4:e4b`, konfigurierbar)
+- 🧠 Klassifikation via neutraler AI-Provider-Schnittstelle (native Ollama oder lokale OpenAI-kompatible Provider wie LiteLLM; Default-Modell: `gemma4:e4b`)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
 - ⚡ Frühe Poll-Ergebnisse: Inbox-Polls veröffentlichen/auto-committen jedes Dokument direkt nach Klassifikation/Judge, sofern dafür kein separates Judge-Modell geladen werden muss
