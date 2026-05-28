@@ -25,7 +25,9 @@ class FakeConnection:
 
     def execute(self, statement, params):
         self.calls.append((statement, params))
-        return FakeResult({"id": 77, "status": params.get("status", "pending"), "created": self.created})
+        return FakeResult(
+            {"id": 77, "status": params.get("status", "pending"), "created": self.created}
+        )
 
 
 class FakeEngine:

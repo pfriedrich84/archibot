@@ -18,7 +18,9 @@ def engine() -> Engine:
     if _engine is None:
         try:
             from sqlalchemy import create_engine
-        except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        except (
+            ModuleNotFoundError
+        ) as exc:  # pragma: no cover - dependency is installed in target image
             raise RuntimeError("sqlalchemy is required for PostgreSQL-backed job state") from exc
 
         _engine = create_engine(settings.database_url, pool_pre_ping=True)

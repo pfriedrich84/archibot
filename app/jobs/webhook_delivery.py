@@ -17,6 +17,7 @@ class WebhookDeliveryRecord:
     status: str
     normalized_payload: dict[str, Any]
 
+
 def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | None:
     """Load the normalized state needed by the webhook Dramatiq actor."""
     try:
