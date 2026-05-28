@@ -170,7 +170,7 @@ Telegram-Bot-Token, Chat-ID, Poll-Intervall und Aktivierung koennen in `/admin/s
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `WEBHOOK_SECRET` | — | Shared Secret fuer `POST /webhook/paperless`. Siehe [Webhook-Doku](./webhooks.md). |
+| `WEBHOOK_SECRET` | — | Shared Secret fuer `POST /api/webhooks/paperless` oder den Alias `POST /webhook`. Siehe [Webhook-Doku](./webhooks.md). |
 
 ## MCP Server (optional)
 

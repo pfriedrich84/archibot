@@ -62,6 +62,7 @@ def upsert_document_pipeline_run(
         INSERT INTO pipeline_runs (
             command_id,
             webhook_delivery_id,
+            requested_by_user_id,
             type,
             status,
             scope,
@@ -84,6 +85,7 @@ def upsert_document_pipeline_run(
         ) VALUES (
             :command_id,
             :webhook_delivery_id,
+            :requested_by_user_id,
             'document',
             :status,
             'single_document',

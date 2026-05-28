@@ -229,6 +229,6 @@ Live integration smoke checklist:
 - Python workers do not decide user authorization; Laravel/API boundaries must enforce `is_admin` before creating job-control commands or mutating pipeline state.
 - Existing Paperless storage paths are immutable; event-driven commit actors must only patch reviewed metadata IDs.
 
-## Legacy path note
+## Webhook endpoint note
 
-The target endpoint is `/api/webhooks/paperless` with `/webhook` as the simple alias. Legacy routes such as `/webhook/new` and `/webhook/edit` may be removed and must not be extended for the new architecture. If downstream enqueue fails after a delivery is persisted, return a non-2xx response so Paperless retries.
+The target endpoint is `/api/webhooks/paperless` with `/webhook` as the simple alias. Removed legacy webhook routes must not be extended or reintroduced for the new architecture. If downstream enqueue fails after a delivery is persisted, return a non-2xx response so Paperless retries.

@@ -37,7 +37,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │  Eingang (eine der drei Varianten)          │
 │                                              │
 │  1. Worker-Poll  (alle N Sekunden)           │
-│  2. Webhook      (POST /webhook/paperless)   │
+│  2. Webhook      (POST /api/webhooks/paperless) │
 │  3. Laravel-GUI  (Worker Job / Reprocess)     │
 └──────────────────┬──────────────────────────┘
                    │

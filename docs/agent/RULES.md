@@ -15,7 +15,7 @@ Core rules for coding agents working on ArchiBot.
 - The GUI must never show raw JSON to display metadata; present metadata with user-friendly labels, fields, tables, badges, or structured UI components instead.
 - Date format and timezone must be configured via `.env` and used by both the Laravel/Svelte GUI and the Python worker/CLI. The default timezone is `Europe/Vienna`.
 - CLI and UI must always execute the same product behavior. Any command available through the CLI must use the same backend, configuration source, durable state, progress semantics, database/storage target, authorization assumptions, and side effects as the corresponding Laravel UI action. Never leave CLI commands on a legacy path when the UI has migrated.
-- Legacy Paperless webhook endpoints `/webhook/new` and `/webhook/edit` may be removed; do not extend them. Keep `/api/webhooks/paperless` and `/webhook` as the durable event-driven webhook surfaces.
+- Removed legacy Paperless webhook endpoints must not be reintroduced or extended. Keep `/api/webhooks/paperless` and `/webhook` as the durable event-driven webhook surfaces.
 - After a webhook delivery is durably persisted, downstream enqueue failure should return non-2xx so Paperless retries.
 - Reset is PostgreSQL/Laravel-owned. Keep `archibot reset` as the operator-facing CLI command, but it must delegate to `php artisan archibot:reset` and must not silently reset only the legacy Python SQLite database.
 - Job control, behavior, and status semantics must be identical in the CLI and GUI. If a job is no longer running according to the CLI, it must not be shown as running in the GUI, especially after restarts or reboots.

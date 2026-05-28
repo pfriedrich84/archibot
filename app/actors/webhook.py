@@ -73,6 +73,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             reprocess_requested=reprocess_requested,
             reprocess_reason=delivery.event_type if reprocess_requested else None,
             reprocess_mode="webhook" if reprocess_requested else None,
+            webhook_delivery_id=webhook_delivery_id,
         )
         delivery_status = "blocked" if result.status == "blocked" else "processed"
         mark_webhook_delivery_status(webhook_delivery_id, delivery_status, result.blocked_reason)

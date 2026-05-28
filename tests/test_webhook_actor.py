@@ -73,6 +73,7 @@ def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
             "reprocess_requested": False,
             "reprocess_reason": None,
             "reprocess_mode": None,
+            "webhook_delivery_id": 123,
         }
     ]
     assert statuses == [(123, "blocked", "embedding_index_not_ready")]
@@ -134,6 +135,7 @@ def test_webhook_actor_marks_processed_when_pipeline_start_is_accepted(monkeypat
     assert starts[0]["reprocess_requested"] is True
     assert starts[0]["reprocess_reason"] == "document.updated"
     assert starts[0]["reprocess_mode"] == "webhook"
+    assert starts[0]["webhook_delivery_id"] == 321
     assert actor_finishes[0][1] == {"status": "succeeded", "error_type": None}
 
 
