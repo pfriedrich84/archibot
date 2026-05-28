@@ -3,7 +3,9 @@
 from app.ai_provider.client import AiProviderClient
 
 
-def create_ai_provider(*, base_url: str | None = None, model: str | None = None) -> AiProviderClient:
+def create_ai_provider(
+    *, base_url: str | None = None, model: str | None = None
+) -> AiProviderClient:
     """Create the configured AI-provider adapter.
 
     Existing OLLAMA_* and OpenAI-compatible settings remain the source of
