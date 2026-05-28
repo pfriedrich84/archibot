@@ -20,6 +20,7 @@ def test_document_summary_is_bounded(monkeypatch):
 def test_store_embedding_delegates_to_pgvector(monkeypatch):
     stored = []
     monkeypatch.setattr(context_builder.settings, "ollama_embed_model", "embed-model")
+    monkeypatch.setattr(context_builder, "is_trusted_document", lambda doc: True)
     monkeypatch.setattr(
         context_builder, "store_document_embedding", lambda item: stored.append(item)
     )
