@@ -25,7 +25,7 @@ def test_cmd_reindex_ocr_passes_force() -> None:
 
     with (
         patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.OllamaClient", return_value=mock_ollama),
+        patch("app.cli.create_ai_provider", return_value=mock_ollama),
         patch("app.pipeline.ocr_correction.batch_correct_documents", mock_batch),
         patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
     ):
@@ -46,7 +46,7 @@ def test_cmd_reindex_ocr_default_no_force() -> None:
 
     with (
         patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.OllamaClient", return_value=mock_ollama),
+        patch("app.cli.create_ai_provider", return_value=mock_ollama),
         patch("app.pipeline.ocr_correction.batch_correct_documents", mock_batch),
         patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
     ):

@@ -16,6 +16,7 @@ from app.jobs.actor_execution import (
     schedule_actor_execution_retry,
     start_actor_execution,
 )
+from app.jobs.commands import mark_command_status
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.review_commit import (
     commit_review_suggestion_to_paperless,
@@ -41,7 +42,9 @@ async def _commit_record(record):
 commit_record = _commit_record
 
 
-def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
+def _commit_review_suggestion_impl(
+    review_suggestion_id: int, command_id: int | None = None
+) -> None:
     started = time.monotonic()
     actor_name = "commit_review_suggestion"
     actor_execution = start_actor_execution(actor_name=actor_name, queue_name=queue_name("io"))
@@ -50,8 +53,12 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
         review_suggestion_id=review_suggestion_id,
+        command_id=command_id,
         queue_name=queue_name("io"),
     )
+
+    if command_id is not None:
+        mark_command_status(command_id, "running")
 
     try:
         record = load_review_commit(review_suggestion_id)
@@ -64,16 +71,21 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
             finish_actor_execution(
                 actor_execution, status="skipped", error_type="review_suggestion_not_found"
             )
+            if command_id is not None:
+                mark_command_status(command_id, "failed_permanent", "review_suggestion_not_found")
             return
 
         mark_review_commit_status(review_suggestion_id, "running")
         fields = run_async(commit_record(record))
         mark_review_commit_status(review_suggestion_id, "committed")
+        if command_id is not None:
+            mark_command_status(command_id, "succeeded")
         publish_pipeline_event(
             types.REVIEW_COMMIT_SUCCEEDED,
             paperless_document_id=record.paperless_document_id,
             message="Accepted review suggestion committed to Paperless.",
             payload={
+                "command_id": command_id,
                 "review_suggestion_id": review_suggestion_id,
                 "patched_fields": sorted(fields.keys()),
             },
@@ -86,6 +98,8 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)
             mark_review_commit_status(review_suggestion_id, "retrying", retry_class.value)
+            if command_id is not None:
+                mark_command_status(command_id, "pending", retry_class.value)
             schedule_actor_execution_retry(
                 actor_execution,
                 retry_class=retry_class.value,
@@ -100,6 +114,7 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
                 payload={
                     "actor_name": actor_name,
                     "review_suggestion_id": review_suggestion_id,
+                    "command_id": command_id,
                     "retry_class": retry_class.value,
                     "retry_reason": type(exc).__name__,
                     "backoff_seconds": backoff_seconds,
@@ -108,6 +123,8 @@ def _commit_review_suggestion_impl(review_suggestion_id: int) -> None:
             raise
 
         mark_review_commit_status(review_suggestion_id, "failed", retry_class.value)
+        if command_id is not None:
+            mark_command_status(command_id, "failed", retry_class.value)
         finish_actor_execution(
             actor_execution,
             status="failed",

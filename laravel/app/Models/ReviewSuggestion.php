@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'worker_job_id',
     'source_suggestion_id',
     'dedupe_key',
+    'pipeline_run_id',
     'paperless_document_id',
     'status',
     'confidence',
@@ -41,6 +42,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reviewed_at',
     'commit_status',
     'commit_worker_job_id',
+    'commit_command_id',
 ])]
 class ReviewSuggestion extends Model
 {
@@ -104,9 +106,19 @@ class ReviewSuggestion extends Model
         return $this->belongsTo(WorkerJob::class);
     }
 
+    public function pipelineRun(): BelongsTo
+    {
+        return $this->belongsTo(PipelineRun::class);
+    }
+
     public function commitWorkerJob(): BelongsTo
     {
         return $this->belongsTo(WorkerJob::class, 'commit_worker_job_id');
+    }
+
+    public function commitCommand(): BelongsTo
+    {
+        return $this->belongsTo(Command::class, 'commit_command_id');
     }
 
     public function createdBy(): BelongsTo

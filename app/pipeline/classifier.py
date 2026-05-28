@@ -7,10 +7,10 @@ import re
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.config import settings
 from app.db import get_conn
 from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
+from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
@@ -310,7 +310,7 @@ async def classify(
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> tuple[ClassificationResult, str]:
     """Call the LLM and return (parsed result, raw JSON string)."""
     system = _load_system_prompt()
@@ -326,7 +326,7 @@ async def classify(
     )
 
     log.info(
-        "calling ollama",
+        "calling AI provider",
         doc_id=target.id,
         context_docs=len(context_docs),
         model=ollama.model,
@@ -429,7 +429,7 @@ async def verify(
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> JudgeVerdict:
     """Run a second LLM pass that verifies and optionally corrects *initial*.
 
@@ -453,7 +453,7 @@ async def verify(
 
     model = settings.ollama_judge_model.strip() or None
     log.info(
-        "calling ollama (judge)",
+        "calling AI provider (judge)",
         doc_id=target.id,
         context_docs=len(context_docs),
         model=model or ollama.model,

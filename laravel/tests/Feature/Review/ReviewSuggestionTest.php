@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Review;
 
-use App\Jobs\RunPythonWorkerJob;
 use App\Models\AppSetting;
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
@@ -76,7 +76,7 @@ class ReviewSuggestionTest extends TestCase
     public function test_older_pending_suggestions_can_not_be_reviewed_after_a_newer_suggestion_exists(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $older = ReviewSuggestion::factory()->create(['paperless_document_id' => 123]);
         ReviewSuggestion::factory()->create(['paperless_document_id' => 123]);
 
@@ -90,7 +90,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_bulk_review_skips_older_pending_suggestions_when_newer_suggestion_exists(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $older = ReviewSuggestion::factory()->create(['paperless_document_id' => 123]);
         $latest = ReviewSuggestion::factory()->create(['paperless_document_id' => 123]);
 
@@ -145,7 +145,7 @@ class ReviewSuggestionTest extends TestCase
     public function test_accepting_a_pending_suggestion_records_decision_and_audit_log(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 789]);
 
         $this->actingAs($user)
@@ -168,7 +168,7 @@ class ReviewSuggestionTest extends TestCase
     public function test_accepting_event_driven_suggestion_marks_commit_queued_without_legacy_worker(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 789,
             'source_suggestion_id' => null,
@@ -186,10 +186,10 @@ class ReviewSuggestionTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_accepting_python_origin_suggestion_queues_commit_worker_job(): void
+    public function test_accepting_python_origin_suggestion_queues_durable_commit_command(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 789,
             'source_suggestion_id' => 321,
@@ -199,21 +199,22 @@ class ReviewSuggestionTest extends TestCase
             ->post(route('review.accept', $suggestion))
             ->assertRedirect(route('review.index'));
 
-        $workerJob = WorkerJob::query()->firstOrFail();
-        $this->assertSame(WorkerJob::TYPE_COMMIT_REVIEW, $workerJob->type);
-        $this->assertSame(WorkerJob::STATUS_QUEUED, $workerJob->status);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
+        $this->assertSame(Command::STATUS_PENDING, $command->status);
+        $this->assertSame($suggestion->id, $command->payload['review_suggestion_id']);
+        $this->assertSame(789, $command->payload['paperless_document_id']);
         $suggestion->refresh();
         $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
-        $this->assertSame($workerJob->id, $suggestion->commit_worker_job_id);
-        $this->assertSame($suggestion->id, $workerJob->payload['review_suggestion_id']);
-        $this->assertSame(321, $workerJob->payload['source_suggestion_id']);
-        $this->assertSame(789, $workerJob->payload['paperless_document_id']);
-        $this->assertSame('Proposed document title', $workerJob->payload['title']);
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $workerJob->id);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'worker_job.queued',
-            'target_id' => (string) $workerJob->id,
+        $this->assertSame($command->id, $suggestion->commit_command_id);
+        $this->assertNull($suggestion->commit_worker_job_id);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $command->id,
+            'event_type' => 'job_control.review_commit_requested',
+            'paperless_document_id' => 789,
         ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_admin_can_queue_manual_reprocess_from_review_detail(): void
@@ -335,7 +336,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_rejecting_a_pending_suggestion_records_decision_and_audit_log(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create();
 
         $this->actingAs($user)
@@ -385,10 +386,10 @@ class ReviewSuggestionTest extends TestCase
             );
     }
 
-    public function test_bulk_accept_marks_pending_suggestions_and_queues_commit_workers(): void
+    public function test_bulk_accept_marks_pending_suggestions_and_queues_commit_commands(): void
     {
         Queue::fake();
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $first = ReviewSuggestion::factory()->create(['source_suggestion_id' => 101]);
         $second = ReviewSuggestion::factory()->create(['source_suggestion_id' => 102]);
         $reviewed = ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_REJECTED]);
@@ -402,13 +403,14 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $first->refresh()->status);
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $second->refresh()->status);
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $reviewed->refresh()->status);
-        $this->assertSame(2, WorkerJob::query()->where('type', WorkerJob::TYPE_COMMIT_REVIEW)->count());
-        Queue::assertPushed(RunPythonWorkerJob::class, 2);
+        $this->assertSame(2, Command::query()->where('type', Command::TYPE_REVIEW_COMMIT)->count());
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_bulk_reject_marks_pending_suggestions_and_skips_reviewed(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $pending = ReviewSuggestion::factory()->create();
         $accepted = ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_ACCEPTED]);
 
@@ -424,7 +426,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_saving_pending_suggestion_updates_editable_proposal_fields(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create();
 
         $this->actingAs($user)
@@ -452,7 +454,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_reviewed_suggestion_can_not_be_saved(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_ACCEPTED]);
 
         $this->actingAs($user)
@@ -462,11 +464,114 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_already_reviewed_suggestions_can_not_be_reviewed_again(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create(['status' => ReviewSuggestion::STATUS_ACCEPTED]);
 
         $this->actingAs($user)
             ->post(route('review.reject', $suggestion))
             ->assertStatus(409);
+    }
+
+    public function test_non_admin_accept_succeeds_with_paperless_change_permission(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/789/' => Http::response(['actions' => ['PATCH' => ['title' => ['type' => 'string']]]], 200),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 789]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->refresh()->status);
+        $this->assertDatabaseHas('commands', ['type' => Command::TYPE_REVIEW_COMMIT]);
+        Http::assertSent(fn ($request) => $request->method() === 'OPTIONS'
+            && $request->url() === 'https://paperless.example/api/documents/789/');
+    }
+
+    public function test_non_admin_reject_succeeds_with_paperless_allow_patch_permission(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($user)
+            ->post(route('review.reject', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $suggestion->refresh()->status);
+    }
+
+    public function test_non_admin_save_succeeds_with_paperless_change_permission(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response(['actions' => ['PUT' => ['title' => []]]], 200),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($user)
+            ->post(route('review.save', $suggestion), ['proposed_title' => 'Edited by permitted user'])
+            ->assertRedirect(route('review.show', $suggestion));
+
+        $this->assertSame('Edited by permitted user', $suggestion->refresh()->proposed_title);
+    }
+
+    public function test_non_admin_accept_fails_closed_without_paperless_change_permission(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/789/' => Http::response(['actions' => ['GET' => []]], 200),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 789]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertForbidden();
+
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $suggestion->refresh()->status);
+        $this->assertDatabaseCount('commands', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_non_admin_accept_fails_closed_without_token_or_url(): void
+    {
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => null]);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 789]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertForbidden();
+
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $suggestion->refresh()->status);
+        $this->assertDatabaseCount('commands', 0);
+    }
+
+    public function test_non_admin_bulk_accept_aborts_before_any_mutation_when_one_suggestion_is_denied(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/111/' => Http::response([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
+            'paperless.example/api/documents/222/' => Http::response([], 403),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $allowed = ReviewSuggestion::factory()->create(['paperless_document_id' => 111]);
+        $denied = ReviewSuggestion::factory()->create(['paperless_document_id' => 222]);
+
+        $this->actingAs($user)
+            ->post(route('review.bulk.accept'), ['suggestion_ids' => [$allowed->id, $denied->id]])
+            ->assertForbidden();
+
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $allowed->refresh()->status);
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $denied->refresh()->status);
+        $this->assertDatabaseCount('commands', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 }

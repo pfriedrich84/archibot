@@ -112,6 +112,30 @@ class PaperlessClient
         return $payload;
     }
 
+    public function documentOptions(string $token, int $documentId): Response
+    {
+        return $this->request($token)->send('OPTIONS', "/api/documents/{$documentId}/");
+    }
+
+    public function canChangeDocument(string $token, int $documentId): bool
+    {
+        $response = $this->documentOptions($token, $documentId);
+        if (! $response->successful()) {
+            return false;
+        }
+
+        if ($this->allowsWriteMethod($response)) {
+            return true;
+        }
+
+        $payload = $response->json();
+        if (! is_array($payload)) {
+            return false;
+        }
+
+        return $this->payloadAllowsDocumentChange($payload);
+    }
+
     public function documentContent(string $token, int $documentId): string
     {
         $document = $this->document($token, $documentId);
@@ -229,6 +253,46 @@ class PaperlessClient
         }
 
         return $user;
+    }
+
+    private function allowsWriteMethod(Response $response): bool
+    {
+        $allow = $response->header('Allow', '');
+        if (! is_string($allow) || $allow === '') {
+            return false;
+        }
+
+        $methods = collect(explode(',', $allow))
+            ->map(fn (string $method) => strtoupper(trim($method)))
+            ->filter()
+            ->all();
+
+        return in_array('PATCH', $methods, true) || in_array('PUT', $methods, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function payloadAllowsDocumentChange(array $payload): bool
+    {
+        foreach (['actions.PATCH', 'actions.PUT'] as $key) {
+            $action = data_get($payload, $key);
+            if (is_array($action) && $action !== []) {
+                return true;
+            }
+        }
+
+        foreach (['allowed_methods', 'methods'] as $key) {
+            $methods = data_get($payload, $key);
+            if (is_array($methods)) {
+                $normalized = array_map(fn ($method) => strtoupper((string) $method), $methods);
+                if (in_array('PATCH', $normalized, true) || in_array('PUT', $normalized, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private function currentUserFromUiSettingsEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser

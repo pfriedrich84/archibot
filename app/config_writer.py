@@ -178,12 +178,12 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         "ollama_model_swap_delay",
     }
     if changed_keys & ollama_fields:
-        from app.clients.ollama import OllamaClient
+        from app.ai_provider.factory import create_ai_provider
 
         old = getattr(app.state, "ollama", None)
         if old:
             await old.aclose()
-        app.state.ollama = OllamaClient()
+        app.state.ollama = create_ai_provider()
         actions.append("AI provider client recreated")
 
     # Keep worker module refs in sync after client recreation.
