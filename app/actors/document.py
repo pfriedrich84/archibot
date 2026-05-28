@@ -224,7 +224,9 @@ def start_pipeline_item(
     Kept as a module-level wrapper so tests can patch the actor seam without
     patching the lower-level durable item helper.
     """
-    item_key = f"{item_type}:{paperless_document_id}" if paperless_document_id is not None else item_type
+    item_key = (
+        f"{item_type}:{paperless_document_id}" if paperless_document_id is not None else item_type
+    )
     return start_or_resume_pipeline_item(
         pipeline_run_id=pipeline_run_id,
         item_type=item_type,
@@ -259,7 +261,9 @@ def _record_completed_phase_item(
     finish_pipeline_item(item.id, status=status, error=error)
 
 
-def _ensure_not_cancelled(pipeline_run_id: int, current_item: PipelineItemRecord | None = None) -> None:
+def _ensure_not_cancelled(
+    pipeline_run_id: int, current_item: PipelineItemRecord | None = None
+) -> None:
     if not is_pipeline_run_cancel_requested(pipeline_run_id):
         return
     if current_item is not None:
@@ -405,7 +409,9 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             pipeline_run_id=pipeline_run_id,
             paperless_document_id=run.paperless_document_id,
             item_type="judge",
-            status="succeeded" if outcome.judge_verdict and outcome.judge_verdict != "skipped" else "skipped",
+            status="succeeded"
+            if outcome.judge_verdict and outcome.judge_verdict != "skipped"
+            else "skipped",
         )
         _update_item_derived_progress(
             pipeline_run_id=pipeline_run_id,
@@ -500,7 +506,10 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
 
         final_phase = "review_suggestion"
         final_message = "Document classification is ready for manual review."
-        if settings.auto_commit_confidence > 0 and result.confidence >= settings.auto_commit_confidence:
+        if (
+            settings.auto_commit_confidence > 0
+            and result.confidence >= settings.auto_commit_confidence
+        ):
             _ensure_not_cancelled(pipeline_run_id)
             current_item = _phase_item(
                 pipeline_run_id=pipeline_run_id,
@@ -524,7 +533,10 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                     pipeline_run_id=pipeline_run_id,
                     paperless_document_id=run.paperless_document_id,
                     message="Review suggestion auto-accepted and commit actor queued.",
-                    payload={"review_suggestion_id": suggestion.id, "confidence": result.confidence},
+                    payload={
+                        "review_suggestion_id": suggestion.id,
+                        "confidence": result.confidence,
+                    },
                 )
             else:
                 finish_pipeline_item(
