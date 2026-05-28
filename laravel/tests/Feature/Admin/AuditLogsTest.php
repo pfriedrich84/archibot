@@ -56,24 +56,25 @@ class AuditLogsTest extends TestCase
         ]);
         $reviewSuggestion = ReviewSuggestion::factory()->create();
 
-        AuditLog::query()->create([
+        $workerLog = AuditLog::query()->create([
             'event' => 'worker_job.queued',
             'target_type' => 'worker_job',
             'target_id' => (string) $workerJob->id,
-            'created_at' => now()->subMinutes(2),
         ]);
-        AuditLog::query()->create([
+        $webhookLog = AuditLog::query()->create([
             'event' => 'webhook_delivery.retry_queued',
             'target_type' => 'webhook_delivery',
             'target_id' => (string) $webhookDelivery->id,
-            'created_at' => now()->subMinute(),
         ]);
-        AuditLog::query()->create([
+        $reviewLog = AuditLog::query()->create([
             'event' => 'review_suggestion.accepted',
             'target_type' => 'review_suggestion',
             'target_id' => (string) $reviewSuggestion->id,
-            'created_at' => now(),
         ]);
+
+        $workerLog->forceFill(['created_at' => now()->subMinutes(2)])->save();
+        $webhookLog->forceFill(['created_at' => now()->subMinute()])->save();
+        $reviewLog->forceFill(['created_at' => now()])->save();
 
         $this->actingAs($admin)
             ->get(route('admin.audit-logs.index'))
@@ -81,9 +82,9 @@ class AuditLogsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/AuditLogs')
                 ->has('logs', 3)
-                ->where('logs.0.target_url', route('worker-jobs.show', $workerJob))
+                ->where('logs.0.target_url', route('review.show', $reviewSuggestion))
                 ->where('logs.1.target_url', route('webhook-deliveries.show', $webhookDelivery))
-                ->where('logs.2.target_url', route('review.show', $reviewSuggestion))
+                ->where('logs.2.target_url', route('worker-jobs.show', $workerJob))
             );
     }
 }
