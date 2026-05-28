@@ -10,13 +10,13 @@
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
 </p>
 
-KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als **ein einzelner Docker-Container** gegen lokale Ollama- oder OpenAI-kompatible Provider wie LiteLLM.
+KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App, PostgreSQL/pgvector und RabbitMQ gegen lokale Ollama- oder OpenAI-kompatible Provider wie LiteLLM.
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Freigabe in Paperless geschrieben. Neue Tags, die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
 ## Features
 
-- 🔍 Polling von Paperless-NGX nach Dokumenten mit Tag `Posteingang`
+- 🔍 Event-driven Verarbeitung via Paperless-Webhooks plus Polling-Reconciliation fuer Dokumente mit Tag `Posteingang`
 - 🧠 Klassifikation via neutraler AI-Provider-Schnittstelle (native Ollama oder lokale OpenAI-kompatible Provider wie LiteLLM; Default-Modell: `gemma4:e4b`)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
@@ -34,44 +34,42 @@ Alle Vorschläge landen in einer Review-Queue und werden erst nach manueller Fre
 - 🏷️ Entity-Freigaben: Tags, Korrespondenten und Dokumenttypen in Laravel verwalten (`/tags`, `/correspondents`, `/doctypes`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
 - ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/admin/settings`, `/settings/appearance`, `/settings/mcp-tokens`)
-- 🐳 Single-Container, Dockhand-ready, fertiges Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot)
+- 🐳 Compose-/Dockhand-ready Stack mit fertigem App-Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot), PostgreSQL/pgvector und RabbitMQ
 
 ## Architektur
 
 ```
-┌────────────────┐   poll     ┌──────────────────────┐
-│ Paperless-NGX  │◀───────────│  Worker (APScheduler)│
-│  (Tag: Post-   │            │   - fetch inbox docs │
-│   eingang)     │──docs─────▶│   - build context    │
-└────────────────┘            │   - call AI provider │
-        ▲                     │   - store suggestion │
-        │                     └──────────┬───────────┘
-        │ PATCH                          │
-        │ (nach Freigabe)                ▼
-        │                     ┌──────────────────────┐
-        │                     │ PostgreSQL + pgvector │
-        │                     │   - suggestions      │
-        │                     │   - tag whitelist    │
-        │                     │   - embeddings       │
-        │                     │   - audit log        │
-        │                     └──────────┬───────────┘
-        │                                │
-        │                                ▼
-        │                     ┌──────────────────────┐
-        └─────────────────────│ Laravel + Svelte GUI │
-                              │   - /dashboard       │
-                              │   - /review          │
-                              │   - /inbox           │
-                              │   - /tags            │
-                              │   - /correspondents  │
-                              │   - /doctypes        │
-                              │   - /worker-jobs     │
-                              │   - /admin/settings  │
-                              │   - /setup           │
-                              └──────────────────────┘
-                                         ▲
-                                         │
-                                       Browser
+                         Browser
+                            │
+                            ▼
+┌────────────────┐ webhook/poll ┌──────────────────────┐
+│ Paperless-NGX  │─────────────▶│  Laravel/Svelte API  │
+│  (Tag: Post-   │              │   - webhook ingest   │
+│   eingang)     │◀────PATCH────│   - review UI/API    │
+└────────────────┘              └──────────┬───────────┘
+        ▲                                  │ durable jobs/events
+        │                                  ▼
+        │                       ┌──────────────────────┐
+        │                       │ PostgreSQL + pgvector │
+        │                       │   - pipeline state   │
+        │                       │   - suggestions      │
+        │                       │   - embeddings       │
+        │                       │   - audit log        │
+        │                       └──────────┬───────────┘
+        │                                  │
+        │                                  ▼
+        │                       ┌──────────────────────┐
+        │                       │ RabbitMQ + Dramatiq  │
+        │                       │   - webhook/io/llm   │
+        │                       │   - retry/recovery   │
+        │                       └──────────┬───────────┘
+        │                                  ▼
+        │                       ┌──────────────────────┐      ┌──────────────┐
+        └───────────────────────│ Python Workers       │◀────▶│ AI Provider  │
+                                │   - OCR/context      │      │ Ollama /v1   │
+                                │   - classification   │      └──────────────┘
+                                │   - review commit    │
+                                └──────────────────────┘
 ```
 
 ## Quickstart

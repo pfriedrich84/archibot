@@ -11,18 +11,19 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          │ HTTP
                          ▼
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
-│ Paperless-NGX  │◀──▶│   ArchiBot                      │◀──▶│ AI Provider   │
-│                │    │   (Laravel + Inertia/Svelte)     │    │ Ollama/LiteLLM│
-│ - Dokumente    │    │                                  │    │ - Chat (LLM) │
+│ Paperless-NGX  │◀──▶│   ArchiBot App                  │◀──▶│ AI Provider   │
+│                │    │   Laravel/Svelte + Python       │    │ Ollama/LiteLLM│
+│ - Dokumente    │    │   Workers/MCP                   │    │ - Chat (LLM) │
 │ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
 └────────────────┘    └─────────────────────────────────┘    └──────────────┘
                                      │
-                                     ▼
-                              ┌──────────────────────┐
-                              │ PostgreSQL + pgvector │
-                              │  (persistent volume)  │
-                              └──────────────────────┘
+                         ┌───────────┴───────────┐
+                         ▼                       ▼
+                  ┌──────────────────────┐ ┌──────────────┐
+                  │ PostgreSQL + pgvector │ │   RabbitMQ   │
+                  │  (persistent volume)  │ │ Dramatiq     │
+                  └──────────────────────┘ └──────────────┘
 ```
 
 ## Dokument-Lebenszyklus
@@ -43,20 +44,16 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
                    │
                    ▼
 ┌─────────────────────────────────────────────┐
-│  Verarbeitungs-Pipeline (_process_document)  │
+│  Durable Pipeline (pipeline_runs/items)      │
 │                                              │
-│  1. Idempotenz-Check (schon verarbeitet?)    │
-│  2. OCR-Korrektur  (optional, nur wenn noetig)│
-│  3. Kontext-Suche  (aehnliche Dokumente via  │
-│     Embedding-Similarity, pgvector)          │
-│  4. Klassifikation (AI-Provider, JSON-Antwort)│
-│  4b. Judge-Pass (optional, LLM-as-Judge      │
-│      prueft Klassifikation, ggf. Korrektur)  │
-│  5. Vorschlag speichern (suggestions-Tabelle)│
-│  6. Telegram-Benachrichtigung (optional)     │
-│  7. Auto-Commit (bei hoher Confidence)       │
-│  8. Embedding speichern (fuer kuenftige      │
-│     Kontext-Suchen)                          │
+│  1. Start/Attach mit Dedupe-Key              │
+│  2. Embedding-Readiness-Gate                 │
+│  3. Paperless-Fetch durch Document Actor     │
+│  4. OCR-Korrektur (optional)                 │
+│  5. Kontext-Suche via document_embeddings    │
+│  6. Klassifikation + optionaler Judge        │
+│  7. Review-Suggestion speichern              │
+│  8. Optional Auto-Commit ueber Commit Actor   │
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
@@ -92,9 +89,9 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 |---|---|---|---|
 | **Laravel Worker Job** | UI-Aktion, Queue, Scheduler | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
 | **Worker-Poll** | Python CLI/Worker-Kontrakt `poll` | `app/cli.py` → `poll_inbox()` | Ja, ueberspringt mit Log |
-| **Webhook** | POST von Paperless nach Consume | Laravel-Orchestrierung bzw. Python-Kompatibilitaet | Ja, antwortet 503 |
-| **Inbox-GUI** | Aktion in `/inbox` oder `/worker-jobs` | Laravel `worker_jobs` → Python CLI | Nein (manuell) |
-| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` | Nein (manuell, blockiert bis fertig) |
+| **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`, Python `app.actors.webhook` startet/attached Pipeline | Ja, Delivery bleibt durable/Run wird blockiert |
+| **Inbox-GUI** | Aktion in `/inbox` oder `/worker-jobs` | Laravel `worker_jobs` → Python CLI/Pipeline-Start | Ja, ueber denselben Gate/Run-Status |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
 
 ## Inbox-Seite (`/inbox`)
 
@@ -118,7 +115,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 ### 3. Kontext-Suche
 
 - Berechnet Embedding des Zieldokuments via konfiguriertem AI-Provider (`qwen3-embedding:4b` bzw. Provider-Alias wie `qwen3-embedding-4b-local`, Dim via `OLLAMA_EMBED_DIM`/Auto)
-- KNN-Suche in `doc_embeddings` (pgvector) findet die aehnlichsten Dokumente
+- KNN-Suche in `document_embeddings` (pgvector) findet die aehnlichsten aktuellen Embeddings pro Paperless-Dokument
 - **Wichtig:** Dokumente die noch im Posteingang liegen werden als Kontext ausgeschlossen — als vertrauenswuerdiger Klassifikationskontext gelten Paperless-Dokumente ohne den konfigurierten Inbox-/Posteingang-Tag
 - Kontext-Dokumente enthalten ihre vollstaendige Klassifikation (Korrespondent, Dokumenttyp, Tags, Speicherpfad)
 
@@ -180,8 +177,8 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 
 ## Docker-Deployment
 
-- **Ein Container:** Laravel/Svelte GUI/API + Laravel Queue Worker + Python Worker/MCP Runtime
-- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
-- **Volumes:** PostgreSQL-Volume fuer App-Datenbank und Embeddings; `/data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet die Laravel Queue und optional den Python MCP-Server
-- **Netzwerk:** Muss Paperless und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Compose-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
+- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector und RabbitMQ-Services
+- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional), 15672 (RabbitMQ Management, optional via Compose)
+- **Volumes:** `archibot_postgres` fuer App-Datenbank/Embeddings, `archibot_rabbitmq` fuer Broker-State, `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue, Python Scheduler/Recovery/Workers und optional den Python MCP-Server
+- **Netzwerk:** App-Container muss Paperless, PostgreSQL, RabbitMQ und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
