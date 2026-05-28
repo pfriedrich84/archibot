@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from app.jobs import review_suggestions
 from app.models import ClassificationResult, PaperlessEntity, ProposedTag
 
-
 _DEFAULT_ROW = {"id": 12, "status": "pending"}
 
 
