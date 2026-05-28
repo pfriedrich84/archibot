@@ -113,7 +113,7 @@ Prueft in `processed_documents` ob das Dokument bei diesem `updated_at`-Timestam
 
 ### 2. OCR-Korrektur (optional)
 
-Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt ist. Heuristik prueft ob der Text typische OCR-Artefakte enthaelt (viele `?`, einzelne Buchstaben-Woerter). Falls ja, wird der Text via LLM korrigiert — nur im Speicher, Paperless wird nicht veraendert.
+Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt ist. Heuristik prueft ob der Text typische OCR-Artefakte enthaelt (viele `?`, einzelne Buchstaben-Woerter). Falls ja, wird der Text via LLM korrigiert — nur im Speicher, Paperless wird nicht veraendert. Bei `reindex-ocr --force` wird diese Clean-Text-Heuristik fuer `text` und `vision_light` bewusst umgangen; ein gesetzter `OCR_REQUESTED_TAG_ID` bleibt weiterhin bindend.
 
 ### 3. Kontext-Suche
 

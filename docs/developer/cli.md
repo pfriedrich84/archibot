@@ -53,20 +53,21 @@ neu zu berechnen. Respektiert die `OCR_MODE`-Einstellung.
 # Nur neue Dokumente (Cache wird respektiert)
 archibot reindex-ocr
 
-# Alle Dokumente neu korrigieren (Cache ignorieren)
+# Alle Dokumente neu korrigieren (Cache und Clean-Text-Heuristik ignorieren)
 archibot reindex-ocr --force
 ```
 
 **Flags:**
 | Flag | Beschreibung |
 |------|-------------|
-| `--force` | OCR-Cache ignorieren und alle Dokumente neu korrigieren. Ohne dieses Flag werden bereits gecachte Korrekturen uebersprungen. |
+| `--force` | OCR-Cache ignorieren und die Clean-Text-Heuristik fuer `text`/`vision_light` umgehen. Ohne dieses Flag werden bereits gecachte Korrekturen uebersprungen und sauber wirkende Texte nicht neu ans OCR-Modell gesendet. |
 
 **Was passiert:**
 - Alle Dokumente aus Paperless werden geholt
 - Fuer jedes Dokument wird `maybe_correct_ocr()` ausgefuehrt
 - Ergebnisse landen in `doc_ocr_cache` (nie in Paperless)
 - Bereits gecachte Korrekturen werden uebersprungen (ausser mit `--force`)
+- `--force` sendet auch sauber wirkende Texte erneut ans OCR-Modell; `OCR_REQUESTED_TAG_ID` gilt weiterhin
 
 **Wann nutzen:** Nach Wechsel des OCR-Modells oder der OCR-Stufe.
 Mit `--force` wenn vorhandene Korrekturen unbrauchbar sind und neu erzeugt werden sollen.
