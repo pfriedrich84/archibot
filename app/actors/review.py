@@ -42,7 +42,9 @@ async def _commit_record(record):
 commit_record = _commit_record
 
 
-def _commit_review_suggestion_impl(review_suggestion_id: int, command_id: int | None = None) -> None:
+def _commit_review_suggestion_impl(
+    review_suggestion_id: int, command_id: int | None = None
+) -> None:
     started = time.monotonic()
     actor_name = "commit_review_suggestion"
     actor_execution = start_actor_execution(actor_name=actor_name, queue_name=queue_name("io"))

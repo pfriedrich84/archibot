@@ -4,7 +4,6 @@ namespace Tests\Feature\Review;
 
 use App\Models\AppSetting;
 use App\Models\Command;
-use App\Models\PipelineEvent;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
@@ -472,6 +471,7 @@ class ReviewSuggestionTest extends TestCase
             ->post(route('review.reject', $suggestion))
             ->assertStatus(409);
     }
+
     public function test_non_admin_accept_succeeds_with_paperless_change_permission(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
@@ -574,5 +574,4 @@ class ReviewSuggestionTest extends TestCase
         $this->assertDatabaseCount('commands', 0);
         $this->assertDatabaseCount('audit_logs', 0);
     }
-
 }

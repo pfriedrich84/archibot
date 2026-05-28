@@ -147,6 +147,9 @@ def test_commit_review_suggestion_actor_skips_missing_record(monkeypatch):
 
     review._commit_review_suggestion_impl(404, 77)
 
-    assert command_statuses == [(77, "running"), (77, "failed_permanent", "review_suggestion_not_found")]
+    assert command_statuses == [
+        (77, "running"),
+        (77, "failed_permanent", "review_suggestion_not_found"),
+    ]
     assert events[0][0] == ("review.commit.skipped",)
     assert finishes[0][1]["status"] == "skipped"
