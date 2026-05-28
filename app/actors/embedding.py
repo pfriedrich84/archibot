@@ -21,6 +21,7 @@ from app.jobs.actor_execution import (
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
     document_embedding_text,
+    is_trusted_document,
     store_document_embedding,
 )
 from app.jobs.embedding_index import (
@@ -42,7 +43,8 @@ async def _build_pgvector_embeddings(
     embedded_count = 0
     failed_count = 0
     try:
-        documents = await paperless.list_all_documents(limit=limit)
+        fetched_documents = await paperless.list_all_documents(limit=limit)
+        documents = [document for document in fetched_documents if is_trusted_document(document)]
         total = len(documents)
         update_embedding_index_progress(
             build_id,
@@ -71,6 +73,14 @@ async def _build_pgvector_embeddings(
                             "tags": document.tags,
                             "modified": document.modified,
                         },
+                        correspondent_id=document.correspondent,
+                        document_type_id=document.document_type,
+                        storage_path_id=document.storage_path,
+                        tags=document.tags,
+                        paperless_modified=str(document.modified)
+                        if document.modified is not None
+                        else None,
+                        trusted_for_context=True,
                     )
                 )
                 embedded_count += 1
@@ -118,9 +128,25 @@ def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
     build = start_embedding_index_build(
         embedding_model=settings.ollama_embed_model,
         dimensions=None,
-        content_scope="reviewed_documents",
+        content_scope="trusted_documents_without_inbox_tag",
         document_count=limit or 0,
     )
+    if build.already_running:
+        message = "Embedding index build is already running."
+        publish_pipeline_event(
+            types.EMBEDDING_INDEX_BUILD_STARTED,
+            level="warning",
+            message=message,
+            payload={"embedding_index_state_id": build.id, "limit": limit, "already_running": True},
+        )
+        finish_actor_execution(
+            actor_execution,
+            status="skipped",
+            error_type="embedding_index_already_building",
+            error_message=message,
+        )
+        return
+
     log.info(
         "embedding index actor started",
         event_type=types.ACTOR_STARTED,

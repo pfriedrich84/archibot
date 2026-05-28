@@ -157,9 +157,9 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 
 1. Laravel legt einen `worker_jobs`-Eintrag vom Typ `reindex` an
 2. Der Laravel Queue Worker ruft `python -m app.cli reindex --input <json> --output <json>` auf
-3. Python loescht `doc_embeddings` + `doc_embedding_meta`
-4. Alle Dokumente werden aus Paperless geladen
-5. Fuer jedes Dokument wird ein neues Embedding berechnet und gespeichert
+3. Python startet einen PostgreSQL/pgvector-Embedding-Build und setzt die Embedding-Gate-State auf `building`
+4. Alle Paperless-Dokumente ohne konfigurierten Inbox-/Posteingang-Tag werden geladen
+5. Fuer jedes vertrauenswuerdige Dokument wird ein neues Embedding mit Metadaten in PostgreSQL gespeichert
 6. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in die Worker-Daten; Laravel zeigt Jobstatus und Ergebnis an
 7. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
 
@@ -169,12 +169,10 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 |---|---|
 | `processed_documents` | Verarbeitungsstatus pro Dokument (Idempotenz) |
 | `suggestions` | LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
-| `doc_embeddings` | Virtuelle pgvector Tabelle fuer Vektor-Similarity (1024-dim) |
-| `doc_embedding_meta` | Metadaten zu Embeddings (document_id, title, created_at) |
+| `document_embeddings` | PostgreSQL/pgvector Embeddings mit Metadaten und `trusted_for_context` fuer Klassifikationskontext |
 | `tag_whitelist` | Staging fuer unbekannte Tags (name, times_seen, approved) |
 | `tag_blacklist` | Abgelehnte Tags — werden bei zukuenftigen Vorschlaegen ignoriert |
 | `doc_ocr_cache` | Lokal gecachter korrigierter OCR-Text (nie zurueck nach Paperless) |
-| `doc_fts` | FTS5 Volltext-Suchindex (title, content) fuer Hybrid-Suche |
 | `errors` | Fehler-Audit-Trail (stage, document_id, message) |
 | `audit_log` | Aktions-Audit-Trail (commit, reject, prompt_update) |
 | `poll_cycles` | Zusammenfassung pro `poll_inbox()`-Aufruf (started_at, finished_at, succeeded, failed, skipped) |

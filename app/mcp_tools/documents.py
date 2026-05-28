@@ -60,9 +60,8 @@ def register(mcp: FastMCP) -> None:
         name="search_documents_hybrid",
         description=(
             "Semantic + keyword hybrid search across indexed documents. "
-            "Combines embedding similarity (vector search) with full-text "
-            "matching (FTS5) using Reciprocal Rank Fusion for better results "
-            "than either method alone. Supports optional metadata filters."
+            "Uses PostgreSQL/pgvector embedding similarity over trusted "
+            "documents and supports optional metadata filters."
         ),
         annotations=_RO,
     )

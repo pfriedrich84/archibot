@@ -1,16 +1,8 @@
-"""Thin abstraction over the vector + FTS storage backend.
+"""Legacy SQLite vector-store helpers.
 
-Centralises the four core operations that would change if the project
-migrates from SQLite (sqlite-vec + FTS5) to pgvector, libSQL, ChromaDB,
-or any other vector store:
-
-1. ``store``   — persist an embedding + FTS text for a document
-2. ``search``  — hybrid KNN + full-text search with optional metadata filters
-3. ``get``     — retrieve a stored embedding by document ID
-4. ``delete_all`` — wipe all embeddings + FTS entries (for reindex)
-
-All other code should go through this module instead of touching
-``doc_embeddings`` / ``doc_fts`` tables directly.
+PostgreSQL/pgvector in :mod:`app.jobs.document_embeddings` is the target
+classification-context store. This module remains only for legacy callers until
+unrelated SQLite state is migrated.
 """
 
 from __future__ import annotations

@@ -61,7 +61,7 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
     fetched_document = SimpleNamespace(title="Doc", content="Text")
     run_async_results = [
         fetched_document,
-        (ClassificationResult(title="Classified", confidence=88), '{"title":"Classified"}'),
+        (ClassificationResult(title="Classified", confidence=88), '{"title":"Classified"}', []),
     ]
     monkeypatch.setattr(document, "_classify_document", lambda fetched_document: FakeCoroutine())
     monkeypatch.setattr(document, "run_async", lambda coroutine: run_async_results.pop(0))
@@ -292,3 +292,58 @@ def test_document_actor_rechecks_embedding_gate_before_fetch(monkeypatch):
     assert finishes[0][1]["status"] == "blocked"
     assert finishes[0][1]["error_type"] == "embedding_index_not_ready"
     assert events[0][0] == ("pipeline.blocked.embedding_index_not_ready",)
+
+
+def test_document_actor_classification_uses_pgvector_context(monkeypatch):
+    captured = {}
+    context_doc = SimpleNamespace(id=7, title="Context", content="Example")
+
+    class FakePaperless:
+        async def list_correspondents(self):
+            return []
+
+        async def list_document_types(self):
+            return []
+
+        async def list_storage_paths(self):
+            return []
+
+        async def list_tags(self):
+            return []
+
+        async def aclose(self):
+            return None
+
+    class FakeOllama:
+        embed_model = "embed-model"
+
+        async def embed(self, text):
+            captured["embed_text"] = text
+            return [0.1, 0.2]
+
+        async def aclose(self):
+            return None
+
+    async def fake_find_similar(doc, embedding, paperless):
+        captured["embedding"] = embedding
+        return [SimpleNamespace(document=context_doc, distance=0.1)]
+
+    async def fake_classify(doc, context_docs, *args):
+        captured["context_docs"] = context_docs
+        return ClassificationResult(title="Classified", confidence=88), "{}"
+
+    monkeypatch.setattr(document, "PaperlessClient", FakePaperless)
+    monkeypatch.setattr(document, "OllamaClient", FakeOllama)
+    monkeypatch.setattr(document, "find_similar_with_precomputed_embedding", fake_find_similar)
+    monkeypatch.setattr(document, "classify", fake_classify)
+
+    result, raw, context_docs = document.run_async(
+        document._classify_document(SimpleNamespace(id=42, title="Target", content="Text"))
+    )
+
+    assert result.title == "Classified"
+    assert raw == "{}"
+    assert captured["embed_text"] == "Target\nText"
+    assert captured["embedding"] == [0.1, 0.2]
+    assert captured["context_docs"] == [context_doc]
+    assert context_docs == [context_doc]

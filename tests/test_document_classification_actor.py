@@ -28,6 +28,9 @@ async def test_classify_document_fetches_entities_and_calls_classifier(monkeypat
             return None
 
     class FakeOllama:
+        async def embed(self, text):
+            return [0.1, 0.2]
+
         async def aclose(self):
             return None
 
@@ -39,10 +42,11 @@ async def test_classify_document_fetches_entities_and_calls_classifier(monkeypat
     monkeypatch.setattr(document, "OllamaClient", FakeOllama)
     monkeypatch.setattr(document, "classify", fake_classify)
 
-    result, raw = await document._classify_document(target)
+    result, raw, context_documents = await document._classify_document(target)
 
     assert result.title == "Classified"
     assert raw == "{}"
+    assert context_documents == []
     assert calls[0][0] is target
     assert calls[0][1] == []
     assert calls[0][2] == ["corr"]

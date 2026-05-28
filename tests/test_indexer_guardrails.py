@@ -160,28 +160,20 @@ async def test_embedding_failure_reports_document_failed_and_continues(
 async def test_reindex_embed_result_reports_failed_document_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeConn:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-        def execute(self, *args: object, **kwargs: object):
-            return self
-
-    async def fake_initial_index(paperless: object, ollama: object) -> int:
+    async def fake_build_embeddings(
+        build_id: int, limit: int | None, actor_execution_id: int | None
+    ):
         progress = indexer.get_reindex_progress()
-        progress.failed = 1
         progress.failed_document_ids = [7]
-        return 2
+        return (3, 2, 1)
 
-    fake_paperless = AsyncMock()
-    fake_ollama = AsyncMock()
-    monkeypatch.setattr("app.db.get_conn", lambda: FakeConn())
-    monkeypatch.setattr(indexer, "initial_index", fake_initial_index)
-    monkeypatch.setattr(cli, "PaperlessClient", lambda: fake_paperless)
-    monkeypatch.setattr(cli, "OllamaClient", lambda: fake_ollama)
+    monkeypatch.setattr(
+        cli,
+        "start_embedding_index_build",
+        lambda **kwargs: type("Build", (), {"id": 55, "already_running": False})(),
+    )
+    monkeypatch.setattr(cli, "finish_embedding_index_build", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli, "_build_pgvector_embeddings", fake_build_embeddings)
 
     result = await cli.cmd_reindex_embed(emit_progress=True, job_id="job-7")
 
@@ -190,8 +182,39 @@ async def test_reindex_embed_result_reports_failed_document_ids(
     assert result["failed_document_ids"] == [7]
     assert result["progress"]["failed"] == 1
     assert result["progress"]["failed_document_ids"] == [7]
-    fake_paperless.aclose.assert_awaited_once()
-    fake_ollama.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reindex_embed_marks_build_failed_when_pgvector_build_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    finishes = []
+
+    async def fake_build_embeddings(
+        build_id: int, limit: int | None, actor_execution_id: int | None
+    ):
+        raise RuntimeError("ollama unavailable")
+
+    monkeypatch.setattr(
+        cli,
+        "start_embedding_index_build",
+        lambda **kwargs: type("Build", (), {"id": 56, "already_running": False})(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "finish_embedding_index_build",
+        lambda *args, **kwargs: finishes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(cli, "_build_pgvector_embeddings", fake_build_embeddings)
+
+    with pytest.raises(RuntimeError, match="ollama unavailable"):
+        await cli.cmd_reindex_embed(emit_progress=True, job_id="job-8")
+
+    assert finishes == [((56,), {"status": "failed", "error": "ollama unavailable"})]
+    progress = indexer.get_reindex_progress()
+    assert progress.running is False
+    assert progress.phase == "failed"
+    assert progress.error == "ollama unavailable"
 
 
 @pytest.mark.asyncio

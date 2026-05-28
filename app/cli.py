@@ -36,10 +36,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
+from app.actors.embedding import _build_pgvector_embeddings
 from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import init_db
+from app.jobs.embedding_index import finish_embedding_index_build, start_embedding_index_build
 
 
 def _configure_logging() -> None:
@@ -133,8 +135,7 @@ async def cmd_reindex_embed(
     from datetime import UTC, datetime
 
     import app.indexer as indexer
-    from app.db import EMBED_DIM, get_conn
-    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress, initial_index
+    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress
 
     enable_reindex_progress_stdout(emit_progress)
     progress = get_reindex_progress()
@@ -152,23 +153,34 @@ async def cmd_reindex_embed(
     progress.failed_document_ids = []
     indexer._emit_reindex_progress(event="job_started", message="Embedding reindex started")
 
-    # Drop + recreate vec0 so dimension changes take effect, also clear FTS index
-    with get_conn() as conn:
-        conn.execute("DELETE FROM doc_embedding_meta")
-        conn.execute("DROP TABLE IF EXISTS doc_embeddings")
-        conn.execute(
-            f"""CREATE VIRTUAL TABLE doc_embeddings USING vec0(
-                document_id INTEGER PRIMARY KEY,
-                embedding   FLOAT[{EMBED_DIM}]
-            )"""
-        )
-        conn.execute("DELETE FROM doc_fts")
-    print("Cleared existing embeddings and FTS index.")
+    build = start_embedding_index_build(
+        embedding_model=settings.ollama_embed_model,
+        dimensions=None,
+        content_scope="trusted_documents_without_inbox_tag",
+        document_count=0,
+    )
+    if build.already_running:
+        progress.running = False
+        progress.phase = "skipped"
+        progress.finished_at = datetime.now(tz=UTC).isoformat()
+        message = "Embedding reindex skipped because another PostgreSQL/pgvector build is already running."
+        indexer._emit_reindex_progress(event="job_skipped", message=message)
+        print(message)
+        return {
+            "indexed": 0,
+            "failed": 0,
+            "failed_document_ids": [],
+            "progress": progress.__dict__.copy(),
+        }
 
-    paperless = PaperlessClient()
-    ollama = OllamaClient()
     try:
-        count = await initial_index(paperless, ollama)
+        _total, count, failed = await _build_pgvector_embeddings(build.id, None, None)
+        finish_embedding_index_build(
+            build.id,
+            status="complete" if failed == 0 else "failed",
+            error=None if failed == 0 else f"{failed} document embeddings failed",
+        )
+        progress.failed = failed
         progress.phase = "finished"
         progress.finished_at = datetime.now(tz=UTC).isoformat()
         indexer._emit_reindex_progress(
@@ -185,10 +197,19 @@ async def cmd_reindex_embed(
             "failed_document_ids": progress.failed_document_ids or [],
             "progress": progress.__dict__.copy(),
         }
+    except Exception as exc:
+        finish_embedding_index_build(build.id, status="failed", error=str(exc)[:1000])
+        progress.phase = "failed"
+        progress.error = str(exc)[:1000]
+        progress.finished_at = datetime.now(tz=UTC).isoformat()
+        indexer._emit_reindex_progress(
+            event="job_failed",
+            message="Embedding reindex failed",
+            error=progress.error,
+        )
+        raise
     finally:
         progress.running = False
-        await paperless.aclose()
-        await ollama.aclose()
 
 
 async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
