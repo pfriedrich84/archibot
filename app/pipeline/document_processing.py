@@ -38,7 +38,7 @@ from app.pipeline.ocr_correction import (
     maybe_correct_ocr,
     should_run_ocr_for_document,
 )
-from app.pipeline.ports import DocumentRepository, LlmGateway
+from app.pipeline.ports import AiProviderGateway, DocumentRepository
 from app.pipeline.processing_models import (
     BatchProcessResult,
     ClassificationDraft,
@@ -106,7 +106,7 @@ def record_processing_error(stage: str, doc_id: int | None, exc: Exception) -> N
 async def process_document(
     doc: PaperlessDocument,
     paperless: DocumentRepository,
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -231,7 +231,7 @@ async def maybe_run_judge(
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     *,
     cycle_id: str | None,
 ) -> JudgeOutcome:
@@ -328,7 +328,7 @@ def _advance_poll_phase_progress() -> None:
 
 async def phase_ocr(
     docs: list[PaperlessDocument],
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     paperless: DocumentRepository,
     cycle_id: str,
     tags: list[PaperlessEntity] | None = None,
@@ -437,7 +437,7 @@ async def phase_ocr(
 async def phase_embed(
     docs: list[PaperlessDocument],
     paperless: DocumentRepository,
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     cycle_id: str,
 ) -> dict[int, EmbeddingResult]:
     """Phase 2: Compute embeddings and find similar documents (embed model).
@@ -501,7 +501,7 @@ async def phase_embed(
 async def phase_classify_only(
     docs: list[PaperlessDocument],
     embed_results: dict[int, EmbeddingResult],
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -582,7 +582,7 @@ async def phase_classify_only(
 
 async def phase_judge(
     drafts: list[ClassificationDraft],
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -870,7 +870,7 @@ async def phase_classify_publish_each(
     docs: list[PaperlessDocument],
     embed_results: dict[int, EmbeddingResult],
     paperless: DocumentRepository,
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -1085,7 +1085,7 @@ async def phase_classify(
     docs: list[PaperlessDocument],
     embed_results: dict[int, EmbeddingResult],
     paperless: DocumentRepository,
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -1158,7 +1158,7 @@ def phase_store_embeddings(
 async def process_batch(
     docs: list[PaperlessDocument],
     paperless: DocumentRepository,
-    ollama: LlmGateway,
+    ollama: AiProviderGateway,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],

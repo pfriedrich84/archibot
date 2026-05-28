@@ -1,7 +1,7 @@
 """Ports used by pipeline modules.
 
 These Protocols describe the behaviour the Dokument-Verarbeitung needs without
-coupling the deep pipeline module to concrete Paperless/Ollama adapters.
+coupling the deep pipeline module to concrete Paperless or AI-provider adapters.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ class DocumentRepository(Protocol):
     async def list_tags(self) -> list[PaperlessEntity]: ...
 
 
-class LlmGateway(Protocol):
-    """Ollama-facing port used by Dokument-Verarbeitung."""
+class AiProviderGateway(Protocol):
+    """AI-provider-facing port used by Dokument-Verarbeitung."""
 
     model: str
     embed_model: str
@@ -50,13 +50,32 @@ class LlmGateway(Protocol):
 
     async def chat_vision_json(
         self,
-        *,
         system: str,
         user: str,
-        image_b64: str,
+        images: list[str],
+        *,
         model: str | None = None,
+        temperature: float = 0.1,
         num_ctx: int | None = None,
         role: str = "ocr",
     ) -> dict[str, Any]: ...
 
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float = 0.3,
+    ) -> str: ...
+
+    async def list_models(self) -> list[str]: ...
+
+    async def model_available(self, name: str) -> bool: ...
+
     async def unload_model(self, model: str, *, swap: bool = False) -> None: ...
+
+    async def aclose(self) -> None: ...
+
+
+# Backward-compatible name for legacy call sites/tests while modules migrate.
+LlmGateway = AiProviderGateway

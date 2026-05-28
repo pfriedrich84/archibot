@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from app.clients.ollama import OllamaClient
+from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import init_db
@@ -51,13 +51,13 @@ async def lifespan(server: FastMCP) -> AsyncIterator[Deps]:
     init_db()
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     rate_limiter = RateLimiter(max_per_hour=settings.mcp_classify_rate_limit)
 
     if not await paperless.ping():
         log.warning("paperless not reachable at startup")
     if not await ollama.ping():
-        log.warning("ollama not reachable at startup")
+        log.warning("AI provider not reachable at startup")
 
     try:
         yield Deps(paperless=paperless, ollama=ollama, rate_limiter=rate_limiter)

@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
@@ -30,6 +29,7 @@ from app.pipeline.ocr_correction import (
     maybe_correct_ocr,
     should_run_ocr_for_document,
 )
+from app.pipeline.ports import AiProviderGateway
 
 log = structlog.get_logger(__name__)
 
@@ -113,7 +113,7 @@ def cancel_reindex() -> bool:
 # ---------------------------------------------------------------------------
 async def initial_index(
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     limit: int | None = None,
 ) -> int:
     """Embed all already-classified documents that are not yet indexed.
@@ -305,7 +305,7 @@ async def initial_index(
 
 async def reindex_all(
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> int:
     """Drop all embeddings and rebuild from scratch.
 
@@ -456,7 +456,7 @@ async def reindex_all(
 
 def start_reindex_task(
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> bool:
     """Launch ``reindex_all`` as a background asyncio task.
 

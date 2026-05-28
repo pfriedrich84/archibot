@@ -16,7 +16,6 @@ from typing import Any, Literal
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.models import PaperlessEntity
@@ -26,6 +25,7 @@ from app.pipeline.classifier import (
     _tokens_to_chars,
 )
 from app.pipeline.context_builder import SimilarDocument, find_similar_by_query_text
+from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
@@ -269,7 +269,7 @@ async def ask_stateless(
     question: str,
     history: list[dict[str, Any]],
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> ChatResult:
     """Run the RAG pipeline for Laravel-owned persistent web chat sessions.
 
@@ -295,7 +295,7 @@ async def ask(
     question: str,
     session: ChatSession,
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     *,
     fail_soft: bool = True,
 ) -> ChatResult:

@@ -24,7 +24,7 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 
 ## AI Provider / Ollama (allgemein)
 
-ArchiBot unterstuetzt native Ollama-Endpunkte und lokale OpenAI-kompatible `/v1`-APIs (z.B. LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp server oder Ollama `/v1`). Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert.
+ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Native Ollama ist ein Adapter hinter dieser Schnittstelle; lokale OpenAI-kompatible `/v1`-APIs (z.B. LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp server oder Ollama `/v1`) sind ebenfalls unterstuetzt. Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur Ollama unterstuetzt.
 
 Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. lokale LiteLLM-Embeddings plus OpenRouter als Judge. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
 

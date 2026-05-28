@@ -11,11 +11,11 @@ import re
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
 from app.models import PaperlessDocument
+from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
@@ -109,7 +109,7 @@ def effective_ocr_mode() -> str:
 
 async def maybe_correct_ocr(
     doc: PaperlessDocument,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     paperless: PaperlessClient | None = None,
 ) -> tuple[str, int]:
     """Optionally correct OCR errors in *doc.content*.
@@ -164,7 +164,7 @@ def get_cached_ocr(document_id: int) -> str | None:
 
 async def batch_correct_documents(
     paperless: PaperlessClient,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     *,
     limit: int | None = None,
     force: bool = False,
@@ -247,7 +247,7 @@ def _text_looks_broken(text: str) -> bool:
 # ---------------------------------------------------------------------------
 async def _correct_text_only(
     doc: PaperlessDocument,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
 ) -> tuple[str, int]:
     """Text-only OCR correction using a smaller LLM."""
     text = doc.content or ""
@@ -281,7 +281,7 @@ async def _correct_text_only(
 # ---------------------------------------------------------------------------
 async def _correct_vision_light(
     doc: PaperlessDocument,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     paperless: PaperlessClient | None,
 ) -> tuple[str, int]:
     """Vision-assisted OCR correction — heuristic-gated, up to N pages."""
@@ -333,7 +333,7 @@ async def _correct_vision_light(
 # ---------------------------------------------------------------------------
 async def _correct_vision_full(
     doc: PaperlessDocument,
-    ollama: OllamaClient,
+    ollama: AiProviderGateway,
     paperless: PaperlessClient | None,
 ) -> tuple[str, int]:
     """Full vision OCR — per-page correction, always runs (no heuristic gate)."""

@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.clients.ollama import OllamaClient
+from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.dramatiq_broker import dramatiq, queue_name
@@ -39,7 +39,7 @@ async def _build_pgvector_embeddings(
     build_id: int, limit: int | None, actor_execution_id: int | None
 ) -> tuple[int, int, int]:
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     embedded_count = 0
     failed_count = 0
     try:

@@ -37,7 +37,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 
 from app.actors.embedding import _build_pgvector_embeddings
-from app.clients.ollama import OllamaClient
+from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import init_db
@@ -82,7 +82,7 @@ async def cmd_reindex(
     indexer._reindex_progress.job_type = job_type
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     try:
         count = await reindex_all(paperless, ollama)
         print(f"Reindex complete: {count} documents indexed.")
@@ -118,7 +118,7 @@ async def cmd_reindex_ocr(*, force: bool = False) -> dict[str, object]:
         return {"corrected": 0, "mode": mode}
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     try:
         corrected = await batch_correct_documents(paperless, ollama, force=force)
         print(f"OCR correction complete: {corrected} documents corrected (mode={mode}).")
@@ -210,7 +210,7 @@ async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
     from app.worker import poll_inbox
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
 
     # The worker needs module-level client refs — set them via start_scheduler's pattern
     import app.worker as worker
@@ -282,7 +282,7 @@ async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
     from app.pipeline.document_processing import process_document
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     try:
         doc = await paperless.get_document(document_id)
         correspondents = await paperless.list_correspondents()
@@ -470,7 +470,7 @@ async def cmd_chat_ask(question: str, history: list[dict[str, Any]]) -> dict[str
     from app.chat import ask_stateless
 
     paperless = PaperlessClient()
-    ollama = OllamaClient()
+    ollama = create_ai_provider()
     try:
         result = await ask_stateless(question, history, paperless, ollama)
         return {"answer": result.answer, "sources": result.sources}

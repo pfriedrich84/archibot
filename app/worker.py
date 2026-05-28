@@ -11,22 +11,22 @@ from datetime import UTC, datetime
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
 from app.indexer import is_reindexing
 from app.job_events import record_event
 from app.pipeline.ocr_correction import configured_ocr_tag_exists, ocr_requested_tag_id
+from app.pipeline.ports import AiProviderGateway
 
 log = structlog.get_logger(__name__)
 
 # Module-level refs set by start_scheduler
 _paperless: PaperlessClient | None = None
-_ollama: OllamaClient | None = None
+_ollama: AiProviderGateway | None = None
 
 
-def set_clients(paperless: PaperlessClient | None, ollama: OllamaClient | None) -> None:
+def set_clients(paperless: PaperlessClient | None, ollama: AiProviderGateway | None) -> None:
     """Update module-level client references used by poll jobs."""
     global _paperless, _ollama
     _paperless = paperless
