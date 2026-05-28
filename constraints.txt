@@ -30,6 +30,7 @@ requests<=2.33.0
 pydantic<=2.12.5
 pydantic-core<=2.41.5
 pydantic-settings<=2.14.0
+rpds-py<2026.5.1
 sqlite-vec<=0.1.9
 pymupdf<=1.27.2.3
 ruff<=0.15.12

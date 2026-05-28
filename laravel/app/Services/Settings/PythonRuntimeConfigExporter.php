@@ -153,7 +153,11 @@ class PythonRuntimeConfigExporter
             if ($legacyKey === '') {
                 continue;
             }
-            $values[$legacyKey] = AppSetting::getValue((string) $settingKey);
+            $value = AppSetting::getValue((string) $settingKey);
+            if ($value === null && array_key_exists('default', $definition)) {
+                $value = (string) $definition['default'];
+            }
+            $values[$legacyKey] = $value;
         }
 
         return $values;
