@@ -140,6 +140,7 @@ class PythonRuntimeConfigExporter
             'CHAT_PROVIDER' => AppSetting::getValue('llm.chat_provider'),
             'ENABLE_JUDGE_VERIFICATION' => AppSetting::getValue('classification.enable_judge_verification'),
             'JUDGE_CONFIDENCE_THRESHOLD' => AppSetting::getValue('classification.judge_confidence_threshold'),
+            'AUTO_COMMIT_CONFIDENCE' => AppSetting::getValue('classification.auto_commit_confidence'),
             'CLASSIFICATION_MODEL' => AppSetting::getValue('classification.model'),
             'EMBEDDING_MODEL' => AppSetting::getValue('embedding.model'),
             'OCR_TEXT_MODEL' => AppSetting::getValue('ocr.text_model'),
