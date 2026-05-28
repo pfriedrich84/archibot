@@ -162,8 +162,12 @@ def finish_embedding_index_build(build_id: int, *, status: str, error: str | Non
     statement = sql_text(
         """
         UPDATE embedding_index_state
-        SET status = :status,
-            completed_at = CASE WHEN :status IN ('complete', 'failed') THEN CURRENT_TIMESTAMP ELSE completed_at END,
+        SET status = CAST(:status AS character varying),
+            completed_at = CASE
+                WHEN CAST(:status AS character varying) IN ('complete', 'failed')
+                THEN CURRENT_TIMESTAMP
+                ELSE completed_at
+            END,
             error = :error,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :build_id
