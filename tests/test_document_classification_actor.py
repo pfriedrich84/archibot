@@ -36,7 +36,9 @@ async def test_classify_document_fetches_entities_and_calls_classifier(monkeypat
         return ClassificationResult(title="Classified", confidence=91), "{}"
 
     async def fake_judge(*args, **kwargs):
-        return SimpleNamespace(result=args[1], verdict="skipped", reasoning=None, original_proposed_json=None)
+        return SimpleNamespace(
+            result=args[1], verdict="skipped", reasoning=None, original_proposed_json=None
+        )
 
     monkeypatch.setattr(document, "find_similar_with_precomputed_embedding", fake_find_similar)
     monkeypatch.setattr(document, "classify", fake_classify)
