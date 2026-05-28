@@ -15,6 +15,12 @@ Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig. Mit Web
 
 `/api/webhooks/paperless` ist der kanonische event-driven Endpoint. `/webhook` bleibt als kurzer Alias verfuegbar.
 
+ArchiBot unterscheidet Paperless-Events automatisch:
+
+- `document_created`/`created`/`added`/`consumed` startet die volle Klassifikations-Pipeline.
+- `document_updated`/`changed`/`modified` aktualisiert nur das pgvector-Embedding und startet keine neue Klassifikation.
+- `document_deleted`/`trashed` entfernt gespeicherte Embeddings fuer das Dokument.
+
 **Polling und Webhooks koennen parallel laufen.** Der Idempotenz-Check verhindert, dass ein Dokument doppelt verarbeitet wird.
 
 ## Voraussetzungen
@@ -123,7 +129,7 @@ http://classifier-host:8088/webhook
 
 ### POST /webhook — empfohlener Paperless-Webhook
 
-Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, dedupliziert identische Lieferungen und reiht die Verarbeitung ein.
+Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, dedupliziert identische Lieferungen und reiht je nach Event entweder die volle Dokumentverarbeitung oder nur eine Embedding-Aktualisierung ein.
 
 **Header:**
 
