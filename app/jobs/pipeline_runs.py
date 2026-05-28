@@ -11,6 +11,7 @@ from app.jobs.database import engine
 class PipelineRunRecord:
     id: int
     status: str
+    created: bool = True
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,9 @@ def upsert_document_pipeline_run(
     reprocess_requested: bool = False,
     reprocess_reason: str | None = None,
     reprocess_mode: str | None = None,
+    webhook_delivery_id: int | None = None,
+    command_id: int | None = None,
+    requested_by_user_id: int | None = None,
 ) -> PipelineRunRecord:
     """Create or attach to the durable run for one document/dedupe key.
 
@@ -56,6 +60,8 @@ def upsert_document_pipeline_run(
     statement = sql_text(
         """
         INSERT INTO pipeline_runs (
+            command_id,
+            webhook_delivery_id,
             type,
             status,
             scope,
@@ -76,6 +82,8 @@ def upsert_document_pipeline_run(
             created_at,
             updated_at
         ) VALUES (
+            :command_id,
+            :webhook_delivery_id,
             'document',
             :status,
             'single_document',
@@ -106,8 +114,11 @@ def upsert_document_pipeline_run(
             reprocess_requested = pipeline_runs.reprocess_requested OR :reprocess_requested,
             reprocess_reason = COALESCE(:reprocess_reason, pipeline_runs.reprocess_reason),
             reprocess_mode = COALESCE(:reprocess_mode, pipeline_runs.reprocess_mode),
+            webhook_delivery_id = COALESCE(pipeline_runs.webhook_delivery_id, :webhook_delivery_id),
+            command_id = COALESCE(pipeline_runs.command_id, :command_id),
+            requested_by_user_id = COALESCE(:requested_by_user_id, pipeline_runs.requested_by_user_id),
             updated_at = CURRENT_TIMESTAMP
-        RETURNING id, status
+        RETURNING id, status, (xmax = 0) AS created
         """
     )
     progress_phase = "blocked" if status == "blocked" else "queued"
@@ -122,6 +133,8 @@ def upsert_document_pipeline_run(
                 statement,
                 {
                     "status": status,
+                    "command_id": command_id,
+                    "webhook_delivery_id": webhook_delivery_id,
                     "trigger_source": trigger_source,
                     "paperless_document_id": paperless_document_id,
                     "paperless_modified": paperless_modified,
@@ -132,6 +145,7 @@ def upsert_document_pipeline_run(
                     "reprocess_requested": reprocess_requested,
                     "reprocess_reason": reprocess_reason,
                     "reprocess_mode": reprocess_mode,
+                    "requested_by_user_id": requested_by_user_id,
                     "error_type": blocked_reason,
                     "error": progress_message if blocked_reason is not None else None,
                 },
@@ -143,7 +157,11 @@ def upsert_document_pipeline_run(
     if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
         raise RuntimeError("pipeline run upsert did not return a row")
 
-    return PipelineRunRecord(id=int(row["id"]), status=str(row["status"]))
+    return PipelineRunRecord(
+        id=int(row["id"]),
+        status=str(row["status"]),
+        created=bool(row.get("created", True)),
+    )
 
 
 def load_document_pipeline_run(pipeline_run_id: int) -> DocumentPipelineRunRecord | None:
@@ -362,6 +380,7 @@ def mark_pipeline_run_pending(
             progress_updated_at = CURRENT_TIMESTAMP,
             error_type = NULL,
             error = NULL,
+            finished_at = NULL,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
         """

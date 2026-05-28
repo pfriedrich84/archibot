@@ -9,7 +9,7 @@ manual   -> admin clicks a Laravel button
 webhook  -> Paperless reports a relevant document change
 ```
 
-Both paths must use the same document lock, embedding readiness gate and pipeline dedupe logic.
+Both paths must use the same embedding readiness gate, pipeline dedupe logic, and durable unique `(paperless_document_id, pipeline_dedupe_key)` coalescing seam.
 
 ## Manual Reprocess
 
@@ -36,7 +36,7 @@ reprocess_full_document_pipeline
 reprocess_full_document_pipeline_force_embeddings
 ```
 
-Manual reprocess may intentionally create a new run even if the latest previous run succeeded.
+Manual force reprocess always creates a new run, even if the latest previous run succeeded and the effective content state is identical. Attach/retry existing is a separate non-force mode.
 
 ## Webhook-triggered Reprocess
 
@@ -48,7 +48,7 @@ Required behavior:
 - webhook security still applies
 - persist and deduplicate the webhook delivery
 - compute the document/content-state dedupe key
-- acquire or respect the document lock
+- acquire or respect the durable pipeline coalescing seam
 - check the embedding readiness gate
 - start a new run only if the document state is new, changed, missing or stale
 - coalesce with an active run for the same document/content state
@@ -69,7 +69,7 @@ Responsibilities:
 
 1. check embedding readiness gate
 2. compute pipeline dedupe key
-3. acquire document lock
+3. use the durable unique `(paperless_document_id, pipeline_dedupe_key)` coalescing seam
 4. check existing active/completed run
 5. create new run or coalesce with existing run
 6. enqueue next actor only if required
@@ -93,11 +93,11 @@ Non-admin users must not see or must not be able to use the action, and the back
 
 ```text
 job_control.force_reprocess_requested
-pipeline.reprocess_requested
-pipeline.reprocess_started
+pipeline.force_reprocess.requested
+pipeline.start.pending
+pipeline.start.coalesced
+pipeline.blocked.embedding_index_not_ready
 webhook.document_change_detected
-webhook.reprocess_coalesced_with_existing_run
-pipeline.start_skipped_duplicate
 ```
 
 ## Test Requirements

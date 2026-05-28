@@ -13,6 +13,7 @@ from app.dramatiq_broker import dramatiq, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_items import (
     finish_pipeline_item,
     progress_from_pipeline_items,
@@ -126,6 +127,31 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             )
             publish_pipeline_event(
                 types.ACTOR_FAILED, pipeline_run_id=pipeline_run_id, level="error", message=message
+            )
+            return
+
+        if not ensure_embedding_index_ready():
+            message = "Document actor blocked because the embedding index is not ready."
+            mark_pipeline_run_status(
+                pipeline_run_id,
+                status="blocked",
+                phase="blocked",
+                message="Waiting for embedding index to complete.",
+                error_type="embedding_index_not_ready",
+                error="Waiting for embedding index to complete.",
+            )
+            finish_actor_execution(
+                actor_execution,
+                status="blocked",
+                error_type="embedding_index_not_ready",
+                error_message=message,
+            )
+            publish_pipeline_event(
+                types.PIPELINE_BLOCKED_EMBEDDING_NOT_READY,
+                pipeline_run_id=pipeline_run_id,
+                paperless_document_id=run.paperless_document_id,
+                level="warning",
+                message=message,
             )
             return
 

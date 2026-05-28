@@ -46,13 +46,14 @@ reindex
 
 If a later trigger coalesces with an already active run, write an event instead of creating a duplicate run.
 
-Recommended events:
+Canonical start events:
 
 ```text
-webhook.coalesced_with_existing_run
-poll.coalesced_with_existing_run
-manual.coalesced_with_existing_run
-pipeline.start_skipped_duplicate
+pipeline.start.pending
+pipeline.start.coalesced
+pipeline.start.attached
+pipeline.blocked.embedding_index_not_ready
+pipeline.force_reprocess.requested
 ```
 
 ## Shared Start Function
@@ -69,7 +70,7 @@ Responsibilities:
 
 1. Check embedding readiness gate.
 2. Compute or look up the pipeline dedupe key.
-3. Acquire document lock.
+3. Use the durable unique `(paperless_document_id, pipeline_dedupe_key)` constraint as the coalescing seam.
 4. Check existing active/completed run for same document/content state.
 5. Create new run or attach/coalesce with existing run.
 6. Enqueue next actor only if a new run is needed.
@@ -103,11 +104,13 @@ embedding_index_state.status == complete
 
 ### Document Lock
 
-All trigger sources use the same document lock:
+All trigger sources use the same durable coalescing seam:
 
 ```text
-archibot:document:{paperless_document_id}
+unique(paperless_document_id, pipeline_dedupe_key)
 ```
+
+A future PostgreSQL advisory lock or lock table may still be added for finer-grained scheduling, but the implemented correctness seam is the database uniqueness constraint plus coalesced-source update.
 
 ### Webhook Delivery Dedupe
 
@@ -149,13 +152,13 @@ Webhooks should:
 Webhook receives document #123
 Poll discovers document #123 at same time
 Both call start_or_attach_document_pipeline(...)
-Only one acquires document lock and creates active run
-Other source attaches/coalesces and emits event
+Only one creates the unique pipeline run
+Other source attaches/coalesces through the unique constraint and emits an event
 ```
 
 ## Database Requirements
 
-Recommended pipeline uniqueness:
+Implemented pipeline uniqueness:
 
 ```text
 unique(paperless_document_id, pipeline_dedupe_key)

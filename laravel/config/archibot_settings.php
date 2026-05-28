@@ -317,7 +317,7 @@ return [
             'label' => 'External base URL',
             'type' => 'url',
             'default' => '',
-            'help' => 'Public ArchiBot URL used for links generated outside the web UI.'
+            'help' => 'Public ArchiBot URL used for links generated outside the web UI.',
         ],
         'gui.timezone' => [
             'legacy' => 'app_timezone',
@@ -335,7 +335,6 @@ return [
             'default' => 'dd.mm.yyyy hh:mm:ss',
             'help' => 'Timestamp display format. Supported tokens: dd, mm, yyyy, hh, MM, ss (default: dd.mm.yyyy hh:mm:ss).',
         ],
-
 
         'webhook.secret' => [
             'legacy' => 'webhook_secret',

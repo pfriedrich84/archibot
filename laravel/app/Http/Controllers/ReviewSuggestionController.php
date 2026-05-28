@@ -4,15 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\AppSetting;
 use App\Models\AuditLog;
-use App\Models\EmbeddingIndexState;
-use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -148,31 +146,16 @@ class ReviewSuggestionController extends Controller
             $reason = 'manual_admin_reprocess';
         }
 
-        $dedupeKey = hash('sha256', implode(':', [
-            'manual_reprocess',
-            (string) $reviewSuggestion->paperless_document_id,
-            (string) Str::uuid(),
-        ]));
-
-        $gateOpen = $this->embeddingIndexIsComplete();
-        $run = PipelineRun::query()->create([
-            'type' => 'document',
-            'status' => $gateOpen ? PipelineRun::STATUS_PENDING : PipelineRun::STATUS_BLOCKED,
-            'scope' => 'single_document',
-            'trigger_source' => 'manual',
-            'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-            'pipeline_dedupe_key' => $dedupeKey,
-            'coalesced_sources' => ['manual'],
-            'progress_current_phase' => $gateOpen ? 'queued' : 'blocked',
-            'progress_message' => $gateOpen ? 'Manual admin reprocess queued.' : 'Waiting for embedding index to complete.',
-            'progress_updated_at' => now(),
-            'reprocess_requested' => true,
-            'reprocess_reason' => $reason,
-            'reprocess_mode' => 'manual',
-            'requested_by_user_id' => $request->user()->id,
-            'error_type' => $gateOpen ? null : 'embedding_index_not_ready',
-            'error' => $gateOpen ? null : 'Waiting for embedding index to complete.',
-        ]);
+        $result = app(DocumentPipelineStarter::class)->start(
+            triggerSource: 'manual',
+            paperlessDocumentId: $reviewSuggestion->paperless_document_id,
+            reprocessRequested: true,
+            reprocessReason: $reason,
+            reprocessMode: 'manual',
+            forceNewRun: true,
+            requestedByUserId: $request->user()->id,
+        );
+        $run = $result->pipelineRun;
 
         AuditLog::query()->create([
             'actor_user_id' => $request->user()->id,
@@ -256,11 +239,6 @@ class ReviewSuggestionController extends Controller
             'Content-Type' => $preview->header('Content-Type', 'application/pdf'),
             'Cache-Control' => 'private, no-store',
         ]);
-    }
-
-    private function embeddingIndexIsComplete(): bool
-    {
-        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
     }
 
     private function bulkReview(Request $request, string $status): RedirectResponse

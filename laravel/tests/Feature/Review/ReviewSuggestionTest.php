@@ -233,6 +233,10 @@ class ReviewSuggestionTest extends TestCase
         $this->assertTrue($run->reprocess_requested);
         $this->assertSame('try again', $run->reprocess_reason);
         $this->assertSame($admin->id, $run->requested_by_user_id);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.start.pending',
+        ]);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'pipeline_run.manual_reprocess_queued',
             'target_type' => 'pipeline_run',
@@ -257,6 +261,27 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame('embedding_index_not_ready', $run->error_type);
         $this->assertSame('Waiting for embedding index to complete.', $run->error);
         $this->assertTrue($run->reprocess_requested);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.blocked.embedding_index_not_ready',
+        ]);
+    }
+
+    public function test_manual_reprocess_force_creates_new_run_each_time(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        EmbeddingIndexState::query()->create(['status' => 'complete']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+
+        $this->actingAs($admin)
+            ->post(route('review.reprocess', $suggestion), ['reason' => 'again'])
+            ->assertRedirect(route('review.show', $suggestion));
+        $this->actingAs($admin)
+            ->post(route('review.reprocess', $suggestion), ['reason' => 'again'])
+            ->assertRedirect(route('review.show', $suggestion));
+
+        $this->assertDatabaseCount('pipeline_runs', 2);
+        $this->assertCount(2, PipelineRun::query()->where('paperless_document_id', 456)->pluck('pipeline_dedupe_key')->unique());
     }
 
     public function test_non_admin_cannot_queue_manual_reprocess(): void
