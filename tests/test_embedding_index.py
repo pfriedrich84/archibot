@@ -107,4 +107,5 @@ def test_finish_embedding_index_build_updates_status(monkeypatch):
 
     embedding_index.finish_embedding_index_build(55, status="failed", error="not migrated")
 
+    assert "CAST(:status AS character varying)" in calls[0][0]
     assert calls[0][1] == {"build_id": 55, "status": "failed", "error": "not migrated"}
