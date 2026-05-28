@@ -42,7 +42,7 @@ def test_cmd_process_doc_force_deletes_processed_row() -> None:
 
     with (
         patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.OllamaClient", return_value=mock_ollama),
+        patch("app.cli.create_ai_provider", return_value=mock_ollama),
         patch("app.pipeline.document_processing.process_document", mock_process),
         patch("app.db.get_conn", return_value=_mock_conn_cm(conn)),
     ):
@@ -76,7 +76,7 @@ def test_cmd_process_doc_without_force_keeps_processed_row() -> None:
 
     with (
         patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.OllamaClient", return_value=mock_ollama),
+        patch("app.cli.create_ai_provider", return_value=mock_ollama),
         patch("app.pipeline.document_processing.process_document", mock_process),
         patch("app.db.get_conn", return_value=_mock_conn_cm(conn)),
     ):

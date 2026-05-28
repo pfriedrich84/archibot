@@ -127,7 +127,7 @@ Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt
 - System-Prompt: Built-in aus `prompts/classify_system.txt` oder Custom Override aus `/data/classify_system.txt`
 - User-Prompt: Entity-Listen + Kontext-Dokumente mit Metadaten + Zieldokument
 - Token-Budgetierung: 60% fuer Zieldokument, 40% fuer Kontext. Zu kleine Kontext-Dokumente werden gedroppt
-- Provider-Aufruf mit JSON-Ausgabe (`format: "json"` bei nativer Ollama-API, OpenAI-kompatible Chat-Completions bei `/v1`-Providern), liefert strukturiertes JSON
+- Provider-Aufruf ueber die neutrale AI-Provider-Schnittstelle mit JSON-Ausgabe (`format: "json"` beim nativen Ollama-Adapter, OpenAI-kompatible Chat-Completions bei `/v1`-Providern), liefert strukturiertes JSON
 - Ergebnis: Titel, Datum, Korrespondent, Dokumenttyp, Speicherpfad, Tags (mit Confidence), Gesamt-Confidence, Reasoning
 
 ### 5. Tag-Whitelist

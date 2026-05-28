@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from app.clients.ollama import OllamaClient
+from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.dramatiq_broker import dramatiq, queue_name
@@ -53,6 +53,7 @@ from app.pipeline.ocr_correction import (
     maybe_correct_ocr,
     should_run_ocr_for_document,
 )
+from app.pipeline.ports import AiProviderGateway, DocumentRepository
 
 log = structlog.get_logger(__name__)
 
@@ -84,15 +85,20 @@ def run_async(coroutine):
     return asyncio.run(coroutine)
 
 
-async def _fetch_paperless_document(paperless_document_id: int) -> PaperlessDocument:
-    paperless = PaperlessClient()
-    try:
+async def _fetch_paperless_document(
+    paperless_document_id: int, paperless: DocumentRepository | None = None
+) -> PaperlessDocument:
+    if paperless is not None:
         return await paperless.get_document(paperless_document_id)
+
+    paperless_client = PaperlessClient()
+    try:
+        return await paperless_client.get_document(paperless_document_id)
     finally:
-        await paperless.aclose()
+        await paperless_client.aclose()
 
 
-async def _load_entity_catalog(paperless: PaperlessClient) -> EntityCatalog:
+async def _load_entity_catalog(paperless: DocumentRepository) -> EntityCatalog:
     return EntityCatalog(
         correspondents=await paperless.list_correspondents(),
         doctypes=await paperless.list_document_types(),
@@ -101,11 +107,17 @@ async def _load_entity_catalog(paperless: PaperlessClient) -> EntityCatalog:
     )
 
 
-async def _classify_document(document: PaperlessDocument) -> DocumentClassificationOutcome:
-    paperless = PaperlessClient()
-    ollama = OllamaClient()
+async def _classify_document(
+    document: PaperlessDocument,
+    paperless: DocumentRepository | None = None,
+    ai_provider: AiProviderGateway | None = None,
+) -> DocumentClassificationOutcome:
+    owns_paperless = paperless is None
+    owns_ai_provider = ai_provider is None
+    paperless_client = paperless or PaperlessClient()
+    provider = ai_provider or create_ai_provider()
     try:
-        catalog = await _load_entity_catalog(paperless)
+        catalog = await _load_entity_catalog(paperless_client)
         processed_document = document
         ocr_corrected = False
         ocr_corrections = 0
@@ -116,7 +128,7 @@ async def _classify_document(document: PaperlessDocument) -> DocumentClassificat
         if eligible:
             try:
                 corrected_text, ocr_corrections = await maybe_correct_ocr(
-                    processed_document, ollama, paperless
+                    processed_document, provider, paperless_client
                 )
                 if ocr_corrections > 0:
                     processed_document = processed_document.model_copy(
@@ -143,9 +155,9 @@ async def _classify_document(document: PaperlessDocument) -> DocumentClassificat
         text = document_embedding_text(processed_document.title, processed_document.content)
         if text.strip():
             try:
-                embedding = await ollama.embed(text)
+                embedding = await provider.embed(text)
                 similar = await find_similar_with_precomputed_embedding(
-                    processed_document, embedding, paperless
+                    processed_document, embedding, paperless_client
                 )
                 context_documents = [item.document for item in similar]
             except Exception as exc:
@@ -162,7 +174,7 @@ async def _classify_document(document: PaperlessDocument) -> DocumentClassificat
             catalog.doctypes,
             catalog.storage_paths,
             catalog.tags,
-            ollama,
+            provider,
         )
         judge = await maybe_run_judge(
             processed_document,
@@ -173,7 +185,7 @@ async def _classify_document(document: PaperlessDocument) -> DocumentClassificat
             catalog.doctypes,
             catalog.storage_paths,
             catalog.tags,
-            ollama,
+            provider,
             cycle_id=None,
         )
         return DocumentClassificationOutcome(
@@ -190,8 +202,10 @@ async def _classify_document(document: PaperlessDocument) -> DocumentClassificat
             context_count=len(context_documents),
         )
     finally:
-        await ollama.aclose()
-        await paperless.aclose()
+        if owns_ai_provider:
+            await provider.aclose()
+        if owns_paperless and hasattr(paperless_client, "aclose"):
+            await paperless_client.aclose()
 
 
 def _update_item_derived_progress(

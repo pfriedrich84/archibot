@@ -200,7 +200,7 @@ async def test_embed_retries_on_transient_500_then_succeeds(client: OllamaClient
         ]
     )
 
-    with patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         result = await client.embed("hello world")
 
     assert result == embedding
@@ -216,8 +216,8 @@ async def test_embed_retries_exhausted_raises(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock),
-        patch("app.clients.ollama.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.ai_provider.client.settings") as mock_settings,
     ):
         mock_settings.ollama_embed_retries = 2
         mock_settings.ollama_embed_retry_base_delay = 0.01
@@ -252,7 +252,7 @@ async def test_embed_retries_on_429(client: OllamaClient):
         ]
     )
 
-    with patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock):
+    with patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.embed("hello world")
 
     assert result == embedding
@@ -269,7 +269,7 @@ async def test_embed_retries_on_connect_error(client: OllamaClient):
         ]
     )
 
-    with patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock):
+    with patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock):
         result = await client.embed("hello world")
 
     assert result == embedding
@@ -325,7 +325,7 @@ async def test_embed_retry_disabled_when_zero(client: OllamaClient):
         return_value=_make_response(500, text='{"error": "internal error"}')
     )
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_embed_retries = 0
         mock_settings.ollama_embed_retry_base_delay = 1.0
         with pytest.raises(ValueError, match="internal error"):
@@ -339,7 +339,7 @@ async def test_embed_raises_on_unexpected_dimension(client: OllamaClient):
     """Embedding vectors with unexpected dimension should fail fast."""
     client._client.post = AsyncMock(return_value=_make_response(200, {"embedding": [0.1] * 10}))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_embed_retries = 0
         mock_settings.ollama_embed_retry_base_delay = 0.01
         mock_settings.ollama_embed_num_ctx = 8192
@@ -367,7 +367,7 @@ async def test_chat_json_handles_bare_json(client: OllamaClient):
     payload = {"title": "Test", "confidence": 90}
     client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         result = await client.chat_json(system="sys", user="usr")
 
@@ -380,7 +380,7 @@ async def test_chat_json_strips_markdown_fences(client: OllamaClient):
     fenced = f"```json\n{json.dumps(payload)}\n```"
     client._client.post = AsyncMock(return_value=_make_chat_response(fenced))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         result = await client.chat_json(system="sys", user="usr")
 
@@ -393,7 +393,7 @@ async def test_chat_json_strips_bare_fences(client: OllamaClient):
     fenced = f"```\n{json.dumps(payload)}\n```"
     client._client.post = AsyncMock(return_value=_make_chat_response(fenced))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         result = await client.chat_json(system="sys", user="usr")
 
@@ -406,7 +406,7 @@ async def test_chat_json_strips_yaml_fence(client: OllamaClient):
     fenced = f"---\n{json.dumps(payload)}"
     client._client.post = AsyncMock(return_value=_make_chat_response(fenced))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         result = await client.chat_json(system="sys", user="usr")
 
@@ -417,7 +417,7 @@ async def test_chat_json_raises_on_invalid_content(client: OllamaClient):
     """Truly invalid (non-JSON, non-fenced) content raises ValueError."""
     client._client.post = AsyncMock(return_value=_make_chat_response("this is not json at all"))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         with pytest.raises(ValueError, match="Invalid JSON from Ollama"):
             await client.chat_json(system="sys", user="usr")
@@ -433,7 +433,7 @@ async def test_chat_json_retries_once_on_invalid_json_then_succeeds(client: Olla
         ]
     )
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         result = await client.chat_json(system="sys", user="usr")
 
@@ -451,7 +451,7 @@ async def test_chat_json_invalid_json_retry_enforces_strict_payload(client: Olla
         ]
     )
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
         await client.chat_json(system="sys", user="usr")
 
@@ -470,9 +470,9 @@ async def test_chat_json_retries_on_read_timeout(client: OllamaClient):
         ]
     )
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 4096
-        with patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await client.chat_json(system="sys", user="usr")
 
     assert result == payload
@@ -485,7 +485,7 @@ async def test_chat_json_passes_num_ctx(client: OllamaClient):
     payload = {"ok": True}
     client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 8192
         await client.chat_json(system="sys", user="usr")
 
@@ -498,7 +498,7 @@ async def test_chat_json_passes_custom_num_ctx(client: OllamaClient):
     payload = {"ok": True}
     client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 8192
         await client.chat_json(system="sys", user="usr", num_ctx=131072)
 
@@ -517,8 +517,8 @@ async def test_chat_json_retries_on_transient_500(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        patch("app.clients.ollama.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("app.ai_provider.client.settings") as mock_settings,
     ):
         mock_settings.ollama_num_ctx = 4096
         mock_settings.ollama_chat_retries = 1
@@ -540,8 +540,8 @@ async def test_chat_retries_on_connect_error(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        patch("app.clients.ollama.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("app.ai_provider.client.settings") as mock_settings,
     ):
         mock_settings.ollama_num_ctx = 4096
         mock_settings.ollama_chat_retries = 1
@@ -558,7 +558,7 @@ async def test_chat_vision_json_passes_default_num_ctx(client: OllamaClient):
     payload = {"ok": True}
     client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 8192
         await client.chat_vision_json(system="sys", user="usr", images=["abc123"])
 
@@ -571,7 +571,7 @@ async def test_chat_vision_json_passes_custom_num_ctx(client: OllamaClient):
     payload = {"ok": True}
     client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
 
-    with patch("app.clients.ollama.settings") as mock_settings:
+    with patch("app.ai_provider.client.settings") as mock_settings:
         mock_settings.ollama_num_ctx = 8192
         await client.chat_vision_json(system="sys", user="usr", images=["abc123"], num_ctx=131072)
 
@@ -596,8 +596,8 @@ async def test_unload_model_sleeps_for_swap_delay(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.settings") as mock_settings,
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("app.ai_provider.client.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         mock_settings.ollama_model_swap_delay = 5.0
         await client.unload_model("test-model", swap=True)
@@ -612,8 +612,8 @@ async def test_unload_model_skips_sleep_when_zero(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.settings") as mock_settings,
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("app.ai_provider.client.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         mock_settings.ollama_model_swap_delay = 0
         await client.unload_model("test-model", swap=True)
@@ -628,8 +628,8 @@ async def test_unload_model_no_sleep_without_swap(client: OllamaClient):
     )
 
     with (
-        patch("app.clients.ollama.settings") as mock_settings,
-        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("app.ai_provider.client.settings") as mock_settings,
+        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         mock_settings.ollama_model_swap_delay = 5.0
         await client.unload_model("test-model")

@@ -6,15 +6,15 @@ from dataclasses import dataclass
 
 from mcp.server.fastmcp import Context
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.mcp_tools._auth import McpIdentity, RateLimiter, get_mcp_identity
+from app.pipeline.ports import AiProviderGateway
 
 
 @dataclass
 class Deps:
     paperless: PaperlessClient
-    ollama: OllamaClient
+    ollama: AiProviderGateway
     rate_limiter: RateLimiter
 
 

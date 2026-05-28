@@ -7,19 +7,19 @@ import json
 
 import structlog
 
-from app.clients.ollama import OllamaClient
 from app.clients.paperless import PaperlessClient
 from app.clients.telegram import TelegramClient
 from app.config import settings
 from app.db import get_conn
 from app.models import ReviewDecision, SuggestionRow
 from app.pipeline.committer import commit_suggestion
+from app.pipeline.ports import AiProviderGateway
 
 log = structlog.get_logger(__name__)
 
 _telegram: TelegramClient | None = None
 _paperless: PaperlessClient | None = None
-_ollama: OllamaClient | None = None
+_ollama: AiProviderGateway | None = None
 _poll_task: asyncio.Task | None = None  # type: ignore[type-arg]
 
 
@@ -282,7 +282,7 @@ async def _poll_loop() -> None:
 def start_telegram(
     telegram: TelegramClient,
     paperless: PaperlessClient,
-    ollama: OllamaClient | None = None,
+    ollama: AiProviderGateway | None = None,
 ) -> None:
     """Start the Telegram update-polling background task."""
     global _telegram, _paperless, _ollama, _poll_task

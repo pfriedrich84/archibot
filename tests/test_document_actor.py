@@ -345,13 +345,15 @@ def test_document_actor_classification_uses_pgvector_context(monkeypatch):
         captured["context_docs"] = context_docs
         return ClassificationResult(title="Classified", confidence=88), "{}"
 
-    monkeypatch.setattr(document, "PaperlessClient", FakePaperless)
-    monkeypatch.setattr(document, "OllamaClient", FakeOllama)
     monkeypatch.setattr(document, "find_similar_with_precomputed_embedding", fake_find_similar)
     monkeypatch.setattr(document, "classify", fake_classify)
 
     outcome = document.run_async(
-        document._classify_document(SimpleNamespace(id=42, title="Target", content="Text"))
+        document._classify_document(
+            SimpleNamespace(id=42, title="Target", content="Text"),
+            paperless=FakePaperless(),
+            ai_provider=FakeOllama(),
+        )
     )
 
     assert outcome.result.title == "Classified"
@@ -571,8 +573,6 @@ def test_classify_document_applies_ocr_locally(monkeypatch):
     async def fake_maybe_correct(doc, ollama, paperless):
         return "Corrected OCR", 2
 
-    monkeypatch.setattr(document, "PaperlessClient", FakePaperless)
-    monkeypatch.setattr(document, "OllamaClient", FakeOllama)
     monkeypatch.setattr(document, "effective_ocr_mode", lambda: "text")
     monkeypatch.setattr(
         document, "should_run_ocr_for_document", lambda *args, **kwargs: (True, "no_filter")
@@ -595,7 +595,9 @@ def test_classify_document_applies_ocr_locally(monkeypatch):
 
     outcome = document.run_async(
         document._classify_document(
-            PaperlessDocument(id=42, title="Target", content="Broken OCR", tags=[])
+            PaperlessDocument(id=42, title="Target", content="Broken OCR", tags=[]),
+            paperless=FakePaperless(),
+            ai_provider=FakeOllama(),
         )
     )
 
