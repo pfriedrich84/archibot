@@ -240,6 +240,8 @@ def test_upsert_document_pipeline_run_reports_coalesced_run(monkeypatch):
     )
 
     assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending", created=False)
+    statement = calls[0][0]
+    assert "requested_by_user_id" in statement
     params = calls[0][1]
     assert params["webhook_delivery_id"] == 10
     assert params["command_id"] == 11
