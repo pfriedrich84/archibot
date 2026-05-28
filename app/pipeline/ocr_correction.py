@@ -111,11 +111,16 @@ async def maybe_correct_ocr(
     doc: PaperlessDocument,
     ollama: AiProviderGateway,
     paperless: PaperlessClient | None = None,
+    *,
+    force: bool = False,
 ) -> tuple[str, int]:
     """Optionally correct OCR errors in *doc.content*.
 
     Returns ``(text, num_corrections)``.  The corrected text is **not** written
     back to Paperless — it is only used as improved input for classification.
+
+    When ``force`` is true, text and ``vision_light`` modes bypass the
+    clean-text heuristic. OCR mode and the requested-tag filter still apply.
     """
     text = doc.content or ""
     mode = effective_ocr_mode()
@@ -128,9 +133,9 @@ async def maybe_correct_ocr(
         log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
         return text, 0
     if mode == "text":
-        return await _correct_text_only(doc, ollama)
+        return await _correct_text_only(doc, ollama, force=force)
     if mode == "vision_light":
-        return await _correct_vision_light(doc, ollama, paperless)
+        return await _correct_vision_light(doc, ollama, paperless, force=force)
     if mode == "vision_full":
         return await _correct_vision_full(doc, ollama, paperless)
     return text, 0
@@ -172,6 +177,8 @@ async def batch_correct_documents(
     """Run OCR correction over all Paperless documents.
 
     Skips documents already in ``doc_ocr_cache`` unless *force* is ``True``.
+    Forced runs also bypass the text/``vision_light`` clean-text heuristic so
+    operators can refresh OCR after model or prompt changes.
     Returns the number of documents corrected.
     """
     mode = effective_ocr_mode()
@@ -194,22 +201,44 @@ async def batch_correct_documents(
 
     log.info("batch OCR starting", total=len(all_docs), mode=mode, force=force)
     corrected = 0
+    skipped_clean = 0
+    skipped_filter = 0
+    unchanged = 0
+    failed = 0
 
     for doc in all_docs:
         try:
             eligible, reason = should_run_ocr_for_document(doc, available_tags=available_tags)
             if not eligible:
+                skipped_filter += 1
                 log.debug("batch OCR skipped by requested tag filter", doc_id=doc.id, reason=reason)
                 continue
-            text, num = await maybe_correct_ocr(doc, ollama, paperless)
-            if num > 0 or mode.startswith("vision"):
+            if not force and mode != "vision_full" and not _text_looks_broken(doc.content or ""):
+                skipped_clean += 1
+                continue
+            text, num = await maybe_correct_ocr(doc, ollama, paperless, force=force)
+            changed = text != (doc.content or "")
+            if num > 0 or changed or mode.startswith("vision"):
                 cache_ocr_correction(doc.id, text, mode, num)
                 corrected += 1
                 log.info("batch OCR corrected", doc_id=doc.id, num_corrections=num)
+            else:
+                unchanged += 1
         except Exception as exc:
+            failed += 1
             log.warning("batch OCR failed for document", doc_id=doc.id, error=str(exc))
 
-    log.info("batch OCR complete", corrected=corrected, total=len(all_docs))
+    log.info(
+        "batch OCR complete",
+        corrected=corrected,
+        total=len(all_docs),
+        mode=mode,
+        force=force,
+        skipped_clean=skipped_clean,
+        skipped_filter=skipped_filter,
+        unchanged=unchanged,
+        failed=failed,
+    )
     return corrected
 
 
@@ -248,14 +277,16 @@ def _text_looks_broken(text: str) -> bool:
 async def _correct_text_only(
     doc: PaperlessDocument,
     ollama: AiProviderGateway,
+    *,
+    force: bool = False,
 ) -> tuple[str, int]:
     """Text-only OCR correction using a smaller LLM."""
     text = doc.content or ""
 
-    if not _text_looks_broken(text):
+    if not force and not _text_looks_broken(text):
         return text, 0
 
-    log.info("ocr text correction triggered", doc_id=doc.id)
+    log.info("ocr text correction triggered", doc_id=doc.id, force=force)
 
     try:
         system = load_prompt("ocr_correction")
@@ -283,18 +314,20 @@ async def _correct_vision_light(
     doc: PaperlessDocument,
     ollama: AiProviderGateway,
     paperless: PaperlessClient | None,
+    *,
+    force: bool = False,
 ) -> tuple[str, int]:
     """Vision-assisted OCR correction — heuristic-gated, up to N pages."""
     text = doc.content or ""
 
-    if not _text_looks_broken(text):
+    if not force and not _text_looks_broken(text):
         return text, 0
 
     if paperless is None:
         log.warning("vision_light requires paperless client, falling back to text mode")
-        return await _correct_text_only(doc, ollama)
+        return await _correct_text_only(doc, ollama, force=force)
 
-    log.info("ocr vision_light triggered", doc_id=doc.id)
+    log.info("ocr vision_light triggered", doc_id=doc.id, force=force)
 
     try:
         file_bytes, content_type = await paperless.download_document(doc.id)
@@ -303,7 +336,7 @@ async def _correct_vision_light(
         )
         if not images:
             log.warning("no pages rendered, falling back to text mode", doc_id=doc.id)
-            return await _correct_text_only(doc, ollama)
+            return await _correct_text_only(doc, ollama, force=force)
 
         system = load_prompt("ocr_vision_light")
         user_text = text[: settings.max_doc_chars]
@@ -325,7 +358,7 @@ async def _correct_vision_light(
         log.warning(
             "ocr vision_light failed, falling back to text mode", doc_id=doc.id, error=str(exc)
         )
-        return await _correct_text_only(doc, ollama)
+        return await _correct_text_only(doc, ollama, force=force)
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +374,7 @@ async def _correct_vision_full(
 
     if paperless is None:
         log.warning("vision_full requires paperless client, falling back to text mode")
-        return await _correct_text_only(doc, ollama)
+        return await _correct_text_only(doc, ollama, force=True)
 
     log.info("ocr vision_full triggered", doc_id=doc.id)
 
@@ -352,7 +385,7 @@ async def _correct_vision_full(
         )
         if not images:
             log.warning("no pages rendered, falling back to text mode", doc_id=doc.id)
-            return await _correct_text_only(doc, ollama)
+            return await _correct_text_only(doc, ollama, force=True)
 
         # Split OCR text into per-page chunks
         page_texts = _split_text_by_pages(text, len(images))
@@ -398,7 +431,7 @@ async def _correct_vision_full(
         log.warning(
             "ocr vision_full failed, falling back to vision_light", doc_id=doc.id, error=str(exc)
         )
-        return await _correct_vision_light(doc, ollama, paperless)
+        return await _correct_vision_light(doc, ollama, paperless, force=True)
 
 
 # ---------------------------------------------------------------------------

@@ -173,6 +173,31 @@ class TestMaybeCorrectOcr:
 
         assert text == clean
         assert num == 0
+        mock_ollama.chat_json.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_text_mode_force_bypasses_clean_text_heuristic(self):
+        """Forced OCR should call the text model even when text looks clean."""
+        clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
+        doc = PaperlessDocument(id=1, title="Test", content=clean, tags=[])
+        mock_ollama = AsyncMock()
+        mock_ollama.ocr_model = "qwen3:0.6b"
+        mock_ollama.chat_json = AsyncMock(
+            return_value={"corrected_text": "forced fixed text", "num_corrections": 1}
+        )
+
+        with (
+            patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
+            patch("app.pipeline.ocr_correction.settings") as mock_settings,
+        ):
+            mock_settings.max_doc_chars = 8000
+            mock_settings.ollama_ocr_num_ctx = 16384
+
+            text, num = await maybe_correct_ocr(doc, mock_ollama, force=True)
+
+        assert text == "forced fixed text"
+        assert num == 1
+        mock_ollama.chat_json.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_vision_light_falls_back_without_paperless(self):
@@ -513,6 +538,40 @@ class TestBatchCorrectDocuments:
 
         # doc1 should be processed despite being cached
         assert corrected == 1
+
+    @pytest.mark.asyncio
+    async def test_force_bypasses_clean_text_heuristic(self, tmp_db):
+        """With force=True, batch OCR refresh should call the model for clean text."""
+        from tests.conftest import _mock_get_conn
+
+        clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
+        doc = PaperlessDocument(id=1, title="Doc 1", content=clean, tags=[])
+
+        mock_paperless = AsyncMock()
+        mock_paperless.list_all_documents = AsyncMock(return_value=[doc])
+        mock_paperless.list_tags = AsyncMock(return_value=[])
+
+        mock_ollama = AsyncMock()
+        mock_ollama.ocr_model = "qwen3:0.6b"
+        mock_ollama.chat_json = AsyncMock(
+            return_value={"corrected_text": "forced batch text", "num_corrections": 1}
+        )
+
+        with (
+            patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
+            patch(
+                "app.pipeline.ocr_correction.get_conn",
+                lambda: _mock_get_conn(tmp_db),
+            ),
+            patch("app.pipeline.ocr_correction.settings") as mock_settings,
+        ):
+            mock_settings.max_doc_chars = 8000
+            mock_settings.ollama_ocr_num_ctx = 16384
+
+            corrected = await batch_correct_documents(mock_paperless, mock_ollama, force=True)
+
+        assert corrected == 1
+        mock_ollama.chat_json.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ocr_off_returns_zero(self):

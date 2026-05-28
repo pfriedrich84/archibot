@@ -4,7 +4,7 @@ Usage::
 
     python -m app.cli reindex          # Full reindex (OCR + embedding)
     python -m app.cli reindex-ocr      # OCR correction only (skip cached)
-    python -m app.cli reindex-ocr --force  # OCR correction, ignore cache
+    python -m app.cli reindex-ocr --force  # OCR correction, ignore cache + clean-text heuristic
     python -m app.cli reindex-embed    # Embedding only (skip OCR)
     python -m app.cli poll             # Process inbox (OCR + embed + classify)
     python -m app.cli poll --force     # Reprocess inbox docs (ignore idempotency skip)
@@ -690,7 +690,10 @@ def cmd_jobs(args: list[str]) -> None:
 
 COMMANDS = {
     "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
-    "reindex-ocr": ("OCR correction only (--force to ignore cache)", cmd_reindex_ocr),
+    "reindex-ocr": (
+        "OCR correction only (--force ignores cache and text-clean heuristic)",
+        cmd_reindex_ocr,
+    ),
     "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
     "poll": ("Process inbox (OCR + embed + classify, --force to reprocess)", cmd_poll),
     "process-doc": ("Process a single document by ID (optional --force)", cmd_process_doc),

@@ -88,6 +88,8 @@ Dann z.B. `EMBEDDING_PROVIDER=local-litellm` und `JUDGE_PROVIDER=openrouter` set
 | `vision_light` | Bild + OCR-Text vergleichen | Ja | 1 Download + N Vision-Calls |
 | `vision_full` | Seite-fuer-Seite Korrektur | Nein (laeuft immer) | 1 Download + N Vision-Calls |
 
+`reindex-ocr --force` bzw. der Force-Button ignoriert den OCR-Cache und umgeht die Clean-Text-Heuristik fuer `text` und `vision_light`, damit OCR nach Modell- oder Promptwechseln wirklich neu erzeugt wird.
+
 Wenn `OCR_REQUESTED_TAG_ID` gesetzt ist, laeuft bzw. wiederholt sich OCR nur fuer Dokumente, die diesen Tag aktuell tragen. Die restliche Pipeline (Embedding/Klassifikation) laeuft bei nicht passenden Dokumenten weiter.
 
 **Graceful Degradation:** `vision_full` → `vision_light` → `text` → `off`.
