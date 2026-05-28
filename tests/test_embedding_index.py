@@ -77,7 +77,9 @@ def test_start_embedding_index_build_returns_existing_build(monkeypatch):
         document_count=10,
     )
 
-    assert build == embedding_index.EmbeddingIndexBuild(id=77, status="building", already_running=True)
+    assert build == embedding_index.EmbeddingIndexBuild(
+        id=77, status="building", already_running=True
+    )
     assert len(calls) == 1
 
 

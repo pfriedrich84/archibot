@@ -166,7 +166,12 @@ async def cmd_reindex_embed(
         message = "Embedding reindex skipped because another PostgreSQL/pgvector build is already running."
         indexer._emit_reindex_progress(event="job_skipped", message=message)
         print(message)
-        return {"indexed": 0, "failed": 0, "failed_document_ids": [], "progress": progress.__dict__.copy()}
+        return {
+            "indexed": 0,
+            "failed": 0,
+            "failed_document_ids": [],
+            "progress": progress.__dict__.copy(),
+        }
 
     try:
         _total, count, failed = await _build_pgvector_embeddings(build.id, None, None)

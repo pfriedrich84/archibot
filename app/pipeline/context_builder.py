@@ -113,7 +113,9 @@ async def _load_similar(
     similar: list[SimilarDocument] = []
     for doc_id, distance in hits:
         try:
-            similar.append(SimilarDocument(document=await paperless.get_document(doc_id), distance=distance))
+            similar.append(
+                SimilarDocument(document=await paperless.get_document(doc_id), distance=distance)
+            )
         except Exception as exc:
             log.warning("failed to load similar doc", id=doc_id, error=str(exc))
     return similar

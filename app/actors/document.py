@@ -65,7 +65,9 @@ async def _classify_document(document):
         if text.strip():
             try:
                 embedding = await ollama.embed(text)
-                similar = await find_similar_with_precomputed_embedding(document, embedding, paperless)
+                similar = await find_similar_with_precomputed_embedding(
+                    document, embedding, paperless
+                )
                 context_documents = [item.document for item in similar]
             except Exception as exc:
                 log.warning(

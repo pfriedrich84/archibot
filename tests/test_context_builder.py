@@ -20,7 +20,9 @@ def test_document_summary_is_bounded(monkeypatch):
 def test_store_embedding_delegates_to_pgvector(monkeypatch):
     stored = []
     monkeypatch.setattr(context_builder.settings, "ollama_embed_model", "embed-model")
-    monkeypatch.setattr(context_builder, "store_document_embedding", lambda item: stored.append(item))
+    monkeypatch.setattr(
+        context_builder, "store_document_embedding", lambda item: stored.append(item)
+    )
 
     doc = PaperlessDocument(
         id=42,
@@ -85,7 +87,9 @@ async def test_find_similar_by_query_text_filtered_is_vector_only(monkeypatch):
     )
 
     assert result == [
-        SimilarDocument(document=PaperlessDocument(id=7, title="Context", content="Text"), distance=0.2)
+        SimilarDocument(
+            document=PaperlessDocument(id=7, title="Context", content="Text"), distance=0.2
+        )
     ]
     assert calls[0] == ("embed", "invoice")
     assert calls[1][0] == "find"
@@ -94,6 +98,8 @@ async def test_find_similar_by_query_text_filtered_is_vector_only(monkeypatch):
 
 
 def test_find_similar_by_id_delegates(monkeypatch):
-    monkeypatch.setattr(context_builder, "_find_similar_by_id", lambda document_id, limit: [(8, 0.3)])
+    monkeypatch.setattr(
+        context_builder, "_find_similar_by_id", lambda document_id, limit: [(8, 0.3)]
+    )
 
     assert context_builder.find_similar_by_id(42, limit=4) == [(8, 0.3)]
