@@ -138,6 +138,8 @@ class PythonRuntimeConfigExporter
             'OCR_PROVIDER' => AppSetting::getValue('llm.ocr_provider'),
             'JUDGE_PROVIDER' => AppSetting::getValue('llm.judge_provider'),
             'CHAT_PROVIDER' => AppSetting::getValue('llm.chat_provider'),
+            'ENABLE_JUDGE_VERIFICATION' => AppSetting::getValue('classification.enable_judge_verification'),
+            'JUDGE_CONFIDENCE_THRESHOLD' => AppSetting::getValue('classification.judge_confidence_threshold'),
             'CLASSIFICATION_MODEL' => AppSetting::getValue('classification.model'),
             'EMBEDDING_MODEL' => AppSetting::getValue('embedding.model'),
             'OCR_TEXT_MODEL' => AppSetting::getValue('ocr.text_model'),

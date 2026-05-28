@@ -109,6 +109,8 @@ class AdminSettingsTest extends TestCase
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
             'paperless_url' => 'https://paperless.test',
             'gui_base_url' => 'https://archibot.example',
+            'classification_enable_judge_verification' => '1',
+            'classification_judge_confidence_threshold' => '101',
             'mcp_api_key' => 'legacy-mcp-secret',
             'mcp_laravel_auth_enabled' => '1',
             'mcp_laravel_path' => '/app/laravel',
@@ -121,6 +123,8 @@ class AdminSettingsTest extends TestCase
 
         $runtimeConfig = file_get_contents(config('archibot_settings.import_paths')[0]);
         $this->assertStringContainsString('GUI_BASE_URL=https://archibot.example', $runtimeConfig);
+        $this->assertStringContainsString('ENABLE_JUDGE_VERIFICATION=1', $runtimeConfig);
+        $this->assertStringContainsString('JUDGE_CONFIDENCE_THRESHOLD=101', $runtimeConfig);
         $this->assertStringNotContainsString('ENABLE_TELEGRAM=', $runtimeConfig);
         $this->assertStringNotContainsString('TELEGRAM_BOT_TOKEN=', $runtimeConfig);
         $this->assertStringNotContainsString('TELEGRAM_CHAT_ID=', $runtimeConfig);

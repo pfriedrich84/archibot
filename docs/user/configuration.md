@@ -125,8 +125,8 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
 | `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem finalen Score (1–100) automatisch committen. Im Inbox-Poll erfolgt der Commit pro Dokument, sobald Klassifikation/Judge fuer dieses Dokument abgeschlossen ist. |
-| `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der jede Klassifikation prueft und ggf. korrigiert. Laeuft nur bei niedriger Confidence und vorhandenem Kontext. |
-| `JUDGE_CONFIDENCE_THRESHOLD` | `85` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist; solche Dokumente koennen sofort veroeffentlicht/auto-committet werden. |
+| `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der Klassifikationen prueft und ggf. korrigiert. |
+| `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
 | `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
 
 ## Worker
