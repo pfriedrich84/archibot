@@ -27,6 +27,8 @@ cryptography<=46.0.7
 charset-normalizer<=3.4.6
 platformdirs<=4.9.4
 requests<=2.33.0
+# jsonschema/referencing transitive dependency; keep off same-day releases for age gate.
+rpds-py<=0.30.0
 pydantic<=2.12.5
 pydantic-core<=2.41.5
 pydantic-settings<=2.14.0
