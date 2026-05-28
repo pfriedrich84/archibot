@@ -3,10 +3,12 @@ from types import SimpleNamespace
 from app.jobs import review_suggestions
 from app.models import ClassificationResult, PaperlessEntity, ProposedTag
 
+_DEFAULT_ROW = {"id": 12, "status": "pending"}
+
 
 class FakeResult:
-    def __init__(self, row=None):
-        self.row = row or {"id": 12, "status": "pending"}
+    def __init__(self, row=_DEFAULT_ROW):
+        self.row = row
 
     def mappings(self):
         return self
@@ -69,6 +71,7 @@ def test_store_review_suggestion_inserts_pending_laravel_review(monkeypatch):
     )
 
     assert stored == review_suggestions.StoredReviewSuggestion(id=12, status="pending")
+    assert "WHERE review_suggestions.status = 'pending'" in calls[0][0]
     params = calls[0][1]
     assert params["paperless_document_id"] == 42
     assert params["confidence"] == 91
@@ -77,6 +80,31 @@ def test_store_review_suggestion_inserts_pending_laravel_review(monkeypatch):
     assert params["proposed_correspondent_name"] == "Corr"
     assert '"name": "Paid"' in params["proposed_tags"]
     assert params["pipeline_run_id"] == 99
+
+
+def test_store_review_suggestion_does_not_overwrite_reviewed_conflict(monkeypatch):
+    calls = []
+    rows = [None, {"id": 77, "status": "accepted"}]
+    monkeypatch.setattr(review_suggestions, "engine", lambda: SequenceEngine(calls, rows))
+    monkeypatch.setattr(review_suggestions, "sql_text", lambda statement: statement)
+
+    stored = review_suggestions.store_review_suggestion(
+        paperless_document_id=42,
+        document=SimpleNamespace(title="Original", tags=[]),
+        result=ClassificationResult(
+            title="Retry proposal",
+            tags=[],
+            confidence=70,
+            reasoning="retry",
+        ),
+        raw_response="{}",
+        pipeline_run_id=99,
+    )
+
+    assert stored == review_suggestions.StoredReviewSuggestion(id=77, status="accepted")
+    assert len(calls) == 2
+    assert "WHERE review_suggestions.status = 'pending'" in calls[0][0]
+    assert "SELECT id, status" in calls[1][0]
 
 
 class SequenceConnection:
