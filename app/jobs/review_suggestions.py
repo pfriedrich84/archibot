@@ -243,7 +243,15 @@ def store_review_suggestion(
             judge_reasoning = EXCLUDED.judge_reasoning,
             original_proposed_snapshot = EXCLUDED.original_proposed_snapshot,
             updated_at = CURRENT_TIMESTAMP
+        WHERE review_suggestions.status = 'pending'
         RETURNING id, status
+        """
+    )
+    existing_statement = sql_text(
+        """
+        SELECT id, status
+        FROM review_suggestions
+        WHERE dedupe_key = :dedupe_key
         """
     )
     original_snapshot: Any = None
@@ -288,9 +296,17 @@ def store_review_suggestion(
             .mappings()
             .first()
         )
-        if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
+        if row is None:
+            row = (
+                connection.execute(existing_statement, {"dedupe_key": dedupe_key})
+                .mappings()
+                .first()
+            )
+        if row is None:  # pragma: no cover - PostgreSQL should return inserted or existing row
             raise RuntimeError("review suggestion upsert did not return a row")
         suggestion_id = int(row["id"])
+        if str(row["status"]) != "pending":
+            return StoredReviewSuggestion(id=suggestion_id, status=str(row["status"]))
         _upsert_entity_approval(
             connection=connection,
             suggestion_id=suggestion_id,
