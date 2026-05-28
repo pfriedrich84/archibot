@@ -4,18 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Models\Command;
+use App\Models\PipelineEvent;
 use App\Models\ReviewSuggestion;
-use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Paperless\PaperlessDocumentPermissions;
 use App\Services\Pipeline\DocumentPipelineStarter;
-use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ReviewSuggestionController extends Controller
 {
+    public function __construct(private readonly PaperlessDocumentPermissions $permissions) {}
+
     public function index(Request $request): Response
     {
         $filters = $request->validate([
@@ -120,15 +124,17 @@ class ReviewSuggestionController extends Controller
 
     public function accept(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
+        $this->assertCanMutateSuggestion($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
 
-        $this->queueCommitWorker($request, $reviewSuggestion, app(WorkerJobDispatcher::class));
+        $this->queueCommitCommand($request, $reviewSuggestion);
 
         return redirect()->route('review.index');
     }
 
     public function reject(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
+        $this->assertCanMutateSuggestion($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
         return redirect()->route('review.index');
@@ -176,6 +182,7 @@ class ReviewSuggestionController extends Controller
 
     public function save(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
+        $this->assertCanMutateSuggestion($request, $reviewSuggestion);
         $this->assertReviewable($reviewSuggestion);
 
         $validated = $request->validate([
@@ -255,6 +262,10 @@ class ReviewSuggestionController extends Controller
             ->get();
 
         foreach ($suggestions as $suggestion) {
+            $this->assertCanMutateSuggestion($request, $suggestion);
+        }
+
+        foreach ($suggestions as $suggestion) {
             if ($suggestion->status !== ReviewSuggestion::STATUS_PENDING || ! $this->isLatestForDocument($suggestion)) {
                 $skipped++;
 
@@ -263,7 +274,7 @@ class ReviewSuggestionController extends Controller
 
             $this->review($request, $suggestion, $status);
             if ($status === ReviewSuggestion::STATUS_ACCEPTED) {
-                $this->queueCommitWorker($request, $suggestion, app(WorkerJobDispatcher::class));
+                $this->queueCommitCommand($request, $suggestion);
             }
             $changed++;
         }
@@ -273,51 +284,44 @@ class ReviewSuggestionController extends Controller
         return redirect()->route('review.index')->with('status', "Review bulk action completed: {$changed} changed, {$skipped} skipped.");
     }
 
-    private function queueCommitWorker(Request $request, ReviewSuggestion $reviewSuggestion, WorkerJobDispatcher $dispatcher): ?WorkerJob
+    private function queueCommitCommand(Request $request, ReviewSuggestion $reviewSuggestion): Command
     {
-        if ($reviewSuggestion->source_suggestion_id === null) {
+        return DB::transaction(function () use ($request, $reviewSuggestion): Command {
+            if ($reviewSuggestion->commit_command_id !== null) {
+                return $reviewSuggestion->commitCommand()->firstOrFail();
+            }
+
+            $command = Command::query()->create([
+                'type' => Command::TYPE_REVIEW_COMMIT,
+                'status' => Command::STATUS_PENDING,
+                'payload' => [
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                ],
+                'created_by_user_id' => $request->user()->id,
+            ]);
+
+            PipelineEvent::query()->create([
+                'command_id' => $command->id,
+                'event_type' => 'job_control.review_commit_requested',
+                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                'level' => 'info',
+                'message' => 'Review suggestion commit requested through durable command.',
+                'payload' => [
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'actor_user_id' => $request->user()->id,
+                    'actor_is_admin' => (bool) $request->user()->is_admin,
+                ],
+            ]);
+
             $reviewSuggestion->forceFill([
                 'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
+                'commit_command_id' => $command->id,
+                'commit_worker_job_id' => null,
             ])->save();
 
-            return null;
-        }
-
-        $payload = [
-            'review_suggestion_id' => $reviewSuggestion->id,
-            'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
-            'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-            'title' => $reviewSuggestion->proposed_title,
-            'date' => $reviewSuggestion->proposed_date?->toDateString(),
-            'correspondent_id' => $reviewSuggestion->proposed_correspondent_id,
-            'doctype_id' => $reviewSuggestion->proposed_document_type_id,
-            'storage_path_id' => $reviewSuggestion->proposed_storage_path_id,
-            'tag_ids' => collect($reviewSuggestion->proposed_tags ?? [])
-                ->pluck('id')
-                ->filter(fn ($id) => is_numeric($id))
-                ->map(fn ($id) => (int) $id)
-                ->values()
-                ->all(),
-        ];
-
-        $workerJob = $dispatcher->dispatch(
-            type: WorkerJob::TYPE_COMMIT_REVIEW,
-            payload: $payload,
-            user: $request->user(),
-            request: $request,
-            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_COMMIT_REVIEW, ['review_suggestion_id' => $reviewSuggestion->id]),
-            auditMetadata: [
-                'review_suggestion_id' => $reviewSuggestion->id,
-                'source_suggestion_id' => $reviewSuggestion->source_suggestion_id,
-            ],
-        );
-
-        $reviewSuggestion->forceFill([
-            'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
-            'commit_worker_job_id' => $workerJob->id,
-        ])->save();
-
-        return $workerJob;
+            return $command;
+        });
     }
 
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
@@ -383,6 +387,14 @@ class ReviewSuggestionController extends Controller
         return null;
     }
 
+    private function assertCanMutateSuggestion(Request $request, ReviewSuggestion $suggestion): void
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        $this->permissions->assertCanChangeDocument($user, $suggestion->paperless_document_id);
+    }
+
     private function assertReviewable(ReviewSuggestion $suggestion): void
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
@@ -408,6 +420,7 @@ class ReviewSuggestionController extends Controller
             'commit_status' => $suggestion->commit_status,
             'worker_job_id' => $suggestion->worker_job_id,
             'commit_worker_job_id' => $suggestion->commit_worker_job_id,
+            'commit_command_id' => $suggestion->commit_command_id,
             'worker_job_url' => $suggestion->worker_job_id ? route('worker-jobs.show', $suggestion->worker_job_id) : null,
             'commit_worker_job_url' => $suggestion->commit_worker_job_id ? route('worker-jobs.show', $suggestion->commit_worker_job_id) : null,
             'preview_url' => route('review.preview', $suggestion),

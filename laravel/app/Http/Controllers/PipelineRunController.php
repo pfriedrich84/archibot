@@ -345,7 +345,7 @@ class PipelineRunController extends Controller
             'embedding_index' => [WorkerJob::TYPE_REINDEX_EMBED],
             'ocr_reindex' => [WorkerJob::TYPE_REINDEX_OCR],
             'reconciliation' => [WorkerJob::TYPE_POLL],
-            'review_commit' => [WorkerJob::TYPE_COMMIT_REVIEW],
+            'review_commit' => [],
             'entity_approval_sync' => [WorkerJob::TYPE_SYNC_ENTITY_APPROVAL],
             default => [WorkerJob::TYPE_PROCESS_DOCUMENT, WorkerJob::TYPE_POLL],
         };

@@ -107,9 +107,15 @@ Settings/Admin area:
 - Save LLM settings
 ```
 
+## Review Suggestion Exception
+
+Review suggestion editing, accepting and rejecting is not general job control when performed by a non-admin user with verified Paperless change permission for the specific document. Laravel must verify this through the user's Paperless token before mutating the suggestion or queuing the commit command. Ambiguous or failed Paperless permission checks deny the action.
+
+Manual reprocess, retry, cancellation, reindexing, embedding builds, webhook failure controls and maintenance remain admin-only job-control actions even when the user can change the Paperless document.
+
 ## Non-Admin Behavior
 
-Non-admin users may be allowed to view permitted status pages, but they must not mutate job or pipeline execution state.
+Non-admin users may be allowed to view permitted status pages, but they must not mutate job or pipeline execution state except for the review suggestion exception above.
 
 The UI should hide or disable controls for non-admins, but this is not sufficient. The backend must enforce authorization.
 
