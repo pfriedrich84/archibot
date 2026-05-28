@@ -116,6 +116,8 @@ def test_find_similar_document_ids_uses_pgvector_trusted_filters(monkeypatch):
     assert rows == [(7, 0.12)]
     statement, params = calls[0]
     assert "embedding <-> CAST(:embedding AS vector)" in statement
+    assert "ROW_NUMBER() OVER" in statement
+    assert "recency_rank = 1" in statement
     assert "trusted_for_context = TRUE" in statement
     assert "paperless_document_id != :exclude_id" in statement
     assert "distance <= :max_distance" in statement

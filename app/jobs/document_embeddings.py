@@ -218,7 +218,7 @@ def find_similar_document_ids(
     date_to: str | None = None,
 ) -> list[tuple[int, float]]:
     """Return trusted pgvector nearest-neighbour document ids and distances."""
-    filters = ["trusted_for_context = TRUE"]
+    filters = ["recency_rank = 1", "trusted_for_context = TRUE"]
     params: dict[str, Any] = {
         "embedding": pgvector_literal(embedding),
         "limit": limit,
@@ -231,8 +231,6 @@ def find_similar_document_ids(
         "date_from": date_from,
         "date_to": date_to,
     }
-    filters.append("embedding_model = :embedding_model")
-    filters.append("dimensions = :dimensions")
     if exclude_id is not None:
         filters.append("paperless_document_id != :exclude_id")
     if correspondent_id is not None:
@@ -248,10 +246,20 @@ def find_similar_document_ids(
     having = "WHERE distance <= :max_distance" if max_distance > 0 else ""
     statement = sql_text(
         f"""
+        WITH current_embeddings AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY paperless_document_id
+                       ORDER BY updated_at DESC, created_at DESC
+                   ) AS recency_rank
+            FROM document_embeddings
+            WHERE embedding_model = :embedding_model
+              AND dimensions = :dimensions
+        )
         SELECT paperless_document_id, distance
         FROM (
             SELECT paperless_document_id, {distance_expr} AS distance
-            FROM document_embeddings
+            FROM current_embeddings
             WHERE {" AND ".join(filters)}
             ORDER BY {distance_expr} ASC
             LIMIT :limit

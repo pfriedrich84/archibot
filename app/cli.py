@@ -197,6 +197,17 @@ async def cmd_reindex_embed(
             "failed_document_ids": progress.failed_document_ids or [],
             "progress": progress.__dict__.copy(),
         }
+    except Exception as exc:
+        finish_embedding_index_build(build.id, status="failed", error=str(exc)[:1000])
+        progress.phase = "failed"
+        progress.error = str(exc)[:1000]
+        progress.finished_at = datetime.now(tz=UTC).isoformat()
+        indexer._emit_reindex_progress(
+            event="job_failed",
+            message="Embedding reindex failed",
+            error=progress.error,
+        )
+        raise
     finally:
         progress.running = False
 
