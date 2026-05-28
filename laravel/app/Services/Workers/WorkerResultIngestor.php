@@ -84,7 +84,9 @@ class WorkerResultIngestor
             );
 
             $entityApprovalsUpserted += $this->upsertEntityApprovals($suggestion);
-            $imported++;
+            if ($suggestion->wasRecentlyCreated) {
+                $imported++;
+            }
         }
 
         return [

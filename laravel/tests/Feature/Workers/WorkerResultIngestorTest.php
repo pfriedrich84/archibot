@@ -87,9 +87,11 @@ class WorkerResultIngestorTest extends TestCase
         ]);
 
         $ingestor = app(WorkerResultIngestor::class);
-        $ingestor->ingest($workerJob);
-        $ingestor->ingest($workerJob->refresh());
+        $firstSummary = $ingestor->ingest($workerJob);
+        $secondSummary = $ingestor->ingest($workerJob->refresh());
 
+        $this->assertSame(1, $firstSummary['review_suggestions_imported']);
+        $this->assertSame(0, $secondSummary['review_suggestions_imported']);
         $this->assertDatabaseCount('review_suggestions', 1);
         $this->assertDatabaseCount('entity_approvals', 2);
         $this->assertSame(1, ReviewSuggestion::query()->where('paperless_document_id', 123)->where('source_suggestion_id', 456)->count());

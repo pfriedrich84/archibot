@@ -884,6 +884,76 @@ def _review_suggestion_payloads_since(
     return [_suggestion_row_to_review_suggestion(SuggestionRow(**dict(row))) for row in rows]
 
 
+def _latest_review_suggestion_payloads_for_documents(
+    document_ids: list[int],
+) -> list[dict[str, object]]:
+    """Return the latest Python suggestion per document for Laravel backfill.
+
+    Normal poll skips unchanged documents based on ``processed_documents``. If a
+    previous worker run created Python suggestions but Laravel ingestion missed
+    them, delta-by-id output alone cannot recover because no new suggestion rows
+    are created. Backfilling latest suggestions for documents observed in the
+    current poll lets Laravel's dedupe import missing review rows while treating
+    already-imported ones as no-ops.
+    """
+    if not document_ids:
+        return []
+
+    from app.db import get_conn
+    from app.models import SuggestionRow
+
+    unique_ids = sorted({int(document_id) for document_id in document_ids})
+    placeholders = ",".join("?" for _ in unique_ids)
+    sql = f"""
+        SELECT *
+        FROM suggestions
+        WHERE id IN (
+            SELECT MAX(id)
+            FROM suggestions
+            WHERE document_id IN ({placeholders})
+            GROUP BY document_id
+        )
+        ORDER BY id ASC
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, unique_ids).fetchall()
+
+    return [_suggestion_row_to_review_suggestion(SuggestionRow(**dict(row))) for row in rows]
+
+
+def _document_ids_from_poll_events(job_id: str) -> list[int]:
+    """Return document ids touched by a poll job from safe job events."""
+    from app.job_events import list_events
+
+    document_ids: list[int] = []
+    for event in list_events(job_id, limit=1000):
+        raw_document_id = event.get("document_id")
+        if raw_document_id is None:
+            continue
+        try:
+            document_ids.append(int(raw_document_id))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(document_ids))
+
+
+def _merge_review_suggestion_payloads(
+    *groups: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Merge suggestion payloads, preferring later entries for the same source id."""
+    merged: dict[tuple[str, object], dict[str, object]] = {}
+    for group in groups:
+        for item in group:
+            key: tuple[str, object]
+            source_id = item.get("source_suggestion_id") or item.get("python_suggestion_id")
+            if source_id is not None:
+                key = ("source", source_id)
+            else:
+                key = ("document", item.get("paperless_document_id"))
+            merged[key] = item
+    return list(merged.values())
+
+
 def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
     payload = input_payload.get("payload", {})
     return payload if isinstance(payload, dict) else {}
@@ -1003,7 +1073,12 @@ def main() -> None:
                         job_id=str(input_payload.get("id")),
                     )
                 )
-                review_suggestions = _review_suggestion_payloads_since(before_suggestion_id)
+                review_suggestions = _merge_review_suggestion_payloads(
+                    _review_suggestion_payloads_since(before_suggestion_id),
+                    _latest_review_suggestion_payloads_for_documents(
+                        _document_ids_from_poll_events(str(input_payload.get("id")))
+                    ),
+                )
                 if review_suggestions:
                     output_payload["review_suggestions"] = review_suggestions
                 ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)

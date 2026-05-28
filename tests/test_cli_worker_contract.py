@@ -164,6 +164,49 @@ def test_poll_worker_output_includes_new_review_suggestions(
     assert payload["review_suggestions"] == [mock_suggestion]
 
 
+def test_poll_worker_output_backfills_skipped_document_suggestions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "output.json"
+    input_path.write_text(
+        json.dumps({"id": 17, "type": "poll", "payload": {}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["cli", "poll", "--input", str(input_path), "--output", str(output_path)]
+    )
+
+    mock_cmd = AsyncMock()
+    backfilled_suggestion = {
+        "source_suggestion_id": 12,
+        "paperless_document_id": 225,
+        "proposed": {"title": "Existing skipped doc"},
+    }
+
+    with (
+        patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}),
+        patch("app.cli._latest_suggestion_id", return_value=12),
+        patch("app.cli._ocr_cache_snapshot", return_value={}),
+        patch("app.cli._review_suggestion_payloads_since", return_value=[]),
+        patch("app.cli._document_ids_from_poll_events", return_value=[225]) as event_docs,
+        patch(
+            "app.cli._latest_review_suggestion_payloads_for_documents",
+            return_value=[backfilled_suggestion],
+        ) as backfill,
+        patch("app.cli._ocr_review_payloads_since_snapshot", return_value=[]),
+    ):
+        from app.cli import main
+
+        main()
+
+    event_docs.assert_called_once_with("17")
+    backfill.assert_called_once_with([225])
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["review_suggestions"] == [backfilled_suggestion]
+
+
 def test_poll_worker_output_includes_new_ocr_reviews(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
