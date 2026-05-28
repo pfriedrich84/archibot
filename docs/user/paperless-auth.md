@@ -43,3 +43,9 @@ Reuse this helper for future Paperless profile payloads instead of duplicating f
 As a fallback, permission arrays named `permissions` or `user_permissions` are treated as administrative when they contain Paperless/Django permission strings such as `auth.*` or `paperless.*`.
 
 Setup still requires an admin/superuser profile. Normal login does not require admin; the detected value only controls ArchiBot admin UI access.
+
+## Review action permission checks
+
+Non-admin users may edit, accept, reject, or bulk-review suggestions only when ArchiBot can verify live Paperless change permission for the specific document using that user's stored Paperless token.
+
+The check is fail-closed: missing Paperless URL, missing user token, network errors, `401`/`403`/`404`, or an ambiguous Paperless `OPTIONS /api/documents/{id}/` response without explicit `PATCH` or `PUT` capability all deny the ArchiBot review mutation. Admin users may perform ArchiBot job-control actions through local `is_admin()` authorization.

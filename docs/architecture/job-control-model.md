@@ -87,7 +87,7 @@ In the target model:
 | `reindex` | `reindex` | `reindex` | Full reindex should emit phase progress and block normal document processing when required. |
 | `reindex_ocr` | `reindex_ocr` | `ocr_reindex` | OCR-specific reindex/review work becomes actorized OCR pipeline work. |
 | `reindex_embed` | `reindex_embed` or `build_embedding_index` | `embedding_index` | Embedding readiness remains a hard gate before document processing. |
-| `commit_review` | `commit_review` | `review_commit` scoped to review suggestion/document | Commit side effects must remain idempotent and audited. |
+| `commit_review` | `review_commit` | `review_commit` scoped to review suggestion/document | Commit side effects are requested through durable `commands`/`pipeline_events` and executed by the review commit actor; legacy `worker_jobs` commit rows are historical only. |
 | `sync_entity_approval` | `sync_entity_approval` | `entity_approval_sync` scoped to entity approval | Entity approval sync becomes a durable command/pipeline action. |
 | maintenance worker recovery | `recover_worker_jobs` then `recover_pipeline_runs` | `maintenance` / `recovery` | During migration this may repair `worker_jobs`; final recovery targets pipeline runs and actor executions. |
 | maintenance reset | `maintenance_reset` | `maintenance_reset` | Destructive admin action remains Laravel-authorized and audited; execution should be durable and observable. |
@@ -205,7 +205,7 @@ The Pipeline Runs pages are intentionally read-first visibility surfaces. They s
 
 Until a specific flow is migrated to actors, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not start the RabbitMQ/Dramatiq actor migration and do not remove or weaken `worker_jobs` controls.
 
-As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired.
+As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired. Review suggestion commit requests now use `Command(type=review_commit) -> PipelineEvent(job_control.review_commit_requested) -> review commit actor` rather than creating new `worker_jobs`.
 
 ## Migration Plan
 

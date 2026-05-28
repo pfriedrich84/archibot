@@ -1,6 +1,13 @@
+import pytest
+
 from app.jobs import recovery
 from app.jobs.actor_execution import StaleActorExecutionRecord
 from app.jobs.commands import CommandRecord
+
+
+@pytest.fixture(autouse=True)
+def default_no_pending_review_commit_commands(monkeypatch):
+    monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
 
 
 def test_recover_stale_actor_executions_marks_and_requeues_document_runs(monkeypatch):
@@ -95,6 +102,7 @@ def test_recovery_scan_enqueues_queued_webhook_deliveries(monkeypatch):
     monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
@@ -219,6 +227,7 @@ def test_recovery_scan_enqueues_embedding_build_commands(monkeypatch):
     )
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
@@ -488,3 +497,58 @@ def test_enqueue_webhook_delivery_calls_plain_function_without_dramatiq(monkeypa
     recovery.enqueue_webhook_delivery(13)
 
     assert called == [13]
+
+
+def test_recovery_scan_enqueues_review_commit_commands(monkeypatch):
+    enqueued = []
+
+    monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
+    monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
+    monkeypatch.setattr(
+        recovery,
+        "list_pending_review_commit_commands",
+        lambda limit: [
+            CommandRecord(
+                id=77,
+                type="review_commit",
+                status="pending",
+                payload={"review_suggestion_id": 44},
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        recovery,
+        "enqueue_review_commit_command",
+        lambda command_id, review_id: enqueued.append((command_id, review_id)),
+    )
+    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
+
+    recovery.run_recovery_scan(limit=10)
+
+    assert enqueued == [(77, 44)]
+
+
+def test_enqueue_review_commit_command_restores_pending_when_enqueue_fails(monkeypatch):
+    statuses = []
+
+    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
+    monkeypatch.setattr(
+        recovery,
+        "enqueue_review_commit",
+        lambda review_id, command_id=None: (_ for _ in ()).throw(RuntimeError("broker down")),
+    )
+
+    with pytest.raises(RuntimeError):
+        recovery.enqueue_review_commit_command(77, 44)
+
+    assert statuses == [
+        (77, "queued"),
+        (77, "pending", "enqueue_failed:RuntimeError"),
+    ]

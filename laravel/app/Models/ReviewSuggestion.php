@@ -42,6 +42,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reviewed_at',
     'commit_status',
     'commit_worker_job_id',
+    'commit_command_id',
 ])]
 class ReviewSuggestion extends Model
 {
@@ -113,6 +114,11 @@ class ReviewSuggestion extends Model
     public function commitWorkerJob(): BelongsTo
     {
         return $this->belongsTo(WorkerJob::class, 'commit_worker_job_id');
+    }
+
+    public function commitCommand(): BelongsTo
+    {
+        return $this->belongsTo(Command::class, 'commit_command_id');
     }
 
     public function createdBy(): BelongsTo

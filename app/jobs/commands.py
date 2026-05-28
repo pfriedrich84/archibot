@@ -76,6 +76,11 @@ def list_pending_reindex_commands(limit: int = 100) -> list[CommandRecord]:
     return _list_pending_commands("reindex", limit)
 
 
+def list_pending_review_commit_commands(limit: int = 100) -> list[CommandRecord]:
+    """Return accepted review commit commands ready for enqueue."""
+    return _list_pending_commands("review_commit", limit)
+
+
 def mark_command_status(command_id: int, status: str, error: str | None = None) -> None:
     """Persist command execution bridge status."""
     statement = sql_text(

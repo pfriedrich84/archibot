@@ -14,6 +14,8 @@ class Command extends Model
 
     public const TYPE_REINDEX = 'reindex';
 
+    public const TYPE_REVIEW_COMMIT = 'review_commit';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_QUEUED = 'queued';

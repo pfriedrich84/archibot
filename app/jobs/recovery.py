@@ -19,6 +19,7 @@ from app.jobs.commands import (
     list_pending_embedding_build_commands,
     list_pending_poll_reconciliation_commands,
     list_pending_reindex_commands,
+    list_pending_review_commit_commands,
     mark_command_status,
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
@@ -75,15 +76,31 @@ def _enqueue_command_actor(command_id: int, actor, limit: int | None = None) -> 
         raise
 
 
-def enqueue_review_commit(review_suggestion_id: int) -> None:
+def enqueue_review_commit(review_suggestion_id: int, command_id: int | None = None) -> None:
     """Enqueue one accepted review suggestion for Paperless commit."""
     mark_review_commit_status(review_suggestion_id, "queued")
     send = getattr(commit_review_suggestion, "send", None)
     if send is not None:
-        send(review_suggestion_id)
+        if command_id is None:
+            send(review_suggestion_id)
+        else:
+            send(review_suggestion_id, command_id)
         return
 
-    commit_review_suggestion(review_suggestion_id)
+    if command_id is None:
+        commit_review_suggestion(review_suggestion_id)
+    else:
+        commit_review_suggestion(review_suggestion_id, command_id)
+
+
+def enqueue_review_commit_command(command_id: int, review_suggestion_id: int) -> None:
+    """Mark a durable review-commit command queued and enqueue its actor."""
+    mark_command_status(command_id, "queued")
+    try:
+        enqueue_review_commit(review_suggestion_id, command_id)
+    except Exception as exc:
+        mark_command_status(command_id, "pending", f"enqueue_failed:{type(exc).__name__}")
+        raise
 
 
 def enqueue_document_pipeline_run(pipeline_run_id: int) -> None:
@@ -240,6 +257,14 @@ def run_recovery_scan(limit: int = 100) -> None:
             limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
         )
 
+    review_commit_commands = list_pending_review_commit_commands(limit=limit)
+    for command in review_commit_commands:
+        review_suggestion_id = command.payload.get("review_suggestion_id")
+        if isinstance(review_suggestion_id, int) and review_suggestion_id > 0:
+            enqueue_review_commit_command(command.id, review_suggestion_id)
+        else:
+            mark_command_status(command.id, "failed_permanent", "missing_review_suggestion_id")
+
     review_suggestion_ids = list_review_suggestions_ready_to_commit(limit=limit)
     for review_suggestion_id in review_suggestion_ids:
         enqueue_review_commit(review_suggestion_id)
@@ -257,5 +282,6 @@ def run_recovery_scan(limit: int = 100) -> None:
         embedding_build_commands_requeued=len(embedding_build_commands),
         poll_reconciliation_commands_requeued=len(poll_reconciliation_commands),
         reindex_commands_requeued=len(reindex_commands),
+        review_commit_commands_requeued=len(review_commit_commands),
         review_commits_requeued=len(review_suggestion_ids),
     )

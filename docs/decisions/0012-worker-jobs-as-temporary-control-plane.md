@@ -38,7 +38,7 @@ Use `worker_jobs` as a temporary Laravel control plane while the legacy subproce
 
 `worker_jobs` may be hardened for reliability and operator visibility, including dispatch centralization, dedupe, leases, heartbeats, recovery, cancellation, retry, progress, logs and admin UI controls. These changes are allowed because they reduce product risk without rewriting the Python processing core first.
 
-The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ and Dramatiq actors. New durable pipeline functionality should target those models and actors, not only `worker_jobs`.
+The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ and Dramatiq actors. New durable pipeline functionality should target those models and actors, not only `worker_jobs`. Review suggestion commit requests are migrated to durable `review_commit` commands and the review commit actor; new review commits must not create `worker_jobs`.
 
 ## Consequences
 

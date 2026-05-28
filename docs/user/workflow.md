@@ -78,6 +78,7 @@ Das LLM liefert strukturiertes JSON mit:
 - Pro Vorschlag: Original vs. Vorschlag nebeneinander
 - Felder einzeln editieren oder uebernehmen
 - Annehmen oder Ablehnen mit einem Klick
+- Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist
 
 #### Via Telegram (optional)
 
