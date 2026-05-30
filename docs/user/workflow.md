@@ -89,17 +89,21 @@ Das LLM liefert strukturiertes JSON mit:
 
 Wenn `AUTO_COMMIT_CONFIDENCE > 0` und der finale Confidence-Score darueber liegt,
 wird der Vorschlag automatisch committet — ohne manuelles Review. Im Inbox-Poll
-passiert das pro Dokument direkt nach Klassifikation/Judge, sobald das ohne
-zusaetzlichen Modellwechsel moeglich ist:
+bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,
+Klassifikations- und Judge-Modelle nicht pro Dokument hin- und hergeladen
+werden muessen:
 
-- Judge ist deaktiviert → sofort speichern und ggf. auto-committen
-- Judge ist fuer das Dokument wegen hoher Confidence nicht relevant → sofort
-  speichern und ggf. auto-committen
-- Judge nutzt dasselbe Modell wie die Klassifikation → sofort judgen, speichern
-  und ggf. auto-committen
-- Judge braucht fuer dieses Dokument ein anderes Modell → nur dieses Dokument
-  wird bis zur Batch-Judge-Phase zurueckgestellt; danach erfolgt Review oder
-  Auto-Commit
+1. OCR fuer alle Dokumente, Ergebnisse pro Dokument speichern
+2. Embeddings/Kontextsuche fuer alle Dokumente, Ergebnisse pro Dokument merken
+3. Klassifikation fuer alle Dokumente
+4. Judge-Verifikation fuer alle erfolgreichen Klassifikationen
+5. Vorschlaege speichern, Review/Auto-Commit ausfuehren
+6. Embeddings final pro Dokument in den Kontextindex schreiben
+
+Innerhalb jeder Phase wird nach jedem Dokument persistiert. Ein Absturz in
+Dokument 12/19 verliert also nicht die Ergebnisse der ersten 11 Dokumente.
+Die Worker-Job-Anzeige zeigt den aktuellen Phasenfortschritt, z. B.
+`Embedding 4/19` oder `Judge 2/7`.
 
 #### Judge-Verifikation (optional)
 
@@ -110,11 +114,12 @@ vorhanden sind. Verdikte: `agree`, `corrected`, `skipped`, `error`. Bei
 `corrected` ersetzt der Judge die Erst-Klassifikation; der Erst-Vorschlag bleibt
 als Snapshot im Review-Detail und in der DB als `original_proposed_json`.
 Standardmaessig nutzt der Judge dasselbe Modell (`OLLAMA_MODEL`) — kein
-zusaetzlicher GPU-Swap. Wenn ein eigenes `OLLAMA_JUDGE_MODEL` gesetzt ist,
-werden nur Dokumente mit tatsaechlich noetiger Judge-Pruefung bis zur
-Batch-Judge-Phase gesammelt; Dokumente, bei denen der Judge uebersprungen wird,
-werden trotzdem sofort veroeffentlicht/committet. Stats-Seite zeigt eine eigene
-"Judge Verification"-Dauer-Kachel und ein Verdict-Breakdown-Panel.
+zusaetzlicher GPU-Swap zwischen Klassifikation und Judge. Wenn ein eigenes
+`OLLAMA_JUDGE_MODEL` gesetzt ist, laeuft es als eigene Batch-Phase nach der
+Klassifikation. Dokumente, bei denen der Judge wegen hoher Confidence oder
+deaktivierter Verifikation uebersprungen wird, werden in dieser Phase als
+`skipped` gezaehlt und danach gespeichert/veroeffentlicht. Stats-Seite zeigt
+eine eigene "Judge Verification"-Dauer-Kachel und ein Verdict-Breakdown-Panel.
 
 ### 5. Commit nach Paperless
 

@@ -63,6 +63,23 @@ phase = classification 5/130
 phase = review         2/130
 ```
 
+For inbox polling, progress is phase-local by design. Operators should see the
+current model phase and document counter, for example `ocr 4/19`, `embed 12/19`,
+`classify 3/19`, `judge 2/7`, `store 8/19`, or `finalize 19/19`. The runtime may
+also expose overall counters, but the phase counter is the primary signal
+because model residency is phase-scoped.
+
+Poll processing must batch model-heavy phases in this order to avoid excessive
+model swaps:
+
+```text
+prepare -> ocr -> embed -> classify -> judge -> store -> postprocess -> finalize
+```
+
+Results are persisted after each document inside the active phase, not only at
+phase completion. This gives crash recovery and clear failure attribution while
+keeping model execution batched.
+
 ## Required Data Model
 
 ### `pipeline_runs` Progress Fields

@@ -110,9 +110,18 @@ archibot poll --force
 
 **Was passiert:**
 1. Dokumente mit Inbox-Tag aus Paperless holen
-2. Phase 1: OCR-Korrektur (wenn `OCR_MODE != off`)
-3. Phase 2: Embedding berechnen + Kontext-Dokumente finden
-4. Phase 3: Klassifikation via LLM, Vorschlaege speichern
+2. Prepare-Phase: Idempotency-Skip pruefen und Dokumente als pending markieren
+3. OCR-Phase fuer alle Dokumente (wenn `OCR_MODE != off`), Ergebnisse pro Dokument speichern
+4. Embedding-Phase fuer alle Dokumente: Embedding berechnen + Kontext-Dokumente finden
+5. Klassifikations-Phase fuer alle Dokumente
+6. Judge-Phase fuer alle erfolgreichen Klassifikationen (oder `skipped`, wenn nicht noetig)
+7. Store/Postprocess/Finalize: Vorschlaege speichern, Review/Auto-Commit ausfuehren, Embeddings persistieren
+
+Laravel-Worker-Jobs erhalten waehrend `poll` laufend `PROGRESS`-Zeilen mit
+phasenlokalen Zaehlern (`done`/`total`, z. B. `4/19`). Die Modellphasen bleiben
+gebuendelt, damit unterschiedliche OCR-, Embedding-, Klassifikations- und
+Judge-Modelle nicht pro Dokument gewechselt werden muessen. Persistiert wird
+innerhalb jeder Phase nach jedem Dokument.
 
 **Wann nutzen:** Zum Testen der Pipeline oder wenn man nicht auf den
 naechsten automatischen Poll warten will.

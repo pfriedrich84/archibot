@@ -309,21 +309,33 @@ def record_phase_timing(
 # ---------------------------------------------------------------------------
 # Phased pipeline for batched processing
 # ---------------------------------------------------------------------------
-def _set_poll_phase_progress(phase: str, total: int) -> None:
+def _set_poll_phase_progress(phase: str, total: int, message: str | None = None) -> None:
     """Update the user-facing per-phase progress counters for poll jobs."""
     from app import worker
 
     worker._poll_progress.phase = phase
     worker._poll_progress.phase_total = total
     worker._poll_progress.phase_done = 0
+    worker.emit_poll_progress(
+        event="phase_started",
+        message=message or f"Phase {phase} started.",
+    )
 
 
-def _advance_poll_phase_progress() -> None:
+def _advance_poll_phase_progress(
+    *, document_id: int | None = None, message: str | None = None, event: str = "progress"
+) -> None:
     """Advance the current user-facing per-phase counter by one item."""
     from app import worker
 
     if worker._poll_progress.running:
         worker._poll_progress.phase_done += 1
+        if message is None:
+            message = (
+                f"{worker._poll_progress.phase}: "
+                f"{worker._poll_progress.phase_done}/{worker._poll_progress.phase_total} documents."
+            )
+        worker.emit_poll_progress(event=event, document_id=document_id, message=message)
 
 
 async def phase_ocr(
@@ -576,7 +588,12 @@ async def phase_classify_only(
             )
         _advance_poll_phase_progress()
 
-    await ollama.unload_model(ollama.model, swap=True)
+    judge_reuses_classifier_model = (
+        getattr(settings, "enable_judge_verification", False) is True
+        and _judge_uses_classifier_model()
+    )
+    if not judge_reuses_classifier_model:
+        await ollama.unload_model(ollama.model, swap=True)
     return drafts
 
 
@@ -666,6 +683,9 @@ async def phase_judge(
             )
         )
         _advance_poll_phase_progress()
+
+    if getattr(settings, "enable_judge_verification", False) is True:
+        await ollama.unload_model(_effective_judge_model(), swap=True)
 
     return judged
 
@@ -1094,17 +1114,17 @@ async def phase_classify(
 ) -> tuple[int, int, int]:
     """Backward-compatible classification entry point.
 
-    Internally runs the fully split classify -> judge -> store -> postprocess ->
-    embedding-store phases. New orchestration should call the split phases
-    directly so GUI progress can expose each phase separately.
+    Runs strictly batched classification phases to avoid model churn:
+    classify all documents, then judge all documents, then store/publish, then
+    persist precomputed embeddings.  Durability remains per document inside each
+    phase.
     """
     if not isinstance(embed_results, dict):
         embed_results = {}
 
-    return await phase_classify_publish_each(
+    drafts = await phase_classify_only(
         docs,
         embed_results,
-        paperless,
         ollama,
         correspondents,
         doctypes,
@@ -1112,6 +1132,19 @@ async def phase_classify(
         tags,
         cycle_id,
     )
+    judged = await phase_judge(
+        drafts,
+        ollama,
+        correspondents,
+        doctypes,
+        storage_paths,
+        tags,
+        cycle_id,
+    )
+    stored = await phase_store_suggestions(judged, correspondents, doctypes, storage_paths, tags)
+    counts = await phase_postprocess_suggestions(stored, paperless, tags)
+    phase_store_embeddings(docs, embed_results)
+    return counts
 
 
 def phase_store_embeddings(
@@ -1237,7 +1270,7 @@ async def process_batch(
     errored = 0
     try:
         if progress is not None:
-            _set_poll_phase_progress("ocr", len(batch))
+            _set_poll_phase_progress("ocr", len(batch), "OCR-Phase gestartet.")
         record_event(
             job_id,
             job_type,
@@ -1260,7 +1293,7 @@ async def process_batch(
         )
 
         if progress is not None:
-            _set_poll_phase_progress("embed", len(batch))
+            _set_poll_phase_progress("embed", len(batch), "Embedding-Phase gestartet.")
         record_event(
             job_id,
             job_type,
@@ -1283,7 +1316,7 @@ async def process_batch(
         )
 
         if progress is not None:
-            _set_poll_phase_progress("classify", len(batch))
+            _set_poll_phase_progress("classify", len(batch), "Klassifizierung gestartet.")
         record_event(
             job_id,
             job_type,
@@ -1295,10 +1328,9 @@ async def process_batch(
         if progress is not None and progress.cancelled:
             log.info("poll cancelled before classify phase")
             return BatchProcessResult(total=len(docs), skipped=skipped, cycle_id=cycle_id)
-        classified, auto_committed, errored = await phase_classify(
+        drafts = await phase_classify_only(
             batch,
             embed_results,
-            paperless,
             ollama,
             correspondents,
             doctypes,
@@ -1306,6 +1338,71 @@ async def process_batch(
             tags,
             cycle_id,
         )
+        record_event(
+            job_id,
+            job_type,
+            "phase_finished",
+            "Klassifizierung abgeschlossen.",
+            phase="classify",
+            level="success",
+        )
+
+        if progress is not None:
+            _set_poll_phase_progress("judge", len(drafts), "Judge-Phase gestartet.")
+        record_event(
+            job_id,
+            job_type,
+            "phase_started",
+            "Judge-Phase gestartet.",
+            phase="judge",
+            data={"documents": len(drafts), "judge_model": _effective_judge_model()},
+        )
+        if progress is not None and progress.cancelled:
+            log.info("poll cancelled before judge phase")
+            return BatchProcessResult(total=len(docs), skipped=skipped, cycle_id=cycle_id)
+        judged = await phase_judge(
+            drafts,
+            ollama,
+            correspondents,
+            doctypes,
+            storage_paths,
+            tags,
+            cycle_id,
+        )
+        record_event(
+            job_id,
+            job_type,
+            "phase_finished",
+            "Judge-Phase abgeschlossen.",
+            phase="judge",
+            level="success",
+        )
+
+        if progress is not None:
+            _set_poll_phase_progress("store", len(judged), "Vorschläge werden gespeichert.")
+        stored = await phase_store_suggestions(
+            judged, correspondents, doctypes, storage_paths, tags
+        )
+
+        if progress is not None:
+            _set_poll_phase_progress(
+                "postprocess", len(stored), "Review/Auto-Commit wird verarbeitet."
+            )
+        classified, auto_committed, errored = await phase_postprocess_suggestions(
+            stored, paperless, tags
+        )
+
+        if progress is not None:
+            _set_poll_phase_progress("finalize", len(batch), "Embeddings werden gespeichert.")
+        phase_store_embeddings(batch, embed_results)
+        if progress is not None:
+            _set_poll_phase_progress("finished", len(batch), "Posteingang-Prüfung abgeschlossen.")
+            progress.phase_done = len(batch)
+            from app import worker
+
+            worker.emit_poll_progress(
+                event="job_finished", message="Posteingang-Prüfung abgeschlossen."
+            )
         return BatchProcessResult(
             total=len(docs),
             skipped=skipped,

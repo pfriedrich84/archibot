@@ -45,12 +45,12 @@ def test_main_poll_reads_worker_contract_and_writes_output(
         main()
 
     mock_cmd.assert_called_once_with(force=True, job_id="12")
-    assert json.loads(output_path.read_text(encoding="utf-8")) == {
-        "ok": True,
-        "command": "poll",
-        "job_id": 12,
-        "type": "poll",
-    }
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    assert output["ok"] is True
+    assert output["command"] == "poll"
+    assert output["job_id"] == 12
+    assert output["type"] == "poll"
+    assert "progress" in output
 
 
 def test_main_process_document_reads_document_id_from_worker_payload(

@@ -96,6 +96,27 @@ If `jobs` rows remain while `queue:work --once --verbose` is running, inspect th
 
 If runtime output still says `Pending Seconds: 30` after deploying this code, the running process is not using the intended default. Check for an old container image, run `php artisan config:clear`, remove any environment override such as `ARCHIBOT_PENDING_REDISPATCH_SECONDS=30`, and stop any stale recovery process that was started before the deploy.
 
+## Poll progress and phase batching
+
+`poll` worker jobs emit machine-readable `PROGRESS` lines while they run. The
+Laravel worker detail page uses these lines for live phase-local progress such
+as `OCR 4/19`, `Embedding 12/19`, `Klassifizierung 3/19`, or `Judge 2/7`.
+
+The poll pipeline is deliberately phase-batched to avoid unnecessary model
+swaps:
+
+1. prepare all documents;
+2. OCR all documents;
+3. embed all documents and collect similar-document context;
+4. classify all documents;
+5. judge all successful classifications;
+6. store suggestions and run review/auto-commit post-processing;
+7. finalize/persist embeddings.
+
+Durability is per document inside each phase. If a phase fails at document
+`12/19`, the successful results for documents `1..11` remain persisted and the
+worker logs identify the failing phase and document.
+
 ## Embedding reindex guardrails
 
 `reindex_embed` emits `PROGRESS` before each document starts with `document_started`, `document_id`, `document_title`, `document_index`, `document_total`, and `content_length`. This makes the currently slow document visible in the Laravel worker-job detail page.

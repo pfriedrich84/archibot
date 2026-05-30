@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -60,6 +61,40 @@ class PollProgress:
 
 _poll_progress = PollProgress()
 _poll_task: asyncio.Task | None = None
+_poll_progress_stdout_enabled = False
+
+
+def enable_poll_progress_stdout(enabled: bool = True) -> None:
+    """Emit machine-readable poll progress lines for Laravel worker jobs."""
+    global _poll_progress_stdout_enabled
+    _poll_progress_stdout_enabled = enabled
+
+
+def emit_poll_progress(**extra: object) -> None:
+    """Print the current poll progress in the Laravel worker PROGRESS protocol."""
+    if not _poll_progress_stdout_enabled:
+        return
+    payload = {
+        "running": _poll_progress.running,
+        "phase": _poll_progress.phase,
+        "done": _poll_progress.phase_done,
+        "total": _poll_progress.phase_total,
+        "phase_done": _poll_progress.phase_done,
+        "phase_total": _poll_progress.phase_total,
+        "overall_done": _poll_progress.done,
+        "overall_total": _poll_progress.total,
+        "succeeded": _poll_progress.succeeded,
+        "failed": _poll_progress.failed,
+        "skipped": _poll_progress.skipped,
+        "cancelled": _poll_progress.cancelled,
+        "error": _poll_progress.error,
+        "started_at": _poll_progress.started_at,
+        "cycle_id": _poll_progress.cycle_id,
+        "job_id": _poll_progress.job_id,
+        "job_type": _poll_progress.job_type,
+    }
+    payload.update(extra)
+    print("PROGRESS " + json.dumps(payload, ensure_ascii=False, default=str), flush=True)
 
 
 def get_poll_progress() -> PollProgress:

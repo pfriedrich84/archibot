@@ -17,6 +17,7 @@ from app.pipeline.document_processing import (
     phase_classify,
     phase_embed,
     phase_ocr,
+    process_batch,
     process_document,
     resolve_entity,
     resolve_tags,
@@ -351,8 +352,11 @@ class TestPollCycleSummary:
         mock_paperless.list_tags = AsyncMock(return_value=[])
 
         mockphase_ocr = AsyncMock(return_value=[doc])
-        mockphase_embed = AsyncMock(return_value=[])
-        mockphase_classify = AsyncMock(return_value=(1, 0, 0))
+        mockphase_embed = AsyncMock(return_value={})
+        mockphase_classify_only = AsyncMock(return_value=[])
+        mockphase_judge = AsyncMock(return_value=[])
+        mockphase_store = AsyncMock(return_value=[])
+        mockphase_postprocess = AsyncMock(return_value=(1, 0, 0))
 
         with (
             patch("app.worker._paperless", mock_paperless),
@@ -360,7 +364,14 @@ class TestPollCycleSummary:
             patch("app.worker._has_embedding_index", return_value=True),
             patch("app.pipeline.document_processing.phase_ocr", mockphase_ocr),
             patch("app.pipeline.document_processing.phase_embed", mockphase_embed),
-            patch("app.pipeline.document_processing.phase_classify", mockphase_classify),
+            patch("app.pipeline.document_processing.phase_classify_only", mockphase_classify_only),
+            patch("app.pipeline.document_processing.phase_judge", mockphase_judge),
+            patch("app.pipeline.document_processing.phase_store_suggestions", mockphase_store),
+            patch(
+                "app.pipeline.document_processing.phase_postprocess_suggestions",
+                mockphase_postprocess,
+            ),
+            patch("app.pipeline.document_processing.phase_store_embeddings"),
             structlog.testing.capture_logs() as logs,
         ):
             await poll_inbox(force=True)
@@ -861,3 +872,61 @@ class TestPhasedPollInbox:
             assert max(embed_indices) < min(chat_indices), (
                 f"Embed calls should all precede chat_json calls. Order: {call_order}"
             )
+
+    @pytest.mark.asyncio
+    async def test_all_classifies_before_all_judges(self, patch_db):
+        """Poll batches classification before judge verification to avoid model churn."""
+        from app.models import ClassificationResult, JudgeVerdict
+
+        docs = [_make_doc(1), _make_doc(2)]
+        call_order: list[str] = []
+
+        async def track_classify(*args, **kwargs):
+            call_order.append("classify")
+            return (
+                ClassificationResult(title="Test", confidence=40, reasoning="test", tags=[]),
+                "{}",
+            )
+
+        async def track_verify(*args, **kwargs):
+            call_order.append("judge")
+            return JudgeVerdict(verdict="agree", reasoning="ok")
+
+        progress = worker.PollProgress(running=True, job_id="poll-test", job_type="poll")
+        mock_ollama = AsyncMock()
+        mock_ollama.model = "classify-model"
+        mock_ollama.unload_model = AsyncMock()
+
+        with (
+            patch("app.pipeline.document_processing.phase_ocr", AsyncMock(return_value=docs)),
+            patch("app.pipeline.document_processing.phase_embed", AsyncMock(return_value={})),
+            patch("app.pipeline.document_processing.classifier.classify", track_classify),
+            patch("app.pipeline.document_processing.classifier.verify", track_verify),
+            patch(
+                "app.pipeline.document_processing.phase_store_suggestions",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.pipeline.document_processing.phase_postprocess_suggestions",
+                AsyncMock(return_value=(0, 0, 0)),
+            ),
+            patch("app.pipeline.document_processing.phase_store_embeddings"),
+            patch("app.pipeline.document_processing.settings") as mock_settings,
+        ):
+            mock_settings.enable_judge_verification = True
+            mock_settings.judge_confidence_threshold = 101
+            mock_settings.ollama_judge_model = "judge-model"
+            mock_settings.ollama_model = "classify-model"
+            result = await process_batch(
+                docs,
+                AsyncMock(),
+                mock_ollama,
+                [],
+                [],
+                [],
+                [],
+                progress=progress,
+            )
+
+        assert result.total == 2
+        assert call_order == ["classify", "classify", "judge", "judge"]

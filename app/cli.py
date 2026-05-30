@@ -220,7 +220,7 @@ async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
     With ``force=True`` the idempotency skip check is bypassed.
     """
     from app.job_events import list_events, record_event
-    from app.worker import poll_inbox
+    from app.worker import enable_poll_progress_stdout, poll_inbox
 
     paperless = PaperlessClient()
     ollama = create_ai_provider()
@@ -231,6 +231,18 @@ async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
     worker._paperless = paperless
     worker._ollama = ollama
     worker._poll_progress.running = True
+    worker._poll_progress.total = 0
+    worker._poll_progress.done = 0
+    worker._poll_progress.succeeded = 0
+    worker._poll_progress.failed = 0
+    worker._poll_progress.skipped = 0
+    worker._poll_progress.phase = "prepare"
+    worker._poll_progress.phase_done = 0
+    worker._poll_progress.phase_total = 0
+    worker._poll_progress.cancelled = False
+    worker._poll_progress.error = None
+    worker._poll_progress.started_at = datetime.now(tz=UTC).isoformat()
+    worker._poll_progress.cycle_id = None
     worker._poll_progress.job_type = "poll"
     worker._poll_progress.job_id = job_id or f"cli-poll-{uuid.uuid4().hex[:12]}"
     record_event(
@@ -253,6 +265,7 @@ async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
     )
 
     try:
+        enable_poll_progress_stdout(True)
         await poll_inbox(force=force)
         for event in list_events(worker._poll_progress.job_id or "", limit=1000):
             doc = f" doc=#{event['document_id']}" if event.get("document_id") else ""
@@ -264,6 +277,7 @@ async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
         else:
             print("Inbox processing complete.")
     finally:
+        enable_poll_progress_stdout(False)
         worker._poll_progress.running = False
         await paperless.aclose()
         await ollama.aclose()
@@ -1089,6 +1103,9 @@ def main() -> None:
                 ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
                 if ocr_reviews:
                     output_payload["ocr_reviews"] = ocr_reviews
+                import app.worker as worker
+
+                output_payload["progress"] = worker._poll_progress.__dict__.copy()
             elif cmd_name == "reindex":
                 before_ocr_cache = _ocr_cache_snapshot()
                 result = asyncio.run(
