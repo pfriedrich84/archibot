@@ -536,6 +536,7 @@ def test_recovery_scan_enqueues_review_commit_commands(monkeypatch):
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
