@@ -97,7 +97,10 @@ def _has_embedding_index() -> bool:
     try:
         status = latest_embedding_index_status()
     except Exception as exc:  # pragma: no cover - defensive fallback for legacy/local installs
-        log.debug("embedding index durable state unavailable; falling back to legacy marker", error=str(exc))
+        log.debug(
+            "embedding index durable state unavailable; falling back to legacy marker",
+            error=str(exc),
+        )
     else:
         if status is not None:
             return status == "complete"

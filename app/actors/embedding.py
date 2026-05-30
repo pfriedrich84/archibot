@@ -44,7 +44,9 @@ async def _build_pgvector_embeddings(
     failed_count = 0
     try:
         fetched_documents = await paperless.list_all_documents(limit=limit)
-        trusted_documents = [document for document in fetched_documents if is_trusted_document(document)]
+        trusted_documents = [
+            document for document in fetched_documents if is_trusted_document(document)
+        ]
         documents_with_text = [
             (document, text)
             for document in trusted_documents
