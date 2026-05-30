@@ -95,6 +95,27 @@ class AuthenticationTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
+    public function test_users_see_paperless_unreachable_message_when_login_server_is_unavailable(): void
+    {
+        $this->markSetupComplete();
+
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response([], 503),
+        ]);
+
+        $response = $this->from(route('login'))->post(route('login.store'), [
+            'username' => 'paperless-admin',
+            'password' => 'paperless-password',
+        ]);
+
+        $response->assertRedirect(route('login', absolute: false));
+        $response->assertSessionHasErrors([
+            'username' => 'Paperless server is not reachable.',
+        ]);
+        $this->assertGuest();
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_users_can_logout(): void
     {
         $user = User::factory()->create();

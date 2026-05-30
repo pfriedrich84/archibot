@@ -142,9 +142,10 @@ Webhooks should:
 - be accepted quickly
 - persist delivery before enqueueing
 - dedupe delivery-level duplicates
-- use the same pipeline start function as polling
+- route creation/consume events through the same pipeline start function as polling
+- route edit/update events to embedding refresh only, not full reclassification
 - respect embedding readiness gate
-- coalesce with existing poll/manual/retry runs when appropriate
+- coalesce creation/consume events with existing poll/manual/retry runs when appropriate
 
 ## Race Example: Webhook and Poll Arrive Together
 
@@ -183,7 +184,7 @@ Minimum tests:
 - poll skips document already running from webhook
 - webhook attaches to document already running from poll
 - completed latest content state is skipped by poll
-- new modified timestamp creates a new pipeline run
+- new modified timestamp creates a new pipeline run for creation/consume events
 - lock conflict does not fail the pipeline permanently
 - embedding gate blocks both webhook and poll processing
 - polling interval default remains 600 seconds

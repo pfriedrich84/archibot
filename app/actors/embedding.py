@@ -44,18 +44,26 @@ async def _build_pgvector_embeddings(
     failed_count = 0
     try:
         fetched_documents = await paperless.list_all_documents(limit=limit)
-        documents = [document for document in fetched_documents if is_trusted_document(document)]
-        total = len(documents)
+        trusted_documents = [document for document in fetched_documents if is_trusted_document(document)]
+        documents_with_text = [
+            (document, text)
+            for document in trusted_documents
+            if (text := document_embedding_text(document.title, document.content))
+        ]
+        skipped_empty_text_count = len(trusted_documents) - len(documents_with_text)
+        if skipped_empty_text_count:
+            log.info(
+                "skipping trusted documents without embedding text",
+                skipped_empty_text_count=skipped_empty_text_count,
+            )
+        total = len(documents_with_text)
         update_embedding_index_progress(
             build_id,
             document_count=total,
             embedded_count=embedded_count,
             failed_count=failed_count,
         )
-        for index, document in enumerate(documents, 1):
-            text = document_embedding_text(document.title, document.content)
-            if not text:
-                continue
+        for index, (document, text) in enumerate(documents_with_text, 1):
             try:
                 embedding = await ollama.embed(text)
                 store_document_embedding(

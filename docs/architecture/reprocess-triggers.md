@@ -38,24 +38,26 @@ reprocess_full_document_pipeline_force_embeddings
 
 Manual force reprocess always creates a new run, even if the latest previous run succeeded and the effective content state is identical. Attach/retry existing is a separate non-force mode.
 
-## Webhook-triggered Reprocess
+## Webhook-triggered Processing
 
-Webhook-triggered reprocess is automatic and comes from Paperless.
+Webhook-triggered processing is automatic and comes from Paperless.
 
 Required behavior:
 
 - no `is_admin()` check because this is not a user action
 - webhook security still applies
 - persist and deduplicate the webhook delivery
-- compute the document/content-state dedupe key
-- acquire or respect the durable pipeline coalescing seam
+- route `created`/`added`/`consumed` events into the full document pipeline
+- route `updated`/`changed`/`modified` events into embedding refresh only, not full reclassification
+- route `deleted`/`trashed` events into embedding cleanup
+- compute the document/content-state dedupe key for full document pipeline starts
+- acquire or respect the durable pipeline coalescing seam for full document pipeline starts
 - check the embedding readiness gate
-- start a new run only if the document state is new, changed, missing or stale
 - coalesce with an active run for the same document/content state
-- set `trigger_source = webhook`
+- set `trigger_source = webhook` for full document pipeline starts
 - link `webhook_delivery_id`
 
-Webhook-triggered reprocess must not force duplicate runs for duplicate webhook deliveries or unchanged document state.
+Webhook-triggered processing must not force duplicate full runs for duplicate webhook deliveries or unchanged document state. Paperless edit/update webhooks must not create classification feedback loops after ArchiBot writes metadata back to Paperless.
 
 ## Shared Pipeline Start
 

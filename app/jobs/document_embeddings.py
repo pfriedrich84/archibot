@@ -204,6 +204,54 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
     return content_hash
 
 
+def delete_document_embeddings_for_document(paperless_document_id: int) -> int:
+    """Delete all stored embeddings for one Paperless document."""
+    statement = sql_text(
+        """
+        DELETE FROM document_embeddings
+        WHERE paperless_document_id = :paperless_document_id
+        """
+    )
+    with engine().begin() as connection:
+        result = connection.execute(
+            statement,
+            {"paperless_document_id": paperless_document_id},
+        )
+
+    return int(result.rowcount or 0)
+
+
+def delete_stale_document_embeddings_for_document(
+    *,
+    paperless_document_id: int,
+    keep_content_hash: str,
+    embedding_model: str,
+    dimensions: int,
+) -> int:
+    """Delete old embeddings for one document after a newer content hash is stored."""
+    statement = sql_text(
+        """
+        DELETE FROM document_embeddings
+        WHERE paperless_document_id = :paperless_document_id
+          AND embedding_model = :embedding_model
+          AND dimensions = :dimensions
+          AND content_hash != :keep_content_hash
+        """
+    )
+    with engine().begin() as connection:
+        result = connection.execute(
+            statement,
+            {
+                "paperless_document_id": paperless_document_id,
+                "keep_content_hash": keep_content_hash,
+                "embedding_model": embedding_model,
+                "dimensions": dimensions,
+            },
+        )
+
+    return int(result.rowcount or 0)
+
+
 def find_similar_document_ids(
     embedding: list[float],
     *,

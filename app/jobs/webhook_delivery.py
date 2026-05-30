@@ -79,6 +79,29 @@ def list_queued_webhook_delivery_ids(limit: int = 100) -> list[int]:
     return [int(row["id"]) for row in rows]
 
 
+def list_embedding_blocked_webhook_delivery_ids(limit: int = 100) -> list[int]:
+    """Return webhook deliveries blocked only by the embedding readiness gate."""
+    try:
+        from sqlalchemy import text
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
+        raise RuntimeError("sqlalchemy is required for PostgreSQL-backed webhook actors") from exc
+
+    statement = text(
+        """
+        SELECT id
+        FROM webhook_deliveries
+        WHERE status = 'blocked'
+          AND error = 'embedding_index_not_ready'
+        ORDER BY received_at ASC, id ASC
+        LIMIT :limit
+        """
+    )
+    with engine().connect() as connection:
+        rows = connection.execute(statement, {"limit": limit}).mappings().all()
+
+    return [int(row["id"]) for row in rows]
+
+
 def mark_webhook_delivery_status(
     webhook_delivery_id: int, status: str, error: str | None = None
 ) -> None:
@@ -95,6 +118,7 @@ def mark_webhook_delivery_status(
             error = :error,
             processed_at = CASE
                 WHEN :status IN ('processed', 'blocked', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP
+                WHEN :status = 'queued' THEN NULL
                 ELSE processed_at
             END,
             updated_at = CURRENT_TIMESTAMP

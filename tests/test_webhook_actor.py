@@ -4,11 +4,12 @@ from app.jobs.pipeline_start import PipelineStartResult
 from app.jobs.webhook_delivery import WebhookDeliveryRecord
 
 
-def test_webhook_reprocess_policy_marks_changed_events_only():
-    assert webhook.webhook_requests_reprocess("document.updated") is True
-    assert webhook.webhook_requests_reprocess("document_changed") is True
-    assert webhook.webhook_requests_reprocess("document.created") is False
-    assert webhook.webhook_requests_reprocess("document.deleted") is False
+def test_webhook_action_policy_routes_updates_to_embedding_refresh_only():
+    assert webhook.webhook_action("document.updated") == "refresh_embedding"
+    assert webhook.webhook_action("document_changed") == "refresh_embedding"
+    assert webhook.webhook_action("document.created") == "process_document"
+    assert webhook.webhook_action("document.deleted") == "delete_embedding"
+    assert webhook.webhook_requests_reprocess("document.updated") is False
 
 
 def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
@@ -83,9 +84,11 @@ def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
     assert actor_finishes[0][1] == {"status": "blocked", "error_type": "embedding_index_not_ready"}
 
 
-def test_webhook_actor_marks_processed_when_pipeline_start_is_accepted(monkeypatch):
+def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
     statuses = []
     actor_finishes = []
+    starts = []
+    refreshes = []
 
     monkeypatch.setattr(
         webhook,
@@ -112,17 +115,19 @@ def test_webhook_actor_marks_processed_when_pipeline_start_is_accepted(monkeypat
         "finish_actor_execution",
         lambda *args, **kwargs: actor_finishes.append((args, kwargs)),
     )
-    starts = []
-
-    def fake_start(**kwargs):
-        starts.append(kwargs)
-        return PipelineStartResult(
-            status="pending",
-            pipeline_run_id=None,
-            pipeline_dedupe_key="dedupe",
-        )
-
-    monkeypatch.setattr(webhook, "start_or_attach_document_pipeline", fake_start)
+    monkeypatch.setattr(
+        webhook,
+        "start_or_attach_document_pipeline",
+        lambda **kwargs: starts.append(kwargs),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "refresh_document_embedding",
+        lambda paperless_document_id: (
+            refreshes.append(paperless_document_id)
+            or webhook.EmbeddingRefreshResult(status="processed")
+        ),
+    )
     monkeypatch.setattr(
         webhook,
         "mark_webhook_delivery_status",
@@ -132,10 +137,8 @@ def test_webhook_actor_marks_processed_when_pipeline_start_is_accepted(monkeypat
     webhook._handle_paperless_webhook_impl(321)
 
     assert statuses == [(321, "processed", None)]
-    assert starts[0]["reprocess_requested"] is True
-    assert starts[0]["reprocess_reason"] == "document.updated"
-    assert starts[0]["reprocess_mode"] == "webhook"
-    assert starts[0]["webhook_delivery_id"] == 321
+    assert starts == []
+    assert refreshes == [7]
     assert actor_finishes[0][1] == {"status": "succeeded", "error_type": None}
 
 

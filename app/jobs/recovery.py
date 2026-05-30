@@ -36,7 +36,11 @@ from app.jobs.review_commit import (
     list_review_suggestions_ready_to_commit,
     mark_review_commit_status,
 )
-from app.jobs.webhook_delivery import list_queued_webhook_delivery_ids
+from app.jobs.webhook_delivery import (
+    list_embedding_blocked_webhook_delivery_ids,
+    list_queued_webhook_delivery_ids,
+    mark_webhook_delivery_status,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -215,11 +219,29 @@ def release_embedding_blocked_runs(limit: int = 100) -> int:
     return len(pipeline_run_ids)
 
 
+def release_embedding_blocked_webhooks(limit: int = 100) -> int:
+    """Move embedding-refresh webhook deliveries back to queued when safe."""
+    if not ensure_embedding_index_ready():
+        return 0
+
+    webhook_delivery_ids = list_embedding_blocked_webhook_delivery_ids(limit=limit)
+    for webhook_delivery_id in webhook_delivery_ids:
+        mark_webhook_delivery_status(webhook_delivery_id, "queued", None)
+        publish_pipeline_event(
+            types.PIPELINE_UNBLOCKED_EMBEDDING_READY,
+            webhook_delivery_id=webhook_delivery_id,
+            message="Webhook delivery released because the embedding index is complete.",
+        )
+
+    return len(webhook_delivery_ids)
+
+
 def run_recovery_scan(limit: int = 100) -> None:
     """Scan durable state and requeue safe stuck work."""
     recovered_actors, recovered_actor_requeues = recover_stale_actor_executions(limit=limit)
     cancelled_runs = finalize_cancel_requested_runs(limit=limit)
 
+    webhooks_released = release_embedding_blocked_webhooks(limit=limit)
     webhook_delivery_ids = list_queued_webhook_delivery_ids(limit=limit)
     for webhook_delivery_id in webhook_delivery_ids:
         enqueue_webhook_delivery(webhook_delivery_id)
@@ -278,6 +300,7 @@ def run_recovery_scan(limit: int = 100) -> None:
         + len(pending_pipeline_run_ids)
         + len(retrying_pipeline_run_ids)
         + recovered_actor_requeues,
+        webhook_deliveries_released=webhooks_released,
         webhook_deliveries_requeued=len(webhook_delivery_ids),
         embedding_build_commands_requeued=len(embedding_build_commands),
         poll_reconciliation_commands_requeued=len(poll_reconciliation_commands),

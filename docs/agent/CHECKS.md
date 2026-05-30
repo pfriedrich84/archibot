@@ -14,6 +14,15 @@ pytest tests/ -v
 
 Use when changing `app/`, `tests/`, Python packaging, prompts used by Python code, or Python-facing configuration.
 
+When a change affects worker jobs or CLI commands launched from Laravel, also validate the actual JSON-file CLI contract or the narrow command path that regressed. Capture stdout/stderr and verify routine setup chatter does not leak into user-visible logs. In particular, embedding/poll/reindex commands must not print legacy SQLite lifecycle messages such as `initializing database path=/data/classifier.db` or `database ready` during normal successful runs.
+
+For regressions involving progress/readiness counters, add or update tests that assert both sides of the contract:
+
+- the Python result/progress payload (`done`, `total`, `failed`, returned counts);
+- the Laravel-ingested snapshot or dashboard values that operators see.
+
+If UI and CLI expose the same operation, validate that they use the same durable source of truth rather than separate legacy state.
+
 ## Laravel / Inertia / Svelte
 
 From `laravel/`:
@@ -67,6 +76,18 @@ python3 scripts/check_graphify_artifacts.py
 ```
 
 Graphify-only commits under `.graphify/**` are ignored by CI push triggers so refreshing the agent graph does not build or publish Docker images.
+
+## Regression-focused validation before handoff
+
+Before finishing a bug fix, record the exact symptom from the report and run at least one check that would have failed before the fix. Prefer a focused automated test. If the regression was visible only in runtime logs or a worker-job detail page, add a regression assertion for the emitted result/progress/log text, or manually run the command and state the forbidden/expected output you checked.
+
+For event-driven pipeline work, explicitly check for stale legacy paths:
+
+```bash
+rg -n "classifier\.db|doc_embedding_meta|audit_log|worker_jobs|_has_embedding_index|init_db" app laravel tests docs
+```
+
+Use the grep result to confirm that any touched path still follows the current PostgreSQL/pgvector/commands/pipeline contract, or document why a legacy compatibility path remains intentional.
 
 ## Documentation-only changes
 

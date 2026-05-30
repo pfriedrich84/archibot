@@ -92,6 +92,7 @@ def test_recovery_scan_enqueues_queued_webhook_deliveries(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [3, 5])
     monkeypatch.setattr(
         recovery, "enqueue_webhook_delivery", lambda webhook_id: enqueued.append(webhook_id)
@@ -153,11 +154,36 @@ def test_release_embedding_blocked_runs_marks_runs_pending(monkeypatch):
     assert [event[1]["pipeline_run_id"] for event in events] == [8, 9]
 
 
+def test_release_embedding_blocked_webhooks_marks_deliveries_queued(monkeypatch):
+    marked = []
+    events = []
+
+    monkeypatch.setattr(recovery, "ensure_embedding_index_ready", lambda: True)
+    monkeypatch.setattr(
+        recovery, "list_embedding_blocked_webhook_delivery_ids", lambda limit: [3, 4]
+    )
+    monkeypatch.setattr(
+        recovery,
+        "mark_webhook_delivery_status",
+        lambda delivery_id, status, error: marked.append((delivery_id, status, error)),
+    )
+    monkeypatch.setattr(
+        recovery,
+        "publish_pipeline_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
+
+    assert recovery.release_embedding_blocked_webhooks(limit=10) == 2
+    assert marked == [(3, "queued", None), (4, "queued", None)]
+    assert [event[1]["webhook_delivery_id"] for event in events] == [3, 4]
+
+
 def test_recovery_scan_enqueues_pending_document_runs(monkeypatch):
     enqueued = []
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [21, 22])
@@ -180,6 +206,7 @@ def test_recovery_scan_enqueues_due_retrying_document_runs(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
@@ -204,6 +231,7 @@ def test_recovery_scan_enqueues_embedding_build_commands(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
@@ -279,6 +307,7 @@ def test_recovery_scan_enqueues_poll_reconciliation_commands(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
@@ -333,6 +362,7 @@ def test_recovery_scan_enqueues_reindex_commands(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
@@ -453,6 +483,7 @@ def test_recovery_scan_enqueues_review_commits(monkeypatch):
 
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
     monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])

@@ -16,6 +16,7 @@ from app.config import settings
 from app.db import get_conn
 from app.indexer import is_reindexing
 from app.job_events import record_event
+from app.jobs.embedding_gate import latest_embedding_index_status
 from app.pipeline.ocr_correction import configured_ocr_tag_exists, ocr_requested_tag_id
 from app.pipeline.ports import AiProviderGateway
 
@@ -83,12 +84,24 @@ def cancel_poll() -> bool:
 
 
 def _has_embedding_index() -> bool:
-    """Return ``True`` if an index run completed successfully and embeddings exist.
+    """Return ``True`` when the embedding index is ready for document work.
 
-    Legacy readiness check for the old SQLite embedding marker.
+    The event-driven pipeline stores readiness in PostgreSQL
+    ``embedding_index_state``.  When that durable state exists it is the source
+    of truth, even if the reported embedded/total counters differ because some
+    Paperless documents are intentionally not indexed yet.
 
-    Event-driven processing uses PostgreSQL ``embedding_index_state`` instead.
+    Older local/CLI installs only have the legacy SQLite completion marker, so
+    fall back to that when the PostgreSQL state is absent or unavailable.
     """
+    try:
+        status = latest_embedding_index_status()
+    except Exception as exc:  # pragma: no cover - defensive fallback for legacy/local installs
+        log.debug("embedding index durable state unavailable; falling back to legacy marker", error=str(exc))
+    else:
+        if status is not None:
+            return status == "complete"
+
     with get_conn() as conn:
         completed = conn.execute(
             "SELECT 1 FROM audit_log WHERE action = 'index_complete' LIMIT 1"

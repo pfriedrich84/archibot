@@ -31,9 +31,11 @@ class PaperlessEventWebhookController extends Controller
         }
 
         $eventType = $this->eventType($payload);
+        $webhookAction = $this->webhookAction($eventType);
         $paperlessModified = $this->paperlessModified($payload);
         $normalizedPayload = [
             'event_type' => $eventType,
+            'webhook_action' => $webhookAction,
             'paperless_document_id' => $documentId,
             'paperless_modified' => $paperlessModified,
         ];
@@ -65,29 +67,33 @@ class PaperlessEventWebhookController extends Controller
             'payload' => [
                 'dedupe_key' => $dedupeKey,
                 'event_type' => $eventType,
+                'webhook_action' => $webhookAction,
                 'status' => $delivery->status,
             ],
         ]);
 
         $startResult = null;
         if (! $duplicate) {
-            try {
-                $startResult = $this->pipelineStarter->start(
-                    triggerSource: 'webhook',
-                    paperlessDocumentId: $documentId,
-                    paperlessModified: $paperlessModified,
-                    webhookDeliveryId: $delivery->id,
-                );
-            } catch (\Throwable $exception) {
-                $this->recordPipelineStartFailure($delivery, $exception::class);
+            if ($webhookAction === 'process_document') {
+                try {
+                    $startResult = $this->pipelineStarter->start(
+                        triggerSource: 'webhook',
+                        paperlessDocumentId: $documentId,
+                        paperlessModified: $paperlessModified,
+                        webhookDeliveryId: $delivery->id,
+                    );
+                } catch (\Throwable $exception) {
+                    $this->recordPipelineStartFailure($delivery, $exception::class);
 
-                return response()->json([
-                    'status' => 'pipeline_start_failed',
-                    'retry' => true,
-                    'duplicate' => false,
-                    'document_id' => $documentId,
-                    'webhook_delivery_id' => $delivery->id,
-                ], 503);
+                    return response()->json([
+                        'status' => 'pipeline_start_failed',
+                        'retry' => true,
+                        'duplicate' => false,
+                        'document_id' => $documentId,
+                        'webhook_delivery_id' => $delivery->id,
+                        'webhook_action' => $webhookAction,
+                    ], 503);
+                }
             }
 
             $enqueueResult = $this->attemptDirectEnqueue($delivery);
@@ -98,7 +104,7 @@ class PaperlessEventWebhookController extends Controller
                     $documentId,
                     $delivery,
                     $startResult,
-                    ['retry' => true],
+                    ['retry' => true, 'webhook_action' => $webhookAction],
                 ), 503);
             }
         }
@@ -107,6 +113,7 @@ class PaperlessEventWebhookController extends Controller
             'webhook_delivery_id' => $delivery->id,
             'paperless_document_id' => $documentId,
             'event_type' => $eventType,
+            'webhook_action' => $webhookAction,
             'duplicate' => $duplicate,
             'pipeline_run_id' => $startResult?->pipelineRun->id,
             'pipeline_outcome' => $startResult?->outcome,
@@ -118,6 +125,7 @@ class PaperlessEventWebhookController extends Controller
             $documentId,
             $delivery,
             $startResult,
+            ['webhook_action' => $webhookAction],
         ));
     }
 
@@ -147,7 +155,21 @@ class PaperlessEventWebhookController extends Controller
             return is_array($json) ? $json : [];
         }
 
-        return $request->except(array_keys($request->allFiles()));
+        $payload = [];
+        foreach ($request->except(array_keys($request->allFiles())) as $key => $value) {
+            if (is_string($value)) {
+                $decoded = json_decode($value, true);
+                if (is_array($decoded)) {
+                    $payload = array_replace_recursive($payload, $decoded);
+
+                    continue;
+                }
+            }
+
+            $payload[$key] = $value;
+        }
+
+        return $payload;
     }
 
     /**
@@ -172,7 +194,45 @@ class PaperlessEventWebhookController extends Controller
     {
         $event = Arr::get($payload, 'event') ?? Arr::get($payload, 'action') ?? Arr::get($payload, 'type');
 
-        return Str::of((string) ($event ?: 'document.changed'))->lower()->replace(' ', '_')->toString();
+        return Str::of((string) ($event ?: 'document.created'))->lower()->replace(' ', '_')->toString();
+    }
+
+    private function webhookAction(string $eventType): string
+    {
+        $normalized = $this->normalizedEventType($eventType);
+
+        if ($this->eventTypeContainsAny($normalized, ['delete', 'deleted', 'trash', 'trashed'])) {
+            return 'delete_embedding';
+        }
+
+        if ($this->eventTypeContainsAny($normalized, ['create', 'created', 'added', 'new', 'consume', 'consumed', 'import', 'imported'])) {
+            return 'process_document';
+        }
+
+        if ($this->eventTypeContainsAny($normalized, ['update', 'updated', 'change', 'changed', 'modify', 'modified', 'edit', 'edited'])) {
+            return 'refresh_embedding';
+        }
+
+        return 'process_document';
+    }
+
+    private function normalizedEventType(string $eventType): string
+    {
+        return Str::of($eventType)->lower()->replace(['.', '-', ' '], '_')->toString();
+    }
+
+    /**
+     * @param  array<int, string>  $needles
+     */
+    private function eventTypeContainsAny(string $normalizedEventType, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($normalizedEventType, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -7,12 +7,14 @@ use App\Models\AuditLog;
 use App\Models\SetupState;
 use App\Models\User;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Paperless\PaperlessUnavailableException;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
 use RuntimeException;
@@ -69,6 +71,10 @@ class FortifyServiceProvider extends ServiceProvider
                 $client = new PaperlessClient($paperlessUrl);
                 $token = $client->createToken($username, $password);
                 $paperlessUser = $client->currentUser($token, $username);
+            } catch (PaperlessUnavailableException) {
+                throw ValidationException::withMessages([
+                    'username' => 'Paperless server is not reachable.',
+                ]);
             } catch (RuntimeException) {
                 return null;
             }

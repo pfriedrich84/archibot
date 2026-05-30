@@ -146,7 +146,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertStringNotContainsString('header-secret', json_encode($delivery->headers));
     }
 
-    public function test_event_webhook_deduplicates_identical_delivery_without_second_start(): void
+    public function test_event_webhook_deduplicates_identical_embedding_refresh_delivery_without_pipeline_start(): void
     {
         $this->markEmbeddingIndexComplete();
         $payload = [
@@ -157,20 +157,21 @@ class PaperlessEventWebhookTest extends TestCase
         $this->postJson(route('api.webhooks.paperless'), $payload)->assertOk()->assertJson([
             'status' => 'queued',
             'duplicate' => false,
-            'pipeline_outcome' => 'created',
-        ]);
+            'webhook_action' => 'refresh_embedding',
+        ])->assertJsonMissing(['pipeline_outcome' => 'created']);
         $this->postJson(route('api.webhooks.paperless'), $payload)->assertOk()->assertJson([
             'status' => 'duplicate',
             'duplicate' => true,
+            'webhook_action' => 'refresh_embedding',
         ])->assertJsonMissing(['pipeline_outcome' => 'created']);
 
         $this->assertDatabaseCount('webhook_deliveries', 1);
-        $this->assertDatabaseCount('pipeline_runs', 1);
+        $this->assertDatabaseCount('pipeline_runs', 0);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'webhook.duplicate']);
-        $this->assertDatabaseCount('pipeline_events', 3);
+        $this->assertDatabaseCount('pipeline_events', 2);
     }
 
-    public function test_same_document_and_modified_time_coalesces_distinct_deliveries_into_one_run(): void
+    public function test_updated_delivery_refreshes_embedding_without_coalescing_a_document_run(): void
     {
         $this->markEmbeddingIndexComplete();
 
@@ -183,24 +184,25 @@ class PaperlessEventWebhookTest extends TestCase
             'event' => 'document_updated',
             'object' => ['id' => 7, 'modified' => '2026-05-08T13:00:00Z'],
             'changed_field' => 'title',
-        ])->assertOk()->assertJson(['pipeline_outcome' => 'coalesced']);
+        ])->assertOk()->assertJson(['webhook_action' => 'refresh_embedding'])
+            ->assertJsonMissing(['pipeline_outcome' => 'coalesced']);
 
         $this->assertDatabaseCount('webhook_deliveries', 2);
         $this->assertDatabaseCount('pipeline_runs', 1);
-        $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
+        $this->assertDatabaseMissing('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
     }
 
-    public function test_changed_modified_time_creates_second_pipeline_run(): void
+    public function test_changed_modified_time_creates_second_pipeline_run_for_create_events(): void
     {
         $this->markEmbeddingIndexComplete();
 
         $this->postJson(route('api.webhooks.paperless'), [
-            'event' => 'document_updated',
+            'event' => 'document_created',
             'object' => ['id' => 7, 'modified' => '2026-05-08T13:00:00Z'],
         ])->assertOk()->assertJson(['pipeline_outcome' => 'created']);
 
         $this->postJson(route('api.webhooks.paperless'), [
-            'event' => 'document_updated',
+            'event' => 'document_created',
             'object' => ['id' => 7, 'modified' => '2026-05-08T14:00:00Z'],
         ])->assertOk()->assertJson(['pipeline_outcome' => 'created']);
 
@@ -296,7 +298,7 @@ class PaperlessEventWebhookTest extends TestCase
             (string) WebhookDelivery::query()->firstOrFail()->id,
         ], 1);
         $this->assertDatabaseCount('webhook_deliveries', 1);
-        $this->assertDatabaseCount('pipeline_runs', 1);
+        $this->assertDatabaseCount('pipeline_runs', 0);
     }
 
     public function test_event_webhook_requires_secret_when_configured(): void
