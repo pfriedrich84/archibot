@@ -162,6 +162,17 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
                     tags=[99],
                     modified=None,
                 ),
+                SimpleNamespace(
+                    id=4,
+                    title="",
+                    content="",
+                    created_date=None,
+                    correspondent=None,
+                    document_type=None,
+                    storage_path=None,
+                    tags=[],
+                    modified=None,
+                ),
             ]
 
         async def aclose(self):

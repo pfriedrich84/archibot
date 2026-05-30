@@ -364,11 +364,11 @@ def init_db() -> None:
     """Create the database file, apply the schema, and run migrations."""
     db_path = settings.db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    log.info("initializing database", path=str(db_path))
+    log.debug("initializing legacy SQLite database", path=str(db_path))
     with _connect(db_path) as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
-    log.info("database ready")
+    log.debug("legacy SQLite database ready")
 
 
 def mark_setup_complete() -> None:

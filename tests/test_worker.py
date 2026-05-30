@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import structlog
 
+import app.worker as worker
 from app.db import EMBED_DIM
 from app.models import PaperlessDocument
 from app.pipeline.document_processing import (
@@ -22,6 +23,18 @@ from app.pipeline.document_processing import (
     upsert_tag_proposal,
 )
 from app.worker import poll_inbox
+
+
+class TestEmbeddingIndexReadiness:
+    def test_durable_complete_status_allows_poll_even_without_legacy_marker(self, monkeypatch):
+        monkeypatch.setattr(worker, "latest_embedding_index_status", lambda: "complete")
+
+        assert worker._has_embedding_index() is True
+
+    def test_durable_building_status_blocks_poll_before_legacy_fallback(self, monkeypatch):
+        monkeypatch.setattr(worker, "latest_embedding_index_status", lambda: "building")
+
+        assert worker._has_embedding_index() is False
 
 
 class TestResolveEntity:

@@ -1,8 +1,13 @@
 """Tests for database schema and operations."""
 
 import sqlite3
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
+import structlog
+
+from app import db
 
 
 class TestSchema:
@@ -121,3 +126,26 @@ class TestSchema:
                 VALUES (1, '2024-01-02', '2024-01-02', 'pending')
                 """
             )
+
+
+@contextmanager
+def _fake_connection():
+    class FakeConnection:
+        def executescript(self, _schema: str) -> None:
+            return None
+
+    yield FakeConnection()
+
+
+def test_init_db_does_not_emit_info_noise(monkeypatch, tmp_path):
+    """CLI worker jobs should not print routine SQLite setup chatter."""
+    monkeypatch.setattr(db, "settings", SimpleNamespace(db_path=tmp_path / "classifier.db"))
+    monkeypatch.setattr(db, "_connect", lambda _path: _fake_connection())
+    monkeypatch.setattr(db, "_migrate", lambda _conn: None)
+
+    with structlog.testing.capture_logs() as logs:
+        db.init_db()
+
+    messages = [entry.get("event") for entry in logs]
+    assert "initializing database" not in messages
+    assert "database ready" not in messages

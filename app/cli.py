@@ -174,7 +174,9 @@ async def cmd_reindex_embed(
         }
 
     try:
-        _total, count, failed = await _build_pgvector_embeddings(build.id, None, None)
+        total, count, failed = await _build_pgvector_embeddings(build.id, None, None)
+        progress.total = total
+        progress.done = count + failed
         finish_embedding_index_build(
             build.id,
             status="complete" if failed == 0 else "failed",

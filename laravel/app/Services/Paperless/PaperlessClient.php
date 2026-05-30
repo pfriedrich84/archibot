@@ -2,6 +2,7 @@
 
 namespace App\Services\Paperless;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -17,10 +18,18 @@ class PaperlessClient
      */
     public function createToken(string $username, string $password): string
     {
-        $response = $this->request()->post('/api/token/', [
-            'username' => $username,
-            'password' => $password,
-        ]);
+        try {
+            $response = $this->request()->post('/api/token/', [
+                'username' => $username,
+                'password' => $password,
+            ]);
+        } catch (ConnectionException $exception) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.', previous: $exception);
+        }
+
+        if ($response->serverError()) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.');
+        }
 
         if (! $response->successful()) {
             throw new RuntimeException('Paperless username/password authentication failed.');
@@ -206,6 +215,10 @@ class PaperlessClient
             if ($user instanceof PaperlessUser) {
                 return $user;
             }
+        }
+
+        if ($response->serverError()) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.');
         }
 
         if (! $response->successful()) {
