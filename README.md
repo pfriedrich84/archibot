@@ -14,6 +14,8 @@ KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/)
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach Freigabe (manuell oder ab einer Confidence-Schwelle) in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
+Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür werden auch ähnliche bereits klassifizierte Dokumente über die Vektordatenbank ermittelt (Hybrid Search mit Distance und Keyword)
+
 ## Features
 
 - 🔍 Event-driven Verarbeitung via Paperless-Webhooks plus Polling-Reconciliation fuer Dokumente mit Tag `Posteingang`
