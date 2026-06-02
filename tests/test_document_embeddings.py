@@ -153,5 +153,7 @@ async def test_find_similar_filters_loaded_inbox_documents(monkeypatch):
     )
 
     assert results == [
-        SimilarDocument(document=PaperlessDocument(id=7, title="Doc 7", content="Text"), distance=0.1)
+        SimilarDocument(
+            document=PaperlessDocument(id=7, title="Doc 7", content="Text"), distance=0.1
+        )
     ]

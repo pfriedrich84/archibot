@@ -127,33 +127,37 @@ class OllamaClient:
         return "classification"
 
     async def unload_model(self, model: str, *, swap: bool = False) -> None:
-        """Unload a model from VRAM via keep_alive=0.
+        """Unload a native Ollama model and optionally wait before a role swap.
 
-        When *swap* is True, wait ``ollama_model_swap_delay`` seconds after
-        unloading so the GPU can fully free memory before the next model loads.
+        ``swap=True`` means the pipeline is about to switch model roles (for
+        example embedding -> classification).  The configured delay is honored
+        for all provider types: native Ollama unloads first, while
+        OpenAI-compatible/local gateways cannot be unloaded through this client
+        but may still need time to release or swap accelerator memory.
         Terminal cleanup calls should leave *swap* as False to avoid needless
         latency.
         """
         provider = self._provider_for_role(self._role_for_model(model))
-        if self._provider_type(provider) == "openai_compatible":
+        provider_type = self._provider_type(provider)
+        if provider_type == "openai_compatible":
             log.debug("model unload skipped for OpenAI-compatible provider", model=model)
-            return
+        else:
+            try:
+                await self._client_for_provider(provider).post(
+                    "/api/generate",
+                    json={"model": model, "keep_alive": 0},
+                )
+                log.info("model unloaded", model=model)
+            except Exception as exc:
+                log.warning("failed to unload model", model=model, error=str(exc))
 
-        try:
-            await self._client_for_provider(provider).post(
-                "/api/generate",
-                json={"model": model, "keep_alive": 0},
-            )
-            log.info("model unloaded", model=model)
-        except Exception as exc:
-            log.warning("failed to unload model", model=model, error=str(exc))
-        # Give the GPU time to fully free memory before loading the next model.
-        # Without this delay, Ollama's GPU discovery may timeout and use stale
-        # VRAM readings, leading to suboptimal GPU/CPU weight distribution.
+        # Give local AI backends time to free accelerator memory before loading
+        # the next role's model. Without this delay, GPU discovery/scheduling may
+        # observe stale VRAM readings and choose a poor GPU/CPU split.
         if swap:
             delay = settings.ollama_model_swap_delay
             if delay > 0:
-                log.debug("waiting for GPU memory recovery", delay_s=delay)
+                log.debug("waiting after AI model swap", delay_s=delay, provider_type=provider_type)
                 await asyncio.sleep(delay)
 
     def _auth_headers(self, provider: dict[str, str] | None = None) -> dict[str, str]:
@@ -196,18 +200,27 @@ class OllamaClient:
             raise ValueError("Ollama returned empty content")
 
         parse_err: json.JSONDecodeError | None = None
+        decoder = json.JSONDecoder()
+
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:
             parse_err = exc
 
-        # Some models wrap JSON in markdown fences despite format="json"
-        stripped = _strip_markdown_fences(content)
-        if stripped != content:
+        # Some local OpenAI-compatible backends occasionally append a second
+        # object or explanatory text after a complete JSON object. Accept the
+        # first well-formed object instead of failing with "Extra data".
+        for candidate in (content, _strip_markdown_fences(content)):
+            start = candidate.find("{")
+            if start == -1:
+                continue
             try:
-                return json.loads(stripped)
+                parsed, _end = decoder.raw_decode(candidate[start:])
             except json.JSONDecodeError as exc:
                 parse_err = exc
+                continue
+            if isinstance(parsed, dict):
+                return parsed
 
         msg = "ollama vision returned invalid json" if vision else "ollama returned invalid json"
         log.error(

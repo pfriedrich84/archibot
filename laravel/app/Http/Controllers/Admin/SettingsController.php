@@ -60,11 +60,9 @@ class SettingsController extends Controller
         $this->authorizeAdmin($request);
 
         $validated = $request->validate([
-            'provider_id' => ['nullable', 'string'],
             'llm_provider' => ['nullable', Rule::in(['ollama', 'openai_compatible'])],
             'ollama_url' => ['nullable', 'url:http,https'],
             'openai_api_key' => ['nullable', 'string'],
-            'ai_provider_profiles' => ['nullable', 'string'],
         ]);
 
         $provider = $this->resolveAiProvider($validated);
@@ -86,7 +84,7 @@ class SettingsController extends Controller
             ];
         } catch (\RuntimeException $exception) {
             throw ValidationException::withMessages([
-                'provider_id' => $exception->getMessage(),
+                'llm_provider' => $exception->getMessage(),
             ]);
         }
     }
@@ -230,75 +228,14 @@ class SettingsController extends Controller
      */
     private function resolveAiProvider(array $input): array
     {
-        $profiles = [
-            'default' => [
-                'id' => 'default',
-                'label' => 'Default AI provider',
-                'type' => (string) ($input['llm_provider'] ?? AppSetting::getValue('llm.provider', 'ollama')),
-                'base_url' => rtrim((string) ($input['ollama_url'] ?? AppSetting::getValue('ollama.url', 'http://ollama:11434')), '/'),
-                'api_key' => (string) (($input['openai_api_key'] ?? '') ?: AppSetting::getValue('llm.openai_api_key', '')),
-                'is_cloud' => false,
-            ],
+        return [
+            'id' => 'default',
+            'label' => 'Configured AI provider',
+            'type' => (string) ($input['llm_provider'] ?? AppSetting::getValue('llm.provider', 'ollama')),
+            'base_url' => rtrim((string) ($input['ollama_url'] ?? AppSetting::getValue('ollama.url', 'http://ollama:11434')), '/'),
+            'api_key' => (string) (($input['openai_api_key'] ?? '') ?: AppSetting::getValue('llm.openai_api_key', '')),
+            'is_cloud' => false,
         ];
-
-        foreach ($this->decodeAiProviderProfiles((string) ($input['ai_provider_profiles'] ?? AppSetting::getValue('llm.provider_profiles', ''))) as $profile) {
-            $profiles[$profile['id']] = $profile;
-        }
-
-        $providerId = trim((string) ($input['provider_id'] ?? '')) ?: 'default';
-
-        if (! isset($profiles[$providerId])) {
-            throw ValidationException::withMessages([
-                'provider_id' => "AI provider profile '{$providerId}' was not found.",
-            ]);
-        }
-
-        return $profiles[$providerId];
-    }
-
-    /**
-     * @return array<int, array{id: string, label: string, type: string, base_url: string, api_key: string, is_cloud: bool}>
-     */
-    private function decodeAiProviderProfiles(string $json): array
-    {
-        $json = trim($json);
-        if ($json === '') {
-            return [];
-        }
-
-        $decoded = json_decode($json, true);
-        if (! is_array($decoded)) {
-            throw ValidationException::withMessages([
-                'ai_provider_profiles' => 'Provider profiles must be a JSON array.',
-            ]);
-        }
-
-        $profiles = [];
-        foreach ($decoded as $profile) {
-            if (! is_array($profile)) {
-                continue;
-            }
-
-            $id = trim((string) ($profile['id'] ?? ''));
-            $type = strtolower(trim((string) ($profile['type'] ?? '')));
-            $baseUrl = rtrim(trim((string) ($profile['base_url'] ?? '')), '/');
-
-            if ($id === '' || ! in_array($type, ['ollama', 'openai_compatible'], true) || $baseUrl === '') {
-                continue;
-            }
-
-            $apiKeyEnv = trim((string) ($profile['api_key_env'] ?? ''));
-            $profiles[] = [
-                'id' => $id,
-                'label' => trim((string) ($profile['label'] ?? $id)) ?: $id,
-                'type' => $type,
-                'base_url' => $baseUrl,
-                'api_key' => $apiKeyEnv !== '' ? (string) env($apiKeyEnv, '') : (string) ($profile['api_key'] ?? ''),
-                'is_cloud' => filter_var($profile['is_cloud'] ?? false, FILTER_VALIDATE_BOOL),
-            ];
-        }
-
-        return $profiles;
     }
 
     /** @return array<int, array{id: int, label: string}> */

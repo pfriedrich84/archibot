@@ -25,6 +25,7 @@ class SettingsCatalog
     public function groupedForDisplay(): array
     {
         return collect($this->definitions())
+            ->reject(fn (array $definition): bool => (bool) ($definition['hidden'] ?? false))
             ->map(function (array $definition, string $key): array {
                 $sensitive = (bool) ($definition['sensitive'] ?? false);
                 $stored = AppSetting::query()->where('key', $key)->first();

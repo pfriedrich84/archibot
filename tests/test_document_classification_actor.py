@@ -39,10 +39,13 @@ async def test_classify_document_fetches_entities_and_calls_classifier(monkeypat
     monkeypatch.setattr(document, "OllamaClient", FakeOllama)
     monkeypatch.setattr(document, "classify", fake_classify)
 
-    result, raw = await document._classify_document(target)
+    outcome = await document._classify_document(target)
 
-    assert result.title == "Classified"
-    assert raw == "{}"
+    assert outcome.result.title == "Classified"
+    assert outcome.raw_response == "{}"
+    assert outcome.document is target
+    assert outcome.context_documents == []
+    assert outcome.context_count == 0
     assert calls[0][0] is target
     assert calls[0][1] == []
     assert calls[0][2] == ["corr"]

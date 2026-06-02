@@ -30,7 +30,6 @@
         llm_provider: string | null;
         ollama_or_provider_configured: boolean;
         ocr_mode: string | null;
-        active_provider_roles: { role: string; provider: string }[];
     };
 
     type Counts = {
@@ -443,15 +442,6 @@
                         </li>
                     {/each}
                 </ul>
-            </div>
-        {/if}
-
-        {#if status.active_provider_roles.length}
-            <div class="mt-4 text-xs text-muted-foreground">
-                Provider roles:
-                {status.active_provider_roles
-                    .map((role) => `${role.role}: ${role.provider}`)
-                    .join(' · ')}
             </div>
         {/if}
     </section>

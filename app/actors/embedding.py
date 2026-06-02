@@ -77,7 +77,9 @@ async def _build_pgvector_embeddings(
                         document_type_id=document.document_type,
                         storage_path_id=document.storage_path,
                         tags=document.tags,
-                        paperless_modified=str(document.modified) if document.modified is not None else None,
+                        paperless_modified=str(document.modified)
+                        if document.modified is not None
+                        else None,
                         trusted_for_context=True,
                     )
                 )

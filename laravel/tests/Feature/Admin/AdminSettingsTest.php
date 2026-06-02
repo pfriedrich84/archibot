@@ -114,6 +114,7 @@ class AdminSettingsTest extends TestCase
             'mcp_laravel_path' => '/app/laravel',
             'mcp_laravel_php_binary' => 'php8.3',
             'mcp_classify_rate_limit' => '25',
+            'ollama_model_swap_delay' => '60',
         ]);
 
         $response->assertRedirect();
@@ -130,6 +131,8 @@ class AdminSettingsTest extends TestCase
         $this->assertStringContainsString('MCP_LARAVEL_PATH=/app/laravel', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_PHP_BINARY=php8.3', $runtimeConfig);
         $this->assertStringContainsString('MCP_CLASSIFY_RATE_LIMIT=25', $runtimeConfig);
+        $this->assertStringContainsString('AI_MODEL_SWAP_DELAY=60', $runtimeConfig);
+        $this->assertStringContainsString('OLLAMA_MODEL_SWAP_DELAY=60', $runtimeConfig);
     }
 
     public function test_admin_can_load_ai_models_for_default_provider(): void
@@ -146,46 +149,12 @@ class AdminSettingsTest extends TestCase
         ]);
 
         $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
-            'provider_id' => 'default',
             'llm_provider' => 'ollama',
             'ollama_url' => 'http://ollama.test:11434',
         ])->assertOk()
             ->assertJsonPath('provider.id', 'default')
             ->assertJsonPath('items.0', 'nomic-embed-text:latest')
             ->assertJsonPath('items.1', 'qwen3:4b');
-    }
-
-    public function test_admin_can_load_ai_models_for_named_openai_provider(): void
-    {
-        $admin = User::factory()->create(['is_admin' => true]);
-
-        Http::fake([
-            '*openrouter.ai/api/v1/models' => Http::response([
-                'data' => [
-                    ['id' => 'openai/gpt-4o-mini'],
-                    ['id' => 'anthropic/claude-3.5-sonnet'],
-                ],
-            ]),
-        ]);
-
-        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
-            'provider_id' => 'openrouter',
-            'ai_provider_profiles' => json_encode([
-                [
-                    'id' => 'openrouter',
-                    'type' => 'openai_compatible',
-                    'base_url' => 'https://openrouter.ai/api/v1',
-                    'api_key' => 'test-token',
-                    'is_cloud' => true,
-                ],
-            ]),
-        ])->assertOk()
-            ->assertJsonPath('provider.id', 'openrouter')
-            ->assertJsonPath('provider.is_cloud', true)
-            ->assertJsonPath('items.0', 'anthropic/claude-3.5-sonnet')
-            ->assertJsonPath('items.1', 'openai/gpt-4o-mini');
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-token'));
     }
 
     public function test_admin_can_update_and_reset_prompt_overrides(): void

@@ -10,7 +10,6 @@ import httpx
 import pytest
 
 from app.clients.ollama import OllamaClient
-from app.config import settings
 from app.db import EMBED_DIM
 
 
@@ -97,85 +96,23 @@ async def test_openai_compatible_chat_json_parses_choice_content(client: OllamaC
     assert payload["messages"][0] == {"role": "system", "content": "system"}
 
 
-async def test_embed_uses_embedding_provider_profile(client: OllamaClient, monkeypatch):
-    monkeypatch.setattr(
-        settings,
-        "ai_provider_profiles",
-        json.dumps(
-            [
-                {
-                    "id": "local-litellm",
-                    "type": "openai_compatible",
-                    "base_url": "http://litellm:4000/v1",
-                    "api_key_env": "LOCAL_LITELLM_API_KEY",
-                }
-            ]
-        ),
-    )
-    monkeypatch.setenv("LOCAL_LITELLM_API_KEY", "local-token")
-    monkeypatch.setattr(settings, "embedding_provider", "local-litellm")
-    embedding = [0.1] * EMBED_DIM
-    embed_client = AsyncMock()
-    embed_client.post = AsyncMock(
+async def test_chat_json_accepts_first_object_when_backend_appends_extra_json(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock(
         return_value=httpx.Response(
             200,
-            json={"data": [{"embedding": embedding}]},
-            request=httpx.Request("POST", "http://litellm:4000/v1/embeddings"),
+            json={
+                "choices": [
+                    {"message": {"content": '{"title":"A","confidence":75}\n{"extra":"ignored"}'}}
+                ]
+            },
+            request=httpx.Request("POST", "http://test/v1/chat/completions"),
         )
     )
-    client._clients = {"http://litellm:4000/v1": embed_client}
 
-    result = await client.embed("hello world")
+    result = await client.chat_json(system="system", user="user")
 
-    assert result == embedding
-    embed_client.post.assert_awaited_once_with(
-        "/embeddings",
-        json={
-            "model": "test-embed",
-            "input": "hello world",
-            "encoding_format": "float",
-        },
-        headers={"Authorization": "Bearer local-token"},
-    )
-    client._client.post.assert_not_called()
-
-
-async def test_chat_json_uses_judge_provider_role(client: OllamaClient, monkeypatch):
-    monkeypatch.setattr(
-        settings,
-        "ai_provider_profiles",
-        json.dumps(
-            [
-                {
-                    "id": "openrouter",
-                    "type": "openai_compatible",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "api_key_env": "OPENROUTER_API_KEY",
-                    "is_cloud": True,
-                }
-            ]
-        ),
-    )
-    monkeypatch.setenv("OPENROUTER_API_KEY", "router-token")
-    monkeypatch.setattr(settings, "judge_provider", "openrouter")
-    judge_client = AsyncMock()
-    judge_client.post = AsyncMock(
-        return_value=httpx.Response(
-            200,
-            json={"choices": [{"message": {"content": json.dumps({"verdict": "ok"})}}]},
-            request=httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions"),
-        )
-    )
-    client._clients = {"https://openrouter.ai/api/v1": judge_client}
-
-    result = await client.chat_json(system="system", user="user", role="judge")
-
-    assert result == {"verdict": "ok"}
-    judge_client.post.assert_awaited_once()
-    assert judge_client.post.await_args.kwargs["headers"] == {
-        "Authorization": "Bearer router-token"
-    }
-    client._client.post.assert_not_called()
+    assert result == {"title": "A", "confidence": 75}
 
 
 async def test_embed_succeeds_without_retry(client: OllamaClient):
@@ -603,6 +540,23 @@ async def test_unload_model_sleeps_for_swap_delay(client: OllamaClient):
         await client.unload_model("test-model", swap=True)
 
     mock_sleep.assert_awaited_once_with(5.0)
+
+
+async def test_unload_model_sleeps_for_openai_compatible_swap_delay(client: OllamaClient):
+    """OpenAI-compatible/local gateways still honor the inter-role swap delay."""
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock()
+
+    with (
+        patch.object(client, "_provider_for_role", return_value={"type": "openai_compatible"}),
+        patch("app.clients.ollama.settings") as mock_settings,
+        patch("app.clients.ollama.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+    ):
+        mock_settings.ollama_model_swap_delay = 60.0
+        await client.unload_model("test-model", swap=True)
+
+    client._client.post.assert_not_awaited()
+    mock_sleep.assert_awaited_once_with(60.0)
 
 
 async def test_unload_model_skips_sleep_when_zero(client: OllamaClient):

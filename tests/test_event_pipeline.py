@@ -200,7 +200,9 @@ def test_pipeline_start_same_content_coalesces_and_changed_modified_changes_dedu
     created_keys = set()
 
     monkeypatch.setattr("app.jobs.pipeline_start.ensure_embedding_index_ready", lambda: True)
-    monkeypatch.setattr("app.jobs.pipeline_start.publish_pipeline_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.jobs.pipeline_start.publish_pipeline_event", lambda *args, **kwargs: None
+    )
 
     def fake_upsert(**kwargs):
         created = kwargs["pipeline_dedupe_key"] not in created_keys

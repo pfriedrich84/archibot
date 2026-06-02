@@ -160,12 +160,18 @@ async def test_embedding_failure_reports_document_failed_and_continues(
 async def test_reindex_embed_result_reports_failed_document_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_build_embeddings(build_id: int, limit: int | None, actor_execution_id: int | None):
+    async def fake_build_embeddings(
+        build_id: int, limit: int | None, actor_execution_id: int | None
+    ):
         progress = indexer.get_reindex_progress()
         progress.failed_document_ids = [7]
         return (3, 2, 1)
 
-    monkeypatch.setattr(cli, "start_embedding_index_build", lambda **kwargs: type("Build", (), {"id": 55, "already_running": False})())
+    monkeypatch.setattr(
+        cli,
+        "start_embedding_index_build",
+        lambda **kwargs: type("Build", (), {"id": 55, "already_running": False})(),
+    )
     monkeypatch.setattr(cli, "finish_embedding_index_build", lambda *args, **kwargs: None)
     monkeypatch.setattr(cli, "_build_pgvector_embeddings", fake_build_embeddings)
 

@@ -67,54 +67,6 @@ return [
             'sensitive' => true,
             'help' => 'Optional bearer token for OpenAI-compatible local providers.',
         ],
-        'llm.provider_profiles' => [
-            'legacy' => 'ai_provider_profiles',
-            'group' => 'AI Provider',
-            'label' => 'Additional provider profiles (JSON)',
-            'type' => 'textarea',
-            'default' => '',
-            'help' => 'Optional JSON array of named providers. Prefer api_key_env for secrets. Example: [{"id":"local-litellm","type":"openai_compatible","base_url":"http://litellm:4000/v1"},{"id":"openrouter","type":"openai_compatible","base_url":"https://openrouter.ai/api/v1","api_key_env":"OPENROUTER_API_KEY","is_cloud":true}]',
-        ],
-        'llm.classification_provider' => [
-            'legacy' => 'classification_provider',
-            'group' => 'AI Provider',
-            'label' => 'Classification provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for classification. Empty/default uses the main provider.',
-        ],
-        'llm.embedding_provider' => [
-            'legacy' => 'embedding_provider',
-            'group' => 'AI Provider',
-            'label' => 'Embedding provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for embeddings. Keep local unless you intentionally allow document text to leave your machine.',
-        ],
-        'llm.ocr_provider' => [
-            'legacy' => 'ocr_provider',
-            'group' => 'AI Provider',
-            'label' => 'OCR provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for OCR text/vision calls.',
-        ],
-        'llm.judge_provider' => [
-            'legacy' => 'judge_provider',
-            'group' => 'AI Provider',
-            'label' => 'Judge provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for judge verification. Cloud providers may receive document text.',
-        ],
-        'llm.chat_provider' => [
-            'legacy' => 'chat_provider',
-            'group' => 'AI Provider',
-            'label' => 'Chat/RAG provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for conversational chat/RAG.',
-        ],
         'ollama.timeout_seconds' => [
             'legacy' => 'ollama_timeout_seconds',
             'group' => 'AI Provider',
@@ -125,9 +77,10 @@ return [
         'ollama.model_swap_delay' => [
             'legacy' => 'ollama_model_swap_delay',
             'group' => 'AI Provider',
-            'label' => 'Ollama model swap delay seconds',
+            'label' => 'AI model swap delay seconds',
             'type' => 'number',
             'default' => '8',
+            'help' => 'Seconds to wait between AI model-role phases. Native Ollama unloads first; OpenAI-compatible/local gateways still honor the wait.',
         ],
 
         'ocr.mode' => [
@@ -317,7 +270,7 @@ return [
             'label' => 'External base URL',
             'type' => 'url',
             'default' => '',
-            'help' => 'Public ArchiBot URL used for links generated outside the web UI.'
+            'help' => 'Public ArchiBot URL used for links generated outside the web UI.',
         ],
         'gui.timezone' => [
             'legacy' => 'app_timezone',
@@ -335,7 +288,6 @@ return [
             'default' => 'dd.mm.yyyy hh:mm:ss',
             'help' => 'Timestamp display format. Supported tokens: dd, mm, yyyy, hh, MM, ss (default: dd.mm.yyyy hh:mm:ss).',
         ],
-
 
         'webhook.secret' => [
             'legacy' => 'webhook_secret',

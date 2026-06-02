@@ -92,7 +92,9 @@ def test_reset_without_include_config_keeps_env(data_dir: Path) -> None:
     assert config_env.exists()
 
 
-def test_reset_stops_when_laravel_reset_fails(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reset_stops_when_laravel_reset_fails(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Legacy cleanup does not run when the canonical Laravel reset fails."""
     db, _, _ = _create_db_files(data_dir)
     monkeypatch.setattr(

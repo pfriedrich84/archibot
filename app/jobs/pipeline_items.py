@@ -149,7 +149,9 @@ def start_or_resume_pipeline_item(
     if row is None:  # pragma: no cover - PostgreSQL RETURNING should always return here
         raise RuntimeError("pipeline item upsert did not return a row")
 
-    return PipelineItemRecord(id=int(row["id"]), status=str(row["status"]), attempt=int(row["attempt"]))
+    return PipelineItemRecord(
+        id=int(row["id"]), status=str(row["status"]), attempt=int(row["attempt"])
+    )
 
 
 def finish_pipeline_item(item_id: int, *, status: str, error: str | None = None) -> None:

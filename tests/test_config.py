@@ -23,6 +23,7 @@ def test_prompts_dir_prefers_source_tree():
         ("PAPERLESS_INBOX_TAG_ID", "paperless_inbox_tag_id", 0),
         ("PAPERLESS_PROCESSED_TAG_ID", "paperless_processed_tag_id", None),
         ("OLLAMA_MODEL_SWAP_DELAY", "ollama_model_swap_delay", 8.0),
+        ("AI_MODEL_SWAP_DELAY", "ollama_model_swap_delay", 8.0),
     ],
 )
 def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_name, expected):
@@ -50,6 +51,7 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
         ("EMBEDDING_DOCUMENT_TIMEOUT_SECONDS", "embedding_document_timeout_seconds", 123),
         ("OCR_CONTEXT_WINDOW", "ollama_ocr_num_ctx", 8192),
         ("OPENAI_BASE_URL", "ollama_url", "http://10.10.0.4:4000/v1"),
+        ("AI_MODEL_SWAP_DELAY", "ollama_model_swap_delay", 60.0),
     ],
 )
 def test_friendly_ai_env_aliases(monkeypatch, env_name, field_name, expected):
@@ -100,13 +102,15 @@ def test_config_env_accepts_friendly_ai_aliases(tmp_path):
     (tmp_path / "config.env").write_text(
         "ARCHIBOT_EMBEDDING_MODEL=qwen3-embedding-4b-local\n"
         "EMBEDDING_CONTEXT_WINDOW=4096\n"
-        "OPENAI_BASE_URL=http://10.10.0.4:4000/v1\n",
+        "OPENAI_BASE_URL=http://10.10.0.4:4000/v1\n"
+        "AI_MODEL_SWAP_DELAY=60\n",
         encoding="utf-8",
     )
     original_data_dir = config_module.settings.data_dir
     original_model = config_module.settings.ollama_embed_model
     original_context = config_module.settings.ollama_embed_num_ctx
     original_url = config_module.settings.ollama_url
+    original_swap_delay = config_module.settings.ollama_model_swap_delay
     object.__setattr__(config_module.settings, "data_dir", str(tmp_path))
 
     config_module._apply_config_env_overrides()
@@ -114,11 +118,13 @@ def test_config_env_accepts_friendly_ai_aliases(tmp_path):
     assert config_module.settings.ollama_embed_model == "qwen3-embedding-4b-local"
     assert config_module.settings.ollama_embed_num_ctx == 4096
     assert config_module.settings.ollama_url == "http://10.10.0.4:4000/v1"
+    assert config_module.settings.ollama_model_swap_delay == 60.0
 
     object.__setattr__(config_module.settings, "data_dir", original_data_dir)
     object.__setattr__(config_module.settings, "ollama_embed_model", original_model)
     object.__setattr__(config_module.settings, "ollama_embed_num_ctx", original_context)
     object.__setattr__(config_module.settings, "ollama_url", original_url)
+    object.__setattr__(config_module.settings, "ollama_model_swap_delay", original_swap_delay)
 
 
 def test_blank_config_env_secret_does_not_override_existing_env_value(tmp_path, monkeypatch):

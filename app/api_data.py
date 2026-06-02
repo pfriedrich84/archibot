@@ -514,13 +514,6 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             "paperless_configured": bool(settings.paperless_url and settings.paperless_token),
             "ollama_configured": bool(settings.ollama_url),
             "llm_provider": settings.llm_provider,
-            "ai_provider_roles": {
-                "classification": settings.provider_id_for_role("classification"),
-                "embedding": settings.provider_id_for_role("embedding"),
-                "ocr": settings.provider_id_for_role("ocr"),
-                "judge": settings.provider_id_for_role("judge"),
-                "chat": settings.provider_id_for_role("chat"),
-            },
             "ocr_mode": settings.ocr_mode,
             "poll_interval_seconds": settings.poll_interval_seconds,
             "auto_commit_confidence": settings.auto_commit_confidence,
@@ -554,14 +547,6 @@ def get_system_status(app: Any) -> dict[str, Any]:
             "ollama": {
                 "configured": bool(settings.ollama_url),
                 "provider": settings.llm_provider,
-                "provider_profiles": list(settings.ai_provider_profiles_resolved.keys()),
-                "provider_roles": {
-                    "classification": settings.provider_id_for_role("classification"),
-                    "embedding": settings.provider_id_for_role("embedding"),
-                    "ocr": settings.provider_id_for_role("ocr"),
-                    "judge": settings.provider_id_for_role("judge"),
-                    "chat": settings.provider_id_for_role("chat"),
-                },
                 "url": settings.ollama_url,
                 "model": settings.ollama_model,
                 "ocr_model": settings.ollama_ocr_model,

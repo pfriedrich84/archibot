@@ -89,7 +89,6 @@
         paperlessTagOptions: PaperlessTagOption[];
     } = $props();
 
-    let aiModelProviderId = $state('default');
     let aiModelLoading = $state(false);
     let aiModelError = $state('');
     let aiModelItems = $state<string[]>([]);
@@ -174,11 +173,9 @@
                     'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
-                    provider_id: aiModelProviderId,
                     llm_provider: settingValue('llm_provider'),
                     ollama_url: settingValue('ollama_url'),
                     openai_api_key: settingValue('llm_openai_api_key'),
-                    ai_provider_profiles: settingValue('llm_provider_profiles'),
                 }),
             });
 
@@ -238,35 +235,22 @@
             <div>
                 <h2 class="text-lg font-semibold">AI provider model loader</h2>
                 <p class="text-sm text-muted-foreground">
-                    Test the default provider or a named provider profile and
-                    load its currently available model IDs. Unsaved AI provider
-                    fields on this page are included in the check.
+                    Test the configured AI provider and load its currently
+                    available model IDs. Unsaved AI provider fields on this page
+                    are included in the check.
                 </p>
             </div>
 
-            <div class="grid gap-3 md:grid-cols-[1fr_auto]">
-                <div class="grid gap-2">
-                    <Label for="ai_model_provider_id">Provider profile ID</Label
-                    >
-                    <Input
-                        id="ai_model_provider_id"
-                        value={aiModelProviderId}
-                        oninput={(event) =>
-                            (aiModelProviderId = event.currentTarget.value)}
-                        placeholder="default, local-litellm, openrouter"
-                    />
-                </div>
-                <div class="flex items-end">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onclick={loadAiModels}
-                        disabled={aiModelLoading}
-                    >
-                        {#if aiModelLoading}<Spinner />{/if}
-                        Load models
-                    </Button>
-                </div>
+            <div class="flex flex-wrap gap-3">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={loadAiModels}
+                    disabled={aiModelLoading}
+                >
+                    {#if aiModelLoading}<Spinner />{/if}
+                    Test provider and load models
+                </Button>
             </div>
 
             {#if aiModelError}

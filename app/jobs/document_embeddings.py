@@ -91,7 +91,11 @@ def _metadata_value(item: DocumentEmbeddingInput, key: str) -> Any:
 
 
 def _modified_value(item: DocumentEmbeddingInput) -> str | None:
-    value = item.paperless_modified if item.paperless_modified is not None else _metadata_value(item, "modified")
+    value = (
+        item.paperless_modified
+        if item.paperless_modified is not None
+        else _metadata_value(item, "modified")
+    )
     if isinstance(value, datetime):
         return value.isoformat()
     return None if value is None else str(value)
@@ -248,7 +252,7 @@ def find_similar_document_ids(
         FROM (
             SELECT paperless_document_id, {distance_expr} AS distance
             FROM document_embeddings
-            WHERE {' AND '.join(filters)}
+            WHERE {" AND ".join(filters)}
             ORDER BY {distance_expr} ASC
             LIMIT :limit
         ) nearest
