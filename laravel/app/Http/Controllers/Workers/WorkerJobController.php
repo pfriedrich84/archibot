@@ -68,6 +68,12 @@ class WorkerJobController extends Controller
             'jobs' => $jobs,
             'allowedTypes' => WorkerJob::userQueueableTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
+            'quickControls' => [
+                'poll_url' => route('maintenance.poll'),
+                'reindex_url' => route('maintenance.reindex'),
+                'embedding_build_url' => route('embedding-index.build'),
+                'worker_job_store_url' => route('worker-jobs.store'),
+            ],
             'readiness' => [
                 'queued' => WorkerJob::query()->where('status', WorkerJob::STATUS_QUEUED)->count(),
                 'running' => WorkerJob::query()->whereIn('status', WorkerJob::runningStatuses())->count(),
