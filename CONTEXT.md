@@ -28,6 +28,10 @@ _Avoid_: worker job when referring to the target event-driven pipeline
 A temporary Laravel control-plane record for legacy/subprocess execution during migration.
 _Avoid_: pipeline run
 
+**Webhook Delivery**:
+A persisted Paperless webhook receipt normalized by Laravel before Python actors execute the requested ArchiBot action.
+_Avoid_: webhook event when referring to the durable PostgreSQL receipt
+
 ## Relationships
 
 - A **Paperless Document** with the inbox tag is an **Inbox Document**.
@@ -35,6 +39,7 @@ _Avoid_: pipeline run
 - A **Trusted Document** may be embedded and used as classification context.
 - An **Inbox Document** must not be used as trusted classification context.
 - A **Pipeline Run** may produce one **Review Suggestion** for a **Paperless Document**.
+- A **Webhook Delivery** may create or link to one **Pipeline Run** for a **Paperless Document**.
 - A **Worker Job** is temporary migration infrastructure and must not become the permanent **Pipeline Run** model.
 
 ## Example dialogue

@@ -12,6 +12,7 @@ from app.jobs.database import engine
 class WebhookDeliveryRecord:
     id: int
     event_type: str
+    webhook_action: str | None
     paperless_document_id: int
     paperless_modified: str | None
     status: str
@@ -47,9 +48,11 @@ def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | N
         normalized_payload = {}
 
     paperless_modified = normalized_payload.get("paperless_modified")
+    webhook_action = normalized_payload.get("webhook_action")
     return WebhookDeliveryRecord(
         id=int(row["id"]),
         event_type=str(row["event_type"]),
+        webhook_action=None if webhook_action is None else str(webhook_action),
         paperless_document_id=int(row["paperless_document_id"]),
         paperless_modified=None if paperless_modified is None else str(paperless_modified),
         status=str(row["status"]),

@@ -40,55 +40,30 @@ class EmbeddingRefreshResult:
     trusted_for_context: bool | None = None
 
 
-def _normalized_event_type(event_type: str) -> str:
-    return event_type.lower().replace(".", "_").replace("-", "_").replace(" ", "_")
+VALID_WEBHOOK_ACTIONS = frozenset({"process_document", "refresh_embedding", "delete_embedding"})
 
 
-def _contains_any(value: str, tokens: list[str]) -> bool:
-    return any(token in value for token in tokens)
+class InvalidWebhookAction(ValueError):
+    """Raised when persisted webhook delivery action metadata is invalid."""
 
 
-def webhook_action(event_type: str) -> str:
-    """Return the durable action for a Paperless webhook event type.
+def validated_webhook_action(action: str | None) -> str:
+    """Return a persisted Laravel-normalized webhook action or fail closed.
 
-    Creation/consume events start the full ArchiBot classification pipeline.
-    Update/edit events only refresh the pgvector embedding so ArchiBot's own
-    Paperless write-backs do not create classification feedback loops.
+    Laravel owns the Paperless event-type policy at the ingestion seam. Python
+    actors only validate and execute the persisted ArchiBot action.
     """
-    normalized = _normalized_event_type(event_type)
-    if _contains_any(normalized, ["delete", "deleted", "trash", "trashed"]):
-        return "delete_embedding"
-    if _contains_any(
-        normalized,
-        ["create", "created", "added", "new", "consume", "consumed", "import", "imported"],
-    ):
-        return "process_document"
-    if _contains_any(
-        normalized,
-        ["update", "updated", "change", "changed", "modify", "modified", "edit", "edited"],
-    ):
-        return "refresh_embedding"
-    return "process_document"
+    if action not in VALID_WEBHOOK_ACTIONS:
+        raise InvalidWebhookAction(action or "missing")
+    return action
 
 
-def webhook_starts_document_pipeline(event_type: str) -> bool:
-    return webhook_action(event_type) == "process_document"
+def webhook_requests_reprocess(action: str) -> bool:
+    """Return whether the persisted action should force a full document reprocess.
 
-
-def webhook_refreshes_embedding(event_type: str) -> bool:
-    return webhook_action(event_type) == "refresh_embedding"
-
-
-def webhook_deletes_embedding(event_type: str) -> bool:
-    return webhook_action(event_type) == "delete_embedding"
-
-
-def webhook_requests_reprocess(event_type: str) -> bool:
-    """Return whether the webhook should force a full document reprocess.
-
-    Automatic Paperless edit/update webhooks intentionally do not force full
-    reprocessing. They refresh embeddings only; full reprocess remains explicit
-    via creation events, polling for missing work, or an admin action.
+    Automatic Paperless edit/update webhooks are normalized by Laravel to
+    `refresh_embedding`, not `process_document`, so they never force full
+    reprocessing here.
     """
     return False
 
@@ -228,17 +203,42 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             paperless_document_id=delivery.paperless_document_id,
             queue_name=queue_name("webhook"),
         )
-        action = webhook_action(delivery.event_type)
+        try:
+            action = validated_webhook_action(delivery.webhook_action)
+        except InvalidWebhookAction as exc:
+            mark_webhook_delivery_status(
+                webhook_delivery_id, "failed_permanent", "invalid_webhook_action"
+            )
+            finish_actor_execution(
+                actor_execution,
+                status="failed",
+                error_type="invalid_webhook_action",
+                error_message=f"Invalid persisted webhook_action: {exc}",
+            )
+            publish_pipeline_event(
+                types.WEBHOOK_INVALID_ACTION,
+                webhook_delivery_id=webhook_delivery_id,
+                paperless_document_id=delivery.paperless_document_id,
+                level="error",
+                message="Webhook delivery has missing or invalid Laravel-normalized action metadata.",
+                payload={
+                    "event_type": delivery.event_type,
+                    "webhook_action": delivery.webhook_action,
+                    "valid_webhook_actions": sorted(VALID_WEBHOOK_ACTIONS),
+                },
+            )
+            return
+
         publish_pipeline_event(
             types.WEBHOOK_NORMALIZED,
             webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
-            message="Webhook delivery normalized by Dramatiq actor.",
+            message="Webhook delivery normalized by Laravel and accepted by Dramatiq actor.",
             payload={"event_type": delivery.event_type, "webhook_action": action},
         )
 
         if action == "process_document":
-            reprocess_requested = webhook_requests_reprocess(delivery.event_type)
+            reprocess_requested = webhook_requests_reprocess(action)
             result = start_or_attach_document_pipeline(
                 trigger_source="webhook",
                 paperless_document_id=delivery.paperless_document_id,

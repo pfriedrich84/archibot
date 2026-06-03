@@ -43,6 +43,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame('document_created', $delivery->event_type);
         $this->assertSame(42, $delivery->paperless_document_id);
         $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->status);
+        $this->assertSame('process_document', $delivery->normalized_payload['webhook_action']);
         $this->assertSame('2026-05-08T12:00:00Z', $delivery->normalized_payload['paperless_modified']);
 
         $this->assertSame(PipelineRun::STATUS_PENDING, $run->status);

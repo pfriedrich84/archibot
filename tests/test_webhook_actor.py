@@ -4,12 +4,19 @@ from app.jobs.pipeline_start import PipelineStartResult
 from app.jobs.webhook_delivery import WebhookDeliveryRecord
 
 
-def test_webhook_action_policy_routes_updates_to_embedding_refresh_only():
-    assert webhook.webhook_action("document.updated") == "refresh_embedding"
-    assert webhook.webhook_action("document_changed") == "refresh_embedding"
-    assert webhook.webhook_action("document.created") == "process_document"
-    assert webhook.webhook_action("document.deleted") == "delete_embedding"
-    assert webhook.webhook_requests_reprocess("document.updated") is False
+def test_webhook_action_validation_accepts_only_laravel_normalized_actions():
+    assert webhook.validated_webhook_action("refresh_embedding") == "refresh_embedding"
+    assert webhook.validated_webhook_action("process_document") == "process_document"
+    assert webhook.validated_webhook_action("delete_embedding") == "delete_embedding"
+    assert webhook.webhook_requests_reprocess("process_document") is False
+
+    for action in [None, "document.updated", "unknown"]:
+        try:
+            webhook.validated_webhook_action(action)
+        except webhook.InvalidWebhookAction:
+            pass
+        else:  # pragma: no cover - failure path
+            raise AssertionError(f"accepted invalid webhook action: {action}")
 
 
 def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
@@ -24,6 +31,7 @@ def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
         lambda webhook_delivery_id: WebhookDeliveryRecord(
             id=webhook_delivery_id,
             event_type="document.created",
+            webhook_action="process_document",
             paperless_document_id=42,
             paperless_modified="2026-05-08T12:00:00Z",
             status="queued",
@@ -96,6 +104,7 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
         lambda webhook_delivery_id: WebhookDeliveryRecord(
             id=webhook_delivery_id,
             event_type="document.updated",
+            webhook_action="refresh_embedding",
             paperless_document_id=7,
             paperless_modified=None,
             status="queued",
@@ -140,6 +149,74 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
     assert starts == []
     assert refreshes == [7]
     assert actor_finishes[0][1] == {"status": "succeeded", "error_type": None}
+
+
+def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypatch):
+    events = []
+    statuses = []
+    actor_finishes = []
+
+    monkeypatch.setattr(
+        webhook,
+        "load_webhook_delivery",
+        lambda webhook_delivery_id: WebhookDeliveryRecord(
+            id=webhook_delivery_id,
+            event_type="document.updated",
+            webhook_action=None,
+            paperless_document_id=7,
+            paperless_modified=None,
+            status="queued",
+            normalized_payload={},
+        ),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "publish_pipeline_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=101, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "finish_actor_execution",
+        lambda *args, **kwargs: actor_finishes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "mark_webhook_delivery_status",
+        lambda *args: statuses.append(args),
+    )
+
+    webhook._handle_paperless_webhook_impl(654)
+
+    assert statuses == [(654, "failed_permanent", "invalid_webhook_action")]
+    assert events == [
+        (
+            ("webhook.invalid_action",),
+            {
+                "webhook_delivery_id": 654,
+                "paperless_document_id": 7,
+                "level": "error",
+                "message": "Webhook delivery has missing or invalid Laravel-normalized action metadata.",
+                "payload": {
+                    "event_type": "document.updated",
+                    "webhook_action": None,
+                    "valid_webhook_actions": [
+                        "delete_embedding",
+                        "process_document",
+                        "refresh_embedding",
+                    ],
+                },
+            },
+        )
+    ]
+    assert actor_finishes[0][1]["status"] == "failed"
+    assert actor_finishes[0][1]["error_type"] == "invalid_webhook_action"
 
 
 def test_webhook_actor_emits_failure_event_for_missing_delivery(monkeypatch):

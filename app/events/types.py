@@ -3,6 +3,7 @@
 WEBHOOK_RECEIVED = "webhook.received"
 WEBHOOK_DUPLICATE = "webhook.duplicate"
 WEBHOOK_NORMALIZED = "webhook.normalized"
+WEBHOOK_INVALID_ACTION = "webhook.invalid_action"
 ACTOR_STARTED = "actor.started"
 ACTOR_SUCCEEDED = "actor.succeeded"
 ACTOR_FAILED = "actor.failed"

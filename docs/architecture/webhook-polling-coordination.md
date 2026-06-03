@@ -46,6 +46,18 @@ reindex
 
 If a later trigger coalesces with an already active run, write an event instead of creating a duplicate run.
 
+## Webhook Action Policy
+
+Laravel owns the Paperless webhook action policy at the ingestion seam. `App\Services\Webhooks\PaperlessWebhookNormalizer` maps Paperless event names to the persisted ArchiBot action in `webhook_deliveries.normalized_payload.webhook_action`:
+
+```text
+process_document
+refresh_embedding
+delete_embedding
+```
+
+Python actors must not derive this action from `event_type`. They validate and execute the persisted action. Missing or unknown actions are malformed persisted state and must mark the Webhook Delivery `failed_permanent` with `invalid_webhook_action` instead of falling back to event-type parsing. Because Webhook Deliveries are short-lived operational receipts, `webhook_action` remains JSON metadata rather than a separate query column.
+
 Canonical start events:
 
 ```text
