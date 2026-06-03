@@ -35,6 +35,7 @@ Rules:
 After every logical milestone:
 
 1. Run targeted tests for touched layers.
-2. Run broader checks when practical.
-3. Document any check that cannot be run locally and the closest smoke check used.
-4. Do not continue feature work while failures from the current milestone are known and unfixed.
+2. Run broader checks when practical; prefer `scripts/ci-local.sh --fast` before handoff and `scripts/ci-local.sh --full` for release, Docker, workflow, or dependency-sensitive changes.
+3. Install `scripts/install-git-hooks.sh` in local clones where possible so the pre-push gate catches formatting, lint, test, and build regressions before GitHub CI.
+4. Document any check that cannot be run locally and the closest smoke check used.
+5. Do not continue feature work while failures from the current milestone are known and unfixed.

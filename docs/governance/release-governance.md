@@ -5,6 +5,8 @@ ArchiBot releases are Docker-first and should remain traceable to a reviewed Git
 ## Trusted release sources
 
 - `main` is the trusted release branch for the `latest` container tag.
+- `main` should be protected in GitHub with required `CI` job checks (`lint-and-verify`, `laravel-starter`, and `docker-build`) before merge.
+- Direct pushes to `main` should be avoided except for maintainer-approved emergencies; prefer branch -> CI -> merge.
 - The Docker publish workflow builds from the CI-tested commit SHA after the `CI` workflow succeeds.
 - Graphify-only artifact refreshes under `.graphify/**` are ignored by CI push triggers and must not build or publish Docker images.
 - SHA-derived image tags are preferred for rollback and operational traceability.
