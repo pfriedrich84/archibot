@@ -117,11 +117,11 @@ def mark_webhook_delivery_status(
     statement = text(
         """
         UPDATE webhook_deliveries
-        SET status = :status,
+        SET status = CAST(:status AS character varying),
             error = :error,
             processed_at = CASE
-                WHEN :status IN ('processed', 'blocked', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP
-                WHEN :status = 'queued' THEN NULL
+                WHEN CAST(:status_for_lifecycle AS character varying) IN ('processed', 'blocked', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP
+                WHEN CAST(:status_for_lifecycle AS character varying) = 'queued' THEN NULL
                 ELSE processed_at
             END,
             updated_at = CURRENT_TIMESTAMP
@@ -131,5 +131,10 @@ def mark_webhook_delivery_status(
     with engine().begin() as connection:
         connection.execute(
             statement,
-            {"webhook_delivery_id": webhook_delivery_id, "status": status, "error": error},
+            {
+                "webhook_delivery_id": webhook_delivery_id,
+                "status": status,
+                "status_for_lifecycle": status,
+                "error": error,
+            },
         )

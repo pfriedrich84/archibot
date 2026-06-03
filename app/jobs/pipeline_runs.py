@@ -87,14 +87,14 @@ def upsert_document_pipeline_run(
             :webhook_delivery_id,
             :requested_by_user_id,
             'document',
-            :status,
+            CAST(:status AS character varying),
             'single_document',
-            :trigger_source,
+            CAST(:trigger_source AS character varying),
             :paperless_document_id,
             :paperless_modified,
             :content_hash,
             :pipeline_dedupe_key,
-            jsonb_build_array(:trigger_source),
+            jsonb_build_array(CAST(:coalesced_trigger_source AS text)),
             :progress_current_phase,
             :progress_message,
             CURRENT_TIMESTAMP,
@@ -109,9 +109,9 @@ def upsert_document_pipeline_run(
         ON CONFLICT (paperless_document_id, pipeline_dedupe_key)
         DO UPDATE SET
             coalesced_sources = CASE
-                WHEN pipeline_runs.coalesced_sources IS NULL THEN jsonb_build_array(:trigger_source)
-                WHEN pipeline_runs.coalesced_sources::jsonb ? :trigger_source THEN pipeline_runs.coalesced_sources::jsonb
-                ELSE pipeline_runs.coalesced_sources::jsonb || jsonb_build_array(:trigger_source)
+                WHEN pipeline_runs.coalesced_sources IS NULL THEN jsonb_build_array(CAST(:coalesced_trigger_source AS text))
+                WHEN pipeline_runs.coalesced_sources::jsonb ? CAST(:coalesced_trigger_source AS text) THEN pipeline_runs.coalesced_sources::jsonb
+                ELSE pipeline_runs.coalesced_sources::jsonb || jsonb_build_array(CAST(:coalesced_trigger_source AS text))
             END,
             reprocess_requested = pipeline_runs.reprocess_requested OR :reprocess_requested,
             reprocess_reason = COALESCE(:reprocess_reason, pipeline_runs.reprocess_reason),
@@ -138,6 +138,7 @@ def upsert_document_pipeline_run(
                     "command_id": command_id,
                     "webhook_delivery_id": webhook_delivery_id,
                     "trigger_source": trigger_source,
+                    "coalesced_trigger_source": trigger_source,
                     "paperless_document_id": paperless_document_id,
                     "paperless_modified": paperless_modified,
                     "content_hash": content_hash,
@@ -359,14 +360,14 @@ def mark_pipeline_run_status(
     statement = sql_text(
         """
         UPDATE pipeline_runs
-        SET status = :status,
+        SET status = CAST(:status AS character varying),
             progress_current_phase = COALESCE(:phase, progress_current_phase),
             progress_message = COALESCE(:message, progress_message),
             progress_updated_at = CURRENT_TIMESTAMP,
             error_type = :error_type,
             error = :error,
-            started_at = CASE WHEN :status = 'running' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
-            finished_at = CASE WHEN :status IN ('succeeded', 'failed', 'blocked') THEN CURRENT_TIMESTAMP ELSE finished_at END,
+            started_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) = 'running' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
+            finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'blocked') THEN CURRENT_TIMESTAMP ELSE finished_at END,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
         """
@@ -377,6 +378,7 @@ def mark_pipeline_run_status(
             {
                 "pipeline_run_id": pipeline_run_id,
                 "status": status,
+                "status_for_lifecycle": status,
                 "phase": phase,
                 "message": message,
                 "error_type": error_type,

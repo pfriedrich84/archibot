@@ -60,6 +60,7 @@ def test_upsert_document_pipeline_run_persists_blocked_run(monkeypatch):
     assert run == pipeline_runs.PipelineRunRecord(id=77, status="blocked", created=True)
     params = calls[0][1]
     assert params["trigger_source"] == "webhook"
+    assert params["coalesced_trigger_source"] == "webhook"
     assert params["paperless_document_id"] == 42
     assert params["status"] == "blocked"
     assert params["progress_current_phase"] == "blocked"
@@ -83,6 +84,7 @@ def test_upsert_document_pipeline_run_persists_pending_run(monkeypatch):
     assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending", created=True)
     params = calls[0][1]
     assert params["trigger_source"] == "poll"
+    assert params["coalesced_trigger_source"] == "poll"
     assert params["progress_current_phase"] == "queued"
     assert params["error_type"] is None
     assert params["error"] is None
@@ -205,6 +207,7 @@ def test_mark_pipeline_run_status_updates_operator_state(monkeypatch):
     assert calls[0][1] == {
         "pipeline_run_id": 42,
         "status": "running",
+        "status_for_lifecycle": "running",
         "phase": "document_actor",
         "message": "Running",
         "error_type": None,
@@ -243,6 +246,11 @@ def test_upsert_document_pipeline_run_reports_coalesced_run(monkeypatch):
 
     assert run == pipeline_runs.PipelineRunRecord(id=77, status="pending", created=False)
     statement = calls[0][0]
+    assert "jsonb_build_array(CAST(:coalesced_trigger_source AS text))" in statement
+    assert (
+        "pipeline_runs.coalesced_sources::jsonb ? CAST(:coalesced_trigger_source AS text)"
+        in statement
+    )
     assert "requested_by_user_id" in statement
     params = calls[0][1]
     assert params["webhook_delivery_id"] == 10
