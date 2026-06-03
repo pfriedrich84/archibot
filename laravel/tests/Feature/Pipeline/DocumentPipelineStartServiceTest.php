@@ -111,4 +111,56 @@ class DocumentPipelineStartServiceTest extends TestCase
 
         $this->assertSame(hash('sha256', '42:2026-05-08T12:00:00Z:hash:v1'), $key);
     }
+
+    public function test_dedupe_keys_match_shared_pipeline_start_contract_vectors(): void
+    {
+        $contract = $this->pipelineStartContract();
+        $starter = app(DocumentPipelineStarter::class);
+
+        foreach ($contract['dedupe_vectors'] as $vector) {
+            $this->assertSame(
+                $vector['expected_sha256'],
+                $starter->dedupeKey(
+                    $vector['paperless_document_id'],
+                    $vector['paperless_modified'],
+                    $vector['content_hash'],
+                    $vector['pipeline_version'],
+                ),
+                $vector['name'],
+            );
+        }
+    }
+
+    public function test_force_dedupe_keys_match_shared_pipeline_start_contract_vectors(): void
+    {
+        $contract = $this->pipelineStartContract();
+        $starter = app(DocumentPipelineStarter::class);
+
+        foreach ($contract['force_vectors'] as $vector) {
+            $this->assertSame(
+                $vector['expected_sha256'],
+                $starter->forceDedupeKey(
+                    $vector['paperless_document_id'],
+                    $vector['paperless_modified'],
+                    $vector['content_hash'],
+                    $vector['force_token'],
+                    $vector['pipeline_version'],
+                ),
+                $vector['name'],
+            );
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pipelineStartContract(): array
+    {
+        $path = dirname(base_path()).'/tests/fixtures/pipeline_start_contract.json';
+        $contract = json_decode((string) file_get_contents($path), true);
+
+        $this->assertIsArray($contract);
+
+        return $contract;
+    }
 }

@@ -1,0 +1,144 @@
+<?php
+
+namespace App\Services\Pipeline;
+
+use App\Models\AuditLog;
+use App\Models\Command;
+use App\Models\EmbeddingIndexState;
+use App\Models\PipelineEvent;
+use Illuminate\Http\Request;
+
+class MaintenanceCommandDispatcher
+{
+    public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): Command
+    {
+        $limit = $this->normalizedLimit($limit);
+        $payload = array_filter([
+            'limit' => $limit,
+            ...$metadata,
+        ], fn ($value): bool => $value !== null);
+
+        $command = $this->createCommand($request, Command::TYPE_POLL_RECONCILIATION, $payload);
+
+        $this->recordEvent($request, $command, 'job_control.poll_reconciliation_requested', 'info', 'Polling reconciliation requested by admin.', [
+            'action' => Command::TYPE_POLL_RECONCILIATION,
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+        $this->audit($request, 'maintenance.poll_reconciliation_requested', $command, [
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+
+        return $command;
+    }
+
+    public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): Command
+    {
+        $limit = $this->normalizedLimit($limit);
+        $embeddingState = EmbeddingIndexState::query()->latest()->first();
+        if ($embeddingState === null) {
+            $embeddingState = EmbeddingIndexState::query()->create([
+                'status' => EmbeddingIndexState::STATUS_STALE,
+                'error' => 'Reindex requested by admin before an index existed.',
+            ]);
+        } else {
+            $embeddingState->forceFill([
+                'status' => EmbeddingIndexState::STATUS_STALE,
+                'error' => 'Reindex requested by admin.',
+            ])->save();
+        }
+
+        $payload = array_filter([
+            'limit' => $limit,
+            ...$metadata,
+        ], fn ($value): bool => $value !== null);
+        $command = $this->createCommand($request, Command::TYPE_REINDEX, $payload);
+
+        $this->recordEvent($request, $command, 'job_control.reindex_requested', 'warning', 'Reindex requested by admin; embedding gate marked stale.', [
+            'action' => Command::TYPE_REINDEX,
+            'embedding_index_state_id' => $embeddingState->id,
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+        $this->audit($request, 'maintenance.reindex_requested', $command, [
+            'embedding_index_state_id' => $embeddingState->id,
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+
+        return $command;
+    }
+
+    public function queueEmbeddingIndexBuild(Request $request, ?int $limit = null, array $metadata = []): Command
+    {
+        $limit = $this->normalizedLimit($limit);
+        $payload = array_filter([
+            'limit' => $limit,
+            ...$metadata,
+        ], fn ($value): bool => $value !== null);
+        $command = $this->createCommand($request, Command::TYPE_EMBEDDING_INDEX_BUILD, $payload);
+
+        $this->recordEvent($request, $command, 'job_control.embedding_build_requested', 'info', 'Embedding index build requested by admin.', [
+            'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+        $this->audit($request, 'embedding_index.build_requested', $command, [
+            'limit' => $limit,
+            ...$metadata,
+        ], 'embedding_index');
+
+        return $command;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function createCommand(Request $request, string $type, array $payload): Command
+    {
+        return Command::query()->create([
+            'type' => $type,
+            'status' => Command::STATUS_PENDING,
+            'payload' => $payload,
+            'created_by_user_id' => $request->user()->id,
+        ]);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function recordEvent(Request $request, Command $command, string $eventType, string $level, string $message, array $payload): void
+    {
+        PipelineEvent::query()->create([
+            'command_id' => $command->id,
+            'event_type' => $eventType,
+            'level' => $level,
+            'message' => $message,
+            'payload' => [
+                'actor_user_id' => $request->user()->id,
+                'actor_is_admin' => true,
+                'command_id' => $command->id,
+                ...$payload,
+            ],
+        ]);
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function audit(Request $request, string $event, Command $command, array $metadata, string $targetType = 'command'): void
+    {
+        AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => $event,
+            'target_type' => $targetType,
+            'target_id' => (string) $command->id,
+            'metadata' => [
+                'command_id' => $command->id,
+                ...$metadata,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+    }
+
+    private function normalizedLimit(?int $limit): ?int
+    {
+        return $limit !== null && $limit > 0 ? $limit : null;
+    }
+}

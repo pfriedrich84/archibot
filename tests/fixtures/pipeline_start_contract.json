@@ -1,0 +1,35 @@
+{
+  "dedupe_vectors": [
+    {
+      "name": "known content state",
+      "paperless_document_id": 42,
+      "paperless_modified": "2026-05-08T12:00:00Z",
+      "content_hash": "hash",
+      "pipeline_version": "v1",
+      "expected_raw": "42:2026-05-08T12:00:00Z:hash:v1",
+      "expected_sha256": "cc903fbb64df5b3fcabd9bf0d3996357606c9a99bf7f569bbb5d42433ef16298"
+    },
+    {
+      "name": "unknown modified and content fallback",
+      "paperless_document_id": 7,
+      "paperless_modified": null,
+      "content_hash": null,
+      "pipeline_version": "v1",
+      "expected_raw": "7:unknown_modified:unknown_content:v1",
+      "expected_sha256": "21a4c84917a3fa53798a9bca3d3aedaad5944e75e2a0e84ea9251754d1732595"
+    }
+  ],
+  "force_vectors": [
+    {
+      "name": "manual force token",
+      "paperless_document_id": 42,
+      "paperless_modified": "2026-05-08T12:00:00Z",
+      "content_hash": "hash",
+      "force_token": "first",
+      "pipeline_version": "v1",
+      "expected_raw": "force:42:2026-05-08T12:00:00Z:hash:first:v1",
+      "expected_sha256": "edf8867e25e3736a08f9a58c4f628db82517605b9d5576aac1d0629a540debbb"
+    }
+  ],
+  "blocked_reason": "embedding_index_not_ready"
+}

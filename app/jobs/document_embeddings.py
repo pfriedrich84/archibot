@@ -14,6 +14,7 @@ from app.config import settings
 from app.jobs.database import engine
 from app.models import PaperlessDocument
 from app.pipeline.context_types import SimilarDocument, document_summary
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 
@@ -71,19 +72,6 @@ def content_hash_for_text(text: str) -> str:
 def pgvector_literal(embedding: list[float]) -> str:
     """Return a pgvector-compatible vector literal without logging values."""
     return "[" + ",".join(str(float(value)) for value in embedding) + "]"
-
-
-def is_trusted_document(document: PaperlessDocument | Any) -> bool:
-    """Return whether a Paperless document is trusted classification context.
-
-    Domain rule: trusted context means the document does not carry the configured
-    inbox tag. If no inbox tag is configured, there is no tag to exclude.
-    """
-    inbox_tag_id = settings.paperless_inbox_tag_id
-    if inbox_tag_id is None:
-        return True
-    tags = getattr(document, "tags", None) or []
-    return int(inbox_tag_id) not in {int(tag) for tag in tags if tag is not None}
 
 
 def _metadata_value(item: DocumentEmbeddingInput, key: str) -> Any:

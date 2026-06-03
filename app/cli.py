@@ -12,8 +12,8 @@ Usage::
     python -m app.cli process-doc 224 --force  # Reprocess one document
     python -m app.cli jobs list        # List Laravel worker jobs
     python -m app.cli jobs status 12   # Show one Laravel worker job
-    python -m app.cli jobs stop 12     # Request cooperative stop/cancel
-    python -m app.cli jobs retry 12    # Queue a retry row for a job
+    python -m app.cli jobs stop 12     # Deprecated: use Laravel admin controls
+    python -m app.cli jobs retry 12    # Deprecated: use Laravel admin controls
     python -m app.cli reset --yes      # Reset through Laravel/PostgreSQL
     python -m app.cli reset --yes --include-config  # Also clear config/setup state
 """
@@ -597,9 +597,15 @@ def _display_datetime(value: Any) -> str:
 
 
 def cmd_jobs(args: list[str]) -> None:
-    """Inspect and update Laravel worker_jobs from the Python CLI."""
+    """Inspect legacy Laravel Worker Jobs from the Python CLI.
+
+    Worker Job is temporary migration infrastructure. This CLI Adapter is
+    intentionally read-only so durable job control stays local to Laravel admin
+    controls and Pipeline Run / Command seams.
+    """
     if not args or args[0] in {"-h", "--help"}:
-        print("Usage: archibot jobs <list|status|stop|retry> [job_id]")
+        print("Usage: archibot jobs <list|status> [job_id]")
+        print("Deprecated mutating actions: stop, retry. Use Laravel admin controls instead.")
         return
 
     db_path = _laravel_db_path()
@@ -666,39 +672,12 @@ def cmd_jobs(args: list[str]) -> None:
                 )
             return
 
-        if action == "stop":
-            if row["status"] == "queued":
-                conn.execute(
-                    """
-                    UPDATE worker_jobs
-                    SET status = 'cancelled', cancellation_requested_at = datetime('now'),
-                        finished_at = datetime('now'), error = 'Cancelled from CLI.'
-                    WHERE id = ?
-                    """,
-                    (job_id,),
-                )
-            elif row["status"] == "running":
-                conn.execute(
-                    """
-                    UPDATE worker_jobs
-                    SET status = 'cancelling', cancellation_requested_at = datetime('now')
-                    WHERE id = ?
-                    """,
-                    (job_id,),
-                )
-            print(f"Stop requested for worker job #{job_id}; current status was {row['status']}.")
-            return
-
-        if action == "retry":
-            cur = conn.execute(
-                """
-                INSERT INTO worker_jobs (type, status, payload, retry_of_worker_job_id, created_at, updated_at)
-                VALUES (?, 'queued', ?, ?, datetime('now'), datetime('now'))
-                """,
-                (row["type"], row["payload"], job_id),
+        if action in {"stop", "retry"}:
+            print(
+                f"archibot jobs {action} is deprecated and read-only; "
+                "use Laravel admin controls or durable Pipeline Run / Command controls instead."
             )
-            print(f"Queued retry worker job #{cur.lastrowid} for #{job_id}.")
-            return
+            sys.exit(1)
 
         print(f"Unknown jobs action: {action}")
         sys.exit(1)

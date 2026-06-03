@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
+use App\Models\Command;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,42 +83,36 @@ class MaintenanceTest extends TestCase
         ]);
     }
 
-    public function test_maintenance_controls_dispatch_worker_jobs_and_write_audit_logs(): void
+    public function test_maintenance_controls_route_migrated_actions_to_commands_and_keep_ocr_as_worker_job(): void
     {
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
 
-        $actions = [
-            [WorkerJob::TYPE_POLL, ['mode' => 'inbox', 'force' => false]],
-            [WorkerJob::TYPE_REINDEX, ['mode' => 'full']],
-            [WorkerJob::TYPE_REINDEX_OCR, ['mode' => 'ocr', 'force' => true], ['force' => '1']],
-            [WorkerJob::TYPE_REINDEX_EMBED, ['mode' => 'embed']],
-        ];
+        $this->actingAs($admin)
+            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_POLL])
+            ->assertRedirect();
+        $this->actingAs($admin)
+            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX])
+            ->assertRedirect();
+        $this->actingAs($admin)
+            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX_EMBED])
+            ->assertRedirect();
+        $this->actingAs($admin)
+            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX_OCR, 'force' => '1'])
+            ->assertRedirect();
 
-        foreach ($actions as $action) {
-            $type = $action[0];
-            $expectedPayload = $action[1];
-            $extraPayload = $action[2] ?? [];
+        $this->assertSame(1, Command::query()->where('type', Command::TYPE_POLL_RECONCILIATION)->count());
+        $this->assertSame(1, Command::query()->where('type', Command::TYPE_REINDEX)->count());
+        $this->assertSame(1, Command::query()->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)->count());
+        $this->assertDatabaseHas('worker_jobs', [
+            'type' => WorkerJob::TYPE_REINDEX_OCR,
+            'status' => WorkerJob::STATUS_QUEUED,
+        ]);
+        $this->assertSame(['mode' => 'ocr', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
 
-            $this->actingAs($admin)
-                ->post(route('admin.maintenance.worker-jobs'), [
-                    'type' => $type,
-                    ...$extraPayload,
-                ])
-                ->assertRedirect();
-
-            $this->assertDatabaseHas('worker_jobs', [
-                'type' => $type,
-                'status' => WorkerJob::STATUS_QUEUED,
-            ]);
-
-            $workerJob = WorkerJob::query()->where('type', $type)->latest()->firstOrFail();
-            $this->assertSame($expectedPayload, $workerJob->payload);
-        }
-
-        Queue::assertPushed(RunPythonWorkerJob::class, 4);
-        $this->assertSame(4, WorkerJob::query()->count());
-        $this->assertSame(4, AuditLog::query()->where('event', 'maintenance.worker_job_requested')->count());
+        Queue::assertPushed(RunPythonWorkerJob::class, 1);
+        $this->assertSame(1, WorkerJob::query()->count());
+        $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.worker_job_requested')->count());
     }
 
     public function test_non_admin_cannot_dispatch_maintenance_worker_job(): void

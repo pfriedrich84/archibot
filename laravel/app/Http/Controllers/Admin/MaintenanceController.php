@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
+use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Workers\WorkerJobDispatcher;
 use App\Services\Workers\WorkerJobRecovery;
 use Illuminate\Http\RedirectResponse;
@@ -54,7 +55,7 @@ class MaintenanceController extends Controller
         return back()->with('status', 'Worker job recovery completed.');
     }
 
-    public function startWorkerJob(Request $request, WorkerJobDispatcher $dispatcher): RedirectResponse
+    public function startWorkerJob(Request $request, WorkerJobDispatcher $dispatcher, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
@@ -70,23 +71,41 @@ class MaintenanceController extends Controller
 
         $force = $request->boolean('force');
         $type = $validated['type'];
-        $payload = match ($type) {
-            WorkerJob::TYPE_POLL => ['mode' => 'inbox', 'force' => $force],
-            WorkerJob::TYPE_REINDEX => ['mode' => 'full'],
-            WorkerJob::TYPE_REINDEX_OCR => ['mode' => 'ocr', 'force' => $force],
-            WorkerJob::TYPE_REINDEX_EMBED => ['mode' => 'embed'],
-        };
+        if ($type === WorkerJob::TYPE_POLL) {
+            $maintenanceCommands->queuePollReconciliation($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_POLL,
+                'force' => $force,
+            ]);
+
+            return back()->with('status', 'Polling reconciliation command queued.');
+        }
+
+        if ($type === WorkerJob::TYPE_REINDEX) {
+            $maintenanceCommands->queueReindex($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX,
+            ]);
+
+            return back()->with('status', 'Reindex command queued.');
+        }
+
+        if ($type === WorkerJob::TYPE_REINDEX_EMBED) {
+            $maintenanceCommands->queueEmbeddingIndexBuild($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX_EMBED,
+            ]);
+
+            return back()->with('status', 'Embedding index build command queued.');
+        }
 
         $workerJob = $dispatcher->dispatch(
             type: $type,
-            payload: $payload,
+            payload: ['mode' => 'ocr', 'force' => $force],
             user: $request->user(),
             request: $request,
             auditEvent: 'maintenance.worker_job_requested',
-            auditMetadata: ['maintenance_action' => $type],
+            auditMetadata: ['maintenance_action' => $type, 'legacy_worker_job' => true],
         );
 
-        return back()->with('status', 'Maintenance worker job #'.$workerJob->id.' queued.');
+        return back()->with('status', 'Legacy maintenance worker job #'.$workerJob->id.' queued.');
     }
 
     /** @param array<string, mixed> $metadata */

@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Workers;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\PipelineEvent;
 use App\Models\WorkerJob;
+use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Workers\StaleWorkerJobCanceller;
 use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
@@ -182,14 +185,19 @@ class WorkerJobController extends Controller
         ]);
     }
 
-    public function store(Request $request, StaleWorkerJobCanceller $staleCanceller, WorkerJobDispatcher $dispatcher): RedirectResponse
-    {
+    public function store(
+        Request $request,
+        StaleWorkerJobCanceller $staleCanceller,
+        WorkerJobDispatcher $dispatcher,
+        DocumentPipelineStarter $pipelineStarter,
+        MaintenanceCommandDispatcher $maintenanceCommands,
+    ): RedirectResponse {
         abort_unless($request->user()?->is_admin, 403);
 
         $staleCanceller->cancel();
 
         $validated = $request->validate([
-            'type' => ['required', Rule::in(WorkerJob::userQueueableTypes())],
+            'type' => ['required', Rule::in($this->storeRequestTypes())],
             'paperless_document_id' => ['nullable', 'integer', 'min:1'],
             'force' => ['nullable', 'boolean'],
         ]);
@@ -200,18 +208,49 @@ class WorkerJobController extends Controller
 
         $force = $request->boolean('force');
 
-        $payload = match ($validated['type']) {
-            WorkerJob::TYPE_PROCESS_DOCUMENT => ['paperless_document_id' => (int) $validated['paperless_document_id'], 'force' => $force],
-            WorkerJob::TYPE_POLL => ['mode' => 'inbox', 'force' => $force],
-            WorkerJob::TYPE_REINDEX => ['mode' => 'full'],
-            WorkerJob::TYPE_REINDEX_OCR => ['mode' => 'ocr', 'force' => $force],
-            WorkerJob::TYPE_REINDEX_EMBED => ['mode' => 'embed'],
-            default => [],
-        };
+        if ($validated['type'] === WorkerJob::TYPE_PROCESS_DOCUMENT) {
+            $result = $pipelineStarter->start(
+                triggerSource: 'manual',
+                paperlessDocumentId: (int) $validated['paperless_document_id'],
+                reprocessRequested: $force,
+                reprocessReason: $force ? 'manual_force' : null,
+                reprocessMode: $force ? 'manual' : null,
+                forceNewRun: $force,
+                requestedByUserId: $request->user()->id,
+            );
+
+            return redirect()->route('pipeline-runs.show', $result->pipelineRun)
+                ->with('status', 'Document Pipeline Run queued.');
+        }
+
+        if ($validated['type'] === WorkerJob::TYPE_POLL) {
+            $maintenanceCommands->queuePollReconciliation($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_POLL,
+                'force' => $force,
+            ]);
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Polling reconciliation command queued.');
+        }
+
+        if ($validated['type'] === WorkerJob::TYPE_REINDEX) {
+            $maintenanceCommands->queueReindex($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX,
+            ]);
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Reindex command queued.');
+        }
+
+        if ($validated['type'] === WorkerJob::TYPE_REINDEX_EMBED) {
+            $maintenanceCommands->queueEmbeddingIndexBuild($request, null, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX_EMBED,
+            ]);
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Embedding index build command queued.');
+        }
 
         $dispatcher->dispatch(
             type: $validated['type'],
-            payload: $payload,
+            payload: ['mode' => 'ocr', 'force' => $force],
             user: $request->user(),
             request: $request,
         );
@@ -317,8 +356,13 @@ class WorkerJobController extends Controller
         return redirect()->route('worker-jobs.index');
     }
 
-    public function retry(Request $request, WorkerJob $workerJob, WorkerJobDispatcher $dispatcher): RedirectResponse
-    {
+    public function retry(
+        Request $request,
+        WorkerJob $workerJob,
+        WorkerJobDispatcher $dispatcher,
+        DocumentPipelineStarter $pipelineStarter,
+        MaintenanceCommandDispatcher $maintenanceCommands,
+    ): RedirectResponse {
         abort_unless($request->user()?->is_admin, 403);
 
         $validated = $request->validate([
@@ -342,6 +386,49 @@ class WorkerJobController extends Controller
             }
         }
 
+        if ($workerJob->type === WorkerJob::TYPE_PROCESS_DOCUMENT) {
+            $documentIds = $retryFailedOnly
+                ? $failedDocuments
+                : array_values(array_filter([(int) data_get($payload, 'paperless_document_id')], fn (int $id): bool => $id > 0));
+
+            if ($documentIds === []) {
+                return back()->withErrors(['paperless_document_id' => 'No Paperless Document id is available for this legacy worker job retry.']);
+            }
+
+            foreach ($documentIds as $documentId) {
+                $result = $pipelineStarter->start(
+                    triggerSource: 'retry',
+                    paperlessDocumentId: $documentId,
+                    reprocessRequested: true,
+                    reprocessReason: 'worker_job_retry',
+                    reprocessMode: $retryFailedOnly ? 'failed_only' : 'whole_job',
+                    forceNewRun: true,
+                    requestedByUserId: $request->user()->id,
+                );
+                $this->recordLegacyRetryEvent($request, $workerJob, $result->pipelineRun->id, $retryFailedOnly ? 'failed_only' : 'whole_job');
+            }
+
+            return redirect()->route('pipeline-runs.index')->with('status', 'Legacy Worker Job retry queued as Pipeline Run.');
+        }
+
+        if ($workerJob->type === WorkerJob::TYPE_POLL) {
+            $maintenanceCommands->queuePollReconciliation($request, null, $this->legacyRetryMetadata($workerJob, $retryFailedOnly));
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Legacy Worker Job retry queued as polling command.');
+        }
+
+        if ($workerJob->type === WorkerJob::TYPE_REINDEX) {
+            $maintenanceCommands->queueReindex($request, null, $this->legacyRetryMetadata($workerJob, $retryFailedOnly));
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Legacy Worker Job retry queued as reindex command.');
+        }
+
+        if ($workerJob->type === WorkerJob::TYPE_REINDEX_EMBED) {
+            $maintenanceCommands->queueEmbeddingIndexBuild($request, null, $this->legacyRetryMetadata($workerJob, $retryFailedOnly));
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Legacy Worker Job retry queued as embedding build command.');
+        }
+
         $dispatcher->dispatch(
             type: $workerJob->type,
             payload: $payload,
@@ -356,6 +443,49 @@ class WorkerJobController extends Controller
         );
 
         return redirect()->route('worker-jobs.index');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function storeRequestTypes(): array
+    {
+        return [
+            WorkerJob::TYPE_POLL,
+            WorkerJob::TYPE_PROCESS_DOCUMENT,
+            WorkerJob::TYPE_REINDEX,
+            WorkerJob::TYPE_REINDEX_OCR,
+            WorkerJob::TYPE_REINDEX_EMBED,
+        ];
+    }
+
+    private function recordLegacyRetryEvent(Request $request, WorkerJob $workerJob, int $pipelineRunId, string $retryMode): void
+    {
+        PipelineEvent::query()->create([
+            'pipeline_run_id' => $pipelineRunId,
+            'event_type' => 'worker_job.retry_migrated_to_pipeline_run',
+            'level' => 'info',
+            'message' => 'Legacy Worker Job retry was routed to a durable Pipeline Run.',
+            'payload' => [
+                'actor_user_id' => $request->user()->id,
+                'actor_is_admin' => true,
+                'legacy_worker_job_id' => $workerJob->id,
+                'legacy_worker_job_type' => $workerJob->type,
+                'retry_mode' => $retryMode,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function legacyRetryMetadata(WorkerJob $workerJob, bool $retryFailedOnly): array
+    {
+        return [
+            'legacy_worker_job_id' => $workerJob->id,
+            'legacy_worker_job_type' => $workerJob->type,
+            'retry_mode' => $retryFailedOnly ? 'failed_only' : 'whole_job',
+        ];
     }
 
     /**

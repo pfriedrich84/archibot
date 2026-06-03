@@ -101,11 +101,7 @@ class WorkerJob extends Model
     public static function userQueueableTypes(): array
     {
         return [
-            self::TYPE_POLL,
-            self::TYPE_PROCESS_DOCUMENT,
-            self::TYPE_REINDEX,
             self::TYPE_REINDEX_OCR,
-            self::TYPE_REINDEX_EMBED,
         ];
     }
 

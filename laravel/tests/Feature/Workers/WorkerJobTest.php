@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Workers;
 
-use App\Jobs\RunPythonWorkerJob;
+use App\Models\Command;
+use App\Models\EmbeddingIndexState;
+use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WorkerJob;
@@ -41,7 +43,7 @@ class WorkerJobTest extends TestCase
                 ->where('jobs.data.0.review_suggestions_count', 1)
                 ->where('jobs.data.0.review_suggestions.0.id', $suggestion->id)
                 ->where('jobs.data.0.review_suggestions.0.proposed_title', 'Imported invoice')
-                ->where('allowedTypes.0', WorkerJob::TYPE_POLL)
+                ->where('allowedTypes.0', WorkerJob::TYPE_REINDEX_OCR)
                 ->where('readiness.queued', 0)
                 ->where('readiness.running', 0)
                 ->where('readiness.failed', 0)
@@ -150,7 +152,7 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Retry failed documents only', $showPage);
     }
 
-    public function test_queueing_worker_job_creates_record_dispatches_laravel_job_and_audit_log(): void
+    public function test_queueing_poll_routes_to_durable_command_not_worker_job(): void
     {
         Queue::fake();
         $user = User::factory()->create(['is_admin' => true]);
@@ -159,19 +161,13 @@ class WorkerJobTest extends TestCase
             ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL])
             ->assertRedirect(route('worker-jobs.index'));
 
-        $workerJob = WorkerJob::query()->firstOrFail();
-        $this->assertSame(WorkerJob::TYPE_POLL, $workerJob->type);
-        $this->assertSame(WorkerJob::STATUS_QUEUED, $workerJob->status);
-        $this->assertSame($user->id, $workerJob->created_by_user_id);
-        $this->assertNotNull($workerJob->dispatch_key);
-        $this->assertSame(1, $workerJob->dispatch_attempts);
-        $this->assertNotNull($workerJob->dispatched_at);
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $workerJob->id);
-        $this->assertDatabaseHas('audit_logs', [
-            'actor_user_id' => $user->id,
-            'event' => 'worker_job.queued',
-            'target_id' => (string) $workerJob->id,
+        $this->assertDatabaseCount('worker_jobs', 0);
+        $this->assertDatabaseHas('commands', [
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_PENDING,
+            'created_by_user_id' => $user->id,
         ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_index_auto_cancels_stale_cancelling_jobs(): void
@@ -253,8 +249,9 @@ class WorkerJobTest extends TestCase
         $this->actingAs($user)->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL]);
         $this->actingAs($user)->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL]);
 
-        $this->assertSame(1, WorkerJob::query()->count());
-        Queue::assertPushed(RunPythonWorkerJob::class, 1);
+        $this->assertSame(0, WorkerJob::query()->count());
+        $this->assertSame(2, Command::query()->where('type', Command::TYPE_POLL_RECONCILIATION)->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_poll_force_payload_is_queued(): void
@@ -266,7 +263,9 @@ class WorkerJobTest extends TestCase
             ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_POLL, 'force' => '1'])
             ->assertRedirect(route('worker-jobs.index'));
 
-        $this->assertSame(['mode' => 'inbox', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
+        $this->assertTrue($command->payload['force']);
     }
 
     public function test_process_document_force_payload_is_queued(): void
@@ -274,18 +273,22 @@ class WorkerJobTest extends TestCase
         Queue::fake();
         $user = User::factory()->create(['is_admin' => true]);
 
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+
         $this->actingAs($user)
             ->post(route('worker-jobs.store'), [
                 'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
                 'paperless_document_id' => 123,
                 'force' => '1',
             ])
-            ->assertRedirect(route('worker-jobs.index'));
+            ->assertRedirect(route('pipeline-runs.show', PipelineRun::query()->firstOrFail()));
 
-        $this->assertSame([
-            'paperless_document_id' => 123,
-            'force' => true,
-        ], WorkerJob::query()->firstOrFail()->payload);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame('manual', $run->trigger_source);
+        $this->assertSame(123, $run->paperless_document_id);
+        $this->assertTrue($run->reprocess_requested);
+        $this->assertSame('manual_force', $run->reprocess_reason);
     }
 
     public function test_reindex_ocr_force_payload_is_queued(): void
@@ -300,7 +303,7 @@ class WorkerJobTest extends TestCase
         $this->assertSame(['mode' => 'ocr', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
     }
 
-    public function test_retry_creates_new_dispatch_linked_to_original_job(): void
+    public function test_retry_creates_durable_command_for_migrated_poll_job(): void
     {
         Queue::fake();
         $user = User::factory()->create(['is_admin' => true]);
@@ -317,20 +320,12 @@ class WorkerJobTest extends TestCase
             ->post(route('worker-jobs.retry', $original))
             ->assertRedirect(route('worker-jobs.index'));
 
-        $retry = WorkerJob::query()
-            ->where('id', '!=', $original->id)
-            ->firstOrFail();
-
-        $this->assertSame($original->id, $retry->retry_of_worker_job_id);
-        $this->assertSame(WorkerJob::STATUS_QUEUED, $retry->status);
-        $this->assertSame(['mode' => 'inbox'], $retry->payload);
-        $this->assertSame(1, $retry->dispatch_attempts);
-        $this->assertNotNull($retry->dispatched_at);
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $retry->id);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'worker_job.retried',
-            'target_id' => (string) $retry->id,
-        ]);
+        $this->assertSame(1, WorkerJob::query()->count());
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
+        $this->assertSame($original->id, $command->payload['legacy_worker_job_id']);
+        $this->assertSame('whole_job', $command->payload['retry_mode']);
+        Queue::assertNothingPushed();
     }
 
     public function test_retry_failed_documents_only_payload_is_queued_when_failed_document_ids_are_available(): void
@@ -363,21 +358,11 @@ class WorkerJobTest extends TestCase
             ->post(route('worker-jobs.retry', $original), ['failed_only' => '1'])
             ->assertRedirect(route('worker-jobs.index'));
 
-        $retry = WorkerJob::query()
-            ->where('id', '!=', $original->id)
-            ->firstOrFail();
-
-        $this->assertSame($original->id, $retry->retry_of_worker_job_id);
-        $this->assertSame([
-            'mode' => 'inbox',
-            'force' => false,
-            'retry_document_ids' => [101, 202],
-            'retry_mode' => 'failed_only',
-        ], $retry->payload);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'worker_job.retried',
-            'target_id' => (string) $retry->id,
-        ]);
+        $this->assertSame(1, WorkerJob::query()->count());
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
+        $this->assertSame($original->id, $command->payload['legacy_worker_job_id']);
+        $this->assertSame('failed_only', $command->payload['retry_mode']);
     }
 
     public function test_process_document_requires_document_id(): void

@@ -21,7 +21,6 @@ from app.jobs.actor_execution import (
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
     document_embedding_text,
-    is_trusted_document,
     store_document_embedding,
 )
 from app.jobs.embedding_index import (
@@ -31,6 +30,7 @@ from app.jobs.embedding_index import (
 )
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 

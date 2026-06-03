@@ -20,13 +20,13 @@ from app.jobs.document_embeddings import (
     delete_document_embeddings_for_document,
     delete_stale_document_embeddings_for_document,
     document_embedding_text,
-    is_trusted_document,
     store_document_embedding,
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_start import start_or_attach_document_pipeline
 from app.jobs.webhook_delivery import load_webhook_delivery, mark_webhook_delivery_status
 from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 

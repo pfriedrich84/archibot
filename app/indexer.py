@@ -20,7 +20,6 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import get_conn
 from app.job_events import record_event
-from app.jobs.document_embeddings import is_trusted_document
 from app.pipeline.context_builder import document_summary, store_embedding
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
@@ -30,6 +29,7 @@ from app.pipeline.ocr_correction import (
     should_run_ocr_for_document,
 )
 from app.pipeline.ports import AiProviderGateway
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 

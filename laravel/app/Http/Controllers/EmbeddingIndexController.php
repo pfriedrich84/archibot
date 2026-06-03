@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
+use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -15,34 +15,7 @@ class EmbeddingIndexController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        $limit = $request->integer('limit');
-        $payload = $limit > 0 ? ['limit' => $limit] : [];
-
-        $command = Command::query()->create([
-            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
-            'status' => Command::STATUS_PENDING,
-            'payload' => $payload,
-            'created_by_user_id' => $request->user()->id,
-        ]);
-
-        PipelineEvent::query()->create([
-            'command_id' => $command->id,
-            'event_type' => 'job_control.embedding_build_requested',
-            'level' => 'info',
-            'message' => 'Embedding index build requested by admin.',
-            'payload' => [
-                'actor_user_id' => $request->user()->id,
-                'actor_is_admin' => true,
-                'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
-                'command_id' => $command->id,
-                'limit' => $limit > 0 ? $limit : null,
-            ],
-        ]);
-
-        $this->audit($request, 'embedding_index.build_requested', [
-            'command_id' => $command->id,
-            'limit' => $limit > 0 ? $limit : null,
-        ]);
+        app(MaintenanceCommandDispatcher::class)->queueEmbeddingIndexBuild($request, $request->integer('limit'));
 
         return back()->with('status', 'Embedding index build queued.');
     }

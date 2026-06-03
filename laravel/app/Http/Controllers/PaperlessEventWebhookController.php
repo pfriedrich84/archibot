@@ -6,16 +6,19 @@ use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineStartResult;
+use App\Services\Webhooks\PaperlessWebhookNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 class PaperlessEventWebhookController extends Controller
 {
-    public function __construct(private readonly DocumentPipelineStarter $pipelineStarter) {}
+    public function __construct(
+        private readonly DocumentPipelineStarter $pipelineStarter,
+        private readonly PaperlessWebhookNormalizer $webhookNormalizer,
+    ) {}
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -25,20 +28,15 @@ class PaperlessEventWebhookController extends Controller
         }
 
         $payload = $this->payload($request);
-        $documentId = $this->documentId($payload);
+        $normalizedPayload = $this->webhookNormalizer->normalize($payload);
+        $documentId = $normalizedPayload['paperless_document_id'];
         if ($documentId === null) {
             return response()->json(['detail' => 'Could not extract document_id from payload'], 422);
         }
 
-        $eventType = $this->eventType($payload);
-        $webhookAction = $this->webhookAction($eventType);
-        $paperlessModified = $this->paperlessModified($payload);
-        $normalizedPayload = [
-            'event_type' => $eventType,
-            'webhook_action' => $webhookAction,
-            'paperless_document_id' => $documentId,
-            'paperless_modified' => $paperlessModified,
-        ];
+        $eventType = $normalizedPayload['event_type'];
+        $webhookAction = $normalizedPayload['webhook_action'];
+        $paperlessModified = $normalizedPayload['paperless_modified'];
         $payloadHash = hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '');
         $dedupeKey = implode(':', [
             'paperless',
@@ -170,81 +168,6 @@ class PaperlessEventWebhookController extends Controller
         }
 
         return $payload;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function documentId(array $payload): ?int
-    {
-        foreach (['document_id', 'document.id', 'object.id', 'id'] as $key) {
-            $value = Arr::get($payload, $key);
-            if ($value !== null && filter_var($value, FILTER_VALIDATE_INT) !== false) {
-                return (int) $value;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function eventType(array $payload): string
-    {
-        $event = Arr::get($payload, 'event') ?? Arr::get($payload, 'action') ?? Arr::get($payload, 'type');
-
-        return Str::of((string) ($event ?: 'document.created'))->lower()->replace(' ', '_')->toString();
-    }
-
-    private function webhookAction(string $eventType): string
-    {
-        $normalized = $this->normalizedEventType($eventType);
-
-        if ($this->eventTypeContainsAny($normalized, ['delete', 'deleted', 'trash', 'trashed'])) {
-            return 'delete_embedding';
-        }
-
-        if ($this->eventTypeContainsAny($normalized, ['create', 'created', 'added', 'new', 'consume', 'consumed', 'import', 'imported'])) {
-            return 'process_document';
-        }
-
-        if ($this->eventTypeContainsAny($normalized, ['update', 'updated', 'change', 'changed', 'modify', 'modified', 'edit', 'edited'])) {
-            return 'refresh_embedding';
-        }
-
-        return 'process_document';
-    }
-
-    private function normalizedEventType(string $eventType): string
-    {
-        return Str::of($eventType)->lower()->replace(['.', '-', ' '], '_')->toString();
-    }
-
-    /**
-     * @param  array<int, string>  $needles
-     */
-    private function eventTypeContainsAny(string $normalizedEventType, array $needles): bool
-    {
-        foreach ($needles as $needle) {
-            if (str_contains($normalizedEventType, $needle)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function paperlessModified(array $payload): ?string
-    {
-        $value = Arr::get($payload, 'document.modified')
-            ?? Arr::get($payload, 'object.modified')
-            ?? Arr::get($payload, 'modified');
-
-        return $value === null ? null : (string) $value;
     }
 
     /**

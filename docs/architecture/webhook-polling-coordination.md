@@ -56,15 +56,20 @@ pipeline.blocked.embedding_index_not_ready
 pipeline.force_reprocess.requested
 ```
 
-## Shared Start Function
+## Shared Start Seam
 
 Webhook and polling code must not each implement separate pipeline-start logic.
 
-Use a shared function/service, for example:
+Current cross-runtime adapters for this Pipeline Run start interface are:
 
 ```text
-start_or_attach_document_pipeline(trigger_source, paperless_document_id, paperless_modified, content_hash?)
+Laravel: App\Services\Pipeline\DocumentPipelineStarter::start(...)
+Python:  app.jobs.pipeline_start.start_or_attach_document_pipeline(...)
 ```
+
+Both adapters must satisfy the same interface: compute the same dedupe key, enforce the embedding readiness gate, coalesce through durable PostgreSQL state, and emit the canonical Pipeline Run events. The shared contract vectors live in `tests/fixtures/pipeline_start_contract.json` and are exercised by both PHP and Python tests.
+
+Deletion target: future work should remove duplicated start implementation by moving callers toward durable Command / Pipeline Run / Dramatiq actor seams, not by deepening Worker Job or subprocess paths.
 
 Responsibilities:
 

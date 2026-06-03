@@ -9,7 +9,6 @@ from app.config import settings
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
     find_similar_document_ids,
-    is_trusted_document,
     store_document_embedding,
 )
 from app.jobs.document_embeddings import (
@@ -21,6 +20,7 @@ from app.jobs.document_embeddings import (
 from app.models import PaperlessDocument
 from app.pipeline.context_types import SimilarDocument, document_summary
 from app.pipeline.ports import AiProviderGateway
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 

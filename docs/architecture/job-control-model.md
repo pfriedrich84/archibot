@@ -28,6 +28,18 @@ Responsibilities in this temporary model:
 
 This model is allowed to be reliable. It should not be treated as the permanent pipeline architecture.
 
+The Python CLI `jobs` adapter is now read-only for `worker_jobs`: it may list and show status for legacy visibility, but mutating actions such as stop and retry must go through Laravel admin controls or durable Pipeline Run / Command controls. This keeps job-control locality at the authorized Laravel seam instead of spreading Worker Job mutation into Python CLI code.
+
+New user-triggered job control has moved away from Worker Job where durable seams already exist:
+
+- manual Paperless Document processing creates a Pipeline Run via `DocumentPipelineStarter`;
+- poll/reconciliation creates a durable Command;
+- full reindex creates a durable Command and marks the embedding gate stale;
+- embedding index build creates a durable Command;
+- historical retries for those Worker Job types are routed to Pipeline Runs or Commands.
+
+OCR reindex remains a legacy Worker Job path until there is a durable OCR reindex actor. Worker Job recovery remains available for historical/active legacy rows.
+
 ## Current `worker_jobs` Schema Terms
 
 Important control-plane fields:
