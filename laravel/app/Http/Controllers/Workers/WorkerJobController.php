@@ -66,7 +66,7 @@ class WorkerJobController extends Controller
 
         return Inertia::render('worker/Index', [
             'jobs' => $jobs,
-            'allowedTypes' => WorkerJob::userQueueableTypes(),
+            'allowedTypes' => $this->storeRequestTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
             'quickControls' => [
                 'poll_url' => route('maintenance.poll'),
