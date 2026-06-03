@@ -22,7 +22,7 @@ Install the repository pre-push hook once per clone to prevent obvious CI regres
 scripts/install-git-hooks.sh
 ```
 
-The hook runs `scripts/ci-local.sh --pre-push`, which selects checks from the changed paths. If required local tooling is unavailable, push to a branch and wait for GitHub CI before merging to `main`.
+The hook chains any existing local pre-push hook via `.git/hooks/pre-push.archibot-previous`, then runs `scripts/ci-local.sh --pre-push`. The pre-push mode reads Git's pushed refs from stdin and selects checks from the files changed by the commits actually being pushed. If required local tooling is unavailable, push to a branch and wait for GitHub CI before merging to `main`.
 
 ## Python worker / CLI / MCP
 

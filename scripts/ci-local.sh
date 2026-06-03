@@ -10,7 +10,7 @@ Runs local checks that mirror GitHub CI as closely as local tooling allows.
 Modes:
   --fast      Python + Laravel checks from docs/agent/CHECKS.md (default)
   --full      Fast checks plus Docker build and container scans
-  --pre-push  Run checks for paths changed against the upstream branch when possible
+  --pre-push  Run checks for paths changed by the refs Git is pushing
   --python    Python lint, format, tests, dependency checks, docs/Graphify checks
   --laravel   Laravel backend/frontend checks
   --docs      Markdown link and Graphify artifact checks
@@ -92,7 +92,11 @@ docker_checks() {
   fi
 }
 
-changed_paths() {
+is_zero_oid() {
+  [[ "$1" =~ ^0+$ ]]
+}
+
+fallback_changed_paths() {
   local base
   base="$(git merge-base HEAD '@{upstream}' 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || true)"
   if [[ -n "$base" ]]; then
@@ -102,9 +106,70 @@ changed_paths() {
   fi
 }
 
+changed_paths_for_update() {
+  local local_ref="$1"
+  local local_oid="$2"
+  local remote_ref="$3"
+  local remote_oid="$4"
+  local local_commit=""
+  local base=""
+
+  if is_zero_oid "$local_oid"; then
+    return 0
+  fi
+
+  if [[ "$local_ref" == refs/tags/* || "$remote_ref" == refs/tags/* ]]; then
+    # A tag push may point at an already-built commit or an annotated tag object.
+    # The safe local gate is to run the normal fast checks rather than diff HEAD.
+    echo "__RUN_FAST__"
+    return 0
+  fi
+
+  local_commit="$(git rev-parse --verify --quiet "${local_oid}^{commit}" || true)"
+  if [[ -z "$local_commit" ]]; then
+    echo "__RUN_FAST__"
+    return 0
+  fi
+
+  if ! is_zero_oid "$remote_oid"; then
+    base="$remote_oid"
+  else
+    base="$(git merge-base "$local_commit" origin/main 2>/dev/null || git rev-parse --verify --quiet "${local_commit}^" || true)"
+  fi
+
+  if [[ -n "$base" ]]; then
+    git diff --name-only "$base" "$local_commit"
+  else
+    git diff-tree --no-commit-id --name-only -r "$local_commit"
+  fi
+}
+
+pre_push_changed_paths() {
+  local input=""
+  local local_ref local_oid remote_ref remote_oid
+
+  input="$(cat || true)"
+  if [[ -z "$input" ]]; then
+    fallback_changed_paths
+    return 0
+  fi
+
+  while read -r local_ref local_oid remote_ref remote_oid; do
+    [[ -z "${local_ref:-}" ]] && continue
+    changed_paths_for_update "$local_ref" "$local_oid" "$remote_ref" "$remote_oid"
+  done <<< "$input" | sort -u
+}
+
 pre_push_checks() {
   local paths
-  paths="$(changed_paths)"
+  paths="$(pre_push_changed_paths)"
+
+  if printf '%s\n' "$paths" | grep -qx '__RUN_FAST__'; then
+    echo "Pre-push input included a tag or non-commit update; running fast checks."
+    python_checks
+    laravel_checks
+    return
+  fi
 
   if [[ -z "$paths" ]]; then
     echo "No changed paths detected; running fast checks."
