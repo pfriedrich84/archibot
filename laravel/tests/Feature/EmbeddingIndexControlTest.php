@@ -51,6 +51,20 @@ class EmbeddingIndexControlTest extends TestCase
         ]);
     }
 
+    public function test_worker_jobs_quick_control_can_queue_embedding_index_build_command(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->post(route('embedding-index.build'), ['ui_surface' => 'worker_jobs_quick_controls'])
+            ->assertRedirect();
+
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
+        $this->assertSame('worker_jobs_quick_controls', $command->payload['ui_surface']);
+    }
+
     public function test_non_admin_cannot_queue_embedding_index_build_command(): void
     {
         $user = User::factory()->create(['is_admin' => false]);

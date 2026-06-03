@@ -119,4 +119,12 @@ def test_mark_command_status_updates_bridge_status(monkeypatch):
 
     commands.mark_command_status(5, "queued")
 
-    assert calls[0][1] == {"command_id": 5, "status": "queued", "error": None}
+    statement = calls[0][0]
+    assert "SET status = CAST(:status AS character varying)" in statement
+    assert "CAST(:status_for_lifecycle AS character varying) IN ('queued', 'running')" in statement
+    assert calls[0][1] == {
+        "command_id": 5,
+        "status": "queued",
+        "status_for_lifecycle": "queued",
+        "error": None,
+    }

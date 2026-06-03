@@ -44,7 +44,15 @@ class WorkerJobTest extends TestCase
                 ->where('jobs.data.0.review_suggestions_count', 1)
                 ->where('jobs.data.0.review_suggestions.0.id', $suggestion->id)
                 ->where('jobs.data.0.review_suggestions.0.proposed_title', 'Imported invoice')
-                ->where('allowedTypes.0', WorkerJob::TYPE_REINDEX_OCR)
+                ->where('allowedTypes.0', WorkerJob::TYPE_POLL)
+                ->where('allowedTypes.1', WorkerJob::TYPE_PROCESS_DOCUMENT)
+                ->where('allowedTypes.2', WorkerJob::TYPE_REINDEX)
+                ->where('allowedTypes.3', WorkerJob::TYPE_REINDEX_OCR)
+                ->where('allowedTypes.4', WorkerJob::TYPE_REINDEX_EMBED)
+                ->where('quickControls.poll_url', route('maintenance.poll'))
+                ->where('quickControls.reindex_url', route('maintenance.reindex'))
+                ->where('quickControls.embedding_build_url', route('embedding-index.build'))
+                ->where('quickControls.worker_job_store_url', route('worker-jobs.store'))
                 ->where('readiness.queued', 0)
                 ->where('readiness.running', 0)
                 ->where('readiness.failed', 0)
@@ -144,10 +152,13 @@ class WorkerJobTest extends TestCase
 
         $this->assertIsString($indexPage);
         $this->assertIsString($showPage);
-        $this->assertStringContainsString('Start inbox poll force', $indexPage);
+        $this->assertStringContainsString('Run forced poll reconciliation', $indexPage);
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
-        $this->assertStringContainsString('Start OCR reindex force', $indexPage);
+        $this->assertStringContainsString('Queue forced OCR reindex worker', $indexPage);
+        $this->assertStringContainsString('quickControls.poll_url', $indexPage);
+        $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
+        $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);
         $this->assertStringContainsString('Retry whole job', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $showPage);

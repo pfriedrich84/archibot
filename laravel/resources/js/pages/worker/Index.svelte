@@ -85,11 +85,18 @@
         jobs,
         allowedTypes,
         isAdmin,
+        quickControls,
         readiness,
     }: {
         jobs: Paginator<WorkerJob>;
         allowedTypes: string[];
         isAdmin: boolean;
+        quickControls: {
+            poll_url: string;
+            reindex_url: string;
+            embedding_build_url: string;
+            worker_job_store_url: string;
+        };
         readiness: {
             queued: number;
             running: number;
@@ -164,70 +171,84 @@
         <section class="rounded-xl border p-4">
             <h2 class="mb-3 font-semibold">Quick controls</h2>
             <div class="flex flex-wrap gap-2">
-                <Form method="post" action={store().url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="poll" />
-                        <Button type="submit" disabled={processing}
-                            >Start inbox poll</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={store().url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="poll" />
-                        <input type="hidden" name="force" value="1" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}>Start inbox poll force</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={store().url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="reindex" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Start all-document reindex</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={store().url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="reindex_ocr" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}>Start OCR reindex</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={store().url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="reindex_ocr" />
-                        <input type="hidden" name="force" value="1" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Start OCR reindex force</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={store().url}>
+                <Form method="post" action={quickControls.poll_url}>
                     {#snippet children({ processing })}
                         <input
                             type="hidden"
-                            name="type"
-                            value="reindex_embed"
+                            name="ui_surface"
+                            value="worker_jobs_quick_controls"
+                        />
+                        <Button type="submit" disabled={processing}
+                            >Run poll reconciliation</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={quickControls.poll_url}>
+                    {#snippet children({ processing })}
+                        <input type="hidden" name="force" value="1" />
+                        <input
+                            type="hidden"
+                            name="ui_surface"
+                            value="worker_jobs_quick_controls"
                         />
                         <Button
                             type="submit"
                             variant="outline"
                             disabled={processing}
-                            >Start embedding reindex</Button
+                            >Run forced poll reconciliation</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={quickControls.reindex_url}>
+                    {#snippet children({ processing })}
+                        <input
+                            type="hidden"
+                            name="ui_surface"
+                            value="worker_jobs_quick_controls"
+                        />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Queue all-document reindex command</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={quickControls.worker_job_store_url}>
+                    {#snippet children({ processing })}
+                        <input type="hidden" name="type" value="reindex_ocr" />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Queue OCR reindex worker</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={quickControls.worker_job_store_url}>
+                    {#snippet children({ processing })}
+                        <input type="hidden" name="type" value="reindex_ocr" />
+                        <input type="hidden" name="force" value="1" />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Queue forced OCR reindex worker</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form method="post" action={quickControls.embedding_build_url}>
+                    {#snippet children({ processing })}
+                        <input
+                            type="hidden"
+                            name="ui_surface"
+                            value="worker_jobs_quick_controls"
+                        />
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Queue embedding index build command</Button
                         >
                     {/snippet}
                 </Form>

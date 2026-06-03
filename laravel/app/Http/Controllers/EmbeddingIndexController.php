@@ -15,7 +15,13 @@ class EmbeddingIndexController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        app(MaintenanceCommandDispatcher::class)->queueEmbeddingIndexBuild($request, $request->integer('limit'));
+        app(MaintenanceCommandDispatcher::class)->queueEmbeddingIndexBuild(
+            $request,
+            $request->integer('limit'),
+            array_filter([
+                'ui_surface' => (string) $request->string('ui_surface') ?: null,
+            ], fn ($value): bool => $value !== null),
+        );
 
         return back()->with('status', 'Embedding index build queued.');
     }

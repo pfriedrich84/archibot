@@ -12,7 +12,14 @@ class MaintenanceCommandController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        app(MaintenanceCommandDispatcher::class)->queuePollReconciliation($request, $request->integer('limit'));
+        app(MaintenanceCommandDispatcher::class)->queuePollReconciliation(
+            $request,
+            $request->integer('limit'),
+            array_filter([
+                'force' => $request->boolean('force') ?: null,
+                'ui_surface' => (string) $request->string('ui_surface') ?: null,
+            ], fn ($value): bool => $value !== null),
+        );
 
         return back()->with('status', 'Polling reconciliation queued.');
     }
@@ -21,7 +28,13 @@ class MaintenanceCommandController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        app(MaintenanceCommandDispatcher::class)->queueReindex($request, $request->integer('limit'));
+        app(MaintenanceCommandDispatcher::class)->queueReindex(
+            $request,
+            $request->integer('limit'),
+            array_filter([
+                'ui_surface' => (string) $request->string('ui_surface') ?: null,
+            ], fn ($value): bool => $value !== null),
+        );
 
         return back()->with('status', 'Reindex queued.');
     }

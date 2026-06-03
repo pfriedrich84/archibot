@@ -86,9 +86,9 @@ def mark_command_status(command_id: int, status: str, error: str | None = None) 
     statement = sql_text(
         """
         UPDATE commands
-        SET status = :status,
-            started_at = CASE WHEN :status IN ('queued', 'running') AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
-            finished_at = CASE WHEN :status IN ('succeeded', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP ELSE finished_at END,
+        SET status = CAST(:status AS character varying),
+            started_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('queued', 'running') AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
+            finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP ELSE finished_at END,
             error = :error,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :command_id
@@ -97,5 +97,10 @@ def mark_command_status(command_id: int, status: str, error: str | None = None) 
     with engine().begin() as connection:
         connection.execute(
             statement,
-            {"command_id": command_id, "status": status, "error": error},
+            {
+                "command_id": command_id,
+                "status": status,
+                "status_for_lifecycle": status,
+                "error": error,
+            },
         )
