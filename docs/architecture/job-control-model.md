@@ -40,6 +40,8 @@ New user-triggered job control has moved away from Worker Job where durable seam
 
 OCR reindex remains a legacy Worker Job path until there is a durable OCR reindex actor. Worker Job recovery remains available for historical/active legacy rows.
 
+Embedding index builds are durable commands in the event-driven model. When `DRAMATIQ_BROKER_URL` is not configured, Laravel must temporarily bridge the command to the existing `reindex_embed` Worker Job so the Docker-first single-container setup can still start embeddings immediately; the Worker Job updates the linked command when it finishes. This fallback is compatibility glue, not a permanent architecture path.
+
 ## Current `worker_jobs` Schema Terms
 
 Important control-plane fields:

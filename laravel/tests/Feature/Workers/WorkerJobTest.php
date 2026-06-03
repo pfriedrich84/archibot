@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Jobs\RunPythonWorkerJob;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
@@ -266,6 +267,26 @@ class WorkerJobTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
         $this->assertTrue($command->payload['force']);
+    }
+
+    public function test_embedding_reindex_queues_command_and_worker_fallback_without_dramatiq(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)
+            ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_REINDEX_EMBED])
+            ->assertRedirect(route('worker-jobs.index'));
+
+        $command = Command::query()->firstOrFail();
+        $workerJob = WorkerJob::query()->firstOrFail();
+
+        $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
+        $this->assertSame($workerJob->id, $command->payload['legacy_fallback_worker_job_id']);
+        $this->assertSame(WorkerJob::TYPE_REINDEX_EMBED, $workerJob->type);
+        $this->assertSame($command->id, $workerJob->payload['command_id']);
+        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued): bool => $queued->workerJobId === $workerJob->id);
     }
 
     public function test_process_document_force_payload_is_queued(): void

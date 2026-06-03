@@ -2,6 +2,7 @@
 
 namespace App\Services\Workers;
 
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
@@ -394,6 +395,22 @@ class PythonWorkerCommand
             'failed_count' => max(0, $failed),
             'error' => $succeeded && $failed === 0 ? null : ($workerJob->error ?: 'Embedding reindex did not complete cleanly.'),
         ])->save();
+
+        $commandId = data_get($workerJob->payload, 'command_id');
+        if (is_numeric($commandId)) {
+            Command::query()
+                ->whereKey((int) $commandId)
+                ->update([
+                    'status' => $succeeded && $failed === 0
+                        ? Command::STATUS_SUCCEEDED
+                        : Command::STATUS_FAILED,
+                    'started_at' => $workerJob->started_at,
+                    'finished_at' => $workerJob->finished_at,
+                    'error' => $succeeded && $failed === 0
+                        ? null
+                        : ($workerJob->error ?: 'Embedding fallback worker job did not complete cleanly.'),
+                ]);
+        }
     }
 
     /**

@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\User;
+use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class EmbeddingIndexControlTest extends TestCase
@@ -16,6 +20,7 @@ class EmbeddingIndexControlTest extends TestCase
 
     public function test_admin_can_queue_embedding_index_build_command(): void
     {
+        Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
@@ -24,9 +29,17 @@ class EmbeddingIndexControlTest extends TestCase
 
         $command = Command::query()->firstOrFail();
         $this->assertSame('embedding_index_build', $command->type);
-        $this->assertSame('pending', $command->status);
-        $this->assertSame(['limit' => 10], $command->payload);
+        $this->assertSame('queued', $command->status);
+        $this->assertSame(10, $command->payload['limit']);
+        $this->assertIsInt($command->payload['legacy_fallback_worker_job_id']);
         $this->assertSame($admin->id, $command->created_by_user_id);
+
+        $workerJob = WorkerJob::query()->firstOrFail();
+        $this->assertSame(WorkerJob::TYPE_REINDEX_EMBED, $workerJob->type);
+        $this->assertSame($command->id, $workerJob->payload['command_id']);
+        $this->assertSame('embedding_index_build', $workerJob->payload['mode']);
+        $this->assertSame(10, $workerJob->payload['limit']);
+        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued): bool => $queued->workerJobId === $workerJob->id);
 
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,
@@ -47,6 +60,24 @@ class EmbeddingIndexControlTest extends TestCase
             ->assertForbidden();
 
         $this->assertDatabaseCount('commands', 0);
+    }
+
+    public function test_dramatiq_configured_embedding_build_stays_on_command_path(): void
+    {
+        Queue::fake();
+        Config::set('archibot.dramatiq_broker_url', 'amqp://rabbitmq');
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->post(route('embedding-index.build'))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('commands', [
+            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'status' => Command::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_admin_can_mark_embedding_index_stale(): void

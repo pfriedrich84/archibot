@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\EntityApproval;
 use App\Models\ReviewSuggestion;
@@ -359,7 +360,15 @@ PHP);
 
         Config::set('archibot_workers.python_binary', $script);
 
-        $workerJob = WorkerJob::factory()->create(['type' => WorkerJob::TYPE_REINDEX_EMBED]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => [],
+        ]);
+        $workerJob = WorkerJob::factory()->create([
+            'type' => WorkerJob::TYPE_REINDEX_EMBED,
+            'payload' => ['command_id' => $command->id],
+        ]);
         app(PythonWorkerCommand::class)->run($workerJob);
 
         $state = EmbeddingIndexState::query()->firstOrFail();
@@ -368,6 +377,9 @@ PHP);
         $this->assertSame(7, $state->embedded_count);
         $this->assertSame(0, $state->failed_count);
         $this->assertNull($state->error);
+        $this->assertSame(Command::STATUS_SUCCEEDED, $command->refresh()->status);
+        $this->assertNull($command->error);
+        $this->assertNotNull($command->finished_at);
 
         @unlink($script);
     }

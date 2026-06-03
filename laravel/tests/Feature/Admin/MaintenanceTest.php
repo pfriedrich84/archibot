@@ -105,13 +105,20 @@ class MaintenanceTest extends TestCase
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_REINDEX)->count());
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)->count());
         $this->assertDatabaseHas('worker_jobs', [
+            'type' => WorkerJob::TYPE_REINDEX_EMBED,
+            'status' => WorkerJob::STATUS_QUEUED,
+        ]);
+        $this->assertDatabaseHas('worker_jobs', [
             'type' => WorkerJob::TYPE_REINDEX_OCR,
             'status' => WorkerJob::STATUS_QUEUED,
         ]);
-        $this->assertSame(['mode' => 'ocr', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
+        $ocrWorkerJob = WorkerJob::query()
+            ->where('type', WorkerJob::TYPE_REINDEX_OCR)
+            ->firstOrFail();
+        $this->assertSame(['mode' => 'ocr', 'force' => true], $ocrWorkerJob->payload);
 
-        Queue::assertPushed(RunPythonWorkerJob::class, 1);
-        $this->assertSame(1, WorkerJob::query()->count());
+        Queue::assertPushed(RunPythonWorkerJob::class, 2);
+        $this->assertSame(2, WorkerJob::query()->count());
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.worker_job_requested')->count());
     }
 
