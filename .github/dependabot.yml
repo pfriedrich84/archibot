@@ -32,6 +32,10 @@ updates:
       - "python"
     commit-message:
       prefix: "deps"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       python-runtime:
         patterns:
@@ -68,6 +72,10 @@ updates:
       - "frontend"
     commit-message:
       prefix: "deps"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       laravel-frontend:
         patterns:

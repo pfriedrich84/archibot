@@ -19,7 +19,7 @@ ArchiBot already includes multiple supply-chain controls:
 - Use stable releases; Python dependency changes must pass the 3-day age check unless there is an explicit security exception.
 - Document security exceptions in `.dependency-age-allowlist` with a reason and expiry when applicable.
 - Update lock/constraint files deliberately and validate the resulting dependency graph. Event-driven runtime additions must keep explicit upper bounds in both `pyproject.toml` and `constraints.txt`.
-- Treat Dependabot PRs as dependency changes: review release notes, preserve lockfile/constraint alignment, run the relevant checks, and do not auto-merge changes that affect runtime, CI, Docker images, or security-sensitive libraries without human review.
+- Treat Dependabot PRs as dependency changes: review release notes, preserve lockfile/constraint alignment, run the relevant checks, and do not auto-merge changes that affect runtime, CI, Docker images, or security-sensitive libraries without human review. Python and frontend Dependabot updates intentionally ignore semver-major version updates by default; handle those as explicit, separately reviewed upgrade work.
 - Do not introduce `latest` image tags for runtime dependencies.
 
 ## External documentation policy
