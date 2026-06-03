@@ -36,7 +36,7 @@ Use small logical commits by layer where possible:
 
 Every change must be checked against `docs/governance/review-checklist.md` and the non-negotiable architecture rules in the migration prompt.
 
-Changes to CI, GitHub Actions, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, AI-provider routing, or committed Graphify artifacts must also be checked against `docs/governance/trust-boundaries.md`.
+Changes to CI, GitHub Actions, Dependabot configuration, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, AI-provider routing, or committed Graphify artifacts must also be checked against `docs/governance/trust-boundaries.md`.
 
 Release-impacting changes must also be checked against `docs/governance/release-governance.md`.
 
