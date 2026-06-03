@@ -12,4 +12,5 @@ A change is ready for handoff when:
 - Agent-relevant new constraints, decisions, or anti-patterns are recorded in `docs/agent/` when durable.
 - Secrets and private document data were not read, printed, or persisted.
 - Remaining TODOs, skipped checks, and follow-ups are explicit in the final summary.
+- Before pushing to a protected or release branch, the local pre-push gate or equivalent GitHub CI checks have passed.
 - The user is told whether changes are uncommitted; commits and pushes happen only on explicit request.

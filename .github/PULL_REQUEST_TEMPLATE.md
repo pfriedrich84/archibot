@@ -23,6 +23,11 @@
 
 Commands run:
 
+- [ ] `scripts/ci-local.sh --fast` or equivalent targeted checks
+- [ ] GitHub CI is expected to pass before merge
+
+Details:
+
 - 
 
 ## Notes for reviewers
