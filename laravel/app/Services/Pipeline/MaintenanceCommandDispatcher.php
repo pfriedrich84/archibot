@@ -147,8 +147,7 @@ class MaintenanceCommandDispatcher
         Command $command,
         ?int $limit,
         array $metadata,
-    ): void
-    {
+    ): void {
         if (trim((string) config('archibot.dramatiq_broker_url', '')) !== '') {
             return;
         }
