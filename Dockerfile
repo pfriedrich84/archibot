@@ -15,7 +15,7 @@ ENV APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 RUN composer dump-autoload --optimize --no-dev --no-interaction
 
 
-FROM node:20-trixie-slim AS laravel-build
+FROM node:26-trixie-slim AS laravel-build
 
 WORKDIR /laravel
 RUN apt-get update \
@@ -36,7 +36,7 @@ RUN php artisan wayfinder:generate --with-form \
     && npm run build
 
 
-FROM python:3.12-slim-trixie AS base
+FROM python:3.14-slim-trixie AS base
 
 ARG ARCHIBOT_GIT_SHA=""
 ARG ARCHIBOT_GIT_REF=""
