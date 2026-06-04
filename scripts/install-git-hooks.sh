@@ -36,7 +36,7 @@ trap 'rm -f "$push_input"' EXIT
 cat > "$push_input"
 
 if [[ -x "$previous_hook" ]]; then
-  "$previous_hook" < "$push_input"
+  "$previous_hook" "$@" < "$push_input"
 fi
 
 "$repo_root/scripts/ci-local.sh" --pre-push < "$push_input"
