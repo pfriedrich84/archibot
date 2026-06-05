@@ -4,11 +4,11 @@
     export const layout = {
         breadcrumbs: [
             {
-                title: 'Worker jobs',
+                title: 'Control Center',
                 href: workerJobsIndex(),
             },
             {
-                title: 'Worker job detail',
+                title: 'Worker row detail',
                 href: '#',
             },
         ],

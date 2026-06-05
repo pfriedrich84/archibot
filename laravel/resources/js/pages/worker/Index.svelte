@@ -4,7 +4,7 @@
     export const layout = {
         breadcrumbs: [
             {
-                title: 'Worker jobs',
+                title: 'Control Center',
                 href: workerJobsIndex(),
             },
         ],
@@ -159,12 +159,12 @@
     });
 </script>
 
-<AppHead title="Worker jobs" />
+<AppHead title="Control Center" />
 
 <div class="space-y-6">
     <Heading
-        title="Worker jobs"
-        description="Queue ArchiBot worker commands and inspect their results."
+        title="Control Center"
+        description="Queue ArchiBot commands, inspect durable command jobs, and monitor temporary worker rows."
     />
 
     <section class="rounded-xl border p-4">
@@ -345,7 +345,7 @@
 
                 <Button type="submit" disabled={processing} class="w-fit">
                     {#if processing}<Spinner />{/if}
-                    Queue worker job
+                    Queue job
                 </Button>
             {/snippet}
         </Form>
@@ -353,7 +353,7 @@
         <div
             class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground"
         >
-            Worker controls are available to administrators only.
+            Control Center actions are available to administrators only.
         </div>
     {/if}
 

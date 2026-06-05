@@ -99,7 +99,7 @@
 
     const processingNavItems: NavItem[] = $derived([
         {
-            title: 'Workers',
+            title: 'Control Center',
             href: workerJobsIndex(),
             icon: Workflow,
         },

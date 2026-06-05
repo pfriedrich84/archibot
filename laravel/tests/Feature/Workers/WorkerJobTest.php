@@ -158,9 +158,14 @@ class WorkerJobTest extends TestCase
     {
         $indexPage = file_get_contents(resource_path('js/pages/worker/Index.svelte'));
         $showPage = file_get_contents(resource_path('js/pages/worker/Show.svelte'));
+        $sidebar = file_get_contents(resource_path('js/components/AppSidebar.svelte'));
 
         $this->assertIsString($indexPage);
         $this->assertIsString($showPage);
+        $this->assertIsString($sidebar);
+        $this->assertStringContainsString('Control Center', $indexPage);
+        $this->assertStringContainsString('Control Center', $showPage);
+        $this->assertStringContainsString('Control Center', $sidebar);
         $this->assertStringContainsString('Run forced poll reconciliation', $indexPage);
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
@@ -168,6 +173,7 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Durable command jobs', $indexPage);
         $this->assertStringContainsString('Temporary worker_jobs rows', $indexPage);
         $this->assertStringContainsString('Force poll, process document, or OCR reindex', $indexPage);
+        $this->assertStringContainsString('Queue job', $indexPage);
         $this->assertStringContainsString('quickControls.poll_url', $indexPage);
         $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
         $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);
