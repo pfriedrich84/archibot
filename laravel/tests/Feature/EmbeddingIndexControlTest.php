@@ -21,6 +21,7 @@ class EmbeddingIndexControlTest extends TestCase
     public function test_admin_can_queue_embedding_index_build_command(): void
     {
         Queue::fake();
+        Config::set('archibot.absurd_database_url', '');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)

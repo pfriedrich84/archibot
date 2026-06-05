@@ -8,6 +8,7 @@ use App\Models\Command;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -86,6 +87,7 @@ class MaintenanceTest extends TestCase
     public function test_maintenance_controls_route_migrated_actions_to_commands_and_keep_ocr_as_worker_job(): void
     {
         Queue::fake();
+        Config::set('archibot.absurd_database_url', '');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
