@@ -70,6 +70,8 @@ The event-driven state tables are owned by PostgreSQL and include:
 
 PostgreSQL is the source of truth for progress, retries, audit and recovery state. Absurd is the only queue transport for the event-driven path.
 
+The Absurd PostgreSQL schema is vendored at `laravel/database/sql/absurd.sql` from upstream Absurd `main` as of the 0.4.0 Python SDK integration. Keep that SQL file and the pinned `absurd-sdk==0.4.0` dependency in sync when upgrading Absurd.
+
 ## Paperless webhook setup
 
 Configure Paperless to send document events to:
@@ -97,7 +99,7 @@ Do not perform OCR, embedding, classification, Paperless fetches or LLM calls in
 
 ## Worker startup
 
-In the container entrypoint, the Absurd worker is started when `ABSURD_DATABASE_URL` is configured:
+In the container entrypoint, the Absurd worker is started when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured:
 
 ```bash
 python -m app.event_worker start-workers
@@ -210,7 +212,7 @@ Live integration smoke checklist:
 2. Start PostgreSQL.
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
-5. Start Laravel, Laravel queue worker, Dramatiq actors and the recovery bridge.
+5. Start Laravel, Laravel queue worker, Absurd actors and the recovery bridge.
 6. Configure Paperless webhook to `POST /api/webhooks/paperless` with `X-Webhook-Secret` if configured.
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.

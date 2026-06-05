@@ -20,7 +20,7 @@ The container entrypoint starts these Laravel-side processes:
 - A background loop running `php artisan worker-jobs:recover --no-interaction` to recover lost queued, running, or cancelling jobs.
 - The Laravel web server for the UI/API.
 
-When RabbitMQ is configured, Dramatiq actors and the event recovery bridge may also run, but they are separate from this temporary `worker_jobs` path.
+When Absurd is configured, Absurd actors and the event recovery bridge may also run, but they are separate from this temporary `worker_jobs` path.
 
 ## Environment variables
 
@@ -142,4 +142,4 @@ php artisan archibot:reset --yes
 
 This clears Laravel/PostgreSQL runtime and job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, sessions/cache, chat state, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, entity approvals, audit logs, embedding index state, document embeddings, and LLM call history. Add `--include-config` only when intentionally clearing Laravel app settings, setup state, MCP tokens, and legacy config files too.
 
-Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ, and Dramatiq.
+Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, Absurd, and Absurd.

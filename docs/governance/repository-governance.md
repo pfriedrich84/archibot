@@ -1,6 +1,6 @@
 # Repository Governance
 
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, PostgreSQL/pgvector, RabbitMQ and Dramatiq.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, PostgreSQL/pgvector, Absurd and Absurd.
 
 ## Governance goals
 
@@ -26,9 +26,9 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 Use small logical commits by layer where possible:
 
 - `docs:` governance, ADRs and implementation notes
-- `infra:` Docker, RabbitMQ, PostgreSQL and deployment config
+- `infra:` Docker, Absurd, PostgreSQL and deployment config
 - `laravel:` Laravel migrations, models, controllers, UI and tests
-- `python:` Dramatiq actors, broker, DB/session helpers and worker bootstrap
+- `python:` Absurd actors, queue adapter, DB/session helpers and worker bootstrap
 - `pipeline:` shared pipeline-start, locks, idempotency, progress and retry flows
 - `test:` focused tests and smoke checks
 

@@ -22,20 +22,20 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Governance docs exist under `docs/governance/`.
   - ADRs `0001` through `0011` exist for the target decisions.
 - Phase 1 infrastructure foundation: implemented as initial local/dev wiring, needs full Docker build smoke check.
-  - PostgreSQL, RabbitMQ and pgvector-oriented environment settings were added to Docker/config examples.
-  - Python config includes `DATABASE_URL`, `DRAMATIQ_BROKER_URL`, `ARCHIBOT_QUEUE_PREFIX` and `POLL_INTERVAL_SECONDS`.
-  - Container runtime installs PHP pgsql support plus Dramatiq, SQLAlchemy, psycopg and pgvector Python dependencies.
-  - Entrypoint starts Laravel, the Laravel queue worker, Dramatiq actors and the durable event recovery bridge when RabbitMQ is configured.
+  - PostgreSQL, Absurd and pgvector-oriented environment settings were added to Docker/config examples.
+  - Python config includes `DATABASE_URL`, `ABSURD_DATABASE_URL`, `ARCHIBOT_QUEUE_PREFIX` and `POLL_INTERVAL_SECONDS`.
+  - Container runtime installs PHP pgsql support plus Absurd, SQLAlchemy, psycopg and pgvector Python dependencies.
+  - Entrypoint starts Laravel, the Laravel queue worker, Absurd actors and the durable event recovery bridge when Absurd is configured.
 - Phase 2 durable database foundation: implemented as initial Laravel migration/models, needs broader Laravel test pass.
   - Tables/models exist for webhook deliveries, commands, pipeline runs/events/items, actor executions, embedding index state, LLM calls and document embeddings.
   - Progress, retry, trigger, dedupe, reprocess and observability fields are represented in the migration.
 - Phase 3 webhook ingestion: implemented as persisted ingestion, no synchronous heavy work.
   - `POST /api/webhooks/paperless` validates the optional secret, extracts document id/modified time, computes a dedupe key, persists raw/normalized payloads and records received/duplicate events.
   - Feature tests cover persistence, dedupe, secret validation and malformed payload rejection.
-- Phase 4 Dramatiq foundation: partially implemented.
-  - RabbitMQ broker config, queue naming, actor/event/job package skeletons and webhook actor exist.
+- Phase 4 Absurd foundation: partially implemented.
+  - Absurd broker config, queue naming, actor/event/job package skeletons and webhook actor exist.
   - Webhook actor now loads persisted delivery state, emits normalization events, calls `start_or_attach_document_pipeline(...)`, and marks delivery `blocked`, `processed` or `failed`.
-  - Recovery scan now finds queued webhook deliveries and enqueues the webhook actor through Dramatiq `.send(...)`, with a local fallback when Dramatiq is unavailable.
+  - Recovery scan now finds queued webhook deliveries and enqueues the webhook actor through Absurd `.send(...)`, with a local fallback when Absurd is unavailable.
   - `archibot-events` / `python -m app.event_worker recovery-scan` provides a recovery-loop bootstrap for persisted queued work.
   - Shared pipeline-start helper computes dedupe keys, persists/attaches durable `pipeline_runs`, enforces the embedding readiness gate, and emits blocked/pending events.
   - Embedding readiness gate reads the latest durable `embedding_index_state.status` and only allows `complete`.
@@ -57,7 +57,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Recovery now detects stale `running` actor executions left by worker/container crashes, marks them `retrying` with `retry_mode=recovery`, emits `actor.recovered_stale`, and requeues document pipeline runs when a safe `pipeline_run_id` is available.
   - Retry classification/backoff is now wired for document pipeline actors: transient network/provider/Paperless/rate-limit/recoverable-processing failures schedule durable `retrying` runs with bounded backoff, and recovery requeues retrying document runs when `next_retry_at` is due.
   - Admin-only embedding index controls are available from the dashboard: `Start/Resume embedding build` creates a durable `embedding_index_build` command for recovery pickup, and `Mark embedding index stale` updates durable readiness state and emits/audits the control action.
-  - Recovery now bridges pending `embedding_index_build` commands to the embedding Dramatiq actor.
+  - Recovery now bridges pending `embedding_index_build` commands to the embedding Absurd actor.
   - Admin-only `Run poll now` is available from the dashboard, creates a durable `poll_reconciliation` command, and recovery bridges it to the polling reconciliation actor so manual and scheduled polling share the same `start_or_attach_document_pipeline(...)` path.
   - Admin-only `Start reindex` is available from the dashboard, marks the durable embedding index state `stale` to close the processing gate, creates a durable `reindex` command, and recovery bridges it to the existing embedding rebuild actor as a safe initial reindex step.
   - Dashboard now shows recent webhook deliveries with event/document/status/error/timestamps. Admin-only `Retry webhook delivery` requeues failed/blocked deliveries for recovery pickup, and `Dismiss webhook failure` moves them to durable `dismissed` terminal state with events/audit records.
@@ -65,7 +65,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Laravel manual reprocess/retry controls now respect the embedding readiness gate: document runs are created or moved to `blocked` with `embedding_index_not_ready` until the latest durable embedding index state is `complete`.
   - Laravel webhook ingestion can now optionally attempt direct enqueue for newly persisted non-duplicate deliveries through `ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true`. It uses `ARCHIBOT_PYTHON_BINARY` with the fixed command `-m app.event_worker enqueue-webhook --delivery-id <id>` instead of arbitrary argv. Failures keep the delivery `queued`, emit redacted `webhook.enqueue_deferred`, and rely on durable recovery fallback.
   - Recovery enqueue helpers now restore command bridges and document pipeline runs to discoverable `pending` state if broker `.send(...)` fails after a queued transition.
-  - Full end-to-end enqueue proof against live RabbitMQ/PostgreSQL is still open.
+  - Full end-to-end enqueue proof against live Absurd/PostgreSQL is still open.
 
 ## Current validation
 
@@ -84,10 +84,10 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
 
 ## Open implementation notes
 
-- Python currently has `app/db.py`, so the target `app/db/` package cannot be introduced without a later module migration. New PostgreSQL/Dramatiq code remains additive for now.
+- Python currently has `app/db.py`, so the target `app/db/` package cannot be introduced without a later module migration. New PostgreSQL/Absurd code remains additive for now.
 - Removed legacy Laravel webhook routes must not be extended or reintroduced for the new architecture. The target endpoint is `/api/webhooks/paperless` with `/webhook` as a simple alias.
-- Laravel webhook ingestion persists durable delivery state, starts or coalesces a durable `pipeline_runs` row, and optionally attempts fixed direct enqueue when `ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true`. Recovery scan and entrypoint remain the durable fallback from queued `webhook_deliveries` to Dramatiq actors; the next safe milestone is a live Docker/RabbitMQ/PostgreSQL smoke check.
+- Laravel webhook ingestion persists durable delivery state, starts or coalesces a durable `pipeline_runs` row, and optionally attempts fixed direct enqueue when `ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true`. Recovery scan and entrypoint remain the durable fallback from queued `webhook_deliveries` to Absurd actors; the next safe milestone is a live Docker/Absurd/PostgreSQL smoke check.
 - `ensure_embedding_index_ready()` now reads durable index status and fails closed unless it is `complete`. Blocked document runs are persisted and recoverable. The initial embedding build actor now indexes only trusted Paperless documents without the configured inbox tag into PostgreSQL/pgvector, records metadata for context search, and marks builds `complete`; live Paperless/Ollama/PostgreSQL smoke testing is still needed.
 - Pending document runs now reach a document actor and perform read-only Paperless fetch, local-only OCR correction, pgvector trusted-context lookup, LLM classification, optional judge verification, idempotent Laravel review suggestion persistence linked to `pipeline_runs`, and auto-commit queueing through the event-driven commit actor when `auto_commit_confidence` matches. Commit only uses reviewed existing IDs and preserves existing Paperless storage paths.
-- Manual admin reprocess now creates durable pending runs for recovery/Dramatiq pickup. Automatic webhook-triggered reprocess metadata is wired for Paperless change/update events; live webhook payload verification is still needed.
-- Polling reconciliation is wired through the event worker and maintenance actor; live Paperless/RabbitMQ/PostgreSQL smoke testing is still needed outside this environment.
+- Manual admin reprocess now creates durable pending runs for recovery/Absurd pickup. Automatic webhook-triggered reprocess metadata is wired for Paperless change/update events; live webhook payload verification is still needed.
+- Polling reconciliation is wired through the event worker and maintenance actor; live Paperless/Absurd/PostgreSQL smoke testing is still needed outside this environment.

@@ -81,7 +81,7 @@ Python:  app.jobs.pipeline_start.start_or_attach_document_pipeline(...)
 
 Both adapters must satisfy the same interface: compute the same dedupe key, enforce the embedding readiness gate, coalesce through durable PostgreSQL state, and emit the canonical Pipeline Run events. The shared contract vectors live in `tests/fixtures/pipeline_start_contract.json` and are exercised by both PHP and Python tests.
 
-Deletion target: future work should remove duplicated start implementation by moving callers toward durable Command / Pipeline Run / Dramatiq actor seams, not by deepening Worker Job or subprocess paths.
+Deletion target: future work should remove duplicated start implementation by moving callers toward durable Command / Pipeline Run / Absurd actor seams, not by deepening Worker Job or subprocess paths.
 
 Responsibilities:
 

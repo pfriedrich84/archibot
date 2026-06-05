@@ -21,8 +21,8 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          ┌───────────┴───────────┐
                          ▼                       ▼
                   ┌──────────────────────┐ ┌──────────────┐
-                  │ PostgreSQL + pgvector │ │   RabbitMQ   │
-                  │  (persistent volume)  │ │ Dramatiq     │
+                  │ PostgreSQL + pgvector │ │   Absurd   │
+                  │  (persistent volume)  │ │ Absurd     │
                   └──────────────────────┘ └──────────────┘
 ```
 
@@ -177,8 +177,8 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 
 ## Docker-Deployment
 
-- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector und RabbitMQ-Services
-- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional), 15672 (RabbitMQ Management, optional via Compose)
-- **Volumes:** `archibot_postgres` fuer App-Datenbank/Embeddings, `archibot_rabbitmq` fuer Broker-State, `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue, Python Scheduler/Recovery/Workers und optional den Python MCP-Server
-- **Netzwerk:** App-Container muss Paperless, PostgreSQL, RabbitMQ und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
+- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Absurd laeuft als PostgreSQL-Schema/Queue-Tabellen ohne separaten Broker-Service
+- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
+- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings und Absurd Queue-State; `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue, Absurd Worker/Recovery und optional den Python MCP-Server
+- **Netzwerk:** App-Container muss Paperless, PostgreSQL und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`

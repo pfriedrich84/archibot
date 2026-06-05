@@ -9,8 +9,8 @@ Accepted
 Archibot is moving to an event-driven architecture with multiple runtime components:
 
 - Laravel UI / API / webhook ingestion
-- Python Dramatiq workers
-- RabbitMQ broker
+- Python Absurd workers
+- Absurd broker
 - PostgreSQL + pgvector
 - Paperless integration
 - Ollama / LiteLLM provider integration
@@ -111,7 +111,7 @@ Structured logs answer:
 - Which HTTP call timed out?
 - Which actor crashed?
 - Which exception occurred?
-- What did RabbitMQ/Paperless/Ollama do around that time?
+- What did Absurd/Paperless/Ollama do around that time?
 
 ## Required Component Behavior
 
@@ -129,7 +129,7 @@ Laravel should emit structured logs for:
 
 Laravel logs must include `request_id` and, if available, `webhook_delivery_id`, `pipeline_run_id`, and `paperless_document_id`.
 
-### Python / Dramatiq
+### Python / Absurd
 
 Python workers should emit structured logs for:
 
@@ -142,15 +142,15 @@ Python workers should emit structured logs for:
 
 Python logs must include `message_id`, `actor_name`, `pipeline_run_id`, `actor_execution_id`, and `paperless_document_id` where available.
 
-### RabbitMQ
+### Absurd
 
-RabbitMQ operational metrics and logs should be available for:
+Absurd operational metrics and logs should be available for:
 
 - queue depth
-- dead-letter count
-- consumer count
-- message rates
-- broker connection issues
+- task spawn/claim/completion/failure rates
+- retrying or sleeping task counts
+- oldest pending task age
+- worker loop and PostgreSQL connection issues
 
 ### PostgreSQL
 
@@ -179,7 +179,7 @@ actor_retry_total
 paperless_request_duration_ms
 llm_request_duration_ms
 embedding_build_progress
-rabbitmq_queue_depth
+absurd_queue_depth
 pending_webhook_deliveries
 blocked_pipeline_runs
 ```
@@ -198,7 +198,7 @@ Do not put secrets, API keys or full sensitive document content into logs.
 
 What gets easier:
 
-- debugging across Laravel, Python and RabbitMQ
+- debugging across Laravel, Python and Absurd
 - correlating webhook deliveries with actors and LLM calls
 - monitoring retry loops and stuck runs
 - operating Archibot after container restarts

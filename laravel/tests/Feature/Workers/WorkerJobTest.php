@@ -280,9 +280,10 @@ class WorkerJobTest extends TestCase
         $this->assertTrue($command->payload['force']);
     }
 
-    public function test_embedding_reindex_queues_command_and_worker_fallback_without_dramatiq(): void
+    public function test_embedding_reindex_queues_command_and_worker_fallback_without_absurd(): void
     {
         Queue::fake();
+        Config::set('archibot.absurd_database_url', '');
         $user = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($user)

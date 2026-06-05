@@ -91,7 +91,7 @@ class MaintenanceCommandDispatcher
             ...$metadata,
         ], 'embedding_index');
 
-        $this->dispatchEmbeddingFallbackWhenDramatiqIsUnavailable($request, $command, $limit, $metadata);
+        $this->dispatchEmbeddingFallbackWhenAbsurdIsUnavailable($request, $command, $limit, $metadata);
 
         return $command;
     }
@@ -142,13 +142,13 @@ class MaintenanceCommandDispatcher
     }
 
     /** @param array<string, mixed> $metadata */
-    private function dispatchEmbeddingFallbackWhenDramatiqIsUnavailable(
+    private function dispatchEmbeddingFallbackWhenAbsurdIsUnavailable(
         Request $request,
         Command $command,
         ?int $limit,
         array $metadata,
     ): void {
-        if (trim((string) config('archibot.dramatiq_broker_url', '')) !== '') {
+        if (trim((string) config('archibot.absurd_database_url', '')) !== '') {
             return;
         }
 
@@ -182,7 +182,7 @@ class MaintenanceCommandDispatcher
             $command,
             'job_control.embedding_build_legacy_fallback_queued',
             'warning',
-            'Embedding build queued through temporary worker job fallback because Dramatiq is not configured.',
+            'Embedding build queued through temporary worker job fallback because Absurd is not configured.',
             [
                 'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
                 'worker_job_id' => $workerJob->id,

@@ -1,3 +1,3 @@
 """Queue-backed actor package for the event-driven Archibot pipeline."""
 
-from app.dramatiq_broker import broker as broker
+from app.absurd_queue import broker as broker

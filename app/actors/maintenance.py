@@ -7,9 +7,9 @@ import time
 
 import structlog
 
+from app.absurd_queue import queue_backend, queue_name
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import (

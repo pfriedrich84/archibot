@@ -64,7 +64,7 @@ echo "Starting Laravel worker job recovery loop"
 ) &
 
 # Start the Absurd queue worker and the durable recovery bridge when queue access is configured.
-if [ -n "${ABSURD_DATABASE_URL:-}" ]; then
+if [ -n "${ABSURD_DATABASE_URL:-}" ] || [ -n "${DATABASE_URL:-}" ]; then
     echo "Starting queue workers"
     cd /app
     python -m app.event_worker start-workers \

@@ -80,7 +80,7 @@ class DashboardTest extends TestCase
             'status' => WebhookDelivery::STATUS_FAILED,
             'received_at' => now()->addMinute(),
             'processed_at' => now()->addMinutes(2),
-            'error' => 'RabbitMQ unavailable',
+            'error' => 'Absurd unavailable',
         ]);
         $pipelineRun = PipelineRun::query()->create([
             'type' => 'document',
@@ -196,7 +196,7 @@ class DashboardTest extends TestCase
                 ->where('recentWebhookDeliveries.0.status', WebhookDelivery::STATUS_FAILED)
                 ->where('recentWebhookDeliveries.0.event_type', 'document.updated')
                 ->where('recentWebhookDeliveries.0.paperless_document_id', 456)
-                ->where('recentWebhookDeliveries.0.error', 'RabbitMQ unavailable')
+                ->where('recentWebhookDeliveries.0.error', 'Absurd unavailable')
                 ->where('recentWebhookDeliveries.0.can_retry', true)
                 ->where('recentWebhookDeliveries.0.can_dismiss', true)
                 ->has('recentActorExecutions', 2)

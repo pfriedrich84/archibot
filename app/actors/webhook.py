@@ -8,9 +8,9 @@ from dataclasses import dataclass
 
 import structlog
 
+from app.absurd_queue import queue_backend, queue_name
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
-from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
@@ -233,7 +233,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             types.WEBHOOK_NORMALIZED,
             webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
-            message="Webhook delivery normalized by Laravel and accepted by Dramatiq actor.",
+            message="Webhook delivery normalized by Laravel and accepted by Absurd actor.",
             payload={"event_type": delivery.event_type, "webhook_action": action},
         )
 

@@ -12,9 +12,9 @@ import time
 
 import structlog
 
+from app.absurd_queue import has_queue_backend, start_queue_worker
 from app.actors.maintenance import reconcile_inbox_documents
 from app.config import settings
-from app.dramatiq_broker import has_queue_backend, start_queue_worker
 from app.jobs.recovery import enqueue_webhook_delivery, run_recovery_scan
 
 log = structlog.get_logger(__name__)
