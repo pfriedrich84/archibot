@@ -34,6 +34,8 @@ Use small logical commits by layer where possible:
 
 ## Review rule
 
+Temporary direct-main mode is active as of 2026-06-05: agents and maintainers may commit directly on `main` while branch protection is intentionally disabled for active development. This does not relax validation, safety, or review evidence requirements; run the relevant checks from `docs/agent/CHECKS.md` before each push when local tooling is available, and record any skipped checks in the handoff.
+
 Every change must be checked against `docs/governance/review-checklist.md` and the non-negotiable architecture rules in the migration prompt.
 
 Changes to CI, GitHub Actions, Dependabot configuration, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, AI-provider routing, or committed Graphify artifacts must also be checked against `docs/governance/trust-boundaries.md`.
