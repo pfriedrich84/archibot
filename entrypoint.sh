@@ -63,11 +63,13 @@ echo "Starting Laravel worker job recovery loop"
     done
 ) &
 
-# Start Dramatiq actors and the durable recovery bridge when RabbitMQ is configured.
-if [ -n "${DRAMATIQ_BROKER_URL:-}" ]; then
-    echo "Starting Dramatiq worker"
+# Start the Absurd queue worker and the durable recovery bridge when queue access is configured.
+if [ -n "${ABSURD_DATABASE_URL:-}" ]; then
+    echo "Starting queue workers"
     cd /app
-    python -m dramatiq app.actors.webhook app.actors.maintenance app.actors.document app.actors.embedding app.actors.review &
+    python -m app.event_worker start-workers \
+        --concurrency "${ARCHIBOT_QUEUE_WORKER_CONCURRENCY:-1}" \
+        --claim-timeout "${ARCHIBOT_QUEUE_WORKER_CLAIM_TIMEOUT:-120}" &
     echo "Starting event recovery bridge"
     python -m app.event_worker recovery-scan --interval-seconds "${EVENT_RECOVERY_INTERVAL_SECONDS:-30}" &
     cd /app/laravel

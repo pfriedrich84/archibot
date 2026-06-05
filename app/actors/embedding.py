@@ -10,7 +10,7 @@ import structlog
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.dramatiq_broker import dramatiq, queue_name
+from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import (
@@ -272,8 +272,8 @@ def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
     )
 
 
-if dramatiq is not None:
-    build_initial_embedding_index = dramatiq.actor(queue_name=queue_name("embedding"))(
+if queue_backend is not None:
+    build_initial_embedding_index = queue_backend.actor(queue_name=queue_name("embedding"))(
         _build_initial_embedding_index_impl
     )
 else:  # pragma: no cover - lets local imports work before deps are installed

@@ -4,7 +4,7 @@
 
 ArchiBot already includes multiple supply-chain controls:
 
-- Pinned Python transitive constraints in `constraints.txt`, including the event-driven Dramatiq/RabbitMQ and PostgreSQL/pgvector runtime dependencies.
+- Pinned Python transitive constraints in `constraints.txt`, including the event-driven Absurd and PostgreSQL/pgvector runtime dependencies.
 - Python dependency age check: `scripts/check_dependency_age.py --min-days 3`.
 - Known vulnerability allowlist file: `.pip-audit-known-vulnerabilities`.
 - CI security/audit steps for pip-audit, Docker build, Grype, and Trivy.
@@ -27,7 +27,7 @@ ArchiBot already includes multiple supply-chain controls:
 - For dependency-sensitive code or configuration changes, use current external documentation before implementation. Prefer Context7 for public library/framework/SDK/API/CLI documentation when it is available.
 - If Context7 does not return useful documentation, fall back to official docs, release notes, upstream README files, or source code and state that fallback in the final summary.
 - Verify breaking changes, deprecations, payload formats, generated-client behavior, and CLI flags against current docs instead of stale model memory.
-- This policy applies especially to Laravel/Svelte/Inertia, Python libraries such as httpx/Dramatiq/SQLAlchemy, Docker/Compose, Paperless APIs, and OpenAI-compatible provider payloads.
+- This policy applies especially to Laravel/Svelte/Inertia, Python libraries such as httpx/Absurd/SQLAlchemy, Docker/Compose, Paperless APIs, and OpenAI-compatible provider payloads.
 
 ## Validation commands
 

@@ -20,7 +20,7 @@ def test_recovery_loop_once_runs_single_scan_and_poll_reconciliation(monkeypatch
     assert sleeps == []
 
 
-def test_enqueue_poll_reconciliation_uses_dramatiq_send_when_available(monkeypatch):
+def test_enqueue_poll_reconciliation_uses_send_when_available(monkeypatch):
     sent = []
 
     class Actor:
@@ -69,3 +69,58 @@ def test_main_recovery_scan_once(monkeypatch):
         == 0
     )
     assert calls == [{"interval_seconds": 7, "once": True, "limit": 3}]
+
+
+def test_start_queue_workers_starts_absurd(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        event_worker,
+        "has_queue_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        event_worker,
+        "start_queue_worker",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    event_worker.start_queue_workers(concurrency=3, claim_timeout=45)
+
+    assert calls == [{"concurrency": 3, "claim_timeout": 45}]
+
+
+def test_start_queue_workers_requires_queue_backend(monkeypatch):
+    monkeypatch.setattr(event_worker, "has_queue_backend", lambda: False)
+
+    try:
+        event_worker.start_queue_workers()
+    except RuntimeError as exc:
+        assert "DATABASE_URL or ABSURD_DATABASE_URL" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected RuntimeError")
+
+
+def test_main_start_workers_invokes_queue_startup(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(event_worker, "has_queue_backend", lambda: True)
+    monkeypatch.setattr(
+        event_worker,
+        "start_queue_workers",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    assert (
+        event_worker.main(
+            [
+                "start-workers",
+                "--concurrency",
+                "4",
+                "--claim-timeout",
+                "99",
+            ]
+        )
+        == 0
+    )
+    assert calls == [{"concurrency": 4, "claim_timeout": 99}]

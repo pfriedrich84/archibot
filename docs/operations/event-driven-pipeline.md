@@ -7,9 +7,8 @@ This guide covers the new Archibot event-driven processing path. It is the targe
 Required runtime services:
 
 - PostgreSQL with `pgvector` enabled.
-- RabbitMQ for Dramatiq transport.
+- PostgreSQL-backed Absurd queue.
 - Laravel HTTP app and queue worker.
-- Python Dramatiq workers.
 - Event recovery bridge.
 - Paperless and the configured LLM/embedding provider.
 
@@ -17,7 +16,7 @@ Core environment variables:
 
 ```env
 DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-DRAMATIQ_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+ABSURD_DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
 ARCHIBOT_QUEUE_PREFIX=archibot
 POLL_INTERVAL_SECONDS=600
 PAPERLESS_WEBHOOK_SECRET=<generate-a-random-secret>
@@ -69,7 +68,7 @@ The event-driven state tables are owned by PostgreSQL and include:
 - `llm_calls`
 - `document_embeddings`
 
-PostgreSQL is the source of truth for progress, retries, audit and recovery state. RabbitMQ/Dramatiq is transport only.
+PostgreSQL is the source of truth for progress, retries, audit and recovery state. Absurd is the only queue transport for the event-driven path.
 
 ## Paperless webhook setup
 
@@ -98,10 +97,10 @@ Do not perform OCR, embedding, classification, Paperless fetches or LLM calls in
 
 ## Worker startup
 
-In the container entrypoint, the event-driven workers are started when `DRAMATIQ_BROKER_URL` is set:
+In the container entrypoint, the Absurd worker is started when `ABSURD_DATABASE_URL` is configured:
 
 ```bash
-python -m dramatiq app.actors.webhook app.actors.maintenance app.actors.document app.actors.embedding app.actors.review
+python -m app.event_worker start-workers
 python -m app.event_worker recovery-scan --interval-seconds "${EVENT_RECOVERY_INTERVAL_SECONDS:-30}"
 ```
 
@@ -208,7 +207,7 @@ npm run types:check
 Live integration smoke checklist:
 
 1. Build/start the container stack.
-2. Start PostgreSQL and RabbitMQ.
+2. Start PostgreSQL.
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
 5. Start Laravel, Laravel queue worker, Dramatiq actors and the recovery bridge.

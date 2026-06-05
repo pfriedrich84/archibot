@@ -136,6 +136,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `POLL_INTERVAL_SECONDS` | `0` | Sekunden zwischen Inbox-Polls (`0` = automatisches Polling deaktiviert) |
+| `ABSURD_DATABASE_URL` | — | PostgreSQL-DB-URL fuer den Absurd-Queue-Transport. Im Standard-Compose-Stack wird sie automatisch aus `DATABASE_URL` gesetzt; ausserhalb davon explizit konfigurieren. |
 
 ## Laravel/Svelte GUI
 

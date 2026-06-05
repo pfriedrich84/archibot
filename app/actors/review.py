@@ -8,7 +8,7 @@ import time
 import structlog
 
 from app.clients.paperless import PaperlessClient
-from app.dramatiq_broker import dramatiq, queue_name
+from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import (
@@ -143,8 +143,8 @@ def _commit_review_suggestion_impl(
     )
 
 
-if dramatiq is not None:
-    commit_review_suggestion = dramatiq.actor(queue_name=queue_name("io"))(
+if queue_backend is not None:
+    commit_review_suggestion = queue_backend.actor(queue_name=queue_name("io"))(
         _commit_review_suggestion_impl
     )
 else:  # pragma: no cover - lets local imports work before deps are installed

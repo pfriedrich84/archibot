@@ -10,7 +10,7 @@ import structlog
 
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
-from app.dramatiq_broker import dramatiq, queue_name
+from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
@@ -313,8 +313,8 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
     )
 
 
-if dramatiq is not None:
-    handle_paperless_webhook = dramatiq.actor(queue_name=queue_name("webhook"))(
+if queue_backend is not None:
+    handle_paperless_webhook = queue_backend.actor(queue_name=queue_name("webhook"))(
         _handle_paperless_webhook_impl
     )
 else:  # pragma: no cover - lets local imports work before deps are installed

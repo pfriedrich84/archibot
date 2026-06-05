@@ -4,7 +4,7 @@ Anleitungen fuer verschiedene Deployment-Szenarien.
 
 ## Docker Compose (Standard)
 
-Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector und RabbitMQ. Paperless-NGX und der AI-Provider (Ollama oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
+Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad laeuft ueber Absurd in PostgreSQL und benoetigt keinen separaten RabbitMQ-Service. Paperless-NGX und der AI-Provider (Ollama oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
 
 Das ArchiBot-App-Image wird automatisch ueber GitHub Container Registry bereitgestellt:
 
@@ -47,13 +47,12 @@ Die Web-GUI wird von Laravel/Svelte direkt auf Port `8088` ausgeliefert. Authent
 
 ## Persistente Daten
 
-Datei- und Konfigurationsdaten liegen in `DATA_DIR` (Default: `/data`) im Compose-Volume `archibot_data`. Die App-Datenbank und der Broker-State liegen in eigenen Volumes:
+Datei- und Konfigurationsdaten liegen in `DATA_DIR` (Default: `/data`) im Compose-Volume `archibot_data`. Die App-Datenbank liegt in einem eigenen Volume:
 
 ```yaml
 volumes:
   archibot_data:
   archibot_postgres:
-  archibot_rabbitmq:
 ```
 
 ### Persistente Daten
@@ -61,7 +60,6 @@ volumes:
 | Ort | Beschreibung |
 |---|---|
 | PostgreSQL-Volume `archibot_postgres` | App-Datenbank (Sessions, Settings, Review Queue, Pipeline Runs/Events, Audit, MCP-Tokens, Embeddings) |
-| RabbitMQ-Volume `archibot_rabbitmq` | Broker-State fuer Dramatiq-Queues und Recovery nach Neustarts |
 | App-Volume `archibot_data` / `DATA_DIR` | App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration |
 | `DATA_DIR/laravel/app_key` | Persistenter Laravel-App-Key fuer verschluesselte Secrets |
 | `DATA_DIR/config.env` | Legacy-Settings, die beim ersten Laravel-Setup einmalig importiert werden |
@@ -69,7 +67,7 @@ volumes:
 
 ### Backup
 
-Fuer ein vollstaendiges Backup muessen `archibot_data`, `archibot_postgres` und optional `archibot_rabbitmq` gesichert werden. PostgreSQL sollte per Dump oder mit gestopptem Stack auf Volume-Ebene gesichert werden:
+Fuer ein vollstaendiges Backup muessen `archibot_data` und `archibot_postgres` gesichert werden. PostgreSQL sollte per Dump oder mit gestopptem Stack auf Volume-Ebene gesichert werden:
 
 ```bash
 # App-Daten (/data)
@@ -79,9 +77,6 @@ docker run --rm -v archibot_data:/data -v $(pwd):/backup \
 # PostgreSQL-Dump
 docker exec archibot-postgres pg_dump -U archibot archibot > archibot-postgres.sql
 
-# Optional: RabbitMQ-Volume bei gestopptem Stack sichern
-docker run --rm -v archibot_rabbitmq:/rabbitmq -v $(pwd):/backup \
-  alpine tar czf /backup/archibot-rabbitmq.tar.gz -C /rabbitmq .
 ```
 
 ### Reset
@@ -103,7 +98,6 @@ docker exec archibot archibot reset --yes --include-config
 | ArchiBot App → Paperless | HTTP | API-Zugriff (Dokumente, Metadaten) |
 | ArchiBot App → AI-Provider | HTTP | LLM-Inference (Chat, Embedding) via Ollama oder OpenAI-kompatiblem Endpoint |
 | ArchiBot App → PostgreSQL | TCP 5432 | App-State, pgvector Embeddings, Pipeline-/Audit-Tabellen |
-| ArchiBot App → RabbitMQ | AMQP 5672 | Dramatiq-Queues fuer Webhook, Document, Embedding, Review und Recovery |
 | ArchiBot App → Telegram | HTTPS | Bot-API (optional, Long-Polling) |
 | Browser → ArchiBot App | HTTP | Web-GUI (Port 8088) |
 | Paperless → ArchiBot App | HTTP | Webhook (optional, Port 8088) |

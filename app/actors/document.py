@@ -12,7 +12,7 @@ import structlog
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.dramatiq_broker import dramatiq, queue_name
+from app.dramatiq_broker import queue_backend, queue_name
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
@@ -656,8 +656,8 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
     )
 
 
-if dramatiq is not None:
-    handle_document_pipeline = dramatiq.actor(queue_name=queue_name("io"))(
+if queue_backend is not None:
+    handle_document_pipeline = queue_backend.actor(queue_name=queue_name("io"))(
         _handle_document_pipeline_impl
     )
 else:  # pragma: no cover - lets local imports work before deps are installed

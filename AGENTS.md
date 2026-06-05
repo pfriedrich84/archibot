@@ -33,7 +33,7 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 ## Event-driven migration summary
 
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Dramatiq, RabbitMQ, PostgreSQL and pgvector.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Absurd, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
 Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; removed legacy webhook routes must not be reintroduced or extended.
 Webhook enqueue failures after durable delivery persistence should return non-2xx so Paperless retries.

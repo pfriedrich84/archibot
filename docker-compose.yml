@@ -24,8 +24,10 @@ services:
       DB_USERNAME: ${DB_USERNAME:-archibot}
       DB_PASSWORD: ${DB_PASSWORD:-archibot}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}
-      DRAMATIQ_BROKER_URL: ${DRAMATIQ_BROKER_URL:-amqp://guest:guest@rabbitmq:5672/}
+      ABSURD_DATABASE_URL: ${ABSURD_DATABASE_URL:-${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}}
       ARCHIBOT_QUEUE_PREFIX: ${ARCHIBOT_QUEUE_PREFIX:-archibot}
+      ARCHIBOT_QUEUE_WORKER_CONCURRENCY: ${ARCHIBOT_QUEUE_WORKER_CONCURRENCY:-1}
+      ARCHIBOT_QUEUE_WORKER_CLAIM_TIMEOUT: ${ARCHIBOT_QUEUE_WORKER_CLAIM_TIMEOUT:-120}
       PAPERLESS_WEBHOOK_SECRET: ${PAPERLESS_WEBHOOK_SECRET:-}
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
       CACHE_STORE: ${CACHE_STORE:-database}
@@ -106,8 +108,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_started
     # Falls Paperless/Ollama in anderen Compose-Stacks laufen,
     # entsprechendes externes Netzwerk einkommentieren:
     # networks:
@@ -130,21 +130,10 @@ services:
       timeout: 5s
       retries: 5
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: archibot-rabbitmq
-    restart: unless-stopped
-    ports:
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
-    volumes:
-      - archibot_rabbitmq:/var/lib/rabbitmq
-
 volumes:
   archibot_data:
     driver: local
   archibot_postgres:
-    driver: local
-  archibot_rabbitmq:
     driver: local
 
 # networks:
