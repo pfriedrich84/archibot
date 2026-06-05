@@ -42,7 +42,7 @@ Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche 
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
-| `OLLAMA_MODEL_SWAP_DELAY` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt; nur bei native Ollama genutzt |
+| `OLLAMA_MODEL_SWAP_DELAY` / `OLLAMA_MODEL_SWAP_DELAY_SECONDS` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt; nur bei native Ollama genutzt. `_SECONDS` ist ein Legacy-Alias. |
 
 Beispiel fuer mehrere Provider:
 
@@ -73,7 +73,7 @@ Dann z.B. `EMBEDDING_PROVIDER=local-litellm` und `JUDGE_PROVIDER=openrouter` set
 |---|---|---|
 | `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
 | `OCR_REQUESTED_TAG_ID` | `0` | Optionaler Paperless-Tag-Filter fuer OCR. `0`, leer oder nicht gesetzt = OCR fuer alle Dokumente. In der Settings-UI kann eine leere Auswahl den Env-Wert deaktivieren. Wenn der Tag spaeter in Paperless geloescht wird, wird OCR uebersprungen und ein Fehler im Dashboard angezeigt. Webhooks ohne Tag-IDs loesen keinen Zusatz-Lookup fuer OCR aus und ueberspringen OCR. |
-| `OLLAMA_OCR_MODEL` | `qwen3:4b` | Modell fuer Text-Only OCR-Korrektur |
+| `OCR_TEXT_MODEL` / `OCR_MODEL` / `OLLAMA_OCR_MODEL` | `qwen3:4b` | Modell fuer Text-Only OCR-Korrektur. `OCR_TEXT_MODEL` ist der bevorzugte Name; `OCR_MODEL` und `OLLAMA_OCR_MODEL` bleiben Aliase. |
 | `OCR_VISION_MODEL` | `qwen3-vl:4b` | Vision-Modell fuer OCR (muss vision-faehig sein) |
 | `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten fuer Vision-OCR |
 | `OCR_VISION_DPI` | `150` | Render-Aufloesung fuer PDF-Seiten (Pixel pro Zoll) |
@@ -99,10 +99,11 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `ARCHIBOT_EMBEDDING_MODEL` / `EMBEDDING_MODEL` / `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell oder Provider-Alias (hoehere Retrieval-Qualitaet). `OLLAMA_EMBED_MODEL` bleibt als Legacy-Name unterstuetzt. |
-| `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer pgvector. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
-| `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens) |
-| `EMBED_MAX_CHARS` | `6000` | Max. Zeichen des Dokumenttexts fuer Embedding |
+| `ARCHIBOT_EMBEDDING_MODEL` / `EMBEDDING_MODEL` / `OLLAMA_EMBED_MODEL` | `qwen3-embedding:4b` | Embedding-Modell oder Provider-Alias (hoehere Retrieval-Qualitaet). `EMBEDDING_MODEL` ist der bevorzugte Compose-/Env-Name; `OLLAMA_EMBED_MODEL` bleibt als Legacy-Name unterstuetzt. |
+| `EMBEDDING_DIMENSION` / `OLLAMA_EMBED_DIM` | `0` | Embedding-Dimension fuer pgvector. `0` = Auto (`qwen3-embedding:0.6b`→1024, `qwen3-embedding:4b`→2560). |
+| `EMBEDDING_CONTEXT_WINDOW` / `OLLAMA_EMBED_NUM_CTX` | `8192` | Kontextfenster fuer das Embedding-Modell (Tokens) |
+| `EMBED_MAX_CHARS` / `EMBEDDING_MAX_CHARS` | `6000` | Max. Zeichen des Dokumenttexts fuer Embedding |
+| `EMBEDDING_DOCUMENT_TIMEOUT_SECONDS` | `180` | Timeout pro Dokument-Embedding-Anfrage. |
 | `OLLAMA_EMBED_RETRIES` | `3` | Max. Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
 | `OLLAMA_EMBED_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Backoff |
 
@@ -122,14 +123,14 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`) |
-| `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer das Chat-Modell (Tokens) |
+| `CLASSIFICATION_MODEL` / `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`). `CLASSIFICATION_MODEL` ist der bevorzugte Name. |
+| `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation, Judge und Chat/RAG (Tokens). Separate `CHAT_CONTEXT_WINDOW`/`JUDGE_CONTEXT_WINDOW` sind derzeit keine Runtime-Settings. |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
 | `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem finalen Score (1–100) automatisch committen. Im Inbox-Poll erfolgt der Commit pro Dokument, sobald Klassifikation/Judge fuer dieses Dokument abgeschlossen ist. |
 | `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der Klassifikationen prueft und ggf. korrigiert. |
 | `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
-| `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
+| `JUDGE_MODEL` / `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `CLASSIFICATION_MODEL`/`OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
 
 ## Worker
 

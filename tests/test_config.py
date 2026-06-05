@@ -23,6 +23,7 @@ def test_prompts_dir_prefers_source_tree():
         ("PAPERLESS_INBOX_TAG_ID", "paperless_inbox_tag_id", 0),
         ("PAPERLESS_PROCESSED_TAG_ID", "paperless_processed_tag_id", None),
         ("OLLAMA_MODEL_SWAP_DELAY", "ollama_model_swap_delay", 8.0),
+        ("OLLAMA_MODEL_SWAP_DELAY_SECONDS", "ollama_model_swap_delay", 8.0),
     ],
 )
 def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_name, expected):
@@ -43,6 +44,7 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
         ("EMBEDDING_MODEL", "ollama_embed_model", "local-embed"),
         ("EMBEDDING_DIMENSION", "ollama_embed_dim", 1234),
         ("OCR_TEXT_MODEL", "ollama_ocr_model", "local-ocr"),
+        ("OCR_MODEL", "ollama_ocr_model", "local-ocr"),
         ("JUDGE_MODEL", "ollama_judge_model", "local-judge"),
         ("CLASSIFICATION_CONTEXT_WINDOW", "ollama_num_ctx", 4096),
         ("EMBEDDING_CONTEXT_WINDOW", "ollama_embed_num_ctx", 2048),
@@ -50,6 +52,7 @@ def test_empty_non_string_env_values_use_defaults(monkeypatch, env_name, field_n
         ("EMBEDDING_DOCUMENT_TIMEOUT_SECONDS", "embedding_document_timeout_seconds", 123),
         ("OCR_CONTEXT_WINDOW", "ollama_ocr_num_ctx", 8192),
         ("OPENAI_BASE_URL", "ollama_url", "http://10.10.0.4:4000/v1"),
+        ("OLLAMA_MODEL_SWAP_DELAY_SECONDS", "ollama_model_swap_delay", 70.0),
     ],
 )
 def test_friendly_ai_env_aliases(monkeypatch, env_name, field_name, expected):
