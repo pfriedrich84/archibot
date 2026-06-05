@@ -9,7 +9,7 @@ Retries must be safe across:
 - worker crashes
 - container rebuilds
 - Paperless outages
-- Ollama/LiteLLM outages
+- Ollama-compatible/OpenAI-compatible provider outages
 - transient network failures
 - per-document processing errors
 - partial reindex failures
@@ -149,9 +149,9 @@ Retries a stored webhook delivery that could not be enqueued or normalized.
 
 Examples:
 
-- Absurd was unavailable
+- Laravel queue dispatch was unavailable
 - embedding gate was closed
-- temporary DB/Absurd enqueue issue after persistence
+- temporary DB/queue dispatch issue after persistence
 
 ## Retry Modes
 
@@ -164,9 +164,9 @@ Examples:
 - HTTP timeout
 - Paperless unavailable
 - Ollama unavailable
-- LiteLLM timeout
+- OpenAI-compatible provider timeout
 - HTTP 429 with retry-after
-- Absurd/PostgreSQL reconnect issue
+- Laravel queue/PostgreSQL reconnect issue
 
 ### Manual Retry
 
@@ -316,7 +316,7 @@ Mapping examples:
 | Paperless timeout | transient_paperless | automatic |
 | Paperless 503 | transient_paperless | automatic |
 | Ollama connection refused | transient_provider | automatic |
-| LiteLLM timeout | transient_provider | automatic |
+| OpenAI-compatible provider timeout | transient_provider | automatic |
 | HTTP 429 | rate_limited | automatic with provider backoff |
 | Invalid webhook payload | permanent_validation | no auto retry |
 | Document deleted | permanent_missing_document | no auto retry by default |
@@ -409,7 +409,7 @@ actor starts
   -> writes actor_execution retrying
   -> writes pipeline event actor.retry_scheduled
   -> sets next_retry_at
-  -> Absurd requeues with backoff
+  -> Laravel queue redispatches with backoff or recovery redispatches when due
 ```
 
 After max attempts:
@@ -486,7 +486,7 @@ Retry failed items: 3 / 3 succeeded
 
 ## Retry Flow: Webhook Delivery
 
-If Absurd is unavailable after persisting delivery:
+If Laravel queue dispatch is unavailable after persisting delivery:
 
 ```text
 webhook_delivery.status = queued or retry_pending

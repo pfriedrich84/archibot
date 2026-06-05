@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
@@ -319,6 +320,21 @@ class ReviewSuggestionController extends Controller
                 'commit_command_id' => $command->id,
                 'commit_worker_job_id' => null,
             ])->save();
+
+            dispatch(RunPythonActorJob::reviewCommit($command->id));
+            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+
+            PipelineEvent::query()->create([
+                'command_id' => $command->id,
+                'event_type' => 'job_control.review_commit_actor_queued',
+                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                'level' => 'info',
+                'message' => 'Review suggestion commit queued through Laravel actor transport.',
+                'payload' => [
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'actor_name' => 'commit_review_suggestion',
+                ],
+            ]);
 
             return $command;
         });

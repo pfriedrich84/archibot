@@ -24,7 +24,7 @@
         id: string;
         title: string;
         preview: string;
-        origin: 'web' | 'telegram';
+        origin: 'web';
         last_active: string | null;
         message_count: number;
     };

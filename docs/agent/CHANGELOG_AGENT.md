@@ -9,7 +9,7 @@
 
 ## 2026-05-13
 
-- Updated governance, user, and developer docs to reflect local OpenAI-compatible/LiteLLM provider support alongside native Ollama.
+- Updated governance, user, and developer docs to reflect local OpenAI-compatible and Ollama-compatible provider support.
 - Recorded the non-secret embedding compatibility rule that OpenAI-compatible embedding requests must include `encoding_format: "float"` and must not send null.
 - Added `docs/agent/TOOLING.md` to the documentation index.
 - Added explicit Context7/current-external-documentation guidance to agent coding, workflow, and supply-chain docs.

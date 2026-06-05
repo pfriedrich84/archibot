@@ -443,9 +443,8 @@
                 <div>
                     <h2 class="text-lg font-semibold">AI provider</h2>
                     <p class="text-sm text-muted-foreground">
-                        Use native Ollama or a local OpenAI-compatible endpoint
-                        such as LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp, or
-                        Ollama /v1.
+                        Use an Ollama-compatible endpoint or an
+                        OpenAI-compatible /v1 endpoint.
                     </p>
                 </div>
 
@@ -458,7 +457,9 @@
                             bind:value={llm_provider}
                             class="h-10 rounded-md border bg-background px-3 text-sm"
                         >
-                            <option value="ollama">Ollama native</option>
+                            <option value="ollama"
+                                >Ollama-compatible endpoint</option
+                            >
                             <option value="openai_compatible">
                                 OpenAI-compatible endpoint
                             </option>

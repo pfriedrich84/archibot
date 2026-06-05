@@ -23,14 +23,14 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 
 ## AI Provider / Ollama (allgemein)
 
-ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Native Ollama ist ein Adapter hinter dieser Schnittstelle; lokale OpenAI-kompatible `/v1`-APIs (z.B. LiteLLM, LM Studio, vLLM, LocalAI, llama.cpp server oder Ollama `/v1`) sind ebenfalls unterstuetzt. Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur Ollama unterstuetzt.
+ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werden Ollama-kompatible Provider und OpenAI-kompatible `/v1`-APIs. Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
 
-Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. lokale LiteLLM-Embeddings plus OpenRouter als Judge. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
+Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. ein lokaler OpenAI-kompatibler Embedding-Endpoint plus ein separater OpenAI-kompatibler Judge-Endpoint. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `LLM_PROVIDER` | `ollama` | `ollama` fuer native Ollama-API oder `openai_compatible` fuer OpenAI-kompatible lokale `/v1`-API |
-| `OLLAMA_URL` / `OPENAI_BASE_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1` oder `http://litellm:4000/v1`. `OPENAI_BASE_URL` ist ein Alias fuer OpenAI-kompatible Setups; `OLLAMA_URL` bleibt der Legacy-Name. |
+| `LLM_PROVIDER` | `ollama` | `ollama` fuer Ollama-kompatible API oder `openai_compatible` fuer OpenAI-kompatible `/v1`-API |
+| `OLLAMA_URL` / `OPENAI_BASE_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1`. `OPENAI_BASE_URL` ist ein Alias fuer OpenAI-kompatible Setups; `OLLAMA_URL` bleibt der Legacy-Name. |
 | `OPENAI_API_KEY` | — | Optionaler Bearer Token fuer OpenAI-kompatible Provider; leer lassen bei lokalen Endpunkten ohne Auth |
 | `AI_PROVIDER_PROFILES` | — | Optionales JSON-Array weiterer Provider-Profile (`id`, `type`, `base_url`, optional `api_key_env`, `is_cloud`). Secrets bevorzugt per Env-Variable referenzieren, nicht inline speichern. |
 | `CLASSIFICATION_PROVIDER` | — | Provider-Profil-ID fuer Klassifikation; leer = Default |
@@ -41,30 +41,28 @@ Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche 
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
-| `OLLAMA_MODEL_SWAP_DELAY` / `OLLAMA_MODEL_SWAP_DELAY_SECONDS` | `8.0` | Wartezeit nach Model-Unload, damit Ollama freie VRAM korrekt erkennt; nur bei native Ollama genutzt. `_SECONDS` ist ein Legacy-Alias. |
+| `OLLAMA_MODEL_SWAP_DELAY` / `OLLAMA_MODEL_SWAP_DELAY_SECONDS` | `8.0` | Wartezeit nach Model-Unload, damit Ollama-kompatible Runtimes freie VRAM korrekt erkennen; nur bei Providern genutzt, die Model-Unload unterstuetzen. `_SECONDS` ist ein Legacy-Alias. |
 
 Beispiel fuer mehrere Provider:
 
 ```json
 [
   {
-    "id": "local-litellm",
-    "label": "Local LiteLLM",
+    "id": "local-embeddings",
+    "label": "Local embeddings",
     "type": "openai_compatible",
-    "base_url": "http://litellm:4000/v1"
+    "base_url": "http://localhost:11434/v1"
   },
   {
-    "id": "openrouter",
-    "label": "OpenRouter",
-    "type": "openai_compatible",
-    "base_url": "https://openrouter.ai/api/v1",
-    "api_key_env": "OPENROUTER_API_KEY",
-    "is_cloud": true
+    "id": "local-judge",
+    "label": "Local judge",
+    "type": "ollama",
+    "base_url": "http://ollama:11434"
   }
 ]
 ```
 
-Dann z.B. `EMBEDDING_PROVIDER=local-litellm` und `JUDGE_PROVIDER=openrouter` setzen.
+Dann z.B. `EMBEDDING_PROVIDER=local-embeddings` und `JUDGE_PROVIDER=local-judge` setzen.
 
 ## Phase 1: OCR-Korrektur
 
@@ -106,13 +104,13 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 | `OLLAMA_EMBED_RETRIES` | `3` | Max. Retries bei Embedding-Fehlern (Truncation + transiente 500er) |
 | `OLLAMA_EMBED_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Backoff |
 
-Bei `LLM_PROVIDER=openai_compatible` sendet ArchiBot Embeddings an `/v1/embeddings` mit OpenAI-kompatiblem Payload und setzt explizit `encoding_format: "float"`. Das ist fuer LiteLLM/llama.cpp-Embeddings wichtig; `encoding_format: null` darf nicht gesendet werden. Der Modellname bleibt ein konfigurierbarer Provider-Alias, z.B. `qwen3-embedding-4b-local`; fuer Qwen3-Embedding 4B erkennt ArchiBot automatisch die Dimension `2560`, wenn `OLLAMA_EMBED_DIM=0` gesetzt ist.
+Bei `LLM_PROVIDER=openai_compatible` sendet ArchiBot Embeddings an `/v1/embeddings` mit OpenAI-kompatiblem Payload und setzt explizit `encoding_format: "float"`. `encoding_format: null` darf nicht gesendet werden. Der Modellname bleibt ein konfigurierbarer Provider-Alias, z.B. `qwen3-embedding-4b-local`; fuer Qwen3-Embedding 4B erkennt ArchiBot automatisch die Dimension `2560`, wenn `OLLAMA_EMBED_DIM=0` gesetzt ist.
 
-Beispiel fuer LiteLLM-Embeddings hinter einem lokalen OpenAI-kompatiblen Endpoint:
+Beispiel fuer Embeddings hinter einem lokalen OpenAI-kompatiblen Endpoint:
 
 ```env
 LLM_PROVIDER=openai_compatible
-OPENAI_BASE_URL=http://litellm:4000/v1
+OPENAI_BASE_URL=http://localhost:11434/v1
 OPENAI_API_KEY=<optional-local-token>
 ARCHIBOT_EMBEDDING_MODEL=qwen3-embedding-4b-local
 OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
@@ -136,7 +134,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `POLL_INTERVAL_SECONDS` | `0` | Sekunden zwischen Inbox-Polls (`0` = automatisches Polling deaktiviert) |
-| `ABSURD_DATABASE_URL` | — | PostgreSQL-DB-URL fuer den Absurd-Queue-Transport. Im Standard-Compose-Stack wird sie automatisch aus `DATABASE_URL` gesetzt; ausserhalb davon explizit konfigurieren. |
+| `ABSURD_DATABASE_URL` | — | Legacy migration-only Absurd queue URL. ADR-0015 supersedes this target; new event-driven work uses Laravel database queues. Keep only while unmigrated legacy Absurd flows remain. |
 
 ## Laravel/Svelte GUI
 
@@ -145,7 +143,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `GUI_PORT` | `8088` | Port der Laravel/Svelte-Web-GUI; Runtime-/Container-Setting, muss in `.env` gepflegt werden |
 | `APP_TIMEZONE` / GUI `Timezone` | `Europe/Vienna` | Zeitzone fuer angezeigte Zeitstempel. In der Laravel-GUI als `gui.timezone` pflegbar. |
 | `GUI_DATE_FORMAT` / GUI `Date/time format` | `dd.mm.yyyy hh:mm:ss` | Anzeigeformat fuer Zeitstempel. Unterstuetzte Tokens: `dd`, `mm`, `yyyy`, `hh`, `MM`, `ss`; im Default-Kontext wird `mm` vor/nach `:` als Minuten interpretiert. |
-| `GUI_BASE_URL` | — | Externe ArchiBot-URL fuer Telegram-Review-Links; kann in `/admin/settings` gepflegt werden |
+| `GUI_BASE_URL` | — | Externe ArchiBot-URL fuer Links ausserhalb der Weboberflaeche; kann in `/admin/settings` gepflegt werden |
 | `GUI_DATE_FORMAT` | `%d.%m.%Y` | Datumsformat fuer benutzerseitige Anzeigen und Python-CLI-Ausgaben; muss in `.env` gepflegt werden |
 | `APP_TIMEZONE` | `Europe/Vienna` | Zeitzone fuer Laravel/PHP-Datumswerte sowie Python-Worker/CLI-Anzeigen; muss in `.env` gepflegt werden |
 | `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
@@ -157,17 +155,6 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Posteingang` statt `124`). IDs bleiben nur interne technische Referenzen.
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
-
-## Telegram (optional)
-
-Telegram-Bot-Token, Chat-ID, Poll-Intervall und Aktivierung koennen in `/admin/settings` gepflegt werden. Telegram ist ein optionaler Benachrichtigungskanal; die Laravel-Weboberflaeche bleibt der kanonische Review-Fallback.
-
-| Variable | Default | Beschreibung |
-|---|---|---|
-| `ENABLE_TELEGRAM` | `false` | Telegram-Bot aktivieren |
-| `TELEGRAM_BOT_TOKEN` | — | Bot-Token von @BotFather |
-| `TELEGRAM_CHAT_ID` | — | Chat/Gruppen-ID fuer Benachrichtigungen |
-| `TELEGRAM_POLL_INTERVAL` | `5` | Sekunden zwischen Telegram-getUpdates-Calls |
 
 ## Webhook (optional)
 

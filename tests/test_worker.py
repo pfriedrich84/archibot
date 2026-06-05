@@ -524,7 +524,6 @@ class TestPhaseClassify:
         with (
             patch("app.pipeline.document_processing.classifier.classify") as mock_classify,
             patch("app.pipeline.document_processing.store_suggestion") as mock_store,
-            patch("app.pipeline.document_processing.notify_suggestion"),
             patch("app.pipeline.document_processing.context_builder.store_embedding"),
             patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
@@ -562,7 +561,6 @@ class TestPhaseClassify:
         with (
             patch("app.pipeline.document_processing.classifier.classify") as mock_classify,
             patch("app.pipeline.document_processing.store_suggestion") as mock_store,
-            patch("app.pipeline.document_processing.notify_suggestion"),
             patch("app.pipeline.document_processing.context_builder.store_embedding"),
             patch("app.pipeline.document_processing.settings") as mock_settings,
         ):
@@ -860,7 +858,6 @@ class TestPhasedPollInbox:
             patch("app.worker._paperless", mock_paperless),
             patch("app.worker._ollama", mock_ollama),
             patch("app.worker._has_embedding_index", return_value=True),
-            patch("app.pipeline.document_processing.notify_suggestion"),
             patch("app.pipeline.document_processing.context_builder.store_embedding"),
         ):
             await poll_inbox()

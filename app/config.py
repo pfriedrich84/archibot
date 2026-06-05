@@ -514,7 +514,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Provider",
         "select",
         restart="component",
-        help="ollama = native Ollama API; openai_compatible = local OpenAI-compatible /v1 API",
+        help="ollama = Ollama-compatible API; openai_compatible = OpenAI-compatible /v1 API",
         options=["ollama", "openai_compatible"],
     ),
     "ollama_url": _fm(
@@ -581,7 +581,7 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Ollama Model Swap Delay (seconds)",
         "number",
         help="Seconds to wait after unloading a model before loading the next one. "
-        "Only used by the native Ollama provider. "
+        "Only used by Ollama-compatible providers that support model unloading. "
         "Set to 0 to disable.",
     ),
     # --- Phase 1: OCR ---

@@ -27,8 +27,8 @@ Laravel UI / Webhook / Scheduler
 -> commands
 -> pipeline_runs
 -> pipeline_events
--> Absurd
--> Absurd Actors
+-> Laravel database queue
+-> fixed Python actor commands
 -> PostgreSQL / pgvector
 ```
 
@@ -38,7 +38,7 @@ Use `worker_jobs` as a temporary Laravel control plane while the legacy subproce
 
 `worker_jobs` may be hardened for reliability and operator visibility, including dispatch centralization, dedupe, leases, heartbeats, recovery, cancellation, retry, progress, logs and admin UI controls. These changes are allowed because they reduce product risk without rewriting the Python processing core first.
 
-The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, Absurd and Absurd actors. New durable pipeline functionality should target those models and actors, not only `worker_jobs`. Review suggestion commit requests are migrated to durable `review_commit` commands and the review commit actor; new review commits must not create `worker_jobs`.
+The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New durable pipeline functionality should target those models and actor commands, not only `worker_jobs`. Review suggestion commit requests are migrated to durable `review_commit` commands and the review commit actor; new review commits must not create `worker_jobs`.
 
 ## Consequences
 

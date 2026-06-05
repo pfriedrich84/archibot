@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-A permanent dual backend such as `legacy|absurd` would make behavior harder to reason about, require duplicate UI/status models and increase the chance that new work extends the old Laravel-subprocess/Python-CLI path.
+A permanent dual backend such as `legacy|event` would make behavior harder to reason about, require duplicate UI/status models and increase the chance that new work extends the old broad Laravel-subprocess/Python-CLI path.
 
 ## Decision
 
@@ -16,7 +16,7 @@ The migration direction is replacement. Temporary scaffolding may exist only as 
 
 ## Consequences
 
-- New event-driven work must target PostgreSQL/Absurd/Absurd contracts.
-- Do not add feature flags such as `ARCHIBOT_WORKER_BACKEND=legacy|absurd`.
+- New event-driven work must target PostgreSQL pipeline contracts and Laravel queued actor jobs that invoke fixed Python actor commands.
+- Do not add feature flags such as `ARCHIBOT_WORKER_BACKEND=legacy|event`.
 - Remove or retire old worker paths when the replacement path is accepted.
 - Documentation and agent guidance must point toward the target architecture, not legacy extension.

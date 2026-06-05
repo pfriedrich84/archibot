@@ -4,7 +4,7 @@
 
 This document records the current Laravel job-control model, the future event-driven model and the rules that prevent drift between them.
 
-`worker_jobs` is a hardened temporary stabilization layer. It exists to make the current Laravel UI reliable while Archibot migrates to durable commands, pipeline runs, pipeline events, and Absurd actors.
+`worker_jobs` is a hardened temporary stabilization layer. It exists to make the current Laravel UI reliable while Archibot migrates to durable commands, pipeline runs, pipeline events, Laravel queued actor jobs, and Python actor commands.
 
 ## Current Temporary Model
 
@@ -40,7 +40,7 @@ New user-triggered job control has moved away from Worker Job where durable seam
 
 OCR reindex remains a legacy Worker Job path until there is a durable OCR reindex actor. Worker Job recovery remains available for historical/active legacy rows.
 
-Embedding index builds are durable commands in the event-driven model. When `ABSURD_DATABASE_URL` is not configured, Laravel must temporarily bridge the command to the existing `reindex_embed` Worker Job so the Docker-first single-container setup can still start embeddings immediately; the Worker Job updates the linked command when it finishes. This fallback is compatibility glue, not a permanent architecture path.
+Embedding index builds are durable commands in the event-driven model. The migration to Laravel queued actor jobs starts with embedding builds, then document pipeline execution. Until a flow has migrated, existing compatibility glue may remain, but it must have a documented path to `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, and fixed Python actor commands.
 
 ## Current `worker_jobs` Schema Terms
 
@@ -67,7 +67,7 @@ These fields make `worker_jobs` safer during the temporary period, but they are 
 - Paperless webhooks, scheduler reconciliation and manual admin actions should converge on one command/pipeline model;
 - Archibot must not keep parallel permanent job-control systems.
 
-Therefore `worker_jobs` may be hardened for reliability, but permanent architecture must move to `commands`, `pipeline_runs`, `pipeline_events`, and Absurd actors.
+Therefore `worker_jobs` may be hardened for reliability, but permanent architecture must move to `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs, and fixed Python actor commands.
 
 ## Future Event-Driven Model
 
@@ -78,8 +78,8 @@ Laravel UI / Paperless Webhook / Scheduler
 -> commands
 -> pipeline_runs
 -> pipeline_events
--> Absurd queue
--> Python actors
+-> Laravel database queue
+-> fixed Python actor commands
 -> PostgreSQL / pgvector
 ```
 
@@ -88,8 +88,8 @@ In the target model:
 - `commands` record requested control actions and their initiator.
 - `pipeline_runs` are the durable user-visible unit of work.
 - `pipeline_events` record state changes, progress, retries, failures and audit-relevant execution details.
-- Absurd is transport only; PostgreSQL remains the source of truth.
-- Python actors execute through Absurd and emit durable events.
+- Laravel database queues are transport only; PostgreSQL remains the source of truth.
+- Laravel queued jobs invoke fixed, allowlisted Python actor commands that emit durable events.
 - Laravel reads PostgreSQL for UI, readiness, job control and audit views.
 
 ## Mapping from `worker_jobs` to Future Commands and Pipeline Runs
@@ -199,17 +199,17 @@ Python owns:
 - review suggestion generation;
 - LLM/provider integration through the processing layer.
 
-In the temporary model this logic is reached through the CLI/core. In the target model it is reached through Absurd actors.
+In the temporary model this logic is reached through the broad CLI/core worker contract. In the target model it is reached through fixed Python actor commands invoked by Laravel queued jobs.
 
 ### Event-Driven Actors Own Durable Processing
 
-Absurd actors will own durable execution of pipeline steps. Actors must:
+Fixed Python actor commands invoked by Laravel queued jobs own durable execution of pipeline steps. Actors must:
 
 - be idempotent;
 - write durable progress/state through PostgreSQL-backed models;
 - emit `pipeline_events`;
 - honor cancellation and retry semantics;
-- treat Absurd as transport, not the source of truth.
+- treat Laravel queues as transport, not the source of truth.
 
 ## Pipeline Runs Visibility During Phase 13
 
@@ -217,7 +217,7 @@ Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the fu
 
 The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery, related audit entries and best-effort links to temporary `worker_jobs`. These links let operators compare the temporary Laravel subprocess control plane with the future command/pipeline model while both exist.
 
-Until a specific flow is migrated to actors, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not start the Absurd/Absurd actor migration and do not remove or weaken `worker_jobs` controls.
+Until a specific flow is migrated to Laravel queued actor jobs, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not remove or weaken `worker_jobs` controls.
 
 As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired. Review suggestion commit requests now use `Command(type=review_commit) -> PipelineEvent(job_control.review_commit_requested) -> review commit actor` rather than creating new `worker_jobs`.
 
@@ -227,7 +227,7 @@ As flows migrate, manual Laravel actions should converge on `Command -> Pipeline
 2. For every current `worker_jobs` type, define the target command and `pipeline_runs` mapping before expanding behavior.
 3. Introduce or complete `commands`, `pipeline_runs` and `pipeline_events` as the final job truth.
 4. Make manual Laravel actions create commands and pipeline runs first, then enqueue actor work.
-5. Move individual worker job types to Absurd actors one flow at a time.
+5. Move individual worker job types to Laravel queued actor jobs and fixed Python actor commands one flow at a time, starting with embedding builds and then document pipeline execution.
 6. Preserve UI parity during migration by linking old `worker_jobs` to new pipeline runs where needed.
 7. Move recovery, retry, cancellation, progress and logs from worker-job-only semantics to pipeline-run/event semantics.
 8. Stop adding new durable functionality exclusively to `worker_jobs` once a flow has a pipeline-run implementation.
@@ -242,7 +242,7 @@ As flows migrate, manual Laravel actions should converge on `Command -> Pipeline
 - Keep Laravel as the UI/control/audit/readiness owner.
 - Keep Python as the document-processing owner.
 - Keep PostgreSQL as the source of truth for progress, retries and recovery.
-- Keep Absurd/Absurd as execution transport and actor runtime, not the only state store.
+- Keep Laravel queues as execution transport, not the only state store.
 
 ## References
 

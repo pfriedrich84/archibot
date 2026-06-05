@@ -1,34 +1,9 @@
-# ADR-0003: Use RabbitMQ as Dramatiq Broker
+# ADR-0003: Superseded Broker Decision
 
 ## Status
 
-Superseded by [ADR-0013: Use Absurd as the PostgreSQL-backed Python Queue](0013-use-absurd-postgresql-queue.md).
+Superseded by [ADR-0015: Use Laravel Database Queues for Event Transport](0015-use-laravel-database-queues-for-event-transport.md).
 
-## Context
+## Note
 
-Archibot's target pipeline needs queue separation, retryable delivery and worker coordination for webhook, I/O, embedding, LLM and maintenance work.
-
-## Decision
-
-Use RabbitMQ as the Dramatiq broker.
-
-RabbitMQ provides the transport for Dramatiq messages. PostgreSQL remains the source of truth for job state, progress, retries and audit data.
-
-Initial queues:
-
-```text
-archibot.webhook
-archibot.io
-archibot.llm
-archibot.embedding
-archibot.blocking
-```
-
-The queue prefix is configurable with `ARCHIBOT_QUEUE_PREFIX`.
-
-## Consequences
-
-- Workers can be scaled and routed by workload type.
-- Broker outages must not lose persisted webhook deliveries or commands.
-- Recovery scans must requeue safe pending/retryable work from PostgreSQL.
-- RabbitMQ depth and dead-letter behavior should be observable.
+This ADR is retained only as historical record. The accepted event transport is Laravel database queues with fixed Python actor commands. Do not add a separate broker service for the standard ArchiBot stack.

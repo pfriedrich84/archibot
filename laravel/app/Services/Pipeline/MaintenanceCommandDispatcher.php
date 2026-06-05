@@ -2,12 +2,11 @@
 
 namespace App\Services\Pipeline;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
-use App\Models\WorkerJob;
-use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\Request;
 
 class MaintenanceCommandDispatcher
@@ -28,6 +27,15 @@ class MaintenanceCommandDispatcher
             ...$metadata,
         ]);
         $this->audit($request, 'maintenance.poll_reconciliation_requested', $command, [
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+
+        dispatch(RunPythonActorJob::pollReconciliation($command->id));
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        $this->recordEvent($request, $command, 'job_control.poll_reconciliation_actor_queued', 'info', 'Polling reconciliation queued through Laravel actor transport.', [
+            'action' => Command::TYPE_POLL_RECONCILIATION,
+            'actor_name' => 'reconcile_inbox_documents',
             'limit' => $limit,
             ...$metadata,
         ]);
@@ -69,6 +77,16 @@ class MaintenanceCommandDispatcher
             ...$metadata,
         ]);
 
+        dispatch(RunPythonActorJob::reindex($command->id));
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Reindex queued through Laravel actor transport.', [
+            'action' => Command::TYPE_REINDEX,
+            'actor_name' => 'reindex',
+            'embedding_index_state_id' => $embeddingState->id,
+            'limit' => $limit,
+            ...$metadata,
+        ]);
+
         return $command;
     }
 
@@ -91,7 +109,23 @@ class MaintenanceCommandDispatcher
             ...$metadata,
         ], 'embedding_index');
 
-        $this->dispatchEmbeddingFallbackWhenAbsurdIsUnavailable($request, $command, $limit, $metadata);
+        dispatch(RunPythonActorJob::embeddingIndexBuild($command->id));
+
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+
+        $this->recordEvent(
+            $request,
+            $command,
+            'job_control.embedding_build_actor_queued',
+            'info',
+            'Embedding build queued through Laravel actor transport.',
+            [
+                'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+                'actor_name' => 'build_embedding_index',
+                'limit' => $limit,
+                ...$metadata,
+            ],
+        );
 
         return $command;
     }
@@ -139,57 +173,6 @@ class MaintenanceCommandDispatcher
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
-    }
-
-    /** @param array<string, mixed> $metadata */
-    private function dispatchEmbeddingFallbackWhenAbsurdIsUnavailable(
-        Request $request,
-        Command $command,
-        ?int $limit,
-        array $metadata,
-    ): void {
-        if (trim((string) config('archibot.absurd_database_url', '')) !== '') {
-            return;
-        }
-
-        $workerJob = app(WorkerJobDispatcher::class)->dispatch(
-            type: WorkerJob::TYPE_REINDEX_EMBED,
-            payload: array_filter([
-                'command_id' => $command->id,
-                'limit' => $limit,
-                'mode' => 'embedding_index_build',
-                ...$metadata,
-            ], fn ($value): bool => $value !== null),
-            user: $request->user(),
-            request: $request,
-            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_REINDEX_EMBED, [
-                'mode' => 'embedding_index_build',
-            ]),
-            auditEvent: 'embedding_index.legacy_fallback_worker_job_queued',
-            auditMetadata: ['command_id' => $command->id],
-        );
-
-        $command->forceFill([
-            'status' => Command::STATUS_QUEUED,
-            'payload' => [
-                ...($command->payload ?? []),
-                'legacy_fallback_worker_job_id' => $workerJob->id,
-            ],
-        ])->save();
-
-        $this->recordEvent(
-            $request,
-            $command,
-            'job_control.embedding_build_legacy_fallback_queued',
-            'warning',
-            'Embedding build queued through temporary worker job fallback because Absurd is not configured.',
-            [
-                'action' => Command::TYPE_EMBEDDING_INDEX_BUILD,
-                'worker_job_id' => $workerJob->id,
-                'limit' => $limit,
-                ...$metadata,
-            ],
-        );
     }
 
     private function normalizedLimit(?int $limit): ?int

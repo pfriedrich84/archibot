@@ -141,7 +141,7 @@ The authorization check must happen before:
 
 - creating commands
 - changing pipeline state
-- enqueueing Absurd work
+- dispatching Laravel queued actor jobs
 - retrying failed work
 - cancelling work
 - changing embedding/reindex state

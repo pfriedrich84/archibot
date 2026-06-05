@@ -23,7 +23,7 @@ class MaintenanceCommandTest extends TestCase
 
         $command = Command::query()->firstOrFail();
         $this->assertSame('poll_reconciliation', $command->type);
-        $this->assertSame('pending', $command->status);
+        $this->assertSame('queued', $command->status);
         $this->assertSame(['limit' => 25], $command->payload);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
@@ -81,7 +81,7 @@ class MaintenanceCommandTest extends TestCase
 
         $command = Command::query()->firstOrFail();
         $this->assertSame('reindex', $command->type);
-        $this->assertSame('pending', $command->status);
+        $this->assertSame('queued', $command->status);
         $this->assertSame(['limit' => 50], $command->payload);
         $this->assertSame($admin->id, $command->created_by_user_id);
 

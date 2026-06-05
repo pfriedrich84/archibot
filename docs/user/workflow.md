@@ -26,7 +26,7 @@ in Paperless-NGX.
    ┌─────┴──────┐
    |             |
 8a. Auto-Commit               Wenn confidence >= AUTO_COMMIT_CONFIDENCE
-8b. Manuelles Review          GUI (/review) oder Telegram
+8b. Manuelles Review          GUI (/review)
          |
 9. PATCH nach Paperless         Metadaten-Update (Titel, Datum, Korrespondent, ...)
 
@@ -79,11 +79,6 @@ Das LLM liefert strukturiertes JSON mit:
 - Felder einzeln editieren oder uebernehmen
 - Annehmen oder Ablehnen mit einem Klick
 - Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist
-
-#### Via Telegram (optional)
-
-- Benachrichtigung mit Inline-Keyboard (Accept / Reject / Edit in GUI)
-- Accept/Reject direkt im Chat, ohne die GUI zu oeffnen
 
 #### Auto-Commit
 

@@ -104,7 +104,6 @@ def test_recovery_scan_enqueues_queued_webhook_deliveries(monkeypatch):
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -194,7 +193,6 @@ def test_recovery_scan_enqueues_pending_document_runs(monkeypatch):
     monkeypatch.setattr(
         recovery, "enqueue_document_pipeline_run", lambda run_id: enqueued.append(run_id)
     )
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -219,7 +217,6 @@ def test_recovery_scan_enqueues_due_retrying_document_runs(monkeypatch):
     monkeypatch.setattr(
         recovery, "enqueue_document_pipeline_run", lambda run_id: enqueued.append(run_id)
     )
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -256,7 +253,6 @@ def test_recovery_scan_enqueues_embedding_build_commands(monkeypatch):
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -332,7 +328,6 @@ def test_recovery_scan_enqueues_poll_reconciliation_commands(monkeypatch):
         "enqueue_poll_reconciliation_command",
         lambda command_id, limit: enqueued.append((command_id, limit)),
     )
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -386,7 +381,6 @@ def test_recovery_scan_enqueues_reindex_commands(monkeypatch):
         "enqueue_reindex_command",
         lambda command_id, limit: enqueued.append((command_id, limit)),
     )
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 
@@ -478,9 +472,7 @@ def test_enqueue_document_pipeline_run_restores_pending_when_send_fails(monkeypa
     ]
 
 
-def test_recovery_scan_enqueues_review_commits(monkeypatch):
-    enqueued = []
-
+def test_recovery_scan_does_not_enqueue_legacy_review_commits(monkeypatch):
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
@@ -491,14 +483,14 @@ def test_recovery_scan_enqueues_review_commits(monkeypatch):
     monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [44])
+    monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
     monkeypatch.setattr(
-        recovery, "enqueue_review_commit", lambda review_id: enqueued.append(review_id)
+        recovery,
+        "enqueue_review_commit",
+        lambda review_id: (_ for _ in ()).throw(AssertionError("legacy commit used")),
     )
 
     recovery.run_recovery_scan(limit=10)
-
-    assert enqueued == [44]
 
 
 def test_enqueue_webhook_delivery_uses_absurd_send_when_available(monkeypatch):
@@ -560,7 +552,6 @@ def test_recovery_scan_enqueues_review_commit_commands(monkeypatch):
         "enqueue_review_commit_command",
         lambda command_id, review_id: enqueued.append((command_id, review_id)),
     )
-    monkeypatch.setattr(recovery, "list_review_suggestions_ready_to_commit", lambda limit: [])
 
     recovery.run_recovery_scan(limit=10)
 

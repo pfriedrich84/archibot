@@ -9,7 +9,7 @@ Use this checklist for every migration change.
 - Webhooks and polling use the same pipeline-start/dedupe/lock logic.
 - No document processing starts before `embedding_index_state.status = complete`.
 - PostgreSQL is the durable source of truth for progress, retries and audit state.
-- Absurd/Absurd is execution transport, not the only job state.
+- Absurd is execution transport, not the only job state.
 - Actors are idempotent and retry-safe.
 - The existing Laravel dashboard is extended, not replaced.
 - No new legacy compatibility mode is introduced.

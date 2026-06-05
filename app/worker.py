@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import uuid
 from dataclasses import dataclass
@@ -212,15 +211,6 @@ def start_poll_task(*, all_documents: bool = False) -> bool:
                         "skipped": _poll_progress.skipped,
                     },
                 )
-                with contextlib.suppress(Exception):
-                    from app.telegram_handler import notify_job_summary
-
-                    await notify_job_summary(
-                        _poll_progress.job_id,
-                        done=_poll_progress.done,
-                        failed=_poll_progress.failed,
-                        skipped=_poll_progress.skipped,
-                    )
             _poll_progress.running = False
 
     global _poll_task

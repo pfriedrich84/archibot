@@ -9,11 +9,11 @@ Accepted
 Archibot is moving to an event-driven architecture with multiple runtime components:
 
 - Laravel UI / API / webhook ingestion
-- Python Absurd workers
-- Absurd broker
+- Laravel queue workers
+- fixed Python actor commands
 - PostgreSQL + pgvector
 - Paperless integration
-- Ollama / LiteLLM provider integration
+- Ollama-compatible / OpenAI-compatible provider integration
 - periodic polling / reconciliation
 - reindex and embedding bootstrap pipelines
 
@@ -111,7 +111,7 @@ Structured logs answer:
 - Which HTTP call timed out?
 - Which actor crashed?
 - Which exception occurred?
-- What did Absurd/Paperless/Ollama do around that time?
+- What did Laravel queue/Paperless/Ollama do around that time?
 
 ## Required Component Behavior
 
@@ -129,22 +129,22 @@ Laravel should emit structured logs for:
 
 Laravel logs must include `request_id` and, if available, `webhook_delivery_id`, `pipeline_run_id`, and `paperless_document_id`.
 
-### Python / Absurd
+### Python Actor Commands
 
 Python workers should emit structured logs for:
 
 - actor start/success/failure/retry
 - Paperless API calls
-- LLM/Ollama/LiteLLM calls
+- LLM/Ollama-compatible/OpenAI-compatible calls
 - embedding build progress summaries
 - lock acquisition/release/coalescing
 - recovery scans
 
 Python logs must include `message_id`, `actor_name`, `pipeline_run_id`, `actor_execution_id`, and `paperless_document_id` where available.
 
-### Absurd
+### Laravel Queue
 
-Absurd operational metrics and logs should be available for:
+Laravel queue operational metrics and logs should be available for:
 
 - queue depth
 - task spawn/claim/completion/failure rates
@@ -179,7 +179,7 @@ actor_retry_total
 paperless_request_duration_ms
 llm_request_duration_ms
 embedding_build_progress
-absurd_queue_depth
+laravel_queue_depth
 pending_webhook_deliveries
 blocked_pipeline_runs
 ```
@@ -198,7 +198,7 @@ Do not put secrets, API keys or full sensitive document content into logs.
 
 What gets easier:
 
-- debugging across Laravel, Python and Absurd
+- debugging across Laravel queue dispatch, Python actor commands and durable pipeline state
 - correlating webhook deliveries with actors and LLM calls
 - monitoring retry loops and stuck runs
 - operating Archibot after container restarts

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Workers;
 
-use App\Jobs\RunPythonWorkerJob;
+use App\Jobs\RunPythonActorJob;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
@@ -176,10 +176,10 @@ class WorkerJobTest extends TestCase
         $this->assertDatabaseCount('worker_jobs', 0);
         $this->assertDatabaseHas('commands', [
             'type' => Command::TYPE_POLL_RECONCILIATION,
-            'status' => Command::STATUS_PENDING,
+            'status' => Command::STATUS_QUEUED,
             'created_by_user_id' => $user->id,
         ]);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, 1);
     }
 
     public function test_index_auto_cancels_stale_cancelling_jobs(): void
@@ -263,7 +263,7 @@ class WorkerJobTest extends TestCase
 
         $this->assertSame(0, WorkerJob::query()->count());
         $this->assertSame(2, Command::query()->where('type', Command::TYPE_POLL_RECONCILIATION)->count());
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 
     public function test_poll_force_payload_is_queued(): void
@@ -280,7 +280,7 @@ class WorkerJobTest extends TestCase
         $this->assertTrue($command->payload['force']);
     }
 
-    public function test_embedding_reindex_queues_command_and_worker_fallback_without_absurd(): void
+    public function test_embedding_reindex_queues_command_without_worker_fallback(): void
     {
         Queue::fake();
         Config::set('archibot.absurd_database_url', '');
@@ -291,14 +291,11 @@ class WorkerJobTest extends TestCase
             ->assertRedirect(route('worker-jobs.index'));
 
         $command = Command::query()->firstOrFail();
-        $workerJob = WorkerJob::query()->firstOrFail();
 
+        $this->assertDatabaseCount('worker_jobs', 0);
         $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
-        $this->assertSame($workerJob->id, $command->payload['legacy_fallback_worker_job_id']);
-        $this->assertSame(WorkerJob::TYPE_REINDEX_EMBED, $workerJob->type);
-        $this->assertSame($command->id, $workerJob->payload['command_id']);
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued): bool => $queued->workerJobId === $workerJob->id);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->commandId === $command->id);
     }
 
     public function test_process_document_force_payload_is_queued(): void
@@ -358,7 +355,7 @@ class WorkerJobTest extends TestCase
         $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
         $this->assertSame($original->id, $command->payload['legacy_worker_job_id']);
         $this->assertSame('whole_job', $command->payload['retry_mode']);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, 1);
     }
 
     public function test_retry_failed_documents_only_payload_is_queued_when_failed_document_ids_are_available(): void

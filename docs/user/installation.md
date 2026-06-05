@@ -7,7 +7,7 @@ oder selbst gebaut.
 
 - Docker + Docker Compose
 - Eine laufende [Paperless-NGX](https://docs.paperless-ngx.com/) Instanz
-- Eine laufende lokale AI-Provider-Instanz: native [Ollama](https://ollama.com/) (GPU empfohlen) oder ein OpenAI-kompatibler `/v1`-Endpoint wie LiteLLM.
+- Eine laufende lokale AI-Provider-Instanz: native [Ollama](https://ollama.com/) (GPU empfohlen) oder ein OpenAI-kompatibler `/v1`-Endpoint wie OpenAI-compatible.
 - Bei nativer Ollama-Nutzung muessen Modelle vorab gezogen werden:
   ```bash
   ollama pull gemma4:e4b                # Klassifikation
@@ -15,7 +15,7 @@ oder selbst gebaut.
   ollama pull qwen3:4b                  # OCR-Korrektur (optional)
   ollama pull qwen3-vl:4b               # Vision-OCR (optional)
   ```
-- Bei LiteLLM/OpenAI-kompatiblen Setups muessen die konfigurierten Modell-Aliasse erreichbar sein. Embedding-Aliasse wie `qwen3-embedding-4b-local` sind erlaubt; ArchiBot sendet OpenAI-kompatible Embedding-Requests mit `encoding_format="float"`.
+- Bei OpenAI-compatible/OpenAI-kompatiblen Setups muessen die konfigurierten Modell-Aliasse erreichbar sein. Embedding-Aliasse wie `qwen3-embedding-4b-local` sind erlaubt; ArchiBot sendet OpenAI-kompatible Embedding-Requests mit `encoding_format="float"`.
 
 ## Option A: Fertiges Image von GHCR (empfohlen)
 

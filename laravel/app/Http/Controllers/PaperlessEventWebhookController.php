@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
@@ -10,7 +11,7 @@ use App\Services\Webhooks\PaperlessWebhookNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 class PaperlessEventWebhookController extends Controller
@@ -80,6 +81,7 @@ class PaperlessEventWebhookController extends Controller
                         paperlessModified: $paperlessModified,
                         webhookDeliveryId: $delivery->id,
                     );
+                    $this->markProcessDeliveryHandled($delivery, $startResult);
                 } catch (\Throwable $exception) {
                     $this->recordPipelineStartFailure($delivery, $exception::class);
 
@@ -94,16 +96,18 @@ class PaperlessEventWebhookController extends Controller
                 }
             }
 
-            $enqueueResult = $this->attemptDirectEnqueue($delivery);
-            if ($enqueueResult['status'] === 'failed') {
-                return response()->json($this->responsePayload(
-                    'enqueue_failed',
-                    false,
-                    $documentId,
-                    $delivery,
-                    $startResult,
-                    ['retry' => true, 'webhook_action' => $webhookAction],
-                ), 503);
+            if ($webhookAction !== 'process_document') {
+                $enqueueResult = $this->attemptWebhookActorDispatch($delivery);
+                if ($enqueueResult['status'] === 'failed') {
+                    return response()->json($this->responsePayload(
+                        'enqueue_failed',
+                        false,
+                        $documentId,
+                        $delivery,
+                        $startResult,
+                        ['retry' => true, 'webhook_action' => $webhookAction],
+                    ), 503);
+                }
             }
         }
 
@@ -118,13 +122,44 @@ class PaperlessEventWebhookController extends Controller
         ]);
 
         return response()->json($this->responsePayload(
-            $duplicate ? WebhookDelivery::STATUS_DUPLICATE : WebhookDelivery::STATUS_QUEUED,
+            $duplicate ? WebhookDelivery::STATUS_DUPLICATE : $delivery->fresh()->status,
             $duplicate,
             $documentId,
             $delivery,
             $startResult,
             ['webhook_action' => $webhookAction],
         ));
+    }
+
+    private function markProcessDeliveryHandled(WebhookDelivery $delivery, PipelineStartResult $startResult): void
+    {
+        $status = $startResult->blockedReason === null
+            ? WebhookDelivery::STATUS_PROCESSED
+            : WebhookDelivery::STATUS_BLOCKED;
+
+        $delivery->forceFill([
+            'status' => $status,
+            'error' => $startResult->blockedReason,
+            'processed_at' => now(),
+        ])->save();
+
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'pipeline_run_id' => $startResult->pipelineRun->id,
+            'event_type' => $status === WebhookDelivery::STATUS_PROCESSED
+                ? 'webhook.process_delivery_handled'
+                : 'webhook.process_delivery_blocked',
+            'paperless_document_id' => $delivery->paperless_document_id,
+            'level' => $status === WebhookDelivery::STATUS_PROCESSED ? 'info' : 'warning',
+            'message' => $status === WebhookDelivery::STATUS_PROCESSED
+                ? 'Process-document webhook delivery handed off to durable document pipeline run.'
+                : 'Process-document webhook delivery blocked by durable document pipeline gate.',
+            'payload' => [
+                'pipeline_run_id' => $startResult->pipelineRun->id,
+                'pipeline_outcome' => $startResult->outcome,
+                'blocked_reason' => $startResult->blockedReason,
+            ],
+        ]);
     }
 
     private function verifySecret(Request $request): ?JsonResponse
@@ -173,64 +208,34 @@ class PaperlessEventWebhookController extends Controller
     /**
      * @return array{status: string}
      */
-    private function attemptDirectEnqueue(WebhookDelivery $delivery): array
+    private function attemptWebhookActorDispatch(WebhookDelivery $delivery): array
     {
-        $command = $this->enqueueCommand($delivery->id);
-        if ($command === []) {
-            return ['status' => 'skipped'];
-        }
-
         try {
-            $result = Process::timeout(10)->run($command);
+            Queue::push(RunPythonActorJob::webhookDelivery($delivery->id));
         } catch (\Throwable $exception) {
-            $this->recordDeferredEnqueue($delivery, 'process_start_failed', null, $exception::class);
+            $this->recordDeferredEnqueue($delivery, 'queue_dispatch_failed', null, $exception::class);
 
             return ['status' => 'failed'];
         }
 
-        if ($result->successful()) {
-            PipelineEvent::query()->create([
-                'webhook_delivery_id' => $delivery->id,
-                'event_type' => 'webhook.enqueue_requested',
-                'paperless_document_id' => $delivery->paperless_document_id,
-                'level' => 'info',
-                'message' => 'Direct webhook enqueue command completed; delivery remains queued until actor processing confirms it.',
-                'payload' => [
-                    'status' => $delivery->status,
-                    'transport' => 'fixed_python_enqueue',
-                ],
-            ]);
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.enqueue_requested',
+            'paperless_document_id' => $delivery->paperless_document_id,
+            'level' => 'info',
+            'message' => 'Webhook actor queued through the Laravel database queue; delivery remains queued until actor processing confirms it.',
+            'payload' => [
+                'status' => $delivery->status,
+                'transport' => 'laravel_queue',
+            ],
+        ]);
 
-            Log::info('paperless webhook direct enqueue requested', [
-                'webhook_delivery_id' => $delivery->id,
-                'paperless_document_id' => $delivery->paperless_document_id,
-            ]);
+        Log::info('paperless webhook actor queued', [
+            'webhook_delivery_id' => $delivery->id,
+            'paperless_document_id' => $delivery->paperless_document_id,
+        ]);
 
-            return ['status' => 'requested'];
-        }
-
-        $this->recordDeferredEnqueue($delivery, 'process_failed', $result->exitCode());
-
-        return ['status' => 'failed'];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function enqueueCommand(int $deliveryId): array
-    {
-        if (! (bool) config('archibot.webhook_direct_enqueue_enabled', false)) {
-            return [];
-        }
-
-        return [
-            (string) config('archibot.python_binary', 'python3'),
-            '-m',
-            'app.event_worker',
-            'enqueue-webhook',
-            '--delivery-id',
-            (string) $deliveryId,
-        ];
+        return ['status' => 'requested'];
     }
 
     private function recordPipelineStartFailure(WebhookDelivery $delivery, string $exceptionClass): void
@@ -266,7 +271,7 @@ class PaperlessEventWebhookController extends Controller
             'event_type' => 'webhook.enqueue_deferred',
             'paperless_document_id' => $delivery->paperless_document_id,
             'level' => 'warning',
-            'message' => 'Direct webhook enqueue failed; Paperless should retry and durable recovery can retry from queued delivery state.',
+            'message' => 'Webhook actor queue dispatch failed; Paperless should retry and durable recovery can retry from queued delivery state.',
             'payload' => array_filter([
                 'status' => $delivery->status,
                 'error_type' => $errorType,
@@ -275,7 +280,7 @@ class PaperlessEventWebhookController extends Controller
             ], fn ($value): bool => $value !== null),
         ]);
 
-        Log::warning('paperless webhook direct enqueue deferred', array_filter([
+        Log::warning('paperless webhook actor queue deferred', array_filter([
             'webhook_delivery_id' => $delivery->id,
             'paperless_document_id' => $delivery->paperless_document_id,
             'error_type' => $errorType,

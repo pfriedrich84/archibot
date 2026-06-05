@@ -2,6 +2,7 @@
 
 namespace App\Services\Pipeline;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -91,6 +92,17 @@ class DocumentPipelineStarter
         $blockedReason = $gateOpen ? null : self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY;
 
         $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason);
+
+        if ($created && $gateOpen) {
+            dispatch(RunPythonActorJob::documentPipeline($run->id));
+            $run->forceFill([
+                'status' => PipelineRun::STATUS_QUEUED,
+                'progress_current_phase' => 'document_actor',
+                'progress_message' => 'Document actor queued through Laravel actor transport.',
+                'progress_updated_at' => now(),
+            ])->save();
+            $this->recordActorQueuedEvent($run);
+        }
 
         return new PipelineStartResult($run->refresh(), $outcome, $dedupeKey, $blockedReason, $created);
     }
@@ -187,6 +199,23 @@ class DocumentPipelineStarter
         }
 
         return 'created';
+    }
+
+    private function recordActorQueuedEvent(PipelineRun $run): void
+    {
+        PipelineEvent::query()->create([
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $run->webhook_delivery_id,
+            'command_id' => $run->command_id,
+            'event_type' => 'pipeline.document_actor_queued',
+            'paperless_document_id' => $run->paperless_document_id,
+            'level' => 'info',
+            'message' => 'Document actor queued through Laravel actor transport.',
+            'payload' => [
+                'actor_name' => 'handle_document_pipeline',
+                'transport' => 'laravel_database_queue',
+            ],
+        ]);
     }
 
     private function recordStartEvent(

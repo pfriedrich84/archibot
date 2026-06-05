@@ -12,7 +12,7 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          ▼
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
 │ Paperless-NGX  │◀──▶│   ArchiBot App                  │◀──▶│ AI Provider   │
-│                │    │   Laravel/Svelte + Python       │    │ Ollama/LiteLLM│
+│                │    │   Laravel/Svelte + Python       │    │ AI Provider   │
 │ - Dokumente    │    │   Workers/MCP                   │    │ - Chat (LLM) │
 │ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
@@ -21,8 +21,8 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          ┌───────────┴───────────┐
                          ▼                       ▼
                   ┌──────────────────────┐ ┌──────────────┐
-                  │ PostgreSQL + pgvector │ │   Absurd   │
-                  │  (persistent volume)  │ │ Absurd     │
+                  │ PostgreSQL + pgvector │ │ Laravel Queue│
+                  │  (persistent volume)  │ │ database drv │
                   └──────────────────────┘ └──────────────┘
 ```
 
@@ -62,7 +62,6 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │                                              │
 │  - GUI /review:  Annehmen / Ablehnen /       │
 │    Editieren                                 │
-│  - Telegram: Accept / Reject Buttons         │
 │  - Auto-Commit: wenn Confidence >=           │
 │    AUTO_COMMIT_CONFIDENCE                    │
 └──────────────────┬──────────────────────────┘
@@ -88,8 +87,8 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
 | **Laravel Worker Job** | UI-Aktion, Queue, Scheduler | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
-| **Worker-Poll** | Python CLI/Worker-Kontrakt `poll` | `app/cli.py` → `poll_inbox()` | Ja, ueberspringt mit Log |
-| **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`, Python `app.actors.webhook` startet/attached Pipeline | Ja, Delivery bleibt durable/Run wird blockiert |
+| **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → `RunPythonActorJob::pollReconciliation(<command-id>)` → festes Python-Actor-Kommando | Ja, ueberspringt mit Log |
+| **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`; fuer Create/Process-Events startet es `pipeline_runs` und queued `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, fuer Refresh/Delete-Events queued es `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)` | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Inbox-GUI** | Aktion in `/inbox` oder `/worker-jobs` | Laravel `worker_jobs` → Python CLI/Pipeline-Start | Ja, ueber denselben Gate/Run-Status |
 | **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
 
@@ -100,7 +99,7 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 - **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless mit dem Token des angemeldeten Paperless-Benutzers
 - **Status-Anreicherung:** Fuer jedes Dokument wird der aktuelle Laravel-Review-Status aus `review_suggestions` eingeblendet
 - **Fehlerzustand:** Ist Paperless nicht erreichbar oder fehlt die Konfiguration, zeigt Laravel einen expliziten Fehler statt stale Berechtigungen zu erlauben
-- **Verarbeitung:** Manuelle Jobs laufen ueber `/worker-jobs`, Laravel `worker_jobs` und den Python CLI-JSON-Kontrakt
+- **Verarbeitung:** Manuelle Legacy-Jobs laufen noch ueber `/worker-jobs`, Laravel `worker_jobs` und den Python CLI-JSON-Kontrakt. Manuelles Reprocess aus dem Review und Paperless-Create-Webhooks starten durable `pipeline_runs` und queued Laravel actor jobs mit festen Python-Actor-Kommandos.
 
 ## Pipeline-Stufen im Detail
 
@@ -146,19 +145,22 @@ Timing wird separat unter `phase='judge'` in `phase_timing` erfasst.
 
 ### 7. Auto-Commit
 
-Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei Auto-Commit wird keine Telegram-Benachrichtigung gesendet. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
+Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
+
+Akzeptierte Review-Suggestions erzeugen einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.
 
 ## Reindex
 
-Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komplett neu aufgebaut werden:
+Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitung und nicht-prozessierende Webhook-Aktionen laufen ueber Laravel queued actor jobs mit festen Python-Actor-Kommandos. Der feste Python-Runner startet Embedding-Builds ueber `python -m app.actor_runner build-embedding-index --command-id <commands.id>` und laedt Optionen wie `limit` ausschliesslich aus `commands.payload`. Webhook-Refresh/Delete nutzt `python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>`; Python laedt die von Laravel normalisierte Aktion aus der Delivery.
 
-1. Laravel legt einen `worker_jobs`-Eintrag vom Typ `reindex` an
-2. Der Laravel Queue Worker ruft `python -m app.cli reindex --input <json> --output <json>` auf
-3. Python startet einen PostgreSQL/pgvector-Embedding-Build und setzt die Embedding-Gate-State auf `building`
-4. Alle Paperless-Dokumente ohne konfigurierten Inbox-/Posteingang-Tag werden geladen
-5. Fuer jedes vertrauenswuerdige Dokument wird ein neues Embedding mit Metadaten in PostgreSQL gespeichert
-6. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in die Worker-Daten; Laravel zeigt Jobstatus und Ergebnis an
-7. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
+1. Laravel legt einen `commands`-Eintrag vom Typ `embedding_index_build` oder `reindex` an
+2. Laravel queued `RunPythonActorJob::embeddingIndexBuild(<command-id>)` oder `RunPythonActorJob::reindex(<command-id>)` ueber die Laravel Database Queue
+3. Der Laravel Queue Worker ruft das allowlistete Python-Kommando `python -m app.actor_runner build-embedding-index --command-id <commands.id>` auf
+4. Python startet einen PostgreSQL/pgvector-Embedding-Build und setzt die Embedding-Gate-State auf `building`
+5. Alle Paperless-Dokumente ohne konfigurierten Inbox-/Posteingang-Tag werden geladen
+6. Fuer jedes vertrauenswuerdige Dokument wird ein neues Embedding mit Metadaten in PostgreSQL gespeichert
+7. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in dauerhafte Pipeline-/Command-State-Tabellen; Laravel zeigt Status und Ergebnis aus PostgreSQL an
+8. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
 
 ## Datenbank-Schema
 
@@ -177,8 +179,8 @@ Der Embedding-Index kann ueber einen Laravel Worker Job oder die Python CLI komp
 
 ## Docker-Deployment
 
-- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Absurd laeuft als PostgreSQL-Schema/Queue-Tabellen ohne separaten Broker-Service
+- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Laravel Database Queues laufen ohne separaten Broker-Service
 - **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
-- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings und Absurd Queue-State; `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue, Absurd Worker/Recovery und optional den Python MCP-Server
+- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings, Pipeline-State und Laravel Queue-State; `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue und optional den Python MCP-Server. Laravel-native Recovery laeuft ueber `php artisan archibot:recovery-scan`; Legacy Absurd Worker/Recovery bleiben nur waehrend der Migration fuer noch nicht migrierte Flows.
 - **Netzwerk:** App-Container muss Paperless, PostgreSQL und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`

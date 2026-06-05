@@ -245,7 +245,7 @@ CREATE INDEX IF NOT EXISTS idx_pt_phase ON phase_timing(phase);
 CREATE INDEX IF NOT EXISTS idx_pt_cycle ON phase_timing(poll_cycle_id);
 
 -- =========================================================================
--- Persistent safe job event stream for GUI/CLI/Telegram
+-- Persistent safe job event stream for GUI/CLI
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS job_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

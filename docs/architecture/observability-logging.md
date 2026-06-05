@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Archibot runs across Laravel, Python Absurd workers, Absurd, PostgreSQL, Paperless and Ollama/LiteLLM providers.
+Archibot runs across Laravel, Laravel queue workers, fixed Python actor commands, PostgreSQL, Paperless and Ollama-compatible/OpenAI-compatible providers.
 
 Centralized structured observability is required to debug event-driven flows, retries, locks, webhook ingestion and provider outages.
 
@@ -37,7 +37,7 @@ Examples:
 - Python actor started
 - Paperless API call timed out
 - Ollama request failed after 60 s
-- Absurd enqueue failed
+- Laravel queue dispatch failed
 - startup recovery scan requeued 4 runs
 
 Both are needed.
@@ -71,8 +71,8 @@ Recommended fields:
 {
   "timestamp": "2026-05-08T12:00:00.000Z",
   "level": "info",
-  "service": "archibot-python-worker",
-  "component": "absurd",
+  "service": "archibot-python-actor",
+  "component": "laravel-queue-actor",
   "environment": "production",
   "message": "actor started",
   "request_id": "req_...",
@@ -80,7 +80,7 @@ Recommended fields:
   "command_id": 456,
   "pipeline_run_id": "run_...",
   "actor_execution_id": "exec_...",
-  "message_id": "absurd-message-id",
+  "message_id": "laravel-job-id",
   "paperless_document_id": 789,
   "pipeline_dedupe_key": "...",
   "trigger_source": "webhook",
@@ -152,16 +152,16 @@ paperless_document_id
 trigger_source
 ```
 
-## Python / Absurd Logging
+## Python Actor Logging
 
-Python workers should log:
+Python actor commands should log:
 
 - actor queued/started/succeeded/failed/retrying
 - actor duration
 - lock acquisition/release/coalescing
 - embedding gate decisions
 - Paperless API calls
-- Ollama/LiteLLM calls
+- Ollama-compatible/OpenAI-compatible calls
 - retry scheduling
 - recovery scan results
 
@@ -181,29 +181,21 @@ model
 
 Python should use structured logging consistently. `structlog` is a good fit because Archibot already uses it in Python code.
 
-## Absurd Observability
+## Laravel Queue Observability
 
 Capture or expose:
 
 ```text
 queue depth
-task spawn rate
-task claim/completion/failure rate
-retrying/sleeping task count
-oldest pending task age
-worker loop errors
+job dispatch rate
+job start/completion/failure rate
+retrying/delayed job count
+oldest pending job age
+queue worker errors
 PostgreSQL connection errors
 ```
 
-Recommended queues to monitor:
-
-```text
-archibot.webhook
-archibot.io
-archibot.llm
-archibot.embedding
-archibot.blocking
-```
+Recommended job classes/actor names to monitor include embedding builds, document pipeline execution, webhook delivery handling, review commits and reconciliation/recovery.
 
 ## PostgreSQL Observability
 
@@ -236,14 +228,14 @@ actor_retry_total
 paperless_request_duration_ms
 llm_request_duration_ms
 embedding_build_progress
-absurd_queue_depth
+laravel_queue_depth
 pending_webhook_deliveries
 blocked_pipeline_runs
 poll_runs_total
 poll_coalesced_total
 ```
 
-Metrics can be added through Prometheus-compatible endpoints, Laravel metrics middleware, Python instrumentation, Absurd exporter and PostgreSQL exporter.
+Metrics can be added through Prometheus-compatible endpoints, Laravel metrics middleware, Python instrumentation, Laravel queue instrumentation and PostgreSQL exporter.
 
 ## Tracing
 
@@ -333,9 +325,9 @@ Recommended Grafana dashboards:
 - average actor duration
 - worker crash/recovery count
 
-### Absurd Queue Health
+### Laravel Queue Health
 
-- Absurd queue depth
+- Laravel queue depth
 - oldest pending task age
 - retrying/sleeping task count
 - worker claim/completion/failure rate
@@ -343,7 +335,7 @@ Recommended Grafana dashboards:
 ### Provider Health
 
 - Paperless request duration/error rate
-- Ollama/LiteLLM request duration/error rate
+- Ollama-compatible/OpenAI-compatible request duration/error rate
 - LLM calls by provider/model
 - rate-limit counts
 

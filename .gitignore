@@ -10,10 +10,15 @@ build/
 *.db
 /data/
 .venv/
+.pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 .claude/settings.local.json
 uv.lock
 .autoresearch/
+.pi/
 .graphify/*
 !.graphify/GRAPH_REPORT.md
 !.graphify/graph.json

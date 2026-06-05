@@ -104,8 +104,6 @@ class AdminSettingsTest extends TestCase
     public function test_admin_can_update_mcp_runtime_settings(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
-        file_put_contents(config('archibot_settings.import_paths')[0], "ENABLE_TELEGRAM=1\nTELEGRAM_BOT_TOKEN=old-secret\n");
-
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
             'paperless_url' => 'https://paperless.test',
             'gui_base_url' => 'https://archibot.example',
@@ -127,10 +125,6 @@ class AdminSettingsTest extends TestCase
         $this->assertStringContainsString('AUTO_COMMIT_CONFIDENCE=95', $runtimeConfig);
         $this->assertStringContainsString('ENABLE_JUDGE_VERIFICATION=1', $runtimeConfig);
         $this->assertStringContainsString('JUDGE_CONFIDENCE_THRESHOLD=101', $runtimeConfig);
-        $this->assertStringNotContainsString('ENABLE_TELEGRAM=', $runtimeConfig);
-        $this->assertStringNotContainsString('TELEGRAM_BOT_TOKEN=', $runtimeConfig);
-        $this->assertStringNotContainsString('TELEGRAM_CHAT_ID=', $runtimeConfig);
-        $this->assertStringNotContainsString('TELEGRAM_POLL_INTERVAL=', $runtimeConfig);
         $this->assertStringContainsString('MCP_API_KEY=legacy-mcp-secret', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_AUTH_ENABLED=1', $runtimeConfig);
         $this->assertStringContainsString('MCP_LARAVEL_PATH=/app/laravel', $runtimeConfig);

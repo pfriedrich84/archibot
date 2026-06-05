@@ -48,7 +48,7 @@ return [
             'type' => 'select',
             'options' => ['ollama', 'openai_compatible'],
             'default' => 'ollama',
-            'help' => 'ollama uses the native Ollama API; openai_compatible uses a local OpenAI-compatible /v1 API.',
+            'help' => 'ollama uses an Ollama-compatible API; openai_compatible uses an OpenAI-compatible /v1 API.',
         ],
         'ollama.url' => [
             'legacy' => 'ollama_url',
@@ -65,7 +65,7 @@ return [
             'type' => 'password',
             'default' => '',
             'sensitive' => true,
-            'help' => 'Optional bearer token for OpenAI-compatible local providers.',
+            'help' => 'Optional bearer token for OpenAI-compatible providers.',
         ],
         'llm.provider_profiles' => [
             'legacy' => 'ai_provider_profiles',
@@ -73,7 +73,7 @@ return [
             'label' => 'Additional provider profiles (JSON)',
             'type' => 'textarea',
             'default' => '',
-            'help' => 'Optional JSON array of named providers. Prefer api_key_env for secrets. Example: [{"id":"local-litellm","type":"openai_compatible","base_url":"http://litellm:4000/v1"},{"id":"openrouter","type":"openai_compatible","base_url":"https://openrouter.ai/api/v1","api_key_env":"OPENROUTER_API_KEY","is_cloud":true}]',
+            'help' => 'Optional JSON array of named providers. Prefer api_key_env for secrets. Example: [{"id":"local-openai","type":"openai_compatible","base_url":"http://localhost:11434/v1"},{"id":"local-ollama","type":"ollama","base_url":"http://ollama:11434"}]',
         ],
         'llm.classification_provider' => [
             'legacy' => 'classification_provider',

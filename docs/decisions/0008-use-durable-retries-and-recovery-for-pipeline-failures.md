@@ -9,19 +9,19 @@ Accepted
 Archibot's event-driven pipeline depends on several external and internal systems:
 
 - PostgreSQL for durable state
-- Absurd for message transport
+- Laravel database queues for message transport
 - Paperless for document metadata and content
-- Ollama or LiteLLM providers for OCR/classification/LLM work
+- Ollama-compatible or OpenAI-compatible providers for OCR/classification/LLM work
 - container runtime / host availability
 
 Failures are expected:
 
 - container reboot or rebuild
 - worker crash during processing
-- Absurd restart
+- Laravel queue worker restart
 - PostgreSQL restart
 - Paperless temporarily unreachable
-- Ollama/LiteLLM temporarily unreachable
+- Ollama-compatible/OpenAI-compatible provider temporarily unreachable
 - LLM timeout or provider rate limit
 - malformed document data
 - OCR/classification/embedding errors
@@ -31,7 +31,7 @@ The pipeline must be restart-safe and retryable without creating duplicate proce
 
 ## Decision
 
-Archibot uses durable pipeline state in PostgreSQL plus Absurd retry semantics for transient execution failures.
+Archibot uses durable pipeline state in PostgreSQL plus Laravel queue dispatch/retry semantics for transient execution failures.
 
 PostgreSQL is the source of truth for:
 
@@ -43,7 +43,7 @@ PostgreSQL is the source of truth for:
 - document processing dedupe keys
 - final failure state
 
-Absurd/Absurd is used for execution transport, not as the only source of job truth.
+Laravel database queues are used for execution transport, not as the only source of job truth.
 
 All actors must be idempotent and safe to retry.
 
@@ -55,10 +55,10 @@ Examples:
 
 - Paperless temporarily unreachable
 - Ollama temporarily unreachable
-- LiteLLM provider timeout
+- OpenAI-compatible provider timeout
 - HTTP 429 / 5xx
 - network timeout
-- Absurd reconnect
+- Laravel queue dispatch/database reconnect
 
 Behavior:
 
@@ -296,7 +296,7 @@ Manual actions:
 What gets easier:
 
 - container restarts do not lose work
-- transient Paperless/Ollama/LiteLLM outages recover automatically
+- transient Paperless/Ollama-compatible/OpenAI-compatible provider outages recover automatically
 - failures are visible and actionable
 - retries are safe because actors are idempotent
 
@@ -310,7 +310,7 @@ What gets harder:
 What must not be done anymore:
 
 - relying only on in-memory progress
-- treating Absurd messages as the only job state
+- treating Laravel queue payloads as the only job state
 - starting non-idempotent actors
 - retrying validation/permanent failures forever
 - hiding worker crashes behind generic failed logs

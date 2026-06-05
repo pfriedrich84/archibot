@@ -4,7 +4,7 @@ Date: 2026-05-14
 
 ## Scope
 
-This review stabilizes the current Laravel `worker_jobs` control plane and the operational parity sweep before Phase 13/event-driven migration. It intentionally does not start RabbitMQ/Dramatiq migration and does not add feature behavior.
+This review stabilizes the current Laravel `worker_jobs` control plane and the operational parity sweep before Phase 13/event-driven migration. It intentionally does not start the Absurd actor migration and does not add feature behavior.
 
 ## Validation
 
@@ -21,7 +21,7 @@ All requested checks passed on `main` after the documentation cleanup:
 ## Stabilization findings
 
 - Duplicate ADR numbering was corrected safely: `worker_jobs` temporary-control-plane ADR is now `ADR-0012` at `docs/decisions/0012-worker-jobs-as-temporary-control-plane.md`; the existing embedding-readiness ADR remains `ADR-0006`.
-- `docs/laravel-gui-parity.md` was refreshed for the completed Webhook Deliveries UI, Errors improvements, Stats parity work, MCP/Telegram settings coverage, and the current maintenance-reset caveat.
+- `docs/laravel-gui-parity.md` was refreshed for the completed Webhook Deliveries UI, Errors improvements, Stats parity work, MCP settings coverage, and the current maintenance-reset caveat.
 - No broken Markdown links were found after renumbering and parity updates.
 - Worker job dispatch, leases, heartbeats, recovery, cancellation, result idempotency, operator controls, health checks and operational UI remain scoped to the temporary Laravel control plane described in ADR-0012.
 
@@ -46,7 +46,6 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 - Audit Logs: latest-100 view lacks filters/export/detail view.
 - Maintenance: destructive reset is intentionally excluded from GUI parity and remains operator-only CLI functionality.
 - MCP: no MCP server status/health page, per-token permissions UI, or direct rate-limit/write-tool status page.
-- Telegram: no connection status, test notification, or Telegram session-management UI.
 
 ## Readiness summary
 
