@@ -121,16 +121,16 @@ class TestSaveConfig:
         from app.config_writer import config_env_path, save_config
 
         monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
-        original = settings.paperless_token
-        object.__setattr__(settings, "paperless_token", "existing-token")
+        original = settings.openai_api_key
+        object.__setattr__(settings, "openai_api_key", "existing-token")
 
-        changed, _ = save_config({"paperless_token": ""})
+        changed, _ = save_config({"openai_api_key": ""})
 
-        assert "paperless_token" not in changed
-        assert settings.paperless_token == "existing-token"
+        assert "openai_api_key" not in changed
+        assert settings.openai_api_key == "existing-token"
         assert not config_env_path().exists()
 
-        object.__setattr__(settings, "paperless_token", original)
+        object.__setattr__(settings, "openai_api_key", original)
 
     def test_save_ignores_unknown_fields(self, tmp_path: Path, monkeypatch):
         from app.config_writer import save_config

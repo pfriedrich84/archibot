@@ -379,11 +379,7 @@ _LEGACY_ACTIVITY_TABLES = (
 
 
 def _essential_config_missing() -> bool:
-    return (
-        not settings.paperless_url
-        or not settings.paperless_token
-        or settings.paperless_inbox_tag_id == 0
-    )
+    return not settings.paperless_url or settings.paperless_inbox_tag_id == 0
 
 
 def _db_requires_setup(db_path: Path) -> bool:
@@ -494,15 +490,6 @@ FIELD_META: dict[str, dict[str, Any]] = {
         required=True,
         restart="component",
         help="Base URL of your Paperless-NGX instance",
-    ),
-    "paperless_token": _fm(
-        "Paperless",
-        "API Token",
-        "password",
-        required=True,
-        restart="component",
-        help="Paperless API authentication token",
-        sensitive=True,
     ),
     "paperless_inbox_tag_id": _fm(
         "Paperless",

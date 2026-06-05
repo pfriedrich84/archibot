@@ -17,7 +17,6 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `PAPERLESS_URL` | — | Basis-URL, z.B. `http://paperless:8000` |
-| `PAPERLESS_TOKEN` | — | API-Token (Paperless → Admin → Tokens) |
 | `PAPERLESS_INBOX_TAG_ID` | — | ID des Tags `Posteingang`; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag-ID, die nach Commit gesetzt wird; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |

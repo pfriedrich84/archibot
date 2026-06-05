@@ -22,7 +22,7 @@ class PaperlessClient:
         self.token = (token if token is not None else settings.paperless_token).strip()
         if not self.token:
             raise ValueError(
-                "Paperless API token is empty. Set PAPERLESS_TOKEN or save it in the Settings UI."
+                "Paperless API token is empty. Complete the Laravel setup/login flow so ArchiBot can use a login-derived Paperless token."
             )
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}/api",

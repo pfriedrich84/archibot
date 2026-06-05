@@ -201,7 +201,7 @@ archibot reset --yes --include-config
 | Flag | Beschreibung |
 |------|-------------|
 | `--yes` | **Pflicht.** Bestaetigt den Reset (keine interaktive Abfrage). |
-| `--include-config` | Loescht zusaetzlich Laravel-Config/Setup-State sowie Legacy-`config.env` und Backups. Verbindungseinstellungen (Paperless-URL, Token, Ollama-URL) gehen dabei verloren. |
+| `--include-config` | Loescht zusaetzlich Laravel-Config/Setup-State sowie Legacy-`config.env` und Backups. Verbindungseinstellungen (Paperless-URL, login-derived Paperless user tokens, Ollama-URL) gehen dabei verloren. |
 
 **Was passiert:**
 1. `archibot reset` ruft im Hintergrund `php artisan archibot:reset --yes` auf

@@ -145,7 +145,7 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
     changed_keys = set(changed.keys())
 
     # --- Paperless client ---
-    paperless_fields = {"paperless_url", "paperless_token", "paperless_inbox_tag_id"}
+    paperless_fields = {"paperless_url", "paperless_inbox_tag_id"}
     if changed_keys & paperless_fields:
         from app.clients.paperless import PaperlessClient
 
