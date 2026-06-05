@@ -6,7 +6,6 @@ services:
     environment:
       # --- Paperless-NGX (used by first-run import and Python workers) ---
       PAPERLESS_URL: ${PAPERLESS_URL:-}
-      PAPERLESS_TOKEN: ${PAPERLESS_TOKEN:-}
       PAPERLESS_INBOX_TAG_ID: ${PAPERLESS_INBOX_TAG_ID:-}
       KEEP_INBOX_TAG: ${KEEP_INBOX_TAG:-true}
 

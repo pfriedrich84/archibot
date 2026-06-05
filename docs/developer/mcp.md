@@ -87,9 +87,8 @@ Below are example configurations to connect the MCP server with client tools.
       "args": ["-m", "app.mcp_server"],
       "cwd": "/path/to/archibot",
       "env": {
-        "PAPERLESS_URL": "http://localhost:8000",
-        "PAPERLESS_TOKEN": "your-token",
-        "PAPERLESS_INBOX_TAG_ID": "1"
+        "MCP_LARAVEL_AUTH_ENABLED": "true",
+        "MCP_LARAVEL_PATH": "/path/to/archibot/laravel"
       }
     }
   }

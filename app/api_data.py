@@ -511,7 +511,7 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
         "health": {
             "setup_complete": not needs_setup(),
             "embedding_index_ready": _has_embedding_index(),
-            "paperless_configured": bool(settings.paperless_url and settings.paperless_token),
+            "paperless_configured": bool(settings.paperless_url),
             "ollama_configured": bool(settings.ollama_url),
             "llm_provider": settings.llm_provider,
             "ai_provider_roles": {
@@ -548,7 +548,7 @@ def get_system_status(app: Any) -> dict[str, Any]:
         },
         "services": {
             "paperless": {
-                "configured": bool(settings.paperless_url and settings.paperless_token),
+                "configured": bool(settings.paperless_url),
                 "url": settings.paperless_url,
             },
             "ollama": {

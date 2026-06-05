@@ -220,14 +220,14 @@
                 : 'Configure the Paperless URL before polling documents.',
         },
         {
-            label: 'Paperless token',
+            label: 'Paperless login token',
             ok: status.user_paperless_token_present,
             detail: status.user_paperless_token_present
                 ? 'Configured'
                 : 'Missing',
             problem: status.user_paperless_token_present
                 ? undefined
-                : 'Add a Paperless API token for this user.',
+                : 'Log in with Paperless credentials so ArchiBot can refresh this user token.',
         },
         {
             label: 'Paperless API',

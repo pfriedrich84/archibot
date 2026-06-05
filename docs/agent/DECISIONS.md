@@ -19,3 +19,4 @@ Lightweight decisions that guide future implementation. Use ADRs in `docs/decisi
 - **Suggestion work requires Paperless document-change permission for non-admin users.** Non-admin ArchiBot users may accept, reject, or otherwise work on suggestions only when they have the right to change the corresponding Paperless document.
 - **Direct webhook enqueue is temporary/local-development infrastructure.** It must not become the long-term durable webhook processing interface.
 - **Absurd replaces RabbitMQ/Dramatiq for queue transport.** The target worker path is PostgreSQL-backed Absurd with `absurd-sdk==0.4.0` and the vendored Absurd SQL installed by Laravel migrations; see ADR-0013.
+- **Paperless auth is login-derived, not operator token based.** Do not document or require a global `.env` `PAPERLESS_TOKEN`; use Laravel setup/login and per-user Paperless tokens internally. See ADR-0014.
