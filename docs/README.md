@@ -46,6 +46,5 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`agent/DECISIONS.md`](agent/DECISIONS.md) — Leichtgewichtiger Entscheidungslog.
 - [`agent/ANTI_PATTERNS.md`](agent/ANTI_PATTERNS.md) — Repo-spezifische Anti-Patterns.
 - [`agent/DEFINITION_OF_DONE.md`](agent/DEFINITION_OF_DONE.md) — Abschlusskriterien fuer Aufgaben.
-- [`agent/AUTORESEARCH.md`](agent/AUTORESEARCH.md) — Metrikgetriebene Experiment-Workflows.
 - [`agent/ASSESSMENT.md`](agent/ASSESSMENT.md) — Governance-Assessment und naechste Schritte.
 - [`agent/CHANGELOG_AGENT.md`](agent/CHANGELOG_AGENT.md) — Aenderungen an Agent-Governance.

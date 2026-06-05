@@ -72,6 +72,5 @@ Read these instead of expanding this file with duplicate details:
 - [`DECISIONS.md`](DECISIONS.md) — lightweight decision log.
 - [`ANTI_PATTERNS.md`](ANTI_PATTERNS.md) — approaches to avoid.
 - [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) — completion criteria.
-- [`AUTORESEARCH.md`](AUTORESEARCH.md) — optional metric-driven experiment workflow.
 - [`ASSESSMENT.md`](ASSESSMENT.md) — governance assessment and next steps.
 - [`CHANGELOG_AGENT.md`](CHANGELOG_AGENT.md) — governance-system changelog.
