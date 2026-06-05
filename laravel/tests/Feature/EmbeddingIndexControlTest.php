@@ -2,13 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\RunPythonWorkerJob;
+use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\User;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -32,19 +31,20 @@ class EmbeddingIndexControlTest extends TestCase
         $this->assertSame('embedding_index_build', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(10, $command->payload['limit']);
-        $this->assertIsInt($command->payload['legacy_fallback_worker_job_id']);
+        $this->assertArrayNotHasKey('legacy_fallback_worker_job_id', $command->payload);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
-        $workerJob = WorkerJob::query()->firstOrFail();
-        $this->assertSame(WorkerJob::TYPE_REINDEX_EMBED, $workerJob->type);
-        $this->assertSame($command->id, $workerJob->payload['command_id']);
-        $this->assertSame('embedding_index_build', $workerJob->payload['mode']);
-        $this->assertSame(10, $workerJob->payload['limit']);
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued): bool => $queued->workerJobId === $workerJob->id);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->actorName === 'build_embedding_index'
+            && $queued->commandId === $command->id);
 
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,
             'event_type' => 'job_control.embedding_build_requested',
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $command->id,
+            'event_type' => 'job_control.embedding_build_actor_queued',
         ]);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
@@ -77,7 +77,7 @@ class EmbeddingIndexControlTest extends TestCase
         $this->assertDatabaseCount('commands', 0);
     }
 
-    public function test_absurd_configured_embedding_build_stays_on_command_path(): void
+    public function test_absurd_configuration_is_ignored_for_embedding_build_transport(): void
     {
         Queue::fake();
         Config::set('archibot.absurd_database_url', 'postgresql://archibot:archibot@postgres:5432/archibot');
@@ -87,12 +87,11 @@ class EmbeddingIndexControlTest extends TestCase
             ->post(route('embedding-index.build'))
             ->assertRedirect();
 
-        $this->assertDatabaseHas('commands', [
-            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
-            'status' => Command::STATUS_PENDING,
-        ]);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertDatabaseCount('worker_jobs', 0);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->commandId === $command->id);
     }
 
     public function test_admin_can_mark_embedding_index_stale(): void

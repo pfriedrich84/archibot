@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Review;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
@@ -162,7 +163,11 @@ class ReviewSuggestionTest extends TestCase
             'target_type' => 'review_suggestion',
             'target_id' => (string) $suggestion->id,
         ]);
-        Queue::assertNothingPushed();
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
+            && $job->commandId === $command->id);
     }
 
     public function test_accepting_event_driven_suggestion_marks_commit_queued_without_legacy_worker(): void
@@ -182,8 +187,11 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->status);
         $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
         $this->assertNull($suggestion->commit_worker_job_id);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
+        $this->assertSame($command->id, $suggestion->commit_command_id);
         $this->assertDatabaseCount('worker_jobs', 0);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $command->id);
     }
 
     public function test_accepting_python_origin_suggestion_queues_durable_commit_command(): void
@@ -201,7 +209,7 @@ class ReviewSuggestionTest extends TestCase
 
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
-        $this->assertSame(Command::STATUS_PENDING, $command->status);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertSame($suggestion->id, $command->payload['review_suggestion_id']);
         $this->assertSame(789, $command->payload['paperless_document_id']);
         $suggestion->refresh();
@@ -214,11 +222,18 @@ class ReviewSuggestionTest extends TestCase
             'event_type' => 'job_control.review_commit_requested',
             'paperless_document_id' => 789,
         ]);
-        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $command->id,
+            'event_type' => 'job_control.review_commit_actor_queued',
+            'paperless_document_id' => 789,
+        ]);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
+            && $job->commandId === $command->id);
     }
 
     public function test_admin_can_queue_manual_reprocess_from_review_detail(): void
     {
+        Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
         EmbeddingIndexState::query()->create(['status' => 'complete']);
         $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
@@ -228,7 +243,7 @@ class ReviewSuggestionTest extends TestCase
             ->assertRedirect(route('review.show', $suggestion));
 
         $run = PipelineRun::query()->firstOrFail();
-        $this->assertSame(PipelineRun::STATUS_PENDING, $run->status);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
         $this->assertSame('manual', $run->trigger_source);
         $this->assertSame(456, $run->paperless_document_id);
         $this->assertTrue($run->reprocess_requested);
@@ -238,6 +253,11 @@ class ReviewSuggestionTest extends TestCase
             'pipeline_run_id' => $run->id,
             'event_type' => 'pipeline.start.pending',
         ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.document_actor_queued',
+        ]);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $run->id);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'pipeline_run.manual_reprocess_queued',
             'target_type' => 'pipeline_run',
@@ -247,6 +267,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_manual_reprocess_is_blocked_when_embedding_index_is_not_complete(): void
     {
+        Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
         EmbeddingIndexState::query()->create(['status' => 'building']);
         $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
@@ -266,10 +287,12 @@ class ReviewSuggestionTest extends TestCase
             'pipeline_run_id' => $run->id,
             'event_type' => 'pipeline.blocked.embedding_index_not_ready',
         ]);
+        Queue::assertNothingPushed();
     }
 
     public function test_manual_reprocess_force_creates_new_run_each_time(): void
     {
+        Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
         EmbeddingIndexState::query()->create(['status' => 'complete']);
         $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
@@ -283,6 +306,7 @@ class ReviewSuggestionTest extends TestCase
 
         $this->assertDatabaseCount('pipeline_runs', 2);
         $this->assertCount(2, PipelineRun::query()->where('paperless_document_id', 456)->pluck('pipeline_dedupe_key')->unique());
+        Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 
     public function test_non_admin_cannot_queue_manual_reprocess(): void
@@ -405,7 +429,7 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $reviewed->refresh()->status);
         $this->assertSame(2, Command::query()->where('type', Command::TYPE_REVIEW_COMMIT)->count());
         $this->assertDatabaseCount('worker_jobs', 0);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 
     public function test_bulk_reject_marks_pending_suggestions_and_skips_reviewed(): void
@@ -474,6 +498,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_non_admin_accept_succeeds_with_paperless_change_permission(): void
     {
+        Queue::fake();
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::fake([
             'paperless.example/api/documents/789/' => Http::response(['actions' => ['PATCH' => ['title' => ['type' => 'string']]]], 200),
@@ -486,7 +511,10 @@ class ReviewSuggestionTest extends TestCase
             ->assertRedirect(route('review.index'));
 
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->refresh()->status);
-        $this->assertDatabaseHas('commands', ['type' => Command::TYPE_REVIEW_COMMIT]);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $command->id);
         Http::assertSent(fn ($request) => $request->method() === 'OPTIONS'
             && $request->url() === 'https://paperless.example/api/documents/789/');
     }

@@ -149,9 +149,9 @@ Retries a stored webhook delivery that could not be enqueued or normalized.
 
 Examples:
 
-- Absurd was unavailable
+- Laravel queue dispatch was unavailable
 - embedding gate was closed
-- temporary DB/Absurd enqueue issue after persistence
+- temporary DB/queue dispatch issue after persistence
 
 ## Retry Modes
 
@@ -166,7 +166,7 @@ Examples:
 - Ollama unavailable
 - OpenAI-compatible provider timeout
 - HTTP 429 with retry-after
-- Absurd/PostgreSQL reconnect issue
+- Laravel queue/PostgreSQL reconnect issue
 
 ### Manual Retry
 
@@ -409,7 +409,7 @@ actor starts
   -> writes actor_execution retrying
   -> writes pipeline event actor.retry_scheduled
   -> sets next_retry_at
-  -> Absurd requeues with backoff
+  -> Laravel queue redispatches with backoff or recovery redispatches when due
 ```
 
 After max attempts:
@@ -486,7 +486,7 @@ Retry failed items: 3 / 3 succeeded
 
 ## Retry Flow: Webhook Delivery
 
-If Absurd is unavailable after persisting delivery:
+If Laravel queue dispatch is unavailable after persisting delivery:
 
 ```text
 webhook_delivery.status = queued or retry_pending

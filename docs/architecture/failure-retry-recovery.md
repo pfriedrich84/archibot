@@ -8,7 +8,7 @@ Expected failures:
 
 - container reboot or rebuild
 - worker crash
-- Absurd worker restart
+- Laravel queue worker restart
 - PostgreSQL restart
 - Paperless unavailable
 - Ollama unavailable
@@ -23,7 +23,7 @@ The system must be durable, observable and retryable.
 ## Principles
 
 1. PostgreSQL is the source of truth for durable state.
-2. Absurd is execution transport, not the only job state.
+2. Laravel database queues are execution transport, not the only job state.
 3. Every actor must be idempotent.
 4. Every actor must write structured execution state and events.
 5. Retrying must not create duplicate review suggestions or duplicate document processing.
@@ -183,7 +183,7 @@ Recommended flow:
 ```text
 container starts
   -> connect PostgreSQL
-  -> connect Absurd
+  -> verify Laravel queue transport is available
   -> run recovery scan
   -> mark stale running actor_executions retrying/failed
   -> requeue safe work
@@ -267,18 +267,18 @@ If model provider is unavailable:
 - after max retries document run becomes `failed`
 - manual retry can use same or changed provider/model
 
-## Absurd Unavailable
+## Laravel Queue Enqueue Unavailable
 
-Webhook endpoint must not lose the delivery if Absurd is unavailable.
+Webhook endpoint must not lose the delivery if Laravel queue enqueue fails after persistence.
 
 Required behavior:
 
 ```text
 receive webhook
   -> persist webhook_delivery
-  -> attempt enqueue
-  -> if enqueue fails, mark delivery queued/retry_pending
-  -> scheduler/recovery later enqueues it
+  -> attempt Laravel queue dispatch
+  -> if dispatch fails, mark delivery queued/retry_pending
+  -> scheduler/recovery later dispatches it again
 ```
 
 The HTTP response strategy should be deliberate:
@@ -330,7 +330,7 @@ Minimum tests:
 - Paperless unavailable triggers retry, not duplicate pipeline
 - Ollama unavailable triggers retry, not duplicate suggestion
 - invalid webhook becomes failed_permanent
-- Absurd enqueue failure after webhook persistence is recoverable
+- Laravel queue dispatch failure after webhook persistence is recoverable
 - PostgreSQL unavailable rejects webhook safely
 - cancel_requested prevents next actor enqueue
 - retry after failure respects document lock and dedupe key

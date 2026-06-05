@@ -4,14 +4,16 @@
 
 Archibot soll konsequent von einer gemischten CLI-/Subprocess-/Scheduler-Architektur zu einer event-driven Pipeline weiterentwickelt werden.
 
+> **Transport update:** ADR-0015 supersedes the original Absurd queue target in this plan. New implementation work uses Laravel database queues as transport and fixed, allowlisted Python actor commands for execution. PostgreSQL pipeline tables remain the durable source of truth. The migration order starts with embedding builds, then document pipeline execution.
+
 Die künftige Architektur trennt klar zwischen UI, dauerhafter Datenhaltung, Webhook/Event-Ingestion, Message Transport und Python Processing:
 
 ```text
 Paperless Webhooks / Laravel UI / Scheduler
   -> Laravel Webhook + Command API
   -> PostgreSQL + pgvector als Source of Truth
-  -> Absurd als PostgreSQL-backed Queue
-  -> Python Absurd actors als Pipeline Engine
+  -> Laravel Database Queue als Transport
+  -> feste Python Actor Commands als Pipeline Engine
   -> Ollama-/OpenAI-kompatibler LLM Adapter
 ```
 
@@ -290,7 +292,7 @@ Sie soll enthalten:
 Empfohlene Kurzregel für `AGENTS.md`:
 
 ```md
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, Absurd, PostgreSQL and pgvector.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, Laravel database queues, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger for document processing; polling is only for reconciliation and maintenance.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path unless the task explicitly asks for a temporary removal step.
 Prefer small, reviewable changes that move the system toward the target architecture described in docs/implementation-plan-event-driven-archibot.md.

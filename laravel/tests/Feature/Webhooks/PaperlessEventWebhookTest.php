@@ -2,13 +2,15 @@
 
 namespace Tests\Feature\Webhooks;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Tests\TestCase;
 
 class PaperlessEventWebhookTest extends TestCase
@@ -46,7 +48,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame('process_document', $delivery->normalized_payload['webhook_action']);
         $this->assertSame('2026-05-08T12:00:00Z', $delivery->normalized_payload['paperless_modified']);
 
-        $this->assertSame(PipelineRun::STATUS_PENDING, $run->status);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
         $this->assertSame('webhook', $run->trigger_source);
         $this->assertSame(42, $run->paperless_document_id);
         $this->assertSame($delivery->id, $run->webhook_delivery_id);
@@ -62,6 +64,13 @@ class PaperlessEventWebhookTest extends TestCase
             'event_type' => 'pipeline.start.pending',
             'paperless_document_id' => 42,
         ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'pipeline.document_actor_queued',
+            'paperless_document_id' => 42,
+        ]);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $run->id);
     }
 
     public function test_event_webhook_endpoint_persists_delivery_and_starts_pipeline_run(): void
@@ -84,7 +93,7 @@ class PaperlessEventWebhookTest extends TestCase
             'webhook_delivery_id' => $delivery->id,
             'trigger_source' => 'webhook',
             'paperless_document_id' => 43,
-            'status' => PipelineRun::STATUS_PENDING,
+            'status' => PipelineRun::STATUS_QUEUED,
         ]);
     }
 
@@ -117,6 +126,8 @@ class PaperlessEventWebhookTest extends TestCase
 
     public function test_event_webhook_redacts_persisted_secrets_but_hashes_original_payload(): void
     {
+        Queue::fake();
+
         $payload = [
             'event' => 'document_updated',
             'document_id' => 7,
@@ -169,7 +180,8 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertDatabaseCount('webhook_deliveries', 1);
         $this->assertDatabaseCount('pipeline_runs', 0);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'webhook.duplicate']);
-        $this->assertDatabaseCount('pipeline_events', 2);
+        $this->assertDatabaseHas('pipeline_events', ['event_type' => 'webhook.enqueue_requested']);
+        $this->assertDatabaseCount('pipeline_events', 3);
     }
 
     public function test_updated_delivery_refreshes_embedding_without_coalescing_a_document_run(): void
@@ -211,17 +223,16 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertDatabaseCount('pipeline_runs', 2);
     }
 
-    public function test_event_webhook_records_deferred_enqueue_and_returns_retryable_failure_when_direct_enqueue_fails(): void
+    public function test_event_webhook_returns_retryable_failure_when_laravel_queue_dispatch_fails(): void
     {
         $this->markEmbeddingIndexComplete();
-        Config::set('archibot.webhook_direct_enqueue_enabled', true);
-        Config::set('archibot.python_binary', 'python-test');
-        Process::fake(['*' => Process::result(errorOutput: 'secret-token should not be stored', exitCode: 1)]);
+        Queue::shouldReceive('push')->andThrow(new RuntimeException('queue down secret-token'));
 
         $this->withHeader('X-Webhook-Secret', 'top-secret')
             ->postJson(route('api.webhooks.paperless'), [
-                'event' => 'document_created',
+                'event' => 'document_updated',
                 'document_id' => 42,
+                'changed_field' => 'title',
             ])
             ->assertStatus(503)
             ->assertJson([
@@ -229,43 +240,33 @@ class PaperlessEventWebhookTest extends TestCase
                 'retry' => true,
                 'duplicate' => false,
                 'document_id' => 42,
-                'pipeline_outcome' => 'created',
+                'webhook_action' => 'refresh_embedding',
             ]);
 
         $delivery = WebhookDelivery::query()->firstOrFail();
         $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->status);
-        $this->assertDatabaseCount('pipeline_runs', 1);
+        $this->assertDatabaseCount('pipeline_runs', 0);
         $event = PipelineEvent::query()
             ->where('event_type', 'webhook.enqueue_deferred')
             ->firstOrFail();
 
         $this->assertSame($delivery->id, $event->webhook_delivery_id);
-        $this->assertSame('process_failed', $event->payload['error_type']);
-        $this->assertSame(1, $event->payload['exit_code']);
+        $this->assertSame('queue_dispatch_failed', $event->payload['error_type']);
+        $this->assertSame(RuntimeException::class, $event->payload['exception_class']);
         $this->assertStringNotContainsString('top-secret', json_encode($event->payload));
         $this->assertStringNotContainsString('secret-token', json_encode($event->payload));
-
-        Process::assertRan(fn ($process): bool => $process->command === [
-            'python-test',
-            '-m',
-            'app.event_worker',
-            'enqueue-webhook',
-            '--delivery-id',
-            (string) $delivery->id,
-        ]);
     }
 
-    public function test_event_webhook_records_enqueue_requested_when_direct_enqueue_succeeds(): void
+    public function test_event_webhook_queues_embedding_refresh_through_laravel_actor_job(): void
     {
         $this->markEmbeddingIndexComplete();
-        Config::set('archibot.webhook_direct_enqueue_enabled', true);
         Config::set('archibot.python_binary', 'python-test');
-        Process::fake(['*' => Process::result()]);
 
         $this->postJson(route('api.webhooks.paperless'), [
-            'event' => 'document_created',
+            'event' => 'document_updated',
             'document_id' => 42,
-        ])->assertOk()->assertJson(['pipeline_outcome' => 'created']);
+            'changed_field' => 'title',
+        ])->assertOk()->assertJson(['webhook_action' => 'refresh_embedding']);
 
         $delivery = WebhookDelivery::query()->firstOrFail();
         $this->assertDatabaseHas('pipeline_events', [
@@ -273,14 +274,14 @@ class PaperlessEventWebhookTest extends TestCase
             'event_type' => 'webhook.enqueue_requested',
         ]);
         $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->fresh()->status);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'handle_paperless_webhook'
+            && $job->commandId === $delivery->id);
     }
 
-    public function test_event_webhook_duplicate_does_not_attempt_direct_enqueue(): void
+    public function test_event_webhook_duplicate_does_not_queue_second_webhook_actor(): void
     {
         $this->markEmbeddingIndexComplete();
-        Config::set('archibot.webhook_direct_enqueue_enabled', true);
         Config::set('archibot.python_binary', 'python-test');
-        Process::fake(['*' => Process::result()]);
 
         $payload = ['event' => 'document_updated', 'document_id' => 7];
 
@@ -290,14 +291,7 @@ class PaperlessEventWebhookTest extends TestCase
             'duplicate' => true,
         ]);
 
-        Process::assertRanTimes(fn ($process): bool => $process->command === [
-            'python-test',
-            '-m',
-            'app.event_worker',
-            'enqueue-webhook',
-            '--delivery-id',
-            (string) WebhookDelivery::query()->firstOrFail()->id,
-        ], 1);
+        Queue::assertPushed(RunPythonActorJob::class, 1);
         $this->assertDatabaseCount('webhook_deliveries', 1);
         $this->assertDatabaseCount('pipeline_runs', 0);
     }
@@ -330,6 +324,7 @@ class PaperlessEventWebhookTest extends TestCase
 
     private function markEmbeddingIndexComplete(): void
     {
+        Queue::fake();
         EmbeddingIndexState::query()->create([
             'status' => EmbeddingIndexState::STATUS_COMPLETE,
             'embedding_model' => 'test-embed',

@@ -11,6 +11,9 @@ class FakeRows:
     def all(self):
         return self.rows
 
+    def first(self):
+        return self.rows[0] if self.rows else None
+
 
 class FakeConnection:
     def __init__(self, calls, rows=None):
@@ -38,6 +41,37 @@ class FakeEngine:
 
     def begin(self):
         return FakeConnection(self.calls, self.rows)
+
+
+def test_load_command_returns_command_record(monkeypatch):
+    calls = []
+    rows = [
+        {
+            "id": 5,
+            "type": "embedding_index_build",
+            "status": "pending",
+            "payload": {"limit": 10},
+        }
+    ]
+    monkeypatch.setattr(commands, "engine", lambda: FakeEngine(calls, rows))
+    monkeypatch.setattr(commands, "sql_text", lambda statement: statement)
+
+    assert commands.load_command(5) == commands.CommandRecord(
+        id=5,
+        type="embedding_index_build",
+        status="pending",
+        payload={"limit": 10},
+    )
+    assert calls[0][1] == {"command_id": 5}
+
+
+def test_load_command_returns_none_when_missing(monkeypatch):
+    calls = []
+    monkeypatch.setattr(commands, "engine", lambda: FakeEngine(calls, []))
+    monkeypatch.setattr(commands, "sql_text", lambda statement: statement)
+
+    assert commands.load_command(5) is None
+    assert calls[0][1] == {"command_id": 5}
 
 
 def test_list_pending_embedding_build_commands_returns_payload(monkeypatch):

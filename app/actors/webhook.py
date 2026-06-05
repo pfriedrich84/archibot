@@ -233,7 +233,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             types.WEBHOOK_NORMALIZED,
             webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
-            message="Webhook delivery normalized by Laravel and accepted by Absurd actor.",
+            message="Webhook delivery normalized by Laravel and accepted by Python webhook actor.",
             payload={"event_type": delivery.event_type, "webhook_action": action},
         )
 

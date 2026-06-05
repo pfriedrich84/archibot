@@ -4,7 +4,7 @@ Evidence-based constraints for ArchiBot changes.
 
 ## Deployment and runtime
 
-- ArchiBot is Docker-first; the event-driven target includes PostgreSQL/pgvector and the Absurd queue path running on PostgreSQL for local/deployed stacks.
+- ArchiBot is Docker-first; the event-driven target includes PostgreSQL/pgvector and Laravel database queues for local/deployed stacks.
 - Runtime state must be durable. The target source of truth is PostgreSQL; do not create hidden in-memory or log-only job state.
 - Paperless-NGX and Ollama-compatible/OpenAI-compatible providers are external services configured by environment variables or the setup UI.
 - Default timezone is `Europe/Vienna`; date and timezone behavior must remain configurable and consistent between Python and Laravel/Svelte.
@@ -30,7 +30,7 @@ Evidence-based constraints for ArchiBot changes.
 - Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` currently allows PHP `^8.3`.
 - The migration target standardizes state and vector search on PostgreSQL/pgvector.
 - Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
-- CLI commands must not diverge from Laravel UI behavior. If a UI action uses PostgreSQL/pgvector, Absurd, Laravel-managed settings, or durable pipeline state, the matching CLI command must use that same path or delegate to it; do not keep a separate SQLite/legacy implementation.
+- CLI commands must not diverge from Laravel UI behavior. If a UI action uses PostgreSQL/pgvector, Laravel-managed settings, Laravel queue-backed actor dispatch, or durable pipeline state, the matching CLI command must use that same path or delegate to it; do not keep a separate SQLite/legacy implementation.
 - `archibot reset` remains supported for operators, but reset state is PostgreSQL/Laravel-owned and the Python CLI must delegate to Laravel rather than recreating legacy SQLite state.
 - Do not introduce a permanent alternate queue backend compatibility mode.
 - Keep Laravel and Python aligned on the shared PostgreSQL pipeline state model.

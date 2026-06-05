@@ -1,6 +1,6 @@
 # Laravel Worker Jobs
 
-Laravel `worker_jobs` are the temporary control plane for running Python processing from the Archibot UI while the event-driven `commands` / `pipeline_runs` architecture is being completed.
+Laravel `worker_jobs` are the temporary control plane for legacy Python processing from the Archibot UI while the event-driven `commands` / `pipeline_runs` architecture is being completed. New migrated flows must use Laravel queued actor jobs with durable command IDs instead of adding new `worker_jobs` paths; embedding index builds have already moved to `RunPythonActorJob::embeddingIndexBuild(<command-id>)`.
 
 ## How jobs run
 
@@ -19,11 +19,11 @@ The container entrypoint prepares the Laravel database and then hands long-runni
 - `laravel-web`: `php artisan serve` for the UI/API.
 - `laravel-queue-worker`: `php artisan queue:work` to execute queued Laravel jobs.
 - `laravel-worker-job-recovery`: a loop running `php artisan worker-jobs:recover --no-interaction` to recover lost queued, running, or cancelling jobs.
-- `event-queue-workers`: `python -m app.event_worker start-workers` when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured.
-- `event-recovery-bridge`: `python -m app.event_worker recovery-scan` when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured.
+- `event-queue-workers`: legacy Absurd event worker, retained only for flows not yet migrated to Laravel queued actor jobs.
+- `event-recovery-bridge`: legacy Absurd recovery bridge, retained only during migration.
 - `mcp-server`: `python -m app.mcp_server` when `ENABLE_MCP=true`.
 
-Absurd itself is PostgreSQL-backed queue state, not a separate broker daemon. The supervised Python event worker is the Absurd SDK consumer, and the supervised recovery bridge moves durable Laravel `commands`, webhook deliveries, pipeline runs, and other pending work into Absurd actors.
+ADR-0015 supersedes the Absurd queue target. The new event-driven transport is Laravel database queues: Laravel queued jobs invoke fixed, allowlisted Python actor commands, and durable Laravel `commands`, webhook deliveries, pipeline runs, actor executions and pipeline items remain the source of truth.
 
 The Docker healthcheck calls `/healthz` and then verifies all supervisord-managed programs are in the `RUNNING` state. A repeatedly crashing queue worker or event bridge therefore makes the container unhealthy instead of silently leaving commands pending.
 
@@ -147,4 +147,4 @@ php artisan archibot:reset --yes
 
 This clears Laravel/PostgreSQL runtime and job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, sessions/cache, chat state, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, entity approvals, audit logs, embedding index state, document embeddings, and LLM call history. Add `--include-config` only when intentionally clearing Laravel app settings, setup state, MCP tokens, and legacy config files too.
 
-Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, Absurd, and Absurd.
+Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands.

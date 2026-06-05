@@ -33,8 +33,9 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 
 ## Event-driven migration summary
 
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Absurd, PostgreSQL and pgvector.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
+Laravel database queues are the event-driven transport for new pipeline execution; queued jobs must invoke fixed, allowlisted Python actor commands and must treat PostgreSQL pipeline tables as the durable source of truth.
 Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; removed legacy webhook routes must not be reintroduced or extended.
 Webhook enqueue failures after durable delivery persistence should return non-2xx so Paperless retries.
 Document processing must never start before the embedding index is complete.
@@ -49,6 +50,6 @@ Reset is PostgreSQL/Laravel-owned: keep the `archibot reset` CLI entrypoint for 
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 Laravel `worker_jobs` is a temporary stabilization layer.
 Do not add permanent architecture only to `worker_jobs`.
-New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events` and Python actors.
+New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions` and Python actor logic reached through Laravel queued actor jobs.
 
 Before finishing code changes, run the relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md). Graphify-only artifact refreshes must pass `python3 scripts/check_graphify_artifacts.py` and should commit only `.graphify/GRAPH_REPORT.md`, `.graphify/graph.json`, and `.graphify/scope.json`.

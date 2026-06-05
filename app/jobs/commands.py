@@ -25,6 +25,34 @@ def sql_text(statement: str):
     return text(statement)
 
 
+def load_command(command_id: int) -> CommandRecord | None:
+    """Load one durable command by id."""
+    statement = sql_text(
+        """
+        SELECT id, type, status, payload
+        FROM commands
+        WHERE id = :command_id
+        LIMIT 1
+        """
+    )
+    with engine().connect() as connection:
+        row = connection.execute(statement, {"command_id": command_id}).mappings().first()
+
+    if row is None:
+        return None
+
+    payload = row["payload"] or {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    return CommandRecord(
+        id=int(row["id"]),
+        type=str(row["type"]),
+        status=str(row["status"]),
+        payload=payload,
+    )
+
+
 def _list_pending_commands(command_type: str, limit: int) -> list[CommandRecord]:
     """Return pending commands of one durable command type."""
     statement = sql_text(

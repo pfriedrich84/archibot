@@ -2,19 +2,22 @@
 
 namespace Tests\Feature\Pipeline;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class DocumentPipelineStartServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_gate_open_creates_pending_run(): void
+    public function test_gate_open_creates_queued_run_and_dispatches_actor_job(): void
     {
+        Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'complete']);
 
         $result = app(DocumentPipelineStarter::class)->start(
@@ -25,14 +28,18 @@ class DocumentPipelineStartServiceTest extends TestCase
 
         $this->assertSame('created', $result->outcome);
         $this->assertTrue($result->created);
-        $this->assertSame(PipelineRun::STATUS_PENDING, $result->pipelineRun->status);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $result->pipelineRun->status);
         $this->assertSame('webhook', $result->pipelineRun->trigger_source);
         $this->assertSame(['webhook'], $result->pipelineRun->coalesced_sources);
-        $this->assertSame('pipeline.start.pending', PipelineEvent::query()->firstOrFail()->event_type);
+        $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.pending']);
+        $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.document_actor_queued']);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'handle_document_pipeline'
+            && $job->commandId === $result->pipelineRun->id);
     }
 
     public function test_gate_closed_creates_blocked_run(): void
     {
+        Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'stale']);
 
         $result = app(DocumentPipelineStarter::class)->start(
@@ -49,10 +56,12 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('Waiting for embedding index to complete.', $run->progress_message);
         $this->assertSame('embedding_index_not_ready', $run->error_type);
         $this->assertSame('pipeline.blocked.embedding_index_not_ready', PipelineEvent::query()->firstOrFail()->event_type);
+        Queue::assertNothingPushed();
     }
 
     public function test_same_document_content_coalesces_sources_and_changed_modified_creates_new_run(): void
     {
+        Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'complete']);
         $starter = app(DocumentPipelineStarter::class);
 
@@ -69,10 +78,12 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertNotSame($first->dedupeKey, $changed->dedupeKey);
         $this->assertDatabaseCount('pipeline_runs', 2);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
+        Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 
     public function test_manual_force_always_creates_new_run_for_identical_content(): void
     {
+        Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'complete']);
         $starter = app(DocumentPipelineStarter::class);
 
@@ -99,6 +110,7 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('force_created', $second->outcome);
         $this->assertNotSame($first->dedupeKey, $second->dedupeKey);
         $this->assertDatabaseCount('pipeline_runs', 2);
+        Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 
     public function test_laravel_dedupe_key_matches_python_known_vector(): void

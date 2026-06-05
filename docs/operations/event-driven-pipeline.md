@@ -7,7 +7,7 @@ This guide covers the new Archibot event-driven processing path. It is the targe
 Required runtime services:
 
 - PostgreSQL with `pgvector` enabled.
-- PostgreSQL-backed Absurd queue.
+- Laravel database queue transport.
 - Laravel HTTP app and queue worker.
 - Event recovery bridge.
 - Paperless and the configured LLM/embedding provider.
@@ -16,36 +16,36 @@ Core environment variables:
 
 ```env
 DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-ABSURD_DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-ARCHIBOT_QUEUE_PREFIX=archibot
+QUEUE_CONNECTION=database
 POLL_INTERVAL_SECONDS=600
 PAPERLESS_WEBHOOK_SECRET=<generate-a-random-secret>
 ```
 
-Optional direct webhook enqueue bridge:
+Laravel queue jobs use small durable identifiers such as command IDs, pipeline run IDs and webhook delivery IDs. Fixed Python actor commands perform the processing work and write durable state/events back to PostgreSQL.
 
-```env
-ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true
-ARCHIBOT_PYTHON_BINARY=python
-```
-
-When direct enqueue is enabled, Laravel does not execute arbitrary configured argv. It runs the fixed safe command with the configured Python binary:
+Fixed actor-runner contracts:
 
 ```bash
-python -m app.event_worker enqueue-webhook --delivery-id <webhook_delivery_id>
+python -m app.actor_runner build-embedding-index --command-id <commands.id>
+python -m app.actor_runner process-document --pipeline-run-id <pipeline_runs.id>
+python -m app.actor_runner reconcile-poll --command-id <commands.id>
+python -m app.actor_runner reindex --command-id <commands.id>
+python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>
+python -m app.actor_runner commit-review --command-id <commands.id>
 ```
 
-If direct enqueue is disabled or fails, the webhook delivery stays durable in PostgreSQL and the recovery bridge can enqueue it later.
+Laravel queued wrappers:
 
-Initial queues use the configured prefix:
-
-```text
-archibot.webhook
-archibot.io
-archibot.llm
-archibot.embedding
-archibot.blocking
+```php
+RunPythonActorJob::embeddingIndexBuild($commandId)
+RunPythonActorJob::documentPipeline($pipelineRunId)
+RunPythonActorJob::pollReconciliation($commandId)
+RunPythonActorJob::reindex($commandId)
+RunPythonActorJob::webhookDelivery($deliveryId)
+RunPythonActorJob::reviewCommit($commandId)
 ```
+
+The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries, auto-commit behavior and progress remain Python-owned and PostgreSQL-backed. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation and reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` from `commands.payload` and owns the Paperless/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
 
 ## Database migrations
 
@@ -68,9 +68,9 @@ The event-driven state tables are owned by PostgreSQL and include:
 - `llm_calls`
 - `document_embeddings`
 
-PostgreSQL is the source of truth for progress, retries, audit and recovery state. Absurd is the only queue transport for the event-driven path.
+PostgreSQL is the source of truth for progress, retries, audit and recovery state. Laravel database queues are the event-driven transport; queue payloads must remain small references to durable database rows.
 
-The Absurd PostgreSQL schema is vendored at `laravel/database/sql/absurd.sql` from upstream Absurd `main` as of the 0.4.0 Python SDK integration. Keep that SQL file and the pinned `absurd-sdk==0.4.0` dependency in sync when upgrading Absurd.
+ADR-0015 supersedes the previous Absurd queue target. During migration some Absurd compatibility files may remain until equivalent Laravel queued actor jobs are tested, but new event-driven work should target Laravel queues and fixed Python actor commands.
 
 ## Paperless webhook setup
 
@@ -92,34 +92,39 @@ Webhook ingestion is intentionally lightweight:
 2. persist raw and normalized delivery data in `webhook_deliveries`;
 3. compute a dedupe key;
 4. record pipeline events;
-5. optionally attempt fixed direct enqueue;
+5. dispatch the appropriate Laravel queued actor job;
 6. return quickly.
 
 Do not perform OCR, embedding, classification, Paperless fetches or LLM calls inside the HTTP request.
 
 ## Worker startup
 
-In the container entrypoint, the Absurd worker is started when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured:
+In the target container entrypoint, Laravel's queue worker consumes event-driven actor jobs:
 
 ```bash
-python -m app.event_worker start-workers
-python -m app.event_worker recovery-scan --interval-seconds "${EVENT_RECOVERY_INTERVAL_SECONDS:-30}"
+cd laravel
+php artisan queue:work --sleep=3 --tries=1
 ```
+
+During migration the existing Absurd worker/recovery bridge may still appear until each flow has moved to Laravel queued actor jobs.
 
 Useful manual commands:
 
 ```bash
+# Run one embedding build command through the fixed actor-runner contract.
+python -m app.actor_runner build-embedding-index --command-id=123
+
 # One recovery scan and exit.
 python -m app.event_worker recovery-scan --once
 
 # Continuous recovery and polling loop.
 python -m app.event_worker recovery-scan --interval-seconds 30
 
-# Enqueue one persisted webhook delivery, used by ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE.
-python -m app.event_worker enqueue-webhook --delivery-id=123
+# Run one persisted non-process webhook delivery through the fixed actor-runner contract.
+python -m app.actor_runner handle-webhook --delivery-id=123
 ```
 
-The recovery bridge scans durable PostgreSQL state and safely requeues work such as queued webhooks, pending document runs, due retrying runs, accepted review commits, embedding builds, poll commands and reindex commands.
+The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs for work such as queued webhooks, pending document runs, due retrying runs, accepted review commits, embedding builds, poll commands and reindex commands.
 
 ## Embedding readiness gate
 
@@ -212,11 +217,11 @@ Live integration smoke checklist:
 2. Start PostgreSQL.
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
-5. Start Laravel, Laravel queue worker, Absurd actors and the recovery bridge.
+5. Start Laravel and the Laravel queue worker. During migration, legacy Absurd worker/recovery processes may remain only for flows not yet migrated.
 6. Configure Paperless webhook to `POST /api/webhooks/paperless` with `X-Webhook-Secret` if configured.
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.
-9. Run or wait for recovery/direct enqueue.
+9. Run or wait for the Laravel queue worker to consume the queued actor job.
 10. Verify `actor_executions` and `pipeline_events` rows are created.
 11. Complete or start the embedding index and verify blocked work remains blocked until `embedding_index_state.status = complete`.
 12. Verify a document run reaches `pipeline_runs`, `pipeline_items` and, after classification, `review_suggestions`.

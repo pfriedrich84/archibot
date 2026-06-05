@@ -18,5 +18,5 @@ Lightweight decisions that guide future implementation. Use ADRs in `docs/decisi
 - **First pgvector context search may be vector-only.** Do not preserve or document SQLite hybrid search as target behavior; update stale SQLite references during migration.
 - **Suggestion work requires Paperless document-change permission for non-admin users.** Non-admin ArchiBot users may accept, reject, or otherwise work on suggestions only when they have the right to change the corresponding Paperless document.
 - **Direct webhook enqueue is temporary/local-development infrastructure.** It must not become the long-term durable webhook processing interface.
-- **Absurd is the only queue transport.** The target worker path is PostgreSQL-backed Absurd with `absurd-sdk==0.4.0` and the vendored Absurd SQL installed by Laravel migrations; see ADR-0013.
+- **Laravel database queues are the event-driven transport.** ADR-0015 supersedes the Absurd queue decision. New pipeline execution uses Laravel queued jobs that invoke fixed, allowlisted Python actor commands while PostgreSQL pipeline tables remain the durable source of truth.
 - **Paperless auth is login-derived, not operator token based.** Do not document or require a global `.env` `PAPERLESS_TOKEN`; use Laravel setup/login and per-user Paperless tokens internally. See ADR-0014.
