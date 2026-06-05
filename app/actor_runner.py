@@ -36,6 +36,13 @@ def _fail(message: str) -> NoReturn:
     raise ActorRunnerError(message)
 
 
+def _exception_summary(exc: BaseException) -> str:
+    message = str(exc).strip()
+    if not message:
+        return f"actor_failed:{type(exc).__name__}"
+    return f"actor_failed:{type(exc).__name__}: {message[:900]}"
+
+
 def _payload_limit(command: CommandRecord) -> int | None:
     """Return the optional positive integer limit from a durable command payload."""
     raw_limit = command.payload.get("limit")
@@ -70,12 +77,14 @@ def run_embedding_index_build_command(command_id: int) -> None:
     try:
         _build_initial_embedding_index_impl(limit=limit)
     except Exception as exc:
-        mark_command_status(command.id, "failed", f"actor_failed:{type(exc).__name__}")
+        mark_command_status(command.id, "failed", _exception_summary(exc))
         log.warning(
             "embedding actor command failed",
             command_id=command.id,
             command_type=command.type,
             error_type=type(exc).__name__,
+            error=str(exc)[:1000],
+            exc_info=True,
         )
         raise
 
@@ -105,7 +114,7 @@ def run_poll_reconciliation_command(command_id: int) -> None:
     try:
         _reconcile_inbox_documents_impl(limit=limit)
     except Exception as exc:
-        mark_command_status(command.id, "failed", f"actor_failed:{type(exc).__name__}")
+        mark_command_status(command.id, "failed", _exception_summary(exc))
         raise
     mark_command_status(command.id, "succeeded")
     log.info("poll reconciliation actor command succeeded", command_id=command.id)
@@ -120,7 +129,7 @@ def run_reindex_command(command_id: int) -> None:
     try:
         _build_initial_embedding_index_impl(limit=limit)
     except Exception as exc:
-        mark_command_status(command.id, "failed", f"actor_failed:{type(exc).__name__}")
+        mark_command_status(command.id, "failed", _exception_summary(exc))
         raise
     mark_command_status(command.id, "succeeded")
     log.info("reindex actor command succeeded", command_id=command.id)

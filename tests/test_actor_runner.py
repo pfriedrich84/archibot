@@ -106,7 +106,7 @@ def test_build_embedding_index_marks_failed_and_reraises(monkeypatch):
 
     assert statuses == [
         (66, "running"),
-        (66, "failed", "actor_failed:RuntimeError"),
+        (66, "failed", "actor_failed:RuntimeError: provider down"),
     ]
 
 

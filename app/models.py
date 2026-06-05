@@ -8,6 +8,38 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _coerce_optional_entity_id(value: Any) -> int | None:
+    """Return an integer id from Paperless' compact or expanded entity values."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, dict):
+        value = value.get("id")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_entity_id_list(value: Any) -> list[int]:
+    """Return integer ids from Paperless tag lists.
+
+    Paperless installations may expose document tags either as raw ids or as
+    expanded objects.  Keep the DTO tolerant so one unexpected expanded tag does
+    not drop the whole document from embedding/indexing flows.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        value = [value]
+
+    ids: list[int] = []
+    for item in value:
+        coerced = _coerce_optional_entity_id(item)
+        if coerced is not None:
+            ids.append(coerced)
+    return ids
+
+
 # =============================================================================
 # Paperless API DTOs (subset - only fields we actually use)
 # =============================================================================
@@ -25,6 +57,16 @@ class PaperlessDocument(BaseModel):
     tags: list[int] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
+
+    @field_validator("correspondent", "document_type", "storage_path", mode="before")
+    @classmethod
+    def _coerce_entity_id(cls, value: Any) -> int | None:
+        return _coerce_optional_entity_id(value)
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _coerce_tags(cls, value: Any) -> list[int]:
+        return _coerce_entity_id_list(value)
 
 
 class PaperlessEntity(BaseModel):

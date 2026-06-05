@@ -47,6 +47,8 @@ If UI and CLI expose the same operation, validate that they use the same durable
 
 ## Laravel / Inertia / Svelte
 
+For UI changes or bugs reached through a button/control, validate each affected button path before committing. Prefer a focused Laravel feature test or browser/component test that proves the route/action/job dispatch and the user-visible success/failure state. If automation is not available, perform and report an explicit manual smoke test for each affected control.
+
 From `laravel/`:
 
 ```bash

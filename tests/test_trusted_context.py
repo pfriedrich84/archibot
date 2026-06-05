@@ -23,5 +23,16 @@ def test_trusted_document_ignores_empty_or_malformed_tags(monkeypatch):
     assert is_trusted_document(type("Doc", (), {"tags": None})())
 
 
+def test_trusted_document_accepts_expanded_paperless_tag_objects(monkeypatch):
+    monkeypatch.setattr(settings, "paperless_inbox_tag_id", 9)
+
+    trusted = PaperlessDocument.model_validate({"id": 5, "title": "Trusted", "tags": [{"id": 1}]})
+    inbox = type("Doc", (), {"tags": [{"id": 9, "name": "Inbox"}]})()
+
+    assert trusted.tags == [1]
+    assert is_trusted_document(trusted)
+    assert not is_trusted_document(inbox)
+
+
 def test_trusted_context_scope_names_domain_rule():
     assert trusted_context_scope() == "without_inbox_tag"
