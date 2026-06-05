@@ -17,7 +17,6 @@ build/
 htmlcov/
 .claude/settings.local.json
 uv.lock
-.autoresearch/
 .pi/
 .graphify/*
 !.graphify/GRAPH_REPORT.md

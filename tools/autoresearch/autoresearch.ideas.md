@@ -1,3 +1,0 @@
-- Add fixture-level classification quality probes that compare deterministic mock LLM outputs against expected title/date/correspondent/type/tag/storage-path suggestions without contacting Ollama.
-- Add a Laravel/Svelte UI benchmark for review-flow safety (typecheck/build plus scripted assertions for approve/reject/whitelist affordances).
-- Add a dependency/security posture metric that combines dependency age, known vulnerability allowlists, and audit findings without failing on unavailable external scanners.

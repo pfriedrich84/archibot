@@ -28,7 +28,6 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 - [`docs/user/configuration.md`](docs/user/configuration.md) — environment and runtime configuration.
 - [`docs/user/installation.md`](docs/user/installation.md) — Docker-first installation and local development.
 - [`docs/agent/SUPPLY_CHAIN.md`](docs/agent/SUPPLY_CHAIN.md) — dependency and container safety guidance.
-- [`docs/agent/AUTORESEARCH.md`](docs/agent/AUTORESEARCH.md) — optional metric-driven experiment workflow.
 - [`.graphify/GRAPH_REPORT.md`](.graphify/GRAPH_REPORT.md) — committed knowledge-graph summary for repository orientation; use `.graphify/graph.json` through Graphify tools rather than reading raw JSON manually.
 
 ## Event-driven migration summary
