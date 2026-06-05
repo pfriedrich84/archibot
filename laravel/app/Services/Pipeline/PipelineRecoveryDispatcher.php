@@ -3,11 +3,67 @@
 namespace App\Services\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
+use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 
 class PipelineRecoveryDispatcher
 {
+    public function recoverDocumentPipelineRuns(int $limit = 100): int
+    {
+        $this->releaseEmbeddingBlockedRuns($limit);
+
+        $recovered = 0;
+
+        PipelineRun::query()
+            ->where('type', 'document')
+            ->where(function ($query): void {
+                $query->where('status', PipelineRun::STATUS_PENDING)
+                    ->orWhere(function ($query): void {
+                        $query->where('status', PipelineRun::STATUS_RETRYING)
+                            ->where(function ($query): void {
+                                $query->whereNull('next_retry_at')
+                                    ->orWhere('next_retry_at', '<=', now());
+                            });
+                    });
+            })
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (PipelineRun $run) use (&$recovered): void {
+                dispatch(RunPythonActorJob::documentPipeline($run->id));
+
+                $run->forceFill([
+                    'status' => PipelineRun::STATUS_QUEUED,
+                    'progress_current_phase' => 'document_actor',
+                    'progress_message' => 'Document actor redispatched through Laravel recovery.',
+                    'progress_updated_at' => now(),
+                    'error_type' => null,
+                    'error' => null,
+                ])->save();
+
+                PipelineEvent::query()->create([
+                    'pipeline_run_id' => $run->id,
+                    'webhook_delivery_id' => $run->webhook_delivery_id,
+                    'command_id' => $run->command_id,
+                    'event_type' => 'recovery.document_actor_redispatched',
+                    'paperless_document_id' => $run->paperless_document_id,
+                    'level' => 'info',
+                    'message' => 'Document pipeline run redispatched through Laravel actor transport by recovery scan.',
+                    'payload' => [
+                        'actor_name' => 'handle_document_pipeline',
+                        'transport' => 'laravel_database_queue',
+                    ],
+                ]);
+
+                $recovered++;
+            });
+
+        return $recovered;
+    }
+
     public function recoverQueuedWebhookDeliveries(int $limit = 100): int
     {
         $recovered = 0;
@@ -42,5 +98,49 @@ class PipelineRecoveryDispatcher
             });
 
         return $recovered;
+    }
+
+    private function releaseEmbeddingBlockedRuns(int $limit): int
+    {
+        if (EmbeddingIndexState::query()->latest()->value('status') !== EmbeddingIndexState::STATUS_COMPLETE) {
+            return 0;
+        }
+
+        $released = 0;
+        PipelineRun::query()
+            ->where('type', 'document')
+            ->where('status', PipelineRun::STATUS_BLOCKED)
+            ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (PipelineRun $run) use (&$released): void {
+                $run->forceFill([
+                    'status' => PipelineRun::STATUS_PENDING,
+                    'progress_current_phase' => 'queued',
+                    'progress_message' => 'Released by Laravel recovery because the embedding index is complete.',
+                    'progress_updated_at' => now(),
+                    'error_type' => null,
+                    'error' => null,
+                ])->save();
+
+                PipelineEvent::query()->create([
+                    'pipeline_run_id' => $run->id,
+                    'webhook_delivery_id' => $run->webhook_delivery_id,
+                    'command_id' => $run->command_id,
+                    'event_type' => 'recovery.embedding_gate_released',
+                    'paperless_document_id' => $run->paperless_document_id,
+                    'level' => 'info',
+                    'message' => 'Pipeline run released by Laravel recovery because the embedding index is complete.',
+                    'payload' => [
+                        'blocked_reason' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+                    ],
+                ]);
+
+                $released++;
+            });
+
+        return $released;
     }
 }

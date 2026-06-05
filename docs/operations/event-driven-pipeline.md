@@ -124,7 +124,7 @@ php artisan archibot:recovery-scan --limit=100
 python -m app.actor_runner handle-webhook --delivery-id=123
 ```
 
-The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. The first Laravel-native recovery slice redispatches queued non-process webhook deliveries through `RunPythonActorJob::webhookDelivery(<delivery-id>)`; process-document webhooks recover through their durable pipeline runs.
+The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. Laravel-native recovery redispatches queued non-process webhook deliveries through `RunPythonActorJob::webhookDelivery(<delivery-id>)`, releases document runs blocked by the embedding gate after the index is complete, and redispatches pending or due retrying document runs through `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`. Process-document webhooks recover through their durable pipeline runs rather than the webhook actor.
 
 ## Embedding readiness gate
 
@@ -185,8 +185,8 @@ Durable state lives in PostgreSQL:
 Recovery behavior:
 
 - queued non-process webhook deliveries are redispatched to the webhook actor through Laravel queues;
-- pending document runs are enqueued to the document actor;
-- due retrying document runs are requeued after backoff;
+- pending document runs are redispatched to the document actor through Laravel queues;
+- due retrying document runs are redispatched after backoff;
 - stale `running` actor executions are marked `retrying` with `retry_mode=recovery`;
 - `cancel_requested` pipeline runs are finalized as `cancelled`;
 - embedding-blocked runs are released when the embedding index is complete;
