@@ -216,6 +216,70 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
     assert len(actor_progresses) == 2
 
 
+@pytest.mark.asyncio
+async def test_build_pgvector_embeddings_does_not_abort_on_document_text_type_error(monkeypatch):
+    progresses = []
+    stored = []
+
+    class FakePaperless:
+        async def list_all_documents(self, limit=None):
+            return [
+                SimpleNamespace(
+                    id=1,
+                    title="Good",
+                    content="Content",
+                    created_date=None,
+                    correspondent=None,
+                    document_type=None,
+                    storage_path=None,
+                    tags=[],
+                    modified=None,
+                ),
+                SimpleNamespace(
+                    id=2,
+                    title="Bad",
+                    content="Content",
+                    created_date=None,
+                    correspondent=None,
+                    document_type=None,
+                    storage_path=None,
+                    tags=[],
+                    modified=None,
+                ),
+            ]
+
+        async def aclose(self):
+            return None
+
+    class FakeOllama:
+        embed_model = "embed-model"
+
+        async def embed(self, text):
+            return [0.1, 0.2]
+
+        async def aclose(self):
+            return None
+
+    def fake_document_embedding_text(title, content):
+        if title == "Bad":
+            raise TypeError("'<' not supported between instances of 'str' and 'int'")
+        return f"{title}\n{content}"
+
+    monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
+    monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
+    monkeypatch.setattr(embedding, "document_embedding_text", fake_document_embedding_text)
+    monkeypatch.setattr(
+        embedding,
+        "update_embedding_index_progress",
+        lambda *args, **kwargs: progresses.append((args, kwargs)),
+    )
+    monkeypatch.setattr(embedding, "store_document_embedding", lambda item: stored.append(item))
+
+    assert await embedding._build_pgvector_embeddings(55, None, None) == (2, 1, 1)
+    assert [item.paperless_document_id for item in stored] == [1]
+    assert progresses[-1] == ((55,), {"document_count": 2, "embedded_count": 1, "failed_count": 1})
+
+
 def test_embedding_actor_skips_when_build_already_running(monkeypatch):
     actor_finishes = []
     events = []

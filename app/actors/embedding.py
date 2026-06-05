@@ -42,23 +42,46 @@ async def _build_pgvector_embeddings(
     ollama = create_ai_provider()
     embedded_count = 0
     failed_count = 0
+    total = 0
     try:
         fetched_documents = await paperless.list_all_documents(limit=limit)
-        trusted_documents = [
-            document for document in fetched_documents if is_trusted_document(document)
-        ]
-        documents_with_text = [
-            (document, text)
-            for document in trusted_documents
-            if (text := document_embedding_text(document.title, document.content))
-        ]
-        skipped_empty_text_count = len(trusted_documents) - len(documents_with_text)
+        trusted_documents = []
+        for document in fetched_documents:
+            try:
+                if is_trusted_document(document):
+                    trusted_documents.append(document)
+            except Exception as exc:
+                failed_count += 1
+                log.warning(
+                    "failed to evaluate document trust for embedding index",
+                    paperless_document_id=getattr(document, "id", None),
+                    error_type=type(exc).__name__,
+                )
+
+        documents_with_text = []
+        skipped_empty_text_count = 0
+        for document in trusted_documents:
+            try:
+                text = document_embedding_text(document.title, document.content)
+            except Exception as exc:
+                failed_count += 1
+                log.warning(
+                    "failed to prepare document embedding text",
+                    paperless_document_id=getattr(document, "id", None),
+                    error_type=type(exc).__name__,
+                )
+                continue
+            if not text:
+                skipped_empty_text_count += 1
+                continue
+            documents_with_text.append((document, text))
+
         if skipped_empty_text_count:
             log.info(
                 "skipping trusted documents without embedding text",
                 skipped_empty_text_count=skipped_empty_text_count,
             )
-        total = len(documents_with_text)
+        total = len(documents_with_text) + failed_count
         update_embedding_index_progress(
             build_id,
             document_count=total,
@@ -102,6 +125,7 @@ async def _build_pgvector_embeddings(
                     error_type=type(exc).__name__,
                 )
 
+            done = index + (total - len(documents_with_text))
             update_embedding_index_progress(
                 build_id,
                 document_count=total,
@@ -113,7 +137,7 @@ async def _build_pgvector_embeddings(
                     actor_execution_id,
                     ProgressSnapshot(
                         total=total,
-                        done=index,
+                        done=done,
                         failed=failed_count,
                         phase="embedding_index",
                         message="Embedding index build in progress.",
