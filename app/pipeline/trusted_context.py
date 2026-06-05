@@ -13,6 +13,17 @@ def trusted_context_scope() -> str:
     return "without_inbox_tag"
 
 
+def _tag_id(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, dict):
+        value = value.get("id")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def is_trusted_document(document: PaperlessDocument | Any) -> bool:
     """Return whether a Paperless Document is trusted classification context.
 
@@ -23,5 +34,10 @@ def is_trusted_document(document: PaperlessDocument | Any) -> bool:
     inbox_tag_id = settings.paperless_inbox_tag_id
     if inbox_tag_id is None:
         return True
+    inbox_id = _tag_id(inbox_tag_id)
+    if inbox_id is None:
+        return True
     tags = getattr(document, "tags", None) or []
-    return int(inbox_tag_id) not in {int(tag) for tag in tags if tag is not None}
+    if not isinstance(tags, list):
+        tags = [tags]
+    return inbox_id not in {tag_id for tag in tags if (tag_id := _tag_id(tag)) is not None}

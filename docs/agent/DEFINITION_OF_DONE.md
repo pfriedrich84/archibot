@@ -6,6 +6,7 @@ A change is ready for handoff when:
 - ArchiBot safety invariants from [`RULES.md`](RULES.md) remain intact.
 - Relevant tests, lint, type, build, or docs checks from [`CHECKS.md`](CHECKS.md) were run and reported.
 - Bug fixes include a regression-focused validation that would have caught the reported failure, including stdout/stderr or worker-job log assertions when the symptom was noisy or misleading runtime output.
+- Before every commit that changes or fixes user-facing UI behavior, validate each affected button/control path with an automated feature/browser test or an explicit manual smoke test, including the backend route/job/action it triggers and the user-visible success/failure state.
 - User-facing behavior changes are documented in README or `docs/user/`.
 - Developer-facing implementation changes are documented in `docs/developer/` when needed.
 - Cross-runtime changes verify Python CLI/actor output and Laravel-ingested dashboard/worker state against the same durable source of truth.

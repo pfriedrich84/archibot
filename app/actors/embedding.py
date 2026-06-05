@@ -227,10 +227,14 @@ def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
         max_attempts = 5
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)
+            detail = str(exc).strip()
+            retry_error = f"Retry scheduled after {type(exc).__name__}."
+            if detail:
+                retry_error = f"Retry scheduled after {type(exc).__name__}: {detail[:900]}"
             finish_embedding_index_build(
                 build.id,
                 status="failed",
-                error=f"Retry scheduled after {type(exc).__name__}.",
+                error=retry_error,
             )
             schedule_actor_execution_retry(
                 actor_execution,

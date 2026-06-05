@@ -108,7 +108,13 @@ def test_embedding_actor_schedules_retry_for_transient_build_failure(monkeypatch
         embedding._build_initial_embedding_index_impl(limit=12)
 
     assert finishes == [
-        ((55,), {"status": "failed", "error": "Retry scheduled after ConnectionError."})
+        (
+            (55,),
+            {
+                "status": "failed",
+                "error": "Retry scheduled after ConnectionError: ollama unavailable",
+            },
+        )
     ]
     assert retries[0][1] == {
         "retry_class": "transient_network",
