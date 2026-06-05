@@ -14,6 +14,7 @@ build/
 .claude/settings.local.json
 uv.lock
 .autoresearch/
+.pi/
 .graphify/*
 !.graphify/GRAPH_REPORT.md
 !.graphify/graph.json
