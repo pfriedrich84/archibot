@@ -10,7 +10,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`user/webhooks.md`](user/webhooks.md) — Paperless-Webhooks fuer sofortige Verarbeitung.
 - [`user/deployment.md`](user/deployment.md) — Dockhand, Reverse Proxy, Backup.
 - [`user/paperless-auth.md`](user/paperless-auth.md) — Anmeldung, Token-Kontext und Sicherheitsmodell.
-- [`operations/event-driven-pipeline.md`](operations/event-driven-pipeline.md) — Betrieb des event-driven Webhook-/Absurd-/Recovery-Pipelinepfads.
+- [`operations/event-driven-pipeline.md`](operations/event-driven-pipeline.md) — Betrieb des event-driven Webhook-/Queue-/Recovery-Pipelinepfads.
 
 ## Developer
 

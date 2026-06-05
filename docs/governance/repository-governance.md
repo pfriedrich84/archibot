@@ -1,6 +1,6 @@
 # Repository Governance
 
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, PostgreSQL/pgvector, Absurd and Absurd.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, and PostgreSQL/pgvector.
 
 ## Governance goals
 
