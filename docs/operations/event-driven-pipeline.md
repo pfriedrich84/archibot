@@ -9,7 +9,7 @@ Required runtime services:
 - PostgreSQL with `pgvector` enabled.
 - Laravel database queue transport.
 - Laravel HTTP app and queue worker.
-- Event recovery bridge.
+- Laravel-native pipeline recovery scan.
 - Paperless and the configured LLM/embedding provider.
 
 Core environment variables:
@@ -106,7 +106,7 @@ cd laravel
 php artisan queue:work --sleep=3 --tries=1
 ```
 
-During migration the existing Absurd worker/recovery bridge may still appear until each flow has moved to Laravel queued actor jobs.
+During migration the existing Absurd worker may still appear until each remaining flow has moved to Laravel queued actor jobs. New recovery redispatch work should use Laravel-native recovery scans.
 
 Useful manual commands:
 
@@ -114,17 +114,17 @@ Useful manual commands:
 # Run one embedding build command through the fixed actor-runner contract.
 python -m app.actor_runner build-embedding-index --command-id=123
 
-# One recovery scan and exit.
-python -m app.event_worker recovery-scan --once
+# One Laravel-native recovery scan and exit.
+cd laravel
+php artisan archibot:recovery-scan --limit=100
 
-# Continuous recovery and polling loop.
-python -m app.event_worker recovery-scan --interval-seconds 30
+# Continuous scheduling should run the same Artisan command on an interval.
 
 # Run one persisted non-process webhook delivery through the fixed actor-runner contract.
 python -m app.actor_runner handle-webhook --delivery-id=123
 ```
 
-The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs for work such as queued webhooks, pending document runs, due retrying runs, accepted review commits, embedding builds, poll commands and reindex commands.
+The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. The first Laravel-native recovery slice redispatches queued non-process webhook deliveries through `RunPythonActorJob::webhookDelivery(<delivery-id>)`; process-document webhooks recover through their durable pipeline runs.
 
 ## Embedding readiness gate
 
@@ -184,7 +184,7 @@ Durable state lives in PostgreSQL:
 
 Recovery behavior:
 
-- queued webhook deliveries are enqueued to the webhook actor;
+- queued non-process webhook deliveries are redispatched to the webhook actor through Laravel queues;
 - pending document runs are enqueued to the document actor;
 - due retrying document runs are requeued after backoff;
 - stale `running` actor executions are marked `retrying` with `retry_mode=recovery`;
