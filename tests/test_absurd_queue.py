@@ -118,12 +118,14 @@ def test_absurd_backend_starts_registered_queue_workers(monkeypatch):
 def test_resolved_absurd_database_url_requires_explicit_queue_url(monkeypatch):
     monkeypatch.setattr(absurd_queue.settings, "absurd_database_url", "")
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    absurd_queue.settings.model_fields_set.discard("database_url")
 
     assert absurd_queue._resolved_absurd_database_url() == ""
 
 
-def test_resolved_absurd_database_url_uses_explicit_database_url_env(monkeypatch):
+def test_resolved_absurd_database_url_uses_settings_database_url(monkeypatch):
     monkeypatch.setattr(absurd_queue.settings, "absurd_database_url", "")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://example")
+    monkeypatch.setattr(absurd_queue.settings, "database_url", "postgresql+psycopg://example")
+    absurd_queue.settings.model_fields_set.add("database_url")
 
     assert absurd_queue._resolved_absurd_database_url() == "postgresql+psycopg://example"

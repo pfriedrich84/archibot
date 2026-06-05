@@ -196,6 +196,8 @@ def _resolved_absurd_database_url() -> str:
     configured = settings.absurd_database_url.strip()
     if configured:
         return configured
+    if "database_url" in settings.model_fields_set:
+        return settings.database_url.strip()
     return os.environ.get("DATABASE_URL", "").strip()
 
 
