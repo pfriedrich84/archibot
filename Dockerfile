@@ -56,6 +56,7 @@ RUN apt-get update \
     && apt-get dist-upgrade -y \
     && apt-get install -y --no-install-recommends \
         tini \
+        supervisor \
         curl \
         php-cli \
         php-curl \
@@ -86,12 +87,14 @@ RUN pip install --upgrade pip setuptools wheel \
 
 COPY app ./app
 COPY prompts ./prompts
+COPY docker/supervisord.conf ./docker/supervisord.conf
+COPY docker/healthcheck.sh ./docker/healthcheck.sh
 COPY entrypoint.sh ./
 COPY --from=laravel-vendor /laravel ./laravel
 COPY --from=laravel-build /laravel/public/build ./laravel/public/build
 
 RUN pip install --no-deps . \
-    && chmod +x /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh /app/docker/healthcheck.sh \
     && mkdir -p /data /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache \
     && chown -R www-data:www-data /app/laravel/storage /app/laravel/bootstrap/cache
 
@@ -100,7 +103,7 @@ VOLUME ["/data"]
 EXPOSE 8088 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:${GUI_PORT:-8088}/healthz || exit 1
+    CMD /app/docker/healthcheck.sh || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["./entrypoint.sh"]

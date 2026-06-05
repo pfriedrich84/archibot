@@ -50,41 +50,10 @@ echo "Preparing Laravel app database at ${DB_DATABASE}"
 php artisan migrate --force --no-interaction
 php artisan storage:link >/dev/null 2>&1 || true
 
-# Run queued Laravel jobs (including Python worker CLI hand-offs) in the background.
-echo "Starting Laravel queue worker"
-php artisan queue:work --sleep=3 --tries=1 --timeout="${QUEUE_WORKER_TIMEOUT:-900}" &
-
-# Periodically recover lost Laravel worker jobs after queue worker crashes or restarts.
-echo "Starting Laravel worker job recovery loop"
-(
-    while true; do
-        php artisan worker-jobs:recover --no-interaction || true
-        sleep "${ARCHIBOT_WORKER_RECOVERY_INTERVAL_SECONDS:-30}"
-    done
-) &
-
-# Start the Absurd queue worker and the durable recovery bridge when queue access is configured.
-if [ -n "${ABSURD_DATABASE_URL:-}" ] || [ -n "${DATABASE_URL:-}" ]; then
-    echo "Starting queue workers"
-    cd /app
-    python -m app.event_worker start-workers \
-        --concurrency "${ARCHIBOT_QUEUE_WORKER_CONCURRENCY:-1}" \
-        --claim-timeout "${ARCHIBOT_QUEUE_WORKER_CLAIM_TIMEOUT:-120}" &
-    echo "Starting event recovery bridge"
-    python -m app.event_worker recovery-scan --interval-seconds "${EVENT_RECOVERY_INTERVAL_SECONDS:-30}" &
-    cd /app/laravel
-fi
-
-# Start MCP SSE server in background if enabled.
-if [ "${ENABLE_MCP:-false}" = "true" ]; then
-    MCP_TRANSPORT="${MCP_TRANSPORT:-sse}"
-    export MCP_TRANSPORT
-    echo "Starting MCP server (transport=${MCP_TRANSPORT}, port=${MCP_PORT:-3001})"
-    cd /app
-    python -m app.mcp_server &
-    cd /app/laravel
-fi
-
-# Start the Laravel/Svelte application as the primary web UI/API.
-echo "Starting Laravel app on 0.0.0.0:${GUI_PORT:-8088}"
-exec php artisan serve --host=0.0.0.0 --port="${GUI_PORT:-8088}"
+# Hand long-running processes to supervisord instead of backgrounding them with
+# bare ``&``. This keeps the single-container deployment model while making the
+# Laravel queue worker, Laravel recovery loop, Absurd queue worker, event
+# recovery bridge, optional MCP server, and web server independently restartable
+# and visible in container logs.
+echo "Starting supervised ArchiBot processes"
+exec /usr/bin/supervisord -c /app/docker/supervisord.conf

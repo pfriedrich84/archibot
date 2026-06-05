@@ -14,13 +14,18 @@ Active jobs use `dispatch_key`, `dispatch_attempts`, `dispatched_at`, `worker_id
 
 ## Required processes
 
-The container entrypoint starts these Laravel-side processes:
+The container entrypoint prepares the Laravel database and then hands long-running processes to `supervisord` so each process is independently restartable and visible in container logs:
 
-- `php artisan queue:work` to execute queued worker jobs.
-- A background loop running `php artisan worker-jobs:recover --no-interaction` to recover lost queued, running, or cancelling jobs.
-- The Laravel web server for the UI/API.
+- `laravel-web`: `php artisan serve` for the UI/API.
+- `laravel-queue-worker`: `php artisan queue:work` to execute queued Laravel jobs.
+- `laravel-worker-job-recovery`: a loop running `php artisan worker-jobs:recover --no-interaction` to recover lost queued, running, or cancelling jobs.
+- `event-queue-workers`: `python -m app.event_worker start-workers` when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured.
+- `event-recovery-bridge`: `python -m app.event_worker recovery-scan` when `ABSURD_DATABASE_URL` or `DATABASE_URL` is configured.
+- `mcp-server`: `python -m app.mcp_server` when `ENABLE_MCP=true`.
 
-When Absurd is configured, Absurd actors and the event recovery bridge may also run, but they are separate from this temporary `worker_jobs` path.
+Absurd itself is PostgreSQL-backed queue state, not a separate broker daemon. The supervised Python event worker is the Absurd SDK consumer, and the supervised recovery bridge moves durable Laravel `commands`, webhook deliveries, pipeline runs, and other pending work into Absurd actors.
+
+The Docker healthcheck calls `/healthz` and then verifies all supervisord-managed programs are in the `RUNNING` state. A repeatedly crashing queue worker or event bridge therefore makes the container unhealthy instead of silently leaving commands pending.
 
 ## Environment variables
 
