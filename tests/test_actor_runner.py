@@ -104,10 +104,10 @@ def test_build_embedding_index_marks_failed_and_reraises(monkeypatch):
     with pytest.raises(RuntimeError, match="provider down"):
         actor_runner.run_embedding_index_build_command(66)
 
-    assert statuses == [
-        (66, "running"),
-        (66, "failed", "actor_failed:RuntimeError: provider down"),
-    ]
+    assert statuses[0] == (66, "running")
+    assert statuses[1][0:2] == (66, "failed")
+    assert statuses[1][2].startswith("actor_failed:RuntimeError: provider down")
+    assert "test_actor_runner.py" in statuses[1][2]
 
 
 def test_run_document_pipeline_invokes_fixed_actor(monkeypatch):

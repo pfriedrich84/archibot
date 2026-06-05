@@ -8,6 +8,7 @@ calling allowlisted Python actor implementations.
 from __future__ import annotations
 
 import argparse
+import traceback
 from collections.abc import Sequence
 from typing import NoReturn
 
@@ -38,9 +39,24 @@ def _fail(message: str) -> NoReturn:
 
 def _exception_summary(exc: BaseException) -> str:
     message = str(exc).strip()
+    location = _exception_location(exc)
     if not message:
-        return f"actor_failed:{type(exc).__name__}"
-    return f"actor_failed:{type(exc).__name__}: {message[:900]}"
+        summary = f"actor_failed:{type(exc).__name__}"
+    else:
+        summary = f"actor_failed:{type(exc).__name__}: {message[:700]}"
+    if location:
+        summary = f"{summary} ({location})"
+    return summary[:1000]
+
+
+def _exception_location(exc: BaseException) -> str | None:
+    frames = traceback.extract_tb(exc.__traceback__)
+    for frame in reversed(frames):
+        if "/app/actor_runner.py" in frame.filename or frame.filename.endswith("app/actor_runner.py"):
+            continue
+        filename = frame.filename.rsplit("/", 1)[-1]
+        return f"{filename}:{frame.lineno} in {frame.name}"
+    return None
 
 
 def _payload_limit(command: CommandRecord) -> int | None:
