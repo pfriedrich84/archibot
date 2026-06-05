@@ -7,6 +7,13 @@ from app.jobs.actor_execution import ActorExecutionHandle
 from app.jobs.embedding_index import EmbeddingIndexBuild
 
 
+def test_embedding_actor_coerces_string_limit_before_fetching_documents():
+    assert embedding._coerce_limit("50") == 50
+    assert embedding._coerce_limit(50) == 50
+    assert embedding._coerce_limit("all") is None
+    assert embedding._coerce_limit(0) is None
+
+
 def test_embedding_actor_builds_pgvector_index(monkeypatch):
     progresses = []
     actor_progresses = []
@@ -214,6 +221,30 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
     assert all(item.trusted_for_context for item in stored)
     assert progresses[-1] == ((55,), {"document_count": 2, "embedded_count": 2, "failed_count": 0})
     assert len(actor_progresses) == 2
+
+
+@pytest.mark.asyncio
+async def test_build_pgvector_embeddings_accepts_string_limit(monkeypatch):
+    seen_limits = []
+
+    class FakePaperless:
+        async def list_all_documents(self, limit=None):
+            seen_limits.append(limit)
+            return []
+
+        async def aclose(self):
+            return None
+
+    class FakeOllama:
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
+    monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
+    monkeypatch.setattr(embedding, "update_embedding_index_progress", lambda *args, **kwargs: None)
+
+    assert await embedding._build_pgvector_embeddings(55, "50", None) == (0, 0, 0)
+    assert seen_limits == [50]
 
 
 @pytest.mark.asyncio

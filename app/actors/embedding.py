@@ -35,9 +35,20 @@ from app.pipeline.trusted_context import is_trusted_document
 log = structlog.get_logger(__name__)
 
 
+def _coerce_limit(limit: object) -> int | None:
+    if limit is None or limit == "":
+        return None
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 async def _build_pgvector_embeddings(
     build_id: int, limit: int | None, actor_execution_id: int | None
 ) -> tuple[int, int, int]:
+    limit = _coerce_limit(limit)
     paperless = PaperlessClient()
     ollama = create_ai_provider()
     embedded_count = 0
@@ -153,6 +164,7 @@ async def _build_pgvector_embeddings(
 
 def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
     """Build the initial PostgreSQL/pgvector document embedding index."""
+    limit = _coerce_limit(limit)
     started = time.monotonic()
     actor_name = "build_initial_embedding_index"
     actor_execution = start_actor_execution(
