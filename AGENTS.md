@@ -13,6 +13,11 @@ Tool-neutral entry point for coding agents working in this repository. Keep this
 7. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
 8. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
 
+## Commit and push discipline
+
+- After making repository changes, always commit them and push the commit(s) to GitHub (`origin`) before reporting completion, unless the user explicitly says not to commit or not to push.
+- If validation cannot be fully green, still commit and push when the user requested persistence, but clearly report the failing check and why it was not bypassed.
+
 ## Project docs
 
 - [`docs/prompts/pi-dev-event-driven-migration.md`](docs/prompts/pi-dev-event-driven-migration.md) — governing migration prompt for the event-driven architecture.
