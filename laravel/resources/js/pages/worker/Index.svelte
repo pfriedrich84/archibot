@@ -83,13 +83,13 @@
 
     let {
         jobs,
-        allowedTypes,
+        workerJobTypes,
         isAdmin,
         quickControls,
         readiness,
     }: {
         jobs: Paginator<WorkerJob>;
-        allowedTypes: string[];
+        workerJobTypes: string[];
         isAdmin: boolean;
         quickControls: {
             poll_url: string;
@@ -298,32 +298,24 @@
         >
             {#snippet children({ errors, processing })}
                 <div class="grid gap-2">
-                    <Label for="type">Job type</Label>
+                    <Label for="type">Worker job type</Label>
                     <select
                         id="type"
                         name="type"
                         required
                         class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
                     >
-                        {#each allowedTypes as type (type)}
+                        {#each workerJobTypes as type (type)}
                             <option value={type}>{type}</option>
                         {/each}
                     </select>
                     <InputError message={errors.type} />
-                </div>
-
-                <div class="grid gap-2">
-                    <Label for="paperless_document_id"
-                        >Paperless document reference</Label
-                    >
-                    <Input
-                        id="paperless_document_id"
-                        name="paperless_document_id"
-                        type="number"
-                        min="1"
-                        placeholder="Required only for process_document"
-                    />
-                    <InputError message={errors.paperless_document_id} />
+                    <p class="text-xs text-muted-foreground">
+                        Poll, full reindex, embedding build, and document
+                        processing use the migrated controls above. This form
+                        only queues worker_jobs rows that will appear in this
+                        list.
+                    </p>
                 </div>
 
                 <label class="flex items-center gap-2 text-sm">
@@ -333,7 +325,7 @@
                         value="1"
                         class="h-4 w-4 rounded border-input"
                     />
-                    Force poll, process document, or OCR reindex
+                    Force OCR reindex
                 </label>
                 <InputError message={errors.force} />
 

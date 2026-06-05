@@ -49,6 +49,7 @@ class WorkerJobTest extends TestCase
                 ->where('allowedTypes.2', WorkerJob::TYPE_REINDEX)
                 ->where('allowedTypes.3', WorkerJob::TYPE_REINDEX_OCR)
                 ->where('allowedTypes.4', WorkerJob::TYPE_REINDEX_EMBED)
+                ->where('workerJobTypes.0', WorkerJob::TYPE_REINDEX_OCR)
                 ->where('quickControls.poll_url', route('maintenance.poll'))
                 ->where('quickControls.reindex_url', route('maintenance.reindex'))
                 ->where('quickControls.embedding_build_url', route('embedding-index.build'))
@@ -156,6 +157,8 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
         $this->assertStringContainsString('Queue forced OCR reindex worker', $indexPage);
+        $this->assertStringContainsString('This form only queues worker_jobs rows', $indexPage);
+        $this->assertStringContainsString('Force OCR reindex', $indexPage);
         $this->assertStringContainsString('quickControls.poll_url', $indexPage);
         $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
         $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);

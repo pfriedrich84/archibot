@@ -67,6 +67,7 @@ class WorkerJobController extends Controller
         return Inertia::render('worker/Index', [
             'jobs' => $jobs,
             'allowedTypes' => $this->storeRequestTypes(),
+            'workerJobTypes' => $this->workerJobRequestTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
             'quickControls' => [
                 'poll_url' => route('maintenance.poll'),
@@ -462,6 +463,23 @@ class WorkerJobController extends Controller
             WorkerJob::TYPE_REINDEX,
             WorkerJob::TYPE_REINDEX_OCR,
             WorkerJob::TYPE_REINDEX_EMBED,
+        ];
+    }
+
+    /**
+     * Return request types that still create rows in the temporary worker_jobs table.
+     *
+     * Polling, full reindex, embedding rebuild, and per-document processing have
+     * migrated controls above this form. Keeping them out of the generic
+     * "Queue worker job" selector prevents successful command routing from
+     * looking like a no-op on the worker-jobs list.
+     *
+     * @return array<int, string>
+     */
+    private function workerJobRequestTypes(): array
+    {
+        return [
+            WorkerJob::TYPE_REINDEX_OCR,
         ];
     }
 
