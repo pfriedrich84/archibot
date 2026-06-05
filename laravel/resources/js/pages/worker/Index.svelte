@@ -81,15 +81,29 @@
         total: number;
     };
 
+    type CommandJob = {
+        id: number;
+        type: string;
+        status: string;
+        payload: Record<string, unknown>;
+        error: string | null;
+        created_at: string | null;
+        started_at: string | null;
+        finished_at: string | null;
+        updated_at: string | null;
+    };
+
     let {
         jobs,
-        workerJobTypes,
+        commands,
+        allowedTypes,
         isAdmin,
         quickControls,
         readiness,
     }: {
         jobs: Paginator<WorkerJob>;
-        workerJobTypes: string[];
+        commands: CommandJob[];
+        allowedTypes: string[];
         isAdmin: boolean;
         quickControls: {
             poll_url: string;
@@ -305,16 +319,16 @@
                         required
                         class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
                     >
-                        {#each workerJobTypes as type (type)}
+                        {#each allowedTypes as type (type)}
                             <option value={type}>{type}</option>
                         {/each}
                     </select>
                     <InputError message={errors.type} />
                     <p class="text-xs text-muted-foreground">
-                        Poll, full reindex, embedding build, and document
-                        processing use the migrated controls above. This form
-                        only queues worker_jobs rows that will appear in this
-                        list.
+                        Poll, full reindex, and embedding build create durable
+                        command jobs listed below. OCR reindex creates a
+                        temporary worker_jobs row. Document processing redirects
+                        to its Pipeline Run.
                     </p>
                 </div>
 
@@ -325,7 +339,7 @@
                         value="1"
                         class="h-4 w-4 rounded border-input"
                     />
-                    Force OCR reindex
+                    Force poll, process document, or OCR reindex
                 </label>
                 <InputError message={errors.force} />
 
@@ -344,8 +358,66 @@
     {/if}
 
     <div class="rounded-xl border">
-        <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            {jobs.total} worker job{jobs.total === 1 ? '' : 's'}
+        <div class="border-b px-4 py-3">
+            <div class="font-medium">Durable command jobs</div>
+            <div class="text-sm text-muted-foreground">
+                Poll reconciliation, full reindex, embedding build, and review
+                commit run as durable command jobs instead of worker_jobs rows.
+            </div>
+        </div>
+
+        {#if commands.length > 0}
+            {#each commands as command (command.id)}
+                <article class="border-b px-4 py-4 last:border-b-0">
+                    <div class="flex flex-wrap items-center gap-2 text-sm">
+                        <span class="font-medium"
+                            >Command {command.id} · {command.type}</span
+                        >
+                        <span class="rounded-full bg-muted px-2 py-0.5"
+                            >{command.status}</span
+                        >
+                        <span class="text-muted-foreground">
+                            Updated {formatDateTime(
+                                command.updated_at,
+                                'not updated yet',
+                            )}
+                        </span>
+                    </div>
+                    {#if command.error}
+                        <p class="mt-2 text-sm text-destructive">
+                            {command.error}
+                        </p>
+                    {/if}
+                    {#if Object.keys(command.payload).length > 0}
+                        <dl
+                            class="mt-2 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3"
+                        >
+                            {#each displayEntries(command.payload) as entry (entry.key)}
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        {entry.key}
+                                    </dt>
+                                    <dd>{formatDisplayValue(entry.value)}</dd>
+                                </div>
+                            {/each}
+                        </dl>
+                    {/if}
+                </article>
+            {/each}
+        {:else}
+            <div class="px-4 py-6 text-sm text-muted-foreground">
+                No durable command jobs have been queued yet.
+            </div>
+        {/if}
+    </div>
+
+    <div class="rounded-xl border">
+        <div class="border-b px-4 py-3">
+            <div class="font-medium">Temporary worker_jobs rows</div>
+            <div class="text-sm text-muted-foreground">
+                {jobs.total} worker job{jobs.total === 1 ? '' : 's'} still using the
+                temporary worker_jobs table.
+            </div>
         </div>
 
         {#each jobs.data as job (job.id)}

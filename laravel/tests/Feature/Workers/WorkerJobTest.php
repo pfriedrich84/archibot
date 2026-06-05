@@ -32,6 +32,12 @@ class WorkerJobTest extends TestCase
             'paperless_document_id' => 123,
             'proposed_title' => 'Imported invoice',
         ]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => ['force' => true],
+            'created_by_user_id' => $user->id,
+        ]);
 
         $this->actingAs($user)
             ->get(route('worker-jobs.index'))
@@ -49,7 +55,9 @@ class WorkerJobTest extends TestCase
                 ->where('allowedTypes.2', WorkerJob::TYPE_REINDEX)
                 ->where('allowedTypes.3', WorkerJob::TYPE_REINDEX_OCR)
                 ->where('allowedTypes.4', WorkerJob::TYPE_REINDEX_EMBED)
-                ->where('workerJobTypes.0', WorkerJob::TYPE_REINDEX_OCR)
+                ->where('commands.0.id', $command->id)
+                ->where('commands.0.type', Command::TYPE_POLL_RECONCILIATION)
+                ->where('commands.0.status', Command::STATUS_QUEUED)
                 ->where('quickControls.poll_url', route('maintenance.poll'))
                 ->where('quickControls.reindex_url', route('maintenance.reindex'))
                 ->where('quickControls.embedding_build_url', route('embedding-index.build'))
@@ -157,8 +165,9 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
         $this->assertStringContainsString('Queue forced OCR reindex worker', $indexPage);
-        $this->assertStringContainsString('only queues worker_jobs rows', $indexPage);
-        $this->assertStringContainsString('Force OCR reindex', $indexPage);
+        $this->assertStringContainsString('Durable command jobs', $indexPage);
+        $this->assertStringContainsString('Temporary worker_jobs rows', $indexPage);
+        $this->assertStringContainsString('Force poll, process document, or OCR reindex', $indexPage);
         $this->assertStringContainsString('quickControls.poll_url', $indexPage);
         $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
         $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);

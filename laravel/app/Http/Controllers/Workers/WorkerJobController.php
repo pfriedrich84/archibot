@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Workers;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\WorkerJob;
 use App\Services\Pipeline\DocumentPipelineStarter;
@@ -66,8 +67,8 @@ class WorkerJobController extends Controller
 
         return Inertia::render('worker/Index', [
             'jobs' => $jobs,
+            'commands' => $this->recentCommands(),
             'allowedTypes' => $this->storeRequestTypes(),
-            'workerJobTypes' => $this->workerJobRequestTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
             'quickControls' => [
                 'poll_url' => route('maintenance.poll'),
@@ -467,20 +468,27 @@ class WorkerJobController extends Controller
     }
 
     /**
-     * Return request types that still create rows in the temporary worker_jobs table.
-     *
-     * Polling, full reindex, embedding rebuild, and per-document processing have
-     * migrated controls above this form. Keeping them out of the generic
-     * "Queue worker job" selector prevents successful command routing from
-     * looking like a no-op on the worker-jobs list.
-     *
-     * @return array<int, string>
+     * @return array<int, array<string, mixed>>
      */
-    private function workerJobRequestTypes(): array
+    private function recentCommands(): array
     {
-        return [
-            WorkerJob::TYPE_REINDEX_OCR,
-        ];
+        return Command::query()
+            ->latest()
+            ->limit(25)
+            ->get()
+            ->map(fn (Command $command) => [
+                'id' => $command->id,
+                'type' => $command->type,
+                'status' => $command->status,
+                'payload' => $command->payload ?? [],
+                'error' => $command->error,
+                'created_at' => $command->created_at?->toISOString(),
+                'started_at' => $command->started_at?->toISOString(),
+                'finished_at' => $command->finished_at?->toISOString(),
+                'updated_at' => $command->updated_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
     }
 
     private function recordLegacyRetryEvent(Request $request, WorkerJob $workerJob, int $pipelineRunId, string $retryMode): void
