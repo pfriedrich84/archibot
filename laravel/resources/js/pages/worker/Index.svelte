@@ -109,6 +109,7 @@
             poll_url: string;
             reindex_url: string;
             embedding_build_url: string;
+            embedding_mark_stale_url: string;
             worker_job_store_url: string;
         };
         readiness: {
@@ -263,6 +264,19 @@
                             variant="outline"
                             disabled={processing}
                             >Queue embedding index build command</Button
+                        >
+                    {/snippet}
+                </Form>
+                <Form
+                    method="post"
+                    action={quickControls.embedding_mark_stale_url}
+                >
+                    {#snippet children({ processing })}
+                        <Button
+                            type="submit"
+                            variant="outline"
+                            disabled={processing}
+                            >Mark embedding index stale</Button
                         >
                     {/snippet}
                 </Form>

@@ -74,6 +74,7 @@ class WorkerJobController extends Controller
                 'poll_url' => route('maintenance.poll'),
                 'reindex_url' => route('maintenance.reindex'),
                 'embedding_build_url' => route('embedding-index.build'),
+                'embedding_mark_stale_url' => route('embedding-index.mark-stale'),
                 'worker_job_store_url' => route('worker-jobs.store'),
             ],
             'readiness' => [

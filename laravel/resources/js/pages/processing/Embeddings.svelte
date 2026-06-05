@@ -10,12 +10,10 @@
 </script>
 
 <script lang="ts">
-    import { Form, router } from '@inertiajs/svelte';
+    import { router } from '@inertiajs/svelte';
     import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
-    import { Button } from '@/components/ui/button';
-    import { Spinner } from '@/components/ui/spinner';
     import { formatDateTime } from '@/lib/datetime';
 
     type Snapshot = {
@@ -68,14 +66,10 @@
         snapshot,
         latestReindexJob,
         latestEmbeddingBuildCommand,
-        buildUrl,
-        markStaleUrl,
     }: {
         snapshot: Snapshot;
         latestReindexJob: WorkerJob | null;
         latestEmbeddingBuildCommand: EmbeddingBuildCommand | null;
-        buildUrl: string;
-        markStaleUrl: string;
     } = $props();
 
     const progressPercent = $derived(
@@ -127,34 +121,10 @@
 <AppHead title="Embeddings" />
 
 <div class="space-y-6">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-        <Heading
-            title="Embeddings"
-            description="PostgreSQL/pgvector embedding index status for Paperless documents. Legacy Python SQLite metadata is no longer used here."
-        />
-
-        <div class="flex flex-wrap gap-2">
-            <Form method="post" action={buildUrl}>
-                {#snippet children({ processing })}
-                    <Button type="submit" disabled={processing}>
-                        {#if processing}<Spinner />{/if}
-                        Start / resume embedding build
-                    </Button>
-                {/snippet}
-            </Form>
-            <Form method="post" action={markStaleUrl}>
-                {#snippet children({ processing })}
-                    <Button
-                        type="submit"
-                        variant="outline"
-                        disabled={processing}
-                    >
-                        Mark stale
-                    </Button>
-                {/snippet}
-            </Form>
-        </div>
-    </div>
+    <Heading
+        title="Embeddings"
+        description="PostgreSQL/pgvector embedding index statistics for Paperless documents. Build and stale controls live in the Control Center."
+    />
 
     <div class="grid gap-4 md:grid-cols-4">
         <div class="rounded-xl border p-4">

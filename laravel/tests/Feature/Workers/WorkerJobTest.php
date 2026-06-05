@@ -61,6 +61,7 @@ class WorkerJobTest extends TestCase
                 ->where('quickControls.poll_url', route('maintenance.poll'))
                 ->where('quickControls.reindex_url', route('maintenance.reindex'))
                 ->where('quickControls.embedding_build_url', route('embedding-index.build'))
+                ->where('quickControls.embedding_mark_stale_url', route('embedding-index.mark-stale'))
                 ->where('quickControls.worker_job_store_url', route('worker-jobs.store'))
                 ->where('readiness.queued', 0)
                 ->where('readiness.running', 0)
@@ -177,6 +178,8 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('quickControls.poll_url', $indexPage);
         $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
         $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);
+        $this->assertStringContainsString('quickControls.embedding_mark_stale_url', $indexPage);
+        $this->assertStringContainsString('Mark embedding index stale', $indexPage);
         $this->assertStringContainsString('Retry whole job', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $showPage);

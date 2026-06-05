@@ -47,8 +47,6 @@ class EmbeddingsController extends Controller
                 'created_at' => $latestEmbeddingBuildCommand->created_at?->toISOString(),
                 'updated_at' => $latestEmbeddingBuildCommand->updated_at?->toISOString(),
             ] : null,
-            'buildUrl' => route('embedding-index.build'),
-            'markStaleUrl' => route('embedding-index.mark-stale'),
         ]);
     }
 }

@@ -60,6 +60,8 @@ class EmbeddingsTest extends TestCase
                 ->where('snapshot.stored_embedding_rows', 2)
                 ->where('snapshot.missing_count', 1)
                 ->where('snapshot.failed_count', 0)
+                ->missing('buildUrl')
+                ->missing('markStaleUrl')
                 ->missing('snapshot.db_path')
                 ->missing('snapshot.items')
             );
