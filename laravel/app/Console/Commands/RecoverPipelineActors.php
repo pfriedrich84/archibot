@@ -16,8 +16,9 @@ class RecoverPipelineActors extends Command
         $limit = max(1, (int) $this->option('limit'));
         $webhookDeliveries = $recovery->recoverQueuedWebhookDeliveries($limit);
         $pipelineRuns = $recovery->recoverDocumentPipelineRuns($limit);
+        $commands = $recovery->recoverPendingCommands($limit);
 
-        $this->info("Recovery scan complete. webhook_deliveries_redispatched={$webhookDeliveries} document_pipeline_runs_redispatched={$pipelineRuns}");
+        $this->info("Recovery scan complete. webhook_deliveries_redispatched={$webhookDeliveries} document_pipeline_runs_redispatched={$pipelineRuns} commands_redispatched={$commands}");
 
         return self::SUCCESS;
     }

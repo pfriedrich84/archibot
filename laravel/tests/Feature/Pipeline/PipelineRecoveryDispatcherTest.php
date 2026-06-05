@@ -3,6 +3,7 @@
 namespace Tests\Feature\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -79,7 +80,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
 
         $this->artisan('archibot:recovery-scan', ['--limit' => 5])
-            ->expectsOutput('Recovery scan complete. webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0')
+            ->expectsOutput('Recovery scan complete. webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
             ->assertSuccessful();
 
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $delivery->id);
@@ -178,6 +179,75 @@ class PipelineRecoveryDispatcherTest extends TestCase
         Queue::assertNothingPushed();
         $this->assertSame(PipelineRun::STATUS_BLOCKED, $blocked->fresh()->status);
         $this->assertDatabaseCount('pipeline_events', 0);
+    }
+
+    public function test_recovery_scan_redispatches_pending_commands(): void
+    {
+        Queue::fake();
+
+        $embedding = $this->command(['type' => Command::TYPE_EMBEDDING_INDEX_BUILD]);
+        $poll = $this->command(['type' => Command::TYPE_POLL_RECONCILIATION]);
+        $reindex = $this->command(['type' => Command::TYPE_REINDEX]);
+        $review = $this->command([
+            'type' => Command::TYPE_REVIEW_COMMIT,
+            'payload' => ['review_suggestion_id' => 44, 'paperless_document_id' => 70],
+        ]);
+        $running = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
+
+        $this->assertSame(4, $count);
+        Queue::assertPushed(RunPythonActorJob::class, 4);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $embedding->id
+            && $job->actorName === PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $poll->id
+            && $job->actorName === PythonActorRunner::ACTOR_POLL_RECONCILIATION);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $reindex->id
+            && $job->actorName === PythonActorRunner::ACTOR_REINDEX);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $review->id
+            && $job->actorName === PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION);
+        Queue::assertNotPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $running->id);
+
+        $this->assertSame(Command::STATUS_QUEUED, $embedding->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $poll->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $reindex->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $review->fresh()->status);
+        $this->assertSame(Command::STATUS_RUNNING, $running->fresh()->status);
+        $this->assertDatabaseCount('pipeline_events', 4);
+    }
+
+    public function test_recovery_scan_marks_invalid_pending_review_commit_command_permanently_failed(): void
+    {
+        Queue::fake();
+
+        $command = $this->command([
+            'type' => Command::TYPE_REVIEW_COMMIT,
+            'payload' => ['paperless_document_id' => 71],
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
+
+        $this->assertSame(0, $count);
+        Queue::assertNothingPushed();
+        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
+        $this->assertSame('missing_review_suggestion_id', $command->fresh()->error);
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $command->id,
+            'event_type' => 'recovery.command_failed_permanent',
+            'paperless_document_id' => 71,
+        ]);
+    }
+
+    private function command(array $overrides = []): Command
+    {
+        return Command::query()->create(array_merge([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_PENDING,
+            'payload' => ['limit' => 10],
+        ], $overrides));
     }
 
     /**

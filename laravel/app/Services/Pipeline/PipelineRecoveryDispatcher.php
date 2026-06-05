@@ -3,6 +3,7 @@
 namespace App\Services\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -10,6 +11,60 @@ use App\Models\WebhookDelivery;
 
 class PipelineRecoveryDispatcher
 {
+    public function recoverPendingCommands(int $limit = 100): int
+    {
+        $recovered = 0;
+
+        Command::query()
+            ->where('status', Command::STATUS_PENDING)
+            ->whereIn('type', [
+                Command::TYPE_EMBEDDING_INDEX_BUILD,
+                Command::TYPE_POLL_RECONCILIATION,
+                Command::TYPE_REINDEX,
+                Command::TYPE_REVIEW_COMMIT,
+            ])
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (Command $command) use (&$recovered): void {
+                $job = match ($command->type) {
+                    Command::TYPE_EMBEDDING_INDEX_BUILD => RunPythonActorJob::embeddingIndexBuild($command->id),
+                    Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($command->id),
+                    Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
+                    Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
+                    default => null,
+                };
+
+                if ($job === null) {
+                    return;
+                }
+
+                dispatch($job);
+
+                $command->forceFill([
+                    'status' => Command::STATUS_QUEUED,
+                    'error' => null,
+                ])->save();
+
+                PipelineEvent::query()->create([
+                    'command_id' => $command->id,
+                    'event_type' => 'recovery.command_actor_redispatched',
+                    'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
+                    'level' => 'info',
+                    'message' => 'Pending command redispatched through Laravel actor transport by recovery scan.',
+                    'payload' => [
+                        'command_type' => $command->type,
+                        'transport' => 'laravel_database_queue',
+                    ],
+                ]);
+
+                $recovered++;
+            });
+
+        return $recovered;
+    }
+
     public function recoverDocumentPipelineRuns(int $limit = 100): int
     {
         $this->releaseEmbeddingBlockedRuns($limit);
@@ -98,6 +153,34 @@ class PipelineRecoveryDispatcher
             });
 
         return $recovered;
+    }
+
+    private function reviewCommitJobOrFail(Command $command): ?RunPythonActorJob
+    {
+        $reviewSuggestionId = $command->payload['review_suggestion_id'] ?? null;
+        if (! is_int($reviewSuggestionId) || $reviewSuggestionId <= 0) {
+            $command->forceFill([
+                'status' => Command::STATUS_FAILED_PERMANENT,
+                'error' => 'missing_review_suggestion_id',
+                'finished_at' => now(),
+            ])->save();
+
+            PipelineEvent::query()->create([
+                'command_id' => $command->id,
+                'event_type' => 'recovery.command_failed_permanent',
+                'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
+                'level' => 'error',
+                'message' => 'Review commit command could not be redispatched because payload.review_suggestion_id is missing.',
+                'payload' => [
+                    'command_type' => $command->type,
+                    'error_type' => 'missing_review_suggestion_id',
+                ],
+            ]);
+
+            return null;
+        }
+
+        return RunPythonActorJob::reviewCommit($command->id);
     }
 
     private function releaseEmbeddingBlockedRuns(int $limit): int
