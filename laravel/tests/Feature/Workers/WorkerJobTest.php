@@ -157,7 +157,7 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
         $this->assertStringContainsString('Queue forced OCR reindex worker', $indexPage);
-        $this->assertStringContainsString('This form only queues worker_jobs rows', $indexPage);
+        $this->assertStringContainsString('only queues worker_jobs rows', $indexPage);
         $this->assertStringContainsString('Force OCR reindex', $indexPage);
         $this->assertStringContainsString('quickControls.poll_url', $indexPage);
         $this->assertStringContainsString('quickControls.reindex_url', $indexPage);

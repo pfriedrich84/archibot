@@ -7,6 +7,7 @@ ArchiBot releases are Docker-first and should remain traceable to a reviewed Git
 - `main` is the trusted release branch for the `latest` container tag.
 - Temporary direct-main mode is active as of 2026-06-05: GitHub branch protection for `main` is intentionally disabled so the maintainer can work directly on `main` during active development.
 - While direct-main mode is active, commits to `main` must still run the relevant checks from `docs/agent/CHECKS.md` before push when local tooling is available, and any skipped local checks must be stated in the handoff. GitHub CI remains the backstop after push.
+- After every direct push to `main`, watch the GitHub CI run until it passes. A red required-equivalent CI run is an unacceptable regression and must be investigated and fixed immediately before starting unrelated work.
 - Before returning to protected-branch mode, re-enable required `CI` job checks (`lint-and-verify`, `laravel-starter`, and `docker-build`) for `main` and prefer branch -> CI -> merge for release-impacting work.
 - The Docker publish workflow builds from the CI-tested commit SHA after the `CI` workflow succeeds.
 - Graphify-only artifact refreshes under `.graphify/**` are ignored by CI push triggers and must not build or publish Docker images.
