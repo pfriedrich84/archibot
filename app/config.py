@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     )  # 0 = auto-detect from known model defaults
     ollama_ocr_model: str = Field(
         default="qwen3:4b",
-        validation_alias=AliasChoices("OCR_TEXT_MODEL", "OLLAMA_OCR_MODEL"),
+        validation_alias=AliasChoices("OCR_TEXT_MODEL", "OCR_MODEL", "OLLAMA_OCR_MODEL"),
     )
     ollama_timeout_seconds: int = 600
     ollama_embed_retries: int = 3
@@ -77,7 +77,10 @@ class Settings(BaseSettings):
         default=12288,
         validation_alias=AliasChoices("OCR_CONTEXT_WINDOW", "OLLAMA_OCR_NUM_CTX"),
     )
-    ollama_model_swap_delay: float = 8.0  # seconds to wait after unloading a model
+    ollama_model_swap_delay: float = Field(
+        default=8.0,
+        validation_alias=AliasChoices("OLLAMA_MODEL_SWAP_DELAY", "OLLAMA_MODEL_SWAP_DELAY_SECONDS"),
+    )  # seconds to wait after unloading a model
 
     # --- OCR ---
     ocr_mode: str = "off"  # off | text | vision_light | vision_full
