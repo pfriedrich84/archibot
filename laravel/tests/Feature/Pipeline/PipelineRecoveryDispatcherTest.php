@@ -87,6 +87,60 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame('recovery.webhook_actor_redispatched', PipelineEvent::query()->firstOrFail()->event_type);
     }
 
+    public function test_recovery_scan_releases_embedding_blocked_webhooks_when_index_is_ready(): void
+    {
+        Queue::fake();
+        $this->markEmbeddingIndexComplete();
+
+        $delivery = $this->webhookDelivery([
+            'event_type' => 'document_updated',
+            'paperless_document_id' => 47,
+            'normalized_payload' => ['webhook_action' => 'refresh_embedding'],
+            'status' => WebhookDelivery::STATUS_BLOCKED,
+            'error' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+            'processed_at' => now()->subMinute(),
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverQueuedWebhookDeliveries(limit: 10);
+
+        $this->assertSame(1, $count);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $delivery->id);
+        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->fresh()->status);
+        $this->assertNull($delivery->fresh()->error);
+        $this->assertNull($delivery->fresh()->processed_at);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'recovery.webhook_embedding_gate_released',
+            'paperless_document_id' => 47,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'recovery.webhook_actor_redispatched',
+            'paperless_document_id' => 47,
+        ]);
+    }
+
+    public function test_recovery_scan_keeps_embedding_blocked_webhooks_blocked_until_index_is_ready(): void
+    {
+        Queue::fake();
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_STALE]);
+
+        $delivery = $this->webhookDelivery([
+            'event_type' => 'document_updated',
+            'paperless_document_id' => 48,
+            'normalized_payload' => ['webhook_action' => 'refresh_embedding'],
+            'status' => WebhookDelivery::STATUS_BLOCKED,
+            'error' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverQueuedWebhookDeliveries(limit: 10);
+
+        $this->assertSame(0, $count);
+        Queue::assertNothingPushed();
+        $this->assertSame(WebhookDelivery::STATUS_BLOCKED, $delivery->fresh()->status);
+        $this->assertDatabaseCount('pipeline_events', 0);
+    }
+
     public function test_recovery_scan_redispatches_pending_and_due_retrying_document_runs(): void
     {
         Queue::fake();

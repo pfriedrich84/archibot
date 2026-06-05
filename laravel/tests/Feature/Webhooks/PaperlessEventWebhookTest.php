@@ -26,7 +26,7 @@ class PaperlessEventWebhookTest extends TestCase
             'document' => ['modified' => '2026-05-08T12:00:00Z'],
             'object' => ['id' => 42],
         ])->assertOk()->assertJson([
-            'status' => 'queued',
+            'status' => 'processed',
             'duplicate' => false,
             'document_id' => 42,
             'pipeline_outcome' => 'created',
@@ -44,7 +44,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame('paperless', $delivery->source);
         $this->assertSame('document_created', $delivery->event_type);
         $this->assertSame(42, $delivery->paperless_document_id);
-        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->status);
+        $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->status);
         $this->assertSame('process_document', $delivery->normalized_payload['webhook_action']);
         $this->assertSame('2026-05-08T12:00:00Z', $delivery->normalized_payload['paperless_modified']);
 
@@ -70,6 +70,12 @@ class PaperlessEventWebhookTest extends TestCase
             'event_type' => 'pipeline.document_actor_queued',
             'paperless_document_id' => 42,
         ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.process_delivery_handled',
+            'paperless_document_id' => 42,
+        ]);
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $run->id);
     }
 
@@ -82,7 +88,7 @@ class PaperlessEventWebhookTest extends TestCase
             'document_id' => 43,
             'modified' => '2026-05-08T13:00:00Z',
         ])->assertOk()->assertJson([
-            'status' => 'queued',
+            'status' => 'processed',
             'duplicate' => false,
             'document_id' => 43,
             'pipeline_outcome' => 'created',
@@ -105,7 +111,7 @@ class PaperlessEventWebhookTest extends TestCase
             'event' => 'document_created',
             'document_id' => 44,
         ])->assertOk()->assertJson([
-            'status' => 'queued',
+            'status' => 'blocked',
             'duplicate' => false,
             'document_id' => 44,
             'pipeline_outcome' => 'blocked',
@@ -114,6 +120,8 @@ class PaperlessEventWebhookTest extends TestCase
 
         $delivery = WebhookDelivery::query()->firstOrFail();
         $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame(WebhookDelivery::STATUS_BLOCKED, $delivery->status);
+        $this->assertSame('embedding_index_not_ready', $delivery->error);
         $this->assertSame($delivery->id, $run->webhook_delivery_id);
         $this->assertSame(PipelineRun::STATUS_BLOCKED, $run->status);
         $this->assertSame('embedding_index_not_ready', $run->error_type);
@@ -121,6 +129,11 @@ class PaperlessEventWebhookTest extends TestCase
             'pipeline_run_id' => $run->id,
             'webhook_delivery_id' => $delivery->id,
             'event_type' => 'pipeline.blocked.embedding_index_not_ready',
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.process_delivery_blocked',
         ]);
     }
 

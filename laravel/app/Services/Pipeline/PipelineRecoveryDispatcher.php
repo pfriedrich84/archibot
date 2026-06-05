@@ -121,6 +121,8 @@ class PipelineRecoveryDispatcher
 
     public function recoverQueuedWebhookDeliveries(int $limit = 100): int
     {
+        $this->releaseEmbeddingBlockedWebhookDeliveries($limit);
+
         $recovered = 0;
 
         WebhookDelivery::query()
@@ -153,6 +155,49 @@ class PipelineRecoveryDispatcher
             });
 
         return $recovered;
+    }
+
+    private function releaseEmbeddingBlockedWebhookDeliveries(int $limit): int
+    {
+        if (EmbeddingIndexState::query()->latest()->value('status') !== EmbeddingIndexState::STATUS_COMPLETE) {
+            return 0;
+        }
+
+        $released = 0;
+        WebhookDelivery::query()
+            ->where('status', WebhookDelivery::STATUS_BLOCKED)
+            ->where('error', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+            ->oldest('received_at')
+            ->oldest('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (WebhookDelivery $delivery) use (&$released): void {
+                if (($delivery->normalized_payload['webhook_action'] ?? null) === 'process_document') {
+                    return;
+                }
+
+                $delivery->forceFill([
+                    'status' => WebhookDelivery::STATUS_QUEUED,
+                    'error' => null,
+                    'processed_at' => null,
+                ])->save();
+
+                PipelineEvent::query()->create([
+                    'webhook_delivery_id' => $delivery->id,
+                    'event_type' => 'recovery.webhook_embedding_gate_released',
+                    'paperless_document_id' => $delivery->paperless_document_id,
+                    'level' => 'info',
+                    'message' => 'Webhook delivery released by Laravel recovery because the embedding index is complete.',
+                    'payload' => [
+                        'webhook_action' => $delivery->normalized_payload['webhook_action'] ?? null,
+                        'blocked_reason' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+                    ],
+                ]);
+
+                $released++;
+            });
+
+        return $released;
     }
 
     private function reviewCommitJobOrFail(Command $command): ?RunPythonActorJob

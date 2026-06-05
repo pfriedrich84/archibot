@@ -32,10 +32,7 @@ from app.jobs.pipeline_runs import (
     mark_pipeline_run_pending,
     mark_pipeline_run_status,
 )
-from app.jobs.review_commit import (
-    list_review_suggestions_ready_to_commit,
-    mark_review_commit_status,
-)
+from app.jobs.review_commit import mark_review_commit_status
 from app.jobs.webhook_delivery import (
     list_embedding_blocked_webhook_delivery_ids,
     list_queued_webhook_delivery_ids,
@@ -287,10 +284,6 @@ def run_recovery_scan(limit: int = 100) -> None:
         else:
             mark_command_status(command.id, "failed_permanent", "missing_review_suggestion_id")
 
-    review_suggestion_ids = list_review_suggestions_ready_to_commit(limit=limit)
-    for review_suggestion_id in review_suggestion_ids:
-        enqueue_review_commit(review_suggestion_id)
-
     log.info(
         "recovery scan completed",
         actor_executions_recovered=recovered_actors,
@@ -306,5 +299,5 @@ def run_recovery_scan(limit: int = 100) -> None:
         poll_reconciliation_commands_requeued=len(poll_reconciliation_commands),
         reindex_commands_requeued=len(reindex_commands),
         review_commit_commands_requeued=len(review_commit_commands),
-        review_commits_requeued=len(review_suggestion_ids),
+        review_commits_requeued=0,
     )

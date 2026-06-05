@@ -81,6 +81,7 @@ class PaperlessEventWebhookController extends Controller
                         paperlessModified: $paperlessModified,
                         webhookDeliveryId: $delivery->id,
                     );
+                    $this->markProcessDeliveryHandled($delivery, $startResult);
                 } catch (\Throwable $exception) {
                     $this->recordPipelineStartFailure($delivery, $exception::class);
 
@@ -121,13 +122,44 @@ class PaperlessEventWebhookController extends Controller
         ]);
 
         return response()->json($this->responsePayload(
-            $duplicate ? WebhookDelivery::STATUS_DUPLICATE : WebhookDelivery::STATUS_QUEUED,
+            $duplicate ? WebhookDelivery::STATUS_DUPLICATE : $delivery->fresh()->status,
             $duplicate,
             $documentId,
             $delivery,
             $startResult,
             ['webhook_action' => $webhookAction],
         ));
+    }
+
+    private function markProcessDeliveryHandled(WebhookDelivery $delivery, PipelineStartResult $startResult): void
+    {
+        $status = $startResult->blockedReason === null
+            ? WebhookDelivery::STATUS_PROCESSED
+            : WebhookDelivery::STATUS_BLOCKED;
+
+        $delivery->forceFill([
+            'status' => $status,
+            'error' => $startResult->blockedReason,
+            'processed_at' => now(),
+        ])->save();
+
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'pipeline_run_id' => $startResult->pipelineRun->id,
+            'event_type' => $status === WebhookDelivery::STATUS_PROCESSED
+                ? 'webhook.process_delivery_handled'
+                : 'webhook.process_delivery_blocked',
+            'paperless_document_id' => $delivery->paperless_document_id,
+            'level' => $status === WebhookDelivery::STATUS_PROCESSED ? 'info' : 'warning',
+            'message' => $status === WebhookDelivery::STATUS_PROCESSED
+                ? 'Process-document webhook delivery handed off to durable document pipeline run.'
+                : 'Process-document webhook delivery blocked by durable document pipeline gate.',
+            'payload' => [
+                'pipeline_run_id' => $startResult->pipelineRun->id,
+                'pipeline_outcome' => $startResult->outcome,
+                'blocked_reason' => $startResult->blockedReason,
+            ],
+        ]);
     }
 
     private function verifySecret(Request $request): ?JsonResponse
