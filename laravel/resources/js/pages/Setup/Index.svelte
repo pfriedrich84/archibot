@@ -443,8 +443,8 @@
                 <div>
                     <h2 class="text-lg font-semibold">AI provider</h2>
                     <p class="text-sm text-muted-foreground">
-                        Use an Ollama-compatible endpoint or an OpenAI-compatible
-                        /v1 endpoint.
+                        Use an Ollama-compatible endpoint or an
+                        OpenAI-compatible /v1 endpoint.
                     </p>
                 </div>
 
@@ -457,7 +457,9 @@
                             bind:value={llm_provider}
                             class="h-10 rounded-md border bg-background px-3 text-sm"
                         >
-                            <option value="ollama">Ollama-compatible endpoint</option>
+                            <option value="ollama"
+                                >Ollama-compatible endpoint</option
+                            >
                             <option value="openai_compatible">
                                 OpenAI-compatible endpoint
                             </option>
