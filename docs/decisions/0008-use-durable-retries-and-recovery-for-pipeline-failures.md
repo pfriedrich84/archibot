@@ -11,7 +11,7 @@ Archibot's event-driven pipeline depends on several external and internal system
 - PostgreSQL for durable state
 - Absurd for message transport
 - Paperless for document metadata and content
-- Ollama or LiteLLM providers for OCR/classification/LLM work
+- Ollama-compatible or OpenAI-compatible providers for OCR/classification/LLM work
 - container runtime / host availability
 
 Failures are expected:
@@ -21,7 +21,7 @@ Failures are expected:
 - Absurd restart
 - PostgreSQL restart
 - Paperless temporarily unreachable
-- Ollama/LiteLLM temporarily unreachable
+- Ollama-compatible/OpenAI-compatible provider temporarily unreachable
 - LLM timeout or provider rate limit
 - malformed document data
 - OCR/classification/embedding errors
@@ -43,7 +43,7 @@ PostgreSQL is the source of truth for:
 - document processing dedupe keys
 - final failure state
 
-Absurd/Absurd is used for execution transport, not as the only source of job truth.
+Absurd is used for execution transport, not as the only source of job truth.
 
 All actors must be idempotent and safe to retry.
 
@@ -55,7 +55,7 @@ Examples:
 
 - Paperless temporarily unreachable
 - Ollama temporarily unreachable
-- LiteLLM provider timeout
+- OpenAI-compatible provider timeout
 - HTTP 429 / 5xx
 - network timeout
 - Absurd reconnect
@@ -296,7 +296,7 @@ Manual actions:
 What gets easier:
 
 - container restarts do not lose work
-- transient Paperless/Ollama/LiteLLM outages recover automatically
+- transient Paperless/Ollama-compatible/OpenAI-compatible provider outages recover automatically
 - failures are visible and actionable
 - retries are safe because actors are idempotent
 

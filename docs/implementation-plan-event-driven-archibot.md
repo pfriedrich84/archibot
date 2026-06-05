@@ -10,9 +10,9 @@ Die künftige Architektur trennt klar zwischen UI, dauerhafter Datenhaltung, Web
 Paperless Webhooks / Laravel UI / Scheduler
   -> Laravel Webhook + Command API
   -> PostgreSQL + pgvector als Source of Truth
-  -> RabbitMQ als Dramatiq Broker
-  -> Python Dramatiq Actors als Pipeline Engine
-  -> LiteLLM-kompatibler LLM Adapter
+  -> Absurd als PostgreSQL-backed Queue
+  -> Python Absurd actors als Pipeline Engine
+  -> Ollama-/OpenAI-kompatibler LLM Adapter
 ```
 
 **Paperless Webhooks sind der primäre Trigger für neue oder geänderte Dokumente.** Polling bleibt nur ein Fallback/Reconciliation-Mechanismus, nicht der Hauptpfad.
@@ -36,13 +36,13 @@ Webhook-Ingestion darf **keine schwere Verarbeitung synchron im HTTP Request** d
 
 ### Message Broker
 
-**Ziel:** RabbitMQ
+**Ziel:** Absurd/PostgreSQL
 
 Begründung:
 
 - Passt besser zu event-driven Workflows als eine reine Job Queue.
-- Unterstützt saubere Queue-Trennung, Routing, Dead Lettering und Worker-Pipelines.
-- Dramatiq unterstützt RabbitMQ direkt.
+- Unterstützt saubere Queue-Trennung, Routing, Wiederaufnahme und Worker-Pipelines.
+- Absurd nutzt PostgreSQL direkt; es gibt keinen separaten Broker-Service.
 
 ### Fachliche Datenbank
 
@@ -57,7 +57,7 @@ Begründung:
 
 ### Python Job Framework
 
-**Ziel:** Dramatiq
+**Ziel:** Absurd
 
 Begründung:
 
@@ -67,12 +67,12 @@ Begründung:
 
 ### LLM Routing
 
-**Ziel:** LiteLLM-kompatibler Adapter
+**Ziel:** Ollama-/OpenAI-kompatibler Adapter
 
-Ollama bleibt vorerst nutzbar, soll aber nicht hart in Pipeline-Actors verdrahtet sein.
+Provider bleiben austauschbar und duerfen nicht hart in Pipeline-Actors verdrahtet sein.
 
 ```text
-Actor -> app.llm.router -> provider adapter -> Ollama / LiteLLM / OpenRouter / local endpoint
+Actor -> app.llm.router -> provider adapter -> Ollama-compatible / OpenAI-compatible endpoint
 ```
 
 ## Zielarchitektur
@@ -124,7 +124,7 @@ archibot
 │       └── session.py
 │
 ├── PostgreSQL + pgvector
-└── RabbitMQ
+└── Absurd/PostgreSQL
 ```
 
 Redis/Valkey kann später für Cache, Rate Limits oder spezielle Locking-Anforderungen ergänzt werden. Es ist aber kein Bestandteil des Kern-Zielbilds.
@@ -150,7 +150,7 @@ Paperless Webhook
   -> validate + persist webhook_delivery
   -> normalize to internal event
   -> create pipeline_run if needed
-  -> enqueue Dramatiq actor
+  -> enqueue Absurd actor
   -> return HTTP 2xx quickly
 ```
 
@@ -234,7 +234,7 @@ Regel:
 - Ungültige Payloads werden mit Fehlerstatus gespeichert.
 - Gültige, aber nicht verarbeitbare Payloads erzeugen ein `webhook.failed` Event.
 - Actor-Enqueue-Fehler müssen sichtbar sein und retrybar bleiben.
-- Webhook Delivery darf nicht verloren gehen, wenn RabbitMQ kurz nicht erreichbar ist.
+- Webhook Delivery darf nicht verloren gehen, wenn Absurd/PostgreSQL kurz nicht erreichbar ist.
 
 ## Repository Governance
 
@@ -263,11 +263,10 @@ docs/
 │   └── llm-routing.md
 │
 ├── decisions/
-│   ├── 0001-use-dramatiq.md
 │   ├── 0002-use-postgresql-pgvector.md
-│   ├── 0003-use-rabbitmq.md
 │   ├── 0004-no-legacy-compatibility-mode.md
-│   └── 0005-use-webhooks-as-primary-trigger.md
+│   ├── 0005-use-webhooks-as-primary-trigger.md
+│   └── 0013-use-absurd-postgresql-queue.md
 │
 └── governance/
     ├── repository-governance.md
@@ -291,7 +290,7 @@ Sie soll enthalten:
 Empfohlene Kurzregel für `AGENTS.md`:
 
 ```md
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, Dramatiq, RabbitMQ, PostgreSQL and pgvector.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, Absurd, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger for document processing; polling is only for reconciliation and maintenance.
 Do not extend the legacy Laravel-subprocess/Python-CLI worker path unless the task explicitly asks for a temporary removal step.
 Prefer small, reviewable changes that move the system toward the target architecture described in docs/implementation-plan-event-driven-archibot.md.
@@ -303,9 +302,8 @@ Jede größere Architekturentscheidung bekommt ein kurzes ADR unter `docs/decisi
 
 Pflicht-ADRs für diesen Umbau:
 
-- `0001-use-dramatiq.md`
 - `0002-use-postgresql-pgvector.md`
-- `0003-use-rabbitmq.md`
+- `0013-use-absurd-postgresql-queue.md`
 - `0004-no-legacy-compatibility-mode.md`
 - `0005-use-webhooks-as-primary-trigger.md`
 
@@ -340,7 +338,7 @@ Empfohlene Branch-Namen:
 ```text
 arch/event-driven-foundation
 arch/postgres-pgvector
-arch/dramatiq-skeleton
+arch/absurd-foundation
 arch/paperless-webhook-ingestion
 pipeline/process-document
 pipeline/inbox-reconciliation
@@ -385,7 +383,7 @@ Laravel:
 - Lesen/Schreiben von Commands, Pipeline Runs, Events, Review Suggestions
 
 Python:
-- Dramatiq Actors
+- Absurd actors
 - Paperless Integration
 - LLM Routing
 - Embeddings
@@ -396,7 +394,7 @@ PostgreSQL:
 - Webhook Deliveries
 - Keine getrennten Python-/Laravel-Statuswelten
 
-RabbitMQ:
+Absurd/PostgreSQL:
 - Transport für Messages
 - Kein dauerhafter fachlicher Zustand
 ```
@@ -406,7 +404,7 @@ RabbitMQ:
 ```text
 docs:       Dokumentation, Governance, ADRs
 arch:       Architektur-/Strukturänderungen
-infra:      Docker, RabbitMQ, PostgreSQL, Deployment
+infra:      Docker, Absurd/PostgreSQL, PostgreSQL, Deployment
 webhook:    Webhook-Ingestion, Dedupe, Delivery Handling
 python:     Python Runtime, Actors, LLM, Pipeline
 laravel:    UI/API/Models/Migrations in Laravel
@@ -451,7 +449,7 @@ Beispiele:
 
 ### Actor Execution
 
-Eine konkrete Ausführung eines Dramatiq Actors.
+Eine konkrete Ausführung eines Absurd actors.
 
 Beispiele:
 
@@ -555,7 +553,7 @@ Wichtige Felder:
 
 ### `actor_executions`
 
-Technische Ausführungshistorie für Dramatiq Actors.
+Technische Ausführungshistorie für Absurd actors.
 
 Wichtige Felder:
 
@@ -737,7 +735,7 @@ Ollama/local model:
 
 - Anfangs maximal 1 schwerer LLM Actor gleichzeitig.
 
-LiteLLM/Remote Provider:
+OpenAI-compatible Provider:
 
 - Rate Limit pro Provider.
 - Rate Limit pro Modell.
@@ -757,7 +755,7 @@ Laravel soll im Zielmodell:
 - Keine Python-Prozesse mehr direkt starten.
 - Keine separate Legacy-Worker-Schicht parallel pflegen.
 
-Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden durch Webhook Deliveries, Commands, Pipeline Runs und Dramatiq Actors ersetzt.
+Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden durch Webhook Deliveries, Commands, Pipeline Runs und Absurd actors ersetzt.
 
 ## Migrationsplan
 
@@ -783,11 +781,11 @@ Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden
 
 ### Phase 1: Infrastruktur ersetzen
 
-- Docker Compose um PostgreSQL und RabbitMQ erweitern.
+- Docker Compose um PostgreSQL und Absurd/PostgreSQL erweitern.
 - PostgreSQL als primäre Runtime-Datenbank ablösen.
 - Python Dependencies ergänzen:
-  - `dramatiq`
-  - `pika` oder passender RabbitMQ Support über Dramatiq Extras
+  - `absurd-sdk`
+  - `absurd-sdk`
   - `sqlalchemy`
   - `psycopg`
   - `pgvector`
@@ -798,7 +796,7 @@ Beispiel `.env` Zielwerte:
 
 ```env
 DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-DRAMATIQ_BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+ABSURD_DATABASE_URL=postgresql://archibot:archibot@postgres:5432/archibot
 ARCHIBOT_QUEUE_PREFIX=archibot
 PAPERLESS_WEBHOOK_SECRET=change-me
 LLM_PROVIDER=ollama
@@ -821,7 +819,7 @@ LLM_BASE_URL=http://ollama:11434
 - Noch keine schwere Dokumentverarbeitung ausführen.
 - Tests für gültige, ungültige und doppelte Webhooks ergänzen.
 
-### Phase 4: Dramatiq Skeleton
+### Phase 4: Absurd Skeleton
 
 - `app/actors/` anlegen.
 - `app/actors/webhook.py` anlegen.
@@ -834,13 +832,13 @@ LLM_BASE_URL=http://ollama:11434
 Beispiel:
 
 ```bash
-python -m app.workers.dramatiq_worker
+python -m app.event_worker start-workers
 ```
 
-oder, falls Dramatiq CLI verwendet wird:
+oder, falls Absurd worker CLI verwendet wird:
 
 ```bash
-dramatiq app.actors.webhook app.actors.document app.actors.ocr app.actors.embedding app.actors.classification
+python -m app.event_worker start-workers
 ```
 
 ### Phase 5: Webhook-getriggerte Dokumentverarbeitung ersetzen
@@ -859,7 +857,7 @@ Actors:
 
 Akzeptanzkriterien:
 
-- Ein Paperless Webhook kann ein Dokument vollständig über Dramatiq verarbeiten.
+- Ein Paperless Webhook kann ein Dokument vollständig über Absurd verarbeiten.
 - Progress ist in PostgreSQL sichtbar.
 - Fehler werden als Events geschrieben.
 - Retry erzeugt keine doppelten Suggestions.
@@ -899,7 +897,7 @@ Akzeptanzkriterien:
 
 - `app.llm.router` einführen.
 - Ollama Client hinter Provider Interface legen.
-- LiteLLM-kompatiblen Provider vorbereiten.
+- OpenAI-kompatiblen Provider vorbereiten.
 - LLM Calls in `llm_calls` loggen.
 
 Akzeptanzkriterien:
@@ -942,7 +940,7 @@ Gegenmaßnahme:
 
 ### Zu früher Big Bang
 
-PostgreSQL, RabbitMQ, Webhooks, Dramatiq und Pipeline-Umbau gleichzeitig ist riskant.
+PostgreSQL, Absurd, Webhooks und Pipeline-Umbau gleichzeitig ist riskant.
 
 Gegenmaßnahme:
 
@@ -979,12 +977,12 @@ Der Umbau gilt als erfolgreich, wenn:
 - Paperless Webhooks der primäre Trigger für Dokumentverarbeitung sind.
 - Webhook Deliveries persistiert, dedupliziert und auditierbar sind.
 - Python Jobs nicht mehr über Laravel Subprocess gestartet werden.
-- Dokumentverarbeitung event-driven über Dramatiq läuft.
+- Dokumentverarbeitung event-driven über Absurd läuft.
 - PostgreSQL die gemeinsame Source of Truth ist.
 - Embedding Search über pgvector läuft.
 - Laravel Pipeline Runs, Events, Fehler und Review Suggestions anzeigen kann.
 - Retry und Cancel kontrolliert funktionieren.
-- LiteLLM/Ollama austauschbar über einen Adapter angebunden sind.
+- OpenAI-kompatible/Ollama-kompatible Provider austauschbar über einen Adapter angebunden sind.
 - Polling nur noch als Reconciliation/Maintenance existiert.
 - Legacy Worker-Pfade entfernt sind.
 - Repository Governance dokumentiert ist.
@@ -1000,15 +998,15 @@ Read `docs/implementation-plan-event-driven-archibot.md` first.
 Scope:
 - Add or update `AGENTS.md` as the central coding-agent entrypoint.
 - Add repository governance docs under `docs/governance/`.
-- Add ADRs under `docs/decisions/` for Dramatiq, PostgreSQL/pgvector, RabbitMQ, no legacy compatibility mode, and Paperless webhooks as primary trigger.
-- Add PostgreSQL and RabbitMQ to the local development stack.
-- Add Python dependencies for Dramatiq, PostgreSQL access and pgvector.
+- Add ADRs under `docs/decisions/` for Absurd, PostgreSQL/pgvector, Absurd/PostgreSQL, no legacy compatibility mode, and Paperless webhooks as primary trigger.
+- Add PostgreSQL and Absurd/PostgreSQL to the local development stack.
+- Add Python dependencies for Absurd, PostgreSQL access and pgvector.
 - Add Laravel/PHP model and migration for webhook_deliveries.
 - Add database models or migrations for commands, pipeline_runs, pipeline_events and actor_executions.
 - Add a Paperless webhook endpoint that validates, persists and deduplicates webhook deliveries.
 - Add initial `app/events`, `app/jobs`, and `app/actors` package structure.
 - Add `app/actors/webhook.py` and a dummy actor for webhook processing.
-- Add a Dramatiq broker configuration.
+- Add a Absurd queue configuration.
 - Wire the webhook endpoint to enqueue the dummy actor.
 - Add documentation for configuring the Paperless webhook and starting the worker locally.
 
@@ -1026,5 +1024,5 @@ Acceptance criteria:
 - A dummy webhook actor can be enqueued and processed.
 - Actor execution and event are persisted.
 - Tests or smoke commands document the new webhook path.
-- No new feature flag such as `ARCHIBOT_WORKER_BACKEND=legacy|dramatiq` is introduced.
+- No new feature flag such as `ARCHIBOT_WORKER_BACKEND=legacy|absurd` is introduced.
 ```

@@ -1,13 +1,7 @@
-"""Shared RAG chat core — session management and ask() pipeline.
-
-Used by the Telegram handler and legacy-compatible callers
-(``app.telegram_handler``) so the RAG logic lives in one place.
-"""
+"""Shared RAG chat core — session management and ask() pipeline."""
 
 from __future__ import annotations
 
-import html
-import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -53,7 +47,7 @@ class ChatSession:
     messages: list[dict[str, Any]] = field(default_factory=list)
     last_active: float = field(default_factory=time.time)
     created_at: float = field(default_factory=time.time)
-    origin: Literal["web", "telegram"] = "web"
+    origin: Literal["web"] = "web"
     entity_cache: _EntityCache = field(default_factory=_EntityCache)
 
 
@@ -75,7 +69,7 @@ def _expire_sessions() -> None:
 
 
 def get_or_create_session(
-    session_id: str | None, *, origin: Literal["web", "telegram"] = "web"
+    session_id: str | None, *, origin: Literal["web"] = "web"
 ) -> tuple[str, ChatSession]:
     """Return (session_id, session). Creates a runtime-only in-memory session."""
     _expire_sessions()
@@ -83,7 +77,7 @@ def get_or_create_session(
         session = _sessions[session_id]
         session.last_active = time.time()
         return session_id, session
-    new_id = session_id if origin == "telegram" and session_id else uuid.uuid4().hex[:16]
+    new_id = uuid.uuid4().hex[:16]
     session = ChatSession(origin=origin)
     _sessions[new_id] = session
     return new_id, session
@@ -97,7 +91,7 @@ def _session_title(session: ChatSession) -> str:
     first_user = next((m["content"] for m in session.messages if m.get("role") == "user"), "")
     title = " ".join(first_user.split())
     if not title:
-        return "Telegram Chat" if session.origin == "telegram" else "Neuer Chat"
+        return "Neuer Chat"
     return title[:77] + "..." if len(title) > 80 else title
 
 
@@ -155,35 +149,6 @@ def delete_chat_session(session_id: str) -> bool:
 def load_chat_system_prompt() -> str:
     """Load chat system prompt — user override in /data takes precedence."""
     return load_prompt("chat")
-
-
-def markdown_to_telegram_html(markdown: str) -> str:
-    """Render a safe markdown subset to Telegram-compatible HTML."""
-    text = html.escape(markdown)
-
-    code_blocks: list[str] = []
-
-    def stash_code_block(match: re.Match[str]) -> str:
-        code_blocks.append(f"<pre>{match.group(1).strip()}</pre>")
-        return f"\u0000CODE{len(code_blocks) - 1}\u0000"
-
-    text = re.sub(r"```(?:\w+)?\n?(.*?)```", stash_code_block, text, flags=re.DOTALL)
-    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
-    text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", text)
-    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", text)
-
-    def link(match: re.Match[str]) -> str:
-        label = match.group(1)
-        url = html.unescape(match.group(2))
-        if not url.startswith(("http://", "https://")):
-            return label
-        return f'<a href="{html.escape(url, quote=True)}">{label}</a>'
-
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link, text)
-    text = re.sub(r"^#{1,6}\s+(.+)$", r"<b>\1</b>", text, flags=re.MULTILINE)
-    for index, block in enumerate(code_blocks):
-        text = text.replace(f"\u0000CODE{index}\u0000", block)
-    return text
 
 
 def _build_chat_user_message(question: str, context: str) -> str:
@@ -275,8 +240,8 @@ async def ask_stateless(
 
     Laravel sends the durable message history for the session. Python builds a
     temporary in-process session so retrieval, token budgeting, source metadata,
-    and Ollama error handling stay shared with Telegram/runtime chat, but Python
-    does not own web session persistence.
+    and provider error handling stay shared, but Python does not own web session
+    persistence.
     """
     session = ChatSession(origin="web")
     session.messages = [

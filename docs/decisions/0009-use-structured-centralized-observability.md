@@ -13,7 +13,7 @@ Archibot is moving to an event-driven architecture with multiple runtime compone
 - Absurd broker
 - PostgreSQL + pgvector
 - Paperless integration
-- Ollama / LiteLLM provider integration
+- Ollama-compatible / OpenAI-compatible provider integration
 - periodic polling / reconciliation
 - reindex and embedding bootstrap pipelines
 
@@ -135,7 +135,7 @@ Python workers should emit structured logs for:
 
 - actor start/success/failure/retry
 - Paperless API calls
-- LLM/Ollama/LiteLLM calls
+- LLM/Ollama-compatible/OpenAI-compatible calls
 - embedding build progress summaries
 - lock acquisition/release/coalescing
 - recovery scans

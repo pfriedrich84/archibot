@@ -1,7 +1,7 @@
 """Persistent, safe, user-facing job event protocol.
 
 These events are intentionally not raw backend logs.  They are small structured
-messages suitable for the Svelte UI, CLI rendering, and Telegram summaries.
+messages suitable for the Svelte UI and CLI rendering.
 """
 
 from __future__ import annotations

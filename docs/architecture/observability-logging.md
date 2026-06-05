@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Archibot runs across Laravel, Python Absurd workers, Absurd, PostgreSQL, Paperless and Ollama/LiteLLM providers.
+Archibot runs across Laravel, Python Absurd workers, Absurd, PostgreSQL, Paperless and Ollama-compatible/OpenAI-compatible providers.
 
 Centralized structured observability is required to debug event-driven flows, retries, locks, webhook ingestion and provider outages.
 
@@ -161,7 +161,7 @@ Python workers should log:
 - lock acquisition/release/coalescing
 - embedding gate decisions
 - Paperless API calls
-- Ollama/LiteLLM calls
+- Ollama-compatible/OpenAI-compatible calls
 - retry scheduling
 - recovery scan results
 
@@ -343,7 +343,7 @@ Recommended Grafana dashboards:
 ### Provider Health
 
 - Paperless request duration/error rate
-- Ollama/LiteLLM request duration/error rate
+- Ollama-compatible/OpenAI-compatible request duration/error rate
 - LLM calls by provider/model
 - rate-limit counts
 

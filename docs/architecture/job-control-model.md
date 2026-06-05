@@ -217,7 +217,7 @@ Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the fu
 
 The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery, related audit entries and best-effort links to temporary `worker_jobs`. These links let operators compare the temporary Laravel subprocess control plane with the future command/pipeline model while both exist.
 
-Until a specific flow is migrated to actors, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not start the Absurd/Absurd actor migration and do not remove or weaken `worker_jobs` controls.
+Until a specific flow is migrated to actors, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not start the Absurd actor migration and do not remove or weaken `worker_jobs` controls.
 
 As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired. Review suggestion commit requests now use `Command(type=review_commit) -> PipelineEvent(job_control.review_commit_requested) -> review commit actor` rather than creating new `worker_jobs`.
 
@@ -242,7 +242,7 @@ As flows migrate, manual Laravel actions should converge on `Command -> Pipeline
 - Keep Laravel as the UI/control/audit/readiness owner.
 - Keep Python as the document-processing owner.
 - Keep PostgreSQL as the source of truth for progress, retries and recovery.
-- Keep Absurd/Absurd as execution transport and actor runtime, not the only state store.
+- Keep Absurd as execution transport and actor runtime, not the only state store.
 
 ## References
 

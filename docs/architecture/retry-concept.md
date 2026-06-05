@@ -9,7 +9,7 @@ Retries must be safe across:
 - worker crashes
 - container rebuilds
 - Paperless outages
-- Ollama/LiteLLM outages
+- Ollama-compatible/OpenAI-compatible provider outages
 - transient network failures
 - per-document processing errors
 - partial reindex failures
@@ -164,7 +164,7 @@ Examples:
 - HTTP timeout
 - Paperless unavailable
 - Ollama unavailable
-- LiteLLM timeout
+- OpenAI-compatible provider timeout
 - HTTP 429 with retry-after
 - Absurd/PostgreSQL reconnect issue
 
@@ -316,7 +316,7 @@ Mapping examples:
 | Paperless timeout | transient_paperless | automatic |
 | Paperless 503 | transient_paperless | automatic |
 | Ollama connection refused | transient_provider | automatic |
-| LiteLLM timeout | transient_provider | automatic |
+| OpenAI-compatible provider timeout | transient_provider | automatic |
 | HTTP 429 | rate_limited | automatic with provider backoff |
 | Invalid webhook payload | permanent_validation | no auto retry |
 | Document deleted | permanent_missing_document | no auto retry by default |

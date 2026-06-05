@@ -6,7 +6,7 @@ Evidence-based constraints for ArchiBot changes.
 
 - ArchiBot is Docker-first; the event-driven target includes PostgreSQL/pgvector and the Absurd queue path running on PostgreSQL for local/deployed stacks.
 - Runtime state must be durable. The target source of truth is PostgreSQL; do not create hidden in-memory or log-only job state.
-- Paperless-NGX and Ollama/LiteLLM-compatible providers are external services configured by environment variables or the setup UI.
+- Paperless-NGX and Ollama-compatible/OpenAI-compatible providers are external services configured by environment variables or the setup UI.
 - Default timezone is `Europe/Vienna`; date and timezone behavior must remain configurable and consistent between Python and Laravel/Svelte.
 
 ## Local-first AI constraints

@@ -15,8 +15,8 @@ Suggested metadata includes title, date, correspondent, document type, storage p
 - **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, dashboard/operations UI, command API, webhook ingestion and admin-only job controls.
 - **Python queue-backed actors** own document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
 - **PostgreSQL + pgvector** are the durable source of truth for state, progress, retries, events, audit data and embedding similarity search.
-- **Absurd** provides the PostgreSQL-backed queue transport; there is no separate RabbitMQ broker in the target path.
-- **Ollama/LiteLLM-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings, judge pass and RAG chat.
+- **Absurd** provides the PostgreSQL-backed queue transport; there is no separate broker service in the target path.
+- **Ollama-compatible and OpenAI-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings, judge pass and RAG chat.
 
 ## Classification model
 

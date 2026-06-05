@@ -10,7 +10,7 @@
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
 </p>
 
-KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App, PostgreSQL/pgvector und RabbitMQ gegen lokale Ollama- oder OpenAI-kompatible Provider wie LiteLLM.
+KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App und PostgreSQL/pgvector. Der Queue-Pfad läuft ausschließlich über Absurd in PostgreSQL; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach Freigabe (manuell oder ab einer Confidence-Schwelle) in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
@@ -19,7 +19,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 ## Features
 
 - 🔍 Event-driven Verarbeitung via Paperless-Webhooks plus Polling-Reconciliation fuer Dokumente mit Tag `Posteingang`
-- 🧠 Klassifikation via neutraler AI-Provider-Schnittstelle (native Ollama oder lokale OpenAI-kompatible Provider wie LiteLLM; Default-Modell: `gemma4:e4b`)
+- 🧠 Klassifikation via neutraler AI-Provider-Schnittstelle (Ollama-kompatibel oder OpenAI-kompatibel; Default-Modell: `gemma4:e4b`)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
 - ⚡ Frühe Poll-Ergebnisse: Inbox-Polls veröffentlichen/auto-committen jedes Dokument direkt nach Klassifikation/Judge, sofern dafür kein separates Judge-Modell geladen werden muss
@@ -36,7 +36,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 - 🏷️ Entity-Freigaben: Tags, Korrespondenten und Dokumenttypen in Laravel verwalten (`/tags`, `/correspondents`, `/doctypes`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
 - ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/admin/settings`, `/settings/appearance`, `/settings/mcp-tokens`)
-- 🐳 Compose-/Dockhand-ready Stack mit fertigem App-Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot), PostgreSQL/pgvector und RabbitMQ
+- 🐳 Compose-/Dockhand-ready Stack mit fertigem App-Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot), PostgreSQL/pgvector und Absurd als PostgreSQL-backed Queue
 
 ## Architektur
 
@@ -61,8 +61,8 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
         │                                  │
         │                                  ▼
         │                       ┌──────────────────────┐
-        │                       │ RabbitMQ + Dramatiq  │
-        │                       │   - webhook/io/llm   │
+        │                       │ Absurd Queue         │
+        │                       │   - PostgreSQL state │
         │                       │   - retry/recovery   │
         │                       └──────────┬───────────┘
         │                                  ▼
@@ -82,16 +82,16 @@ curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-com
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
 # → optional Werte eintragen; alternativ im Setup-Wizard konfigurieren
-# → für LiteLLM/OpenAI-kompatible Provider: LLM_PROVIDER=openai_compatible,
+# → für OpenAI-kompatible Provider: LLM_PROVIDER=openai_compatible,
 #   OPENAI_BASE_URL/OLLAMA_URL inklusive /v1 setzen und Modell-Aliasse eintragen
 
 # 2. Modelle bereitstellen
-# Native Ollama:
+# Ollama-compatible endpoint:
 ollama pull gemma4:e4b
 ollama pull qwen3-embedding:4b
 ollama pull qwen3:4b              # OCR-Korrektur (optional)
 ollama pull qwen3-vl:4b           # Vision-OCR (optional)
-# OpenAI-kompatible Provider wie LiteLLM: Modell-Aliasse im Provider konfigurieren.
+# OpenAI-kompatible Provider: Modell-Aliasse im Provider konfigurieren.
 # Embedding-Requests senden encoding_format="float" und funktionieren z.B. mit llama.cpp.
 
 # 3. Starten

@@ -48,7 +48,6 @@ from app.pipeline.processing_models import (
     ProcessResult,
     StoredSuggestionResult,
 )
-from app.telegram_handler import notify_suggestion
 
 log = structlog.get_logger(__name__)
 
@@ -193,8 +192,6 @@ async def process_document(
     will_auto_commit = (
         settings.auto_commit_confidence > 0 and result.confidence >= settings.auto_commit_confidence
     )
-    if not will_auto_commit:
-        await notify_suggestion(suggestion)
 
     if will_auto_commit:
         log.info("auto-committing", doc_id=doc.id, confidence=result.confidence)
@@ -820,7 +817,6 @@ async def phase_postprocess_suggestions(
                 )
                 auto_committed += 1
             else:
-                await notify_suggestion(item.suggestion)
                 record_event(
                     job_id,
                     job_type,

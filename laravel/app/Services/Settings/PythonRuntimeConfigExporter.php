@@ -23,10 +23,6 @@ class PythonRuntimeConfigExporter
         $path = $this->configPath();
         $values = $this->readExisting($path);
 
-        foreach ($this->deprecatedRuntimeKeys() as $key) {
-            unset($values[$key]);
-        }
-
         foreach ($this->runtimeValues($overrides) as $key => $value) {
             if ($value === null) {
                 continue;
@@ -91,19 +87,6 @@ class PythonRuntimeConfigExporter
         }
 
         return $values;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function deprecatedRuntimeKeys(): array
-    {
-        return [
-            'ENABLE_TELEGRAM',
-            'TELEGRAM_BOT_TOKEN',
-            'TELEGRAM_CHAT_ID',
-            'TELEGRAM_POLL_INTERVAL',
-        ];
     }
 
     /**

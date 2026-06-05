@@ -4,7 +4,7 @@ Anleitungen fuer verschiedene Deployment-Szenarien.
 
 ## Docker Compose (Standard)
 
-Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad laeuft ueber Absurd in PostgreSQL und benoetigt keinen separaten RabbitMQ-Service. Paperless-NGX und der AI-Provider (Ollama oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
+Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad laeuft ausschliesslich ueber Absurd in PostgreSQL und benoetigt keinen separaten Broker-Service. Paperless-NGX und der AI-Provider (Ollama-kompatibel oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
 
 Das ArchiBot-App-Image wird automatisch ueber GitHub Container Registry bereitgestellt:
 
@@ -98,6 +98,5 @@ docker exec archibot archibot reset --yes --include-config
 | ArchiBot App → Paperless | HTTP | API-Zugriff (Dokumente, Metadaten) |
 | ArchiBot App → AI-Provider | HTTP | LLM-Inference (Chat, Embedding) via Ollama oder OpenAI-kompatiblem Endpoint |
 | ArchiBot App → PostgreSQL | TCP 5432 | App-State, pgvector Embeddings, Pipeline-/Audit-Tabellen |
-| ArchiBot App → Telegram | HTTPS | Bot-API (optional, Long-Polling) |
 | Browser → ArchiBot App | HTTP | Web-GUI (Port 8088) |
 | Paperless → ArchiBot App | HTTP | Webhook (optional, Port 8088) |

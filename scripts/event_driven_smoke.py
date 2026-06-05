@@ -3,7 +3,7 @@
 
 This script is intentionally dependency-light: it verifies that the event-driven
 Python contracts import and that queue names/config-derived defaults are sane.
-It does not require live PostgreSQL, RabbitMQ, Paperless or Ollama services.
+It does not require live PostgreSQL, Paperless or AI-provider services.
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ MODULES = [
 
 
 def main() -> int:
+    from app.absurd_queue import queue_name
     from app.config import settings
-    from app.dramatiq_broker import queue_name
 
     for module in MODULES:
         importlib.import_module(module)

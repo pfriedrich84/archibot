@@ -12,7 +12,7 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                          ▼
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
 │ Paperless-NGX  │◀──▶│   ArchiBot App                  │◀──▶│ AI Provider   │
-│                │    │   Laravel/Svelte + Python       │    │ Ollama/LiteLLM│
+│                │    │   Laravel/Svelte + Python       │    │ AI Provider   │
 │ - Dokumente    │    │   Workers/MCP                   │    │ - Chat (LLM) │
 │ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
@@ -62,7 +62,6 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │                                              │
 │  - GUI /review:  Annehmen / Ablehnen /       │
 │    Editieren                                 │
-│  - Telegram: Accept / Reject Buttons         │
 │  - Auto-Commit: wenn Confidence >=           │
 │    AUTO_COMMIT_CONFIDENCE                    │
 └──────────────────┬──────────────────────────┘
@@ -146,7 +145,7 @@ Timing wird separat unter `phase='judge'` in `phase_timing` erfasst.
 
 ### 7. Auto-Commit
 
-Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei Auto-Commit wird keine Telegram-Benachrichtigung gesendet. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
+Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
 
 ## Reindex
 

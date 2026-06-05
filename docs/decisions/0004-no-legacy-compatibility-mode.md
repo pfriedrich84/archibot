@@ -16,7 +16,7 @@ The migration direction is replacement. Temporary scaffolding may exist only as 
 
 ## Consequences
 
-- New event-driven work must target PostgreSQL/Absurd/Absurd contracts.
+- New event-driven work must target PostgreSQL/Absurd contracts.
 - Do not add feature flags such as `ARCHIBOT_WORKER_BACKEND=legacy|absurd`.
 - Remove or retire old worker paths when the replacement path is accepted.
 - Documentation and agent guidance must point toward the target architecture, not legacy extension.

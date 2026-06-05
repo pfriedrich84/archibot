@@ -19,7 +19,7 @@ Core rules for coding agents working on ArchiBot.
 - After a webhook delivery is durably persisted, downstream enqueue failure should return non-2xx so Paperless retries.
 - Reset is PostgreSQL/Laravel-owned. Keep `archibot reset` as the operator-facing CLI command, but it must delegate to `php artisan archibot:reset` and must not silently reset only the legacy Python SQLite database.
 - Job control, behavior, and status semantics must be identical in the CLI and GUI. If a job is no longer running according to the CLI, it must not be shown as running in the GUI, especially after restarts or reboots.
-- Degrade gracefully: if OCR, embeddings, judge, Telegram, or optional integrations fail, continue where safe and surface the error for review.
+- Degrade gracefully: if OCR, embeddings, judge, or optional integrations fail, continue where safe and surface the error for review.
 
 ## Change discipline
 

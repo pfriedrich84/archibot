@@ -19,8 +19,8 @@ Laravel UI / Webhook / Scheduler
 -> commands
 -> pipeline_runs
 -> pipeline_events
--> RabbitMQ
--> Dramatiq Actors
+-> Absurd/PostgreSQL
+-> Absurd actors
 -> PostgreSQL / pgvector
 ```
 
@@ -835,7 +835,6 @@ Areas:
 - Maintenance
 - Webhooks
 - MCP
-- Telegram if present
 
 Status values:
 
@@ -948,7 +947,7 @@ Archibot currently has multiple job-control models. The Python core is functiona
 
 Use `worker_jobs` as a temporary stabilization layer. Harden it with dispatch centralization, dedupe, lease, heartbeat, recovery and UI controls.
 
-The long-term control plane remains `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ and Dramatiq.
+The long-term control plane remains `commands`, `pipeline_runs`, `pipeline_events`, Absurd.
 
 ## Consequences
 
@@ -1045,7 +1044,7 @@ laravel: expose pipeline runs as durable job view
 
 ---
 
-## Phase 14: Move Processing to Dramatiq Actors
+## Phase 14: Move Processing to Absurd actors
 
 ### Goal
 
@@ -1094,7 +1093,7 @@ process_document command
 
 Acceptance criteria:
 
-- A manually started document runs fully through Dramatiq.
+- A manually started document runs fully through Absurd.
 - Laravel shows PipelineEvents.
 - Retry does not duplicate suggestions.
 - The old `worker_jobs` process-document path can be disabled.

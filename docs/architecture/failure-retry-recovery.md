@@ -12,7 +12,7 @@ Expected failures:
 - PostgreSQL restart
 - Paperless unavailable
 - Ollama unavailable
-- LiteLLM provider unavailable
+- OpenAI-compatible provider unavailable
 - LLM timeout or rate limit
 - document-level OCR/classification/embedding failure
 - invalid webhook payload
@@ -40,7 +40,7 @@ Examples:
 - Paperless HTTP timeout
 - Paperless 502/503
 - Ollama connection refused
-- LiteLLM provider timeout
+- OpenAI-compatible provider timeout
 - HTTP 429 / rate limit
 - temporary network issue
 
@@ -153,7 +153,7 @@ Recommended behavior:
 | Paperless timeout | yes | failed after max retries |
 | Paperless unavailable | yes | failed after max retries |
 | Ollama unavailable | yes | failed after max retries |
-| LiteLLM timeout | yes | failed after max retries |
+| OpenAI-compatible provider timeout | yes | failed after max retries |
 | Provider 429 | yes, provider-specific backoff | failed after max retries |
 | Invalid webhook payload | no | failed_permanent |
 | Missing document id | no | failed_permanent |
@@ -257,7 +257,7 @@ If Paperless is unavailable:
 - after max retries it becomes `failed`
 - manual retry is allowed
 
-## Ollama / LiteLLM Unavailable
+## Ollama / OpenAI-compatible Unavailable
 
 If model provider is unavailable:
 
