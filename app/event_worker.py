@@ -1,9 +1,8 @@
 """Event-driven worker bootstrap helpers.
 
-This module is intentionally small: Dramatiq workers execute actors, while the
-recovery loop periodically bridges durable queued PostgreSQL state back into
-RabbitMQ so persisted webhook deliveries are not lost when RabbitMQ was down at
-HTTP-ingestion time.
+This module is intentionally small: Absurd queue workers execute actors, while
+the recovery loop periodically bridges durable PostgreSQL state back into the
+queue so persisted webhook deliveries are never silently dropped.
 """
 
 from __future__ import annotations
@@ -13,6 +12,7 @@ import time
 
 import structlog
 
+from app.absurd_queue import has_queue_backend, start_queue_worker
 from app.actors.maintenance import reconcile_inbox_documents
 from app.config import settings
 from app.jobs.recovery import enqueue_webhook_delivery, run_recovery_scan
@@ -54,6 +54,22 @@ def run_recovery_loop(
         time.sleep(sleep_seconds)
 
 
+def start_queue_workers(*, concurrency: int = 1, claim_timeout: int = 120) -> None:
+    """Start the configured Absurd queue worker."""
+    if not has_queue_backend():
+        raise RuntimeError(
+            "No Absurd queue backend is configured. Set DATABASE_URL or ABSURD_DATABASE_URL."
+        )
+
+    worker_concurrency = max(1, concurrency)
+    log.info(
+        "Starting Absurd queue worker",
+        concurrency=worker_concurrency,
+        claim_timeout=claim_timeout,
+    )
+    start_queue_worker(concurrency=worker_concurrency, claim_timeout=claim_timeout)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Archibot event-driven worker utilities")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -77,6 +93,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persisted webhook_deliveries id to enqueue",
     )
 
+    start_workers = subparsers.add_parser(
+        "start-workers",
+        help="Start the configured Absurd queue worker",
+    )
+    start_workers.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Absurd worker concurrency.",
+    )
+    start_workers.add_argument(
+        "--claim-timeout",
+        type=int,
+        default=120,
+        help="Absurd claim timeout in seconds.",
+    )
+
     return parser
 
 
@@ -88,6 +121,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "enqueue-webhook":
         enqueue_webhook_delivery(args.delivery_id)
         log.info("webhook delivery enqueue requested", webhook_delivery_id=args.delivery_id)
+        return 0
+    if args.command == "start-workers":
+        if not has_queue_backend():
+            raise RuntimeError(
+                "No Absurd queue backend available. Set DATABASE_URL or ABSURD_DATABASE_URL."
+            )
+        start_queue_workers(concurrency=args.concurrency, claim_timeout=args.claim_timeout)
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")

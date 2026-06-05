@@ -141,7 +141,7 @@ The authorization check must happen before:
 
 - creating commands
 - changing pipeline state
-- enqueueing Dramatiq work
+- enqueueing Absurd work
 - retrying failed work
 - cancelling work
 - changing embedding/reindex state

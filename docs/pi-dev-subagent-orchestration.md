@@ -21,7 +21,7 @@ Archibot crosses several domains:
 - Queue/process reliability
 - Recovery and cancellation semantics
 - Tests and Docker runtime
-- Event-driven migration with commands, pipeline runs, events, RabbitMQ and Dramatiq
+- Event-driven migration with commands, pipeline runs, events, Absurd and Absurd
 
 A single long-running agent will likely lose context, mix layers, over-refactor Python, or skip tests. Fresh subagents reduce that risk.
 

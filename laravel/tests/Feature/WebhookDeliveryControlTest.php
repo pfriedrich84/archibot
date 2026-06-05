@@ -50,7 +50,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'RabbitMQ unavailable',
+            'error' => 'Absurd unavailable',
             'normalized_payload' => ['document_id' => 42, 'event' => 'updated'],
             'headers' => ['x-request-id' => 'req-123'],
         ]);
@@ -60,7 +60,7 @@ class WebhookDeliveryControlTest extends TestCase
             'paperless_document_id' => 42,
             'level' => 'error',
             'message' => 'Delivery failed.',
-            'payload' => ['reason' => 'RabbitMQ unavailable'],
+            'payload' => ['reason' => 'Absurd unavailable'],
             'created_at' => now(),
         ]);
 
@@ -72,7 +72,7 @@ class WebhookDeliveryControlTest extends TestCase
                 ->where('isAdmin', true)
                 ->where('deliveries.data.0.id', $delivery->id)
                 ->where('deliveries.data.0.status', WebhookDelivery::STATUS_FAILED)
-                ->where('deliveries.data.0.error', 'RabbitMQ unavailable')
+                ->where('deliveries.data.0.error', 'Absurd unavailable')
                 ->where('deliveries.data.0.can_retry', true)
                 ->where('deliveries.data.0.can_dismiss', true)
                 ->where('deliveries.data.0.retry_url', route('webhook-deliveries.retry', $delivery))
@@ -89,7 +89,7 @@ class WebhookDeliveryControlTest extends TestCase
                 ->where('delivery.normalized_payload.event', 'updated')
                 ->where('delivery.headers.x-request-id', 'req-123')
                 ->where('delivery.pipeline_events.0.event_type', 'paperless.delivery.failed')
-                ->where('delivery.pipeline_events.0.payload.reason', 'RabbitMQ unavailable')
+                ->where('delivery.pipeline_events.0.payload.reason', 'Absurd unavailable')
                 ->where('delivery.can_retry', true)
                 ->where('delivery.can_dismiss', true)
             );
@@ -105,7 +105,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'RabbitMQ unavailable',
+            'error' => 'Absurd unavailable',
             'processed_at' => now(),
         ]);
 

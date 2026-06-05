@@ -47,4 +47,4 @@ Status values: `done`, `partial`, `missing`, `deprecated`, `replaced-by-event-dr
 
 - Treat every `partial` row as a candidate for a focused follow-up issue before declaring complete GUI parity.
 - Prefer Laravel UI/routes as the product surface; keep Python CLI paths for debug/maintenance only.
-- When replacing legacy SQLite-derived views, target the durable event-driven model: `commands`, `pipeline_runs`, `pipeline_events`, RabbitMQ/Dramatiq, PostgreSQL and pgvector.
+- When replacing legacy SQLite-derived views, target the durable event-driven model: `commands`, `pipeline_runs`, `pipeline_events`, Absurd/Absurd, PostgreSQL and pgvector.

@@ -25,7 +25,7 @@ Date: 2026-05-27
 | --- | --- | --- |
 | `AGENTS.md` | Canonical operating contract | Clear entrypoint with reading order and event-driven invariants. |
 | `docs/agent/` | Agent governance | Strong coverage of rules, constraints, safety, checks, supply chain, memory, anti-patterns, autoresearch, and definition of done. |
-| `docs/decisions/` | Accepted ADRs | Strong event-driven migration decisions exist for Dramatiq, RabbitMQ, PostgreSQL/pgvector, webhooks, polling, retries, observability, progress, authorization, and temporary worker jobs. |
+| `docs/decisions/` | Accepted ADRs | Strong event-driven migration decisions exist for Absurd, PostgreSQL/pgvector, webhooks, polling, retries, observability, progress, authorization, and temporary worker jobs. |
 | `docs/architecture/` | Architecture contracts | Good detailed contracts for migration invariants and operator-visible behavior. |
 | `docs/developer/` | Implementation reference | Useful current-state references; some pages intentionally describe temporary `worker_jobs` behavior. |
 | `docs/user/` | Operator/user docs | Covers installation, configuration, deployment, webhooks, auth, and workflow. |

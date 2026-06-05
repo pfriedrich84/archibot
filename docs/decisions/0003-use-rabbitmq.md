@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0013: Use Absurd as the PostgreSQL-backed Python Queue](0013-use-absurd-postgresql-queue.md).
 
 ## Context
 

@@ -287,7 +287,7 @@ def test_enqueue_command_restores_pending_when_send_fails(monkeypatch):
     class Actor:
         @staticmethod
         def send(limit):
-            raise RuntimeError("broker down")
+            raise RuntimeError("queue down")
 
     monkeypatch.setattr(recovery, "build_initial_embedding_index", Actor())
     monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
@@ -444,7 +444,7 @@ def test_enqueue_document_pipeline_run_restores_pending_when_send_fails(monkeypa
     class Actor:
         @staticmethod
         def send(pipeline_run_id):
-            raise RuntimeError("broker down")
+            raise RuntimeError("queue down")
 
     monkeypatch.setattr(recovery, "handle_document_pipeline", Actor())
     monkeypatch.setattr(
@@ -501,7 +501,7 @@ def test_recovery_scan_enqueues_review_commits(monkeypatch):
     assert enqueued == [44]
 
 
-def test_enqueue_webhook_delivery_uses_dramatiq_send_when_available(monkeypatch):
+def test_enqueue_webhook_delivery_uses_absurd_send_when_available(monkeypatch):
     sent = []
 
     class Actor:
@@ -516,7 +516,7 @@ def test_enqueue_webhook_delivery_uses_dramatiq_send_when_available(monkeypatch)
     assert sent == [11]
 
 
-def test_enqueue_webhook_delivery_calls_plain_function_without_dramatiq(monkeypatch):
+def test_enqueue_webhook_delivery_calls_plain_function_without_absurd(monkeypatch):
     called = []
 
     monkeypatch.setattr(
@@ -574,7 +574,7 @@ def test_enqueue_review_commit_command_restores_pending_when_enqueue_fails(monke
     monkeypatch.setattr(
         recovery,
         "enqueue_review_commit",
-        lambda review_id, command_id=None: (_ for _ in ()).throw(RuntimeError("broker down")),
+        lambda review_id, command_id=None: (_ for _ in ()).throw(RuntimeError("queue down")),
     )
 
     with pytest.raises(RuntimeError):

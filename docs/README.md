@@ -10,14 +10,14 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`user/webhooks.md`](user/webhooks.md) — Paperless-Webhooks fuer sofortige Verarbeitung.
 - [`user/deployment.md`](user/deployment.md) — Dockhand, Reverse Proxy, Backup.
 - [`user/paperless-auth.md`](user/paperless-auth.md) — Anmeldung, Token-Kontext und Sicherheitsmodell.
-- [`operations/event-driven-pipeline.md`](operations/event-driven-pipeline.md) — Betrieb des event-driven Webhook-/Dramatiq-/Recovery-Pipelinepfads.
+- [`operations/event-driven-pipeline.md`](operations/event-driven-pipeline.md) — Betrieb des event-driven Webhook-/Absurd-/Recovery-Pipelinepfads.
 
 ## Developer
 
 - [`developer/architecture.md`](developer/architecture.md) — Architektur, Datenfluss, Komponenten.
 - [`developer/cli.md`](developer/cli.md) — CLI-Kommandos fuer Pipeline, Reindex, Reset.
 - [`developer/mcp.md`](developer/mcp.md) — MCP-Server, Tools, Auth und Integration.
-- [`developer/adr/README.md`](developer/adr/README.md) — Architecture Decision Records.
+- [`decisions/`](decisions/) — Architecture Decision Records.
 
 ## Event-driven Migration
 

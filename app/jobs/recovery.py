@@ -1,4 +1,4 @@
-"""Recovery scan skeleton for restart-safe Dramatiq workers."""
+"""Recovery scan skeleton for restart-safe Absurd workers."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def enqueue_reindex_command(command_id: int, limit: int | None = None) -> None:
 
 
 def _enqueue_command_actor(command_id: int, actor, limit: int | None = None) -> None:
-    """Mark a durable command queued and restore pending if broker send fails."""
+    """Mark a durable command queued and restore pending if Absurd enqueue fails."""
     mark_command_status(command_id, "queued")
     try:
         send = getattr(actor, "send", None)
@@ -108,7 +108,7 @@ def enqueue_review_commit_command(command_id: int, review_suggestion_id: int) ->
 
 
 def enqueue_document_pipeline_run(pipeline_run_id: int) -> None:
-    """Enqueue one pending document pipeline run for Dramatiq processing."""
+    """Enqueue one pending document pipeline run for Absurd processing."""
     mark_pipeline_run_status(
         pipeline_run_id,
         status="queued",
@@ -135,10 +135,10 @@ def enqueue_document_pipeline_run(pipeline_run_id: int) -> None:
 
 
 def enqueue_webhook_delivery(webhook_delivery_id: int) -> None:
-    """Enqueue one persisted webhook delivery for Dramatiq processing.
+    """Enqueue one persisted webhook delivery for Absurd processing.
 
-    In production `handle_paperless_webhook` is a Dramatiq actor and exposes
-    `.send(...)`. In local/test environments without Dramatiq installed the
+    In production `handle_paperless_webhook` is an Absurd actor and exposes
+    `.send(...)`. In local/test environments without Absurd configured the
     fallback is the plain implementation function, so call it directly.
     """
     send = getattr(handle_paperless_webhook, "send", None)

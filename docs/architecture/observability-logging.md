@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Archibot runs across Laravel, Python Dramatiq workers, RabbitMQ, PostgreSQL, Paperless and Ollama/LiteLLM providers.
+Archibot runs across Laravel, Python Absurd workers, Absurd, PostgreSQL, Paperless and Ollama/LiteLLM providers.
 
 Centralized structured observability is required to debug event-driven flows, retries, locks, webhook ingestion and provider outages.
 
@@ -37,7 +37,7 @@ Examples:
 - Python actor started
 - Paperless API call timed out
 - Ollama request failed after 60 s
-- RabbitMQ enqueue failed
+- Absurd enqueue failed
 - startup recovery scan requeued 4 runs
 
 Both are needed.
@@ -72,7 +72,7 @@ Recommended fields:
   "timestamp": "2026-05-08T12:00:00.000Z",
   "level": "info",
   "service": "archibot-python-worker",
-  "component": "dramatiq",
+  "component": "absurd",
   "environment": "production",
   "message": "actor started",
   "request_id": "req_...",
@@ -80,7 +80,7 @@ Recommended fields:
   "command_id": 456,
   "pipeline_run_id": "run_...",
   "actor_execution_id": "exec_...",
-  "message_id": "dramatiq-message-id",
+  "message_id": "absurd-message-id",
   "paperless_document_id": 789,
   "pipeline_dedupe_key": "...",
   "trigger_source": "webhook",
@@ -152,7 +152,7 @@ paperless_document_id
 trigger_source
 ```
 
-## Python / Dramatiq Logging
+## Python / Absurd Logging
 
 Python workers should log:
 
@@ -181,18 +181,18 @@ model
 
 Python should use structured logging consistently. `structlog` is a good fit because Archibot already uses it in Python code.
 
-## RabbitMQ Observability
+## Absurd Observability
 
 Capture or expose:
 
 ```text
 queue depth
-consumer count
-message publish rate
-message ack/nack rate
-dead-letter count
-redelivery count
-connection/channel errors
+task spawn rate
+task claim/completion/failure rate
+retrying/sleeping task count
+oldest pending task age
+worker loop errors
+PostgreSQL connection errors
 ```
 
 Recommended queues to monitor:
@@ -236,14 +236,14 @@ actor_retry_total
 paperless_request_duration_ms
 llm_request_duration_ms
 embedding_build_progress
-rabbitmq_queue_depth
+absurd_queue_depth
 pending_webhook_deliveries
 blocked_pipeline_runs
 poll_runs_total
 poll_coalesced_total
 ```
 
-Metrics can be added through Prometheus-compatible endpoints, Laravel metrics middleware, Python instrumentation, RabbitMQ exporter and PostgreSQL exporter.
+Metrics can be added through Prometheus-compatible endpoints, Laravel metrics middleware, Python instrumentation, Absurd exporter and PostgreSQL exporter.
 
 ## Tracing
 
@@ -333,12 +333,12 @@ Recommended Grafana dashboards:
 - average actor duration
 - worker crash/recovery count
 
-### Broker Health
+### Absurd Queue Health
 
-- RabbitMQ queue depth
-- dead-letter messages
-- consumer count
-- redelivery count
+- Absurd queue depth
+- oldest pending task age
+- retrying/sleeping task count
+- worker claim/completion/failure rate
 
 ### Provider Health
 

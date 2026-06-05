@@ -9,5 +9,5 @@ return [
     'paperless_webhook_secret' => env('PAPERLESS_WEBHOOK_SECRET', env('WEBHOOK_SECRET', '')),
     'webhook_direct_enqueue_enabled' => env('ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE', false),
     'poll_interval_seconds' => env('POLL_INTERVAL_SECONDS', 600),
-    'dramatiq_broker_url' => env('DRAMATIQ_BROKER_URL', ''),
+    'absurd_database_url' => env('ABSURD_DATABASE_URL', env('DATABASE_URL', '')),
 ];

@@ -25,7 +25,7 @@
 
 - When changing code that depends on third-party libraries, frameworks, SDKs, APIs, CLIs, generated clients, or config formats, consult current external documentation first when available.
 - Prefer Context7 for current, version-specific public documentation; if Context7 is unavailable or unhelpful, use official docs, release notes, repository README files, or source code and mention the fallback in the summary.
-- Do not rely only on model memory for dependency-sensitive implementation details such as Laravel/Svelte APIs, httpx/OpenAI-compatible payloads, Docker/Compose syntax, Dramatiq/RabbitMQ behavior, or Paperless API semantics.
+- Do not rely only on model memory for dependency-sensitive implementation details such as Laravel/Svelte APIs, httpx/OpenAI-compatible payloads, Docker/Compose syntax, Absurd/PostgreSQL queue behavior, or Paperless API semantics.
 
 ## Refactoring discipline
 

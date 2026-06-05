@@ -149,9 +149,9 @@ Retries a stored webhook delivery that could not be enqueued or normalized.
 
 Examples:
 
-- RabbitMQ was unavailable
+- Absurd was unavailable
 - embedding gate was closed
-- temporary DB/broker issue after persistence
+- temporary DB/Absurd enqueue issue after persistence
 
 ## Retry Modes
 
@@ -166,7 +166,7 @@ Examples:
 - Ollama unavailable
 - LiteLLM timeout
 - HTTP 429 with retry-after
-- broker reconnect issue
+- Absurd/PostgreSQL reconnect issue
 
 ### Manual Retry
 
@@ -409,7 +409,7 @@ actor starts
   -> writes actor_execution retrying
   -> writes pipeline event actor.retry_scheduled
   -> sets next_retry_at
-  -> Dramatiq requeues with backoff
+  -> Absurd requeues with backoff
 ```
 
 After max attempts:
@@ -486,7 +486,7 @@ Retry failed items: 3 / 3 succeeded
 
 ## Retry Flow: Webhook Delivery
 
-If RabbitMQ is unavailable after persisting delivery:
+If Absurd is unavailable after persisting delivery:
 
 ```text
 webhook_delivery.status = queued or retry_pending

@@ -9,7 +9,7 @@ Accepted
 Archibot's event-driven pipeline depends on several external and internal systems:
 
 - PostgreSQL for durable state
-- RabbitMQ for message transport
+- Absurd for message transport
 - Paperless for document metadata and content
 - Ollama or LiteLLM providers for OCR/classification/LLM work
 - container runtime / host availability
@@ -18,7 +18,7 @@ Failures are expected:
 
 - container reboot or rebuild
 - worker crash during processing
-- RabbitMQ restart
+- Absurd restart
 - PostgreSQL restart
 - Paperless temporarily unreachable
 - Ollama/LiteLLM temporarily unreachable
@@ -31,7 +31,7 @@ The pipeline must be restart-safe and retryable without creating duplicate proce
 
 ## Decision
 
-Archibot uses durable pipeline state in PostgreSQL plus Dramatiq retry semantics for transient execution failures.
+Archibot uses durable pipeline state in PostgreSQL plus Absurd retry semantics for transient execution failures.
 
 PostgreSQL is the source of truth for:
 
@@ -43,7 +43,7 @@ PostgreSQL is the source of truth for:
 - document processing dedupe keys
 - final failure state
 
-RabbitMQ/Dramatiq is used for execution transport, not as the only source of job truth.
+Absurd/Absurd is used for execution transport, not as the only source of job truth.
 
 All actors must be idempotent and safe to retry.
 
@@ -58,7 +58,7 @@ Examples:
 - LiteLLM provider timeout
 - HTTP 429 / 5xx
 - network timeout
-- RabbitMQ reconnect
+- Absurd reconnect
 
 Behavior:
 
@@ -310,7 +310,7 @@ What gets harder:
 What must not be done anymore:
 
 - relying only on in-memory progress
-- treating RabbitMQ messages as the only job state
+- treating Absurd messages as the only job state
 - starting non-idempotent actors
 - retrying validation/permanent failures forever
 - hiding worker crashes behind generic failed logs

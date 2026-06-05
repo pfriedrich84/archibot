@@ -1,10 +1,5 @@
 # Architecture Decision Records
 
-Use this directory for significant architecture decisions that future maintainers and coding agents should preserve.
+Accepted Architecture Decision Records live in [`../../decisions/`](../../decisions/).
 
-Suggested first ADRs:
-
-- Single-container Docker-first deployment model.
-- Local OpenAI-compatible or Ollama-Interface.
-- PostgreSQL + pgvector for local state and similarity search.
-- Python worker/CLI/MCP split from Laravel/Svelte UI.
+This directory is retained as a compatibility pointer for older links. Do not add new ADRs here.

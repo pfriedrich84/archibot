@@ -1,1 +1,1 @@
-"""Shared job helpers for Dramatiq actors."""
+"""Shared job helpers for Absurd actors."""

@@ -21,6 +21,7 @@ class EmbeddingIndexControlTest extends TestCase
     public function test_admin_can_queue_embedding_index_build_command(): void
     {
         Queue::fake();
+        Config::set('archibot.absurd_database_url', '');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
@@ -76,10 +77,10 @@ class EmbeddingIndexControlTest extends TestCase
         $this->assertDatabaseCount('commands', 0);
     }
 
-    public function test_dramatiq_configured_embedding_build_stays_on_command_path(): void
+    public function test_absurd_configured_embedding_build_stays_on_command_path(): void
     {
         Queue::fake();
-        Config::set('archibot.dramatiq_broker_url', 'amqp://rabbitmq');
+        Config::set('archibot.absurd_database_url', 'postgresql://archibot:archibot@postgres:5432/archibot');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)

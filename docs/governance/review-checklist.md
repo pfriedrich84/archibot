@@ -9,7 +9,7 @@ Use this checklist for every migration change.
 - Webhooks and polling use the same pipeline-start/dedupe/lock logic.
 - No document processing starts before `embedding_index_state.status = complete`.
 - PostgreSQL is the durable source of truth for progress, retries and audit state.
-- RabbitMQ/Dramatiq is execution transport, not the only job state.
+- Absurd/Absurd is execution transport, not the only job state.
 - Actors are idempotent and retry-safe.
 - The existing Laravel dashboard is extended, not replaced.
 - No new legacy compatibility mode is introduced.
@@ -20,7 +20,7 @@ Use this checklist for every migration change.
 - Raw and normalized payloads are persisted before enqueueing.
 - Dedupe key is stable and enforced.
 - The HTTP request does no OCR, embedding, classification, LLM or heavy Paperless work.
-- RabbitMQ/enqueue failure does not lose the persisted delivery.
+- Absurd/enqueue failure does not lose the persisted delivery.
 
 ## Durable progress/retry
 
