@@ -32,6 +32,20 @@ def _payload_json(payload: dict[str, Any] | None) -> str:
     return json.dumps(payload or {}, ensure_ascii=False, default=_json_default)
 
 
+def _log_level_method(level: str) -> str:
+    """Return a structlog method name for a durable event level string."""
+    normalized = str(level or "info").strip().lower()
+    return {
+        "debug": "debug",
+        "info": "info",
+        "success": "info",
+        "warning": "warning",
+        "warn": "warning",
+        "error": "error",
+        "critical": "critical",
+    }.get(normalized, "info")
+
+
 def publish_pipeline_event(
     event_type: str,
     *,
@@ -85,10 +99,11 @@ def publish_pipeline_event(
             },
         )
 
-    log.bind(
+    bound_log = log.bind(
         event_type=event_type,
         pipeline_run_id=pipeline_run_id,
         webhook_delivery_id=webhook_delivery_id,
         paperless_document_id=paperless_document_id,
         **(payload or {}),
-    ).log(level, message or event_type)
+    )
+    getattr(bound_log, _log_level_method(level))(message or event_type)
