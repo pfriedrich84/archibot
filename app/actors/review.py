@@ -17,6 +17,7 @@ from app.jobs.actor_execution import (
     start_actor_execution,
 )
 from app.jobs.commands import mark_command_status
+from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.review_commit import (
     commit_review_suggestion_to_paperless,
@@ -59,6 +60,17 @@ def _commit_review_suggestion_impl(
 
     if command_id is not None:
         mark_command_status(command_id, "running")
+    if actor_execution.id is not None:
+        update_actor_execution_progress(
+            actor_execution.id,
+            ProgressSnapshot(
+                total=3,
+                done=0,
+                phase="review_commit_load",
+                message="Review commit actor accepted the request.",
+            ),
+            current_item=f"review_suggestion:{review_suggestion_id}",
+        )
 
     try:
         record = load_review_commit(review_suggestion_id)
@@ -76,8 +88,30 @@ def _commit_review_suggestion_impl(
             return
 
         mark_review_commit_status(review_suggestion_id, "running")
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=3,
+                    done=1,
+                    phase="review_commit_paperless",
+                    message="Committing accepted review suggestion to Paperless.",
+                ),
+                current_item=f"paperless_document:{record.paperless_document_id}",
+            )
         fields = run_async(commit_record(record))
         mark_review_commit_status(review_suggestion_id, "committed")
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=3,
+                    done=3,
+                    phase="review_commit_finished",
+                    message="Accepted review suggestion committed to Paperless.",
+                ),
+                current_item=f"paperless_document:{record.paperless_document_id}",
+            )
         if command_id is not None:
             mark_command_status(command_id, "succeeded")
         publish_pipeline_event(

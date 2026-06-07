@@ -12,7 +12,8 @@
 </script>
 
 <script lang="ts">
-    import { Form, page } from '@inertiajs/svelte';
+    import { Form, page, router } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
@@ -292,6 +293,26 @@
 
         return 'Check';
     }
+
+    const dashboardHasActiveWork = $derived(
+        counts.queued_or_running_workers > 0 ||
+            counts.active_pipeline_runs > 0 ||
+            counts.running_actor_executions > 0 ||
+            embeddingIndex.status === 'building' ||
+            embeddingIndex.pending_build_commands > 0 ||
+            maintenance.pending_poll_commands > 0 ||
+            maintenance.pending_reindex_commands > 0,
+    );
+
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            if (dashboardHasActiveWork) {
+                router.reload();
+            }
+        }, 5000);
+
+        return () => window.clearInterval(interval);
+    });
 </script>
 
 <AppHead title="Dashboard" />

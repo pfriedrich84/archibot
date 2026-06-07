@@ -14,7 +14,8 @@
 </script>
 
 <script lang="ts">
-    import { Form } from '@inertiajs/svelte';
+    import { Form, router } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
@@ -145,6 +146,20 @@
     } = $props();
 
     const pretty = (value: unknown) => JSON.stringify(value, null, 2);
+
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            if (
+                ['pending', 'running', 'retrying', 'cancel_requested'].includes(
+                    run.status,
+                )
+            ) {
+                router.reload({ only: ['run'] });
+            }
+        }, 3000);
+
+        return () => window.clearInterval(interval);
+    });
 </script>
 
 <AppHead title={`Pipeline run ${run.id}`} />

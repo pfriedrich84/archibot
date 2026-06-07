@@ -4,6 +4,16 @@ from app.jobs.pipeline_start import PipelineStartResult
 from app.jobs.webhook_delivery import WebhookDeliveryRecord
 
 
+def _capture_progress(monkeypatch):
+    progresses = []
+    monkeypatch.setattr(
+        webhook,
+        "update_actor_execution_progress",
+        lambda *args, **kwargs: progresses.append((args, kwargs)),
+    )
+    return progresses
+
+
 def test_webhook_action_validation_accepts_only_laravel_normalized_actions():
     assert webhook.validated_webhook_action("refresh_embedding") == "refresh_embedding"
     assert webhook.validated_webhook_action("process_document") == "process_document"
@@ -24,6 +34,7 @@ def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
     statuses = []
     starts = []
     actor_finishes = []
+    progresses = _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         webhook,
@@ -90,6 +101,11 @@ def test_webhook_actor_starts_shared_pipeline_and_marks_blocked(monkeypatch):
     assert events[0][1]["webhook_delivery_id"] == 123
     assert events[0][1]["paperless_document_id"] == 42
     assert actor_finishes[0][1] == {"status": "blocked", "error_type": "embedding_index_not_ready"}
+    assert [call[0][1].phase for call in progresses] == [
+        "webhook_normalize",
+        "process_document",
+        "webhook_finished",
+    ]
 
 
 def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
@@ -97,6 +113,7 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
     actor_finishes = []
     starts = []
     refreshes = []
+    progresses = _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         webhook,
@@ -149,12 +166,18 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
     assert starts == []
     assert refreshes == [7]
     assert actor_finishes[0][1] == {"status": "succeeded", "error_type": None}
+    assert [call[0][1].phase for call in progresses] == [
+        "webhook_normalize",
+        "refresh_embedding",
+        "webhook_finished",
+    ]
 
 
 def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypatch):
     events = []
     statuses = []
     actor_finishes = []
+    _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         webhook,

@@ -60,7 +60,10 @@ def test_poll_reconciliation_uses_shared_pipeline_start(monkeypatch):
         },
         {"trigger_source": "poll", "paperless_document_id": 43, "paperless_modified": None},
     ]
-    assert len(progresses) == 2
+    assert len(progresses) == 4
+    assert progresses[0][0][1].phase == "poll_reconciliation_prepare"
+    assert progresses[1][0][1].phase == "poll_reconciliation"
+    assert progresses[-1][0][1].done == 2
     assert events[-1][0] == ("poll.reconciliation.completed",)
     assert finishes[-1][1] == {"status": "succeeded"}
 
@@ -82,6 +85,9 @@ def test_poll_reconciliation_schedules_retry_for_transient_fetch_failure(monkeyp
         raise TimeoutError("paperless slow")
 
     monkeypatch.setattr(maintenance, "_fetch_inbox_documents", fake_fetch)
+    monkeypatch.setattr(
+        maintenance, "update_actor_execution_progress", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(
         maintenance,
         "schedule_actor_execution_retry",
@@ -115,6 +121,9 @@ def test_poll_reconciliation_skips_without_inbox_tag(monkeypatch):
         lambda **kwargs: ActorExecutionHandle(
             id=7, actor_name=kwargs["actor_name"], started_monotonic=0
         ),
+    )
+    monkeypatch.setattr(
+        maintenance, "update_actor_execution_progress", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         maintenance, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))

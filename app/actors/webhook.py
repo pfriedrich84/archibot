@@ -24,6 +24,7 @@ from app.jobs.document_embeddings import (
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_start import start_or_attach_document_pipeline
+from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.webhook_delivery import load_webhook_delivery, mark_webhook_delivery_status
 from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
 from app.pipeline.trusted_context import is_trusted_document
@@ -203,6 +204,17 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             paperless_document_id=delivery.paperless_document_id,
             queue_name=queue_name("webhook"),
         )
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=3,
+                    done=0,
+                    phase="webhook_normalize",
+                    message="Webhook actor accepted the delivery.",
+                ),
+                current_item=f"webhook_delivery:{webhook_delivery_id}",
+            )
         try:
             action = validated_webhook_action(delivery.webhook_action)
         except InvalidWebhookAction as exc:
@@ -237,6 +249,18 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             payload={"event_type": delivery.event_type, "webhook_action": action},
         )
 
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=3,
+                    done=1,
+                    phase=action,
+                    message="Webhook action normalized and dispatching requested work.",
+                ),
+                current_item=f"paperless_document:{delivery.paperless_document_id}",
+            )
+
         if action == "process_document":
             reprocess_requested = webhook_requests_reprocess(action)
             result = start_or_attach_document_pipeline(
@@ -252,6 +276,18 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             mark_webhook_delivery_status(
                 webhook_delivery_id, delivery_status, result.blocked_reason
             )
+            if actor_execution.id is not None:
+                update_actor_execution_progress(
+                    actor_execution.id,
+                    ProgressSnapshot(
+                        total=3,
+                        done=3,
+                        failed=0 if delivery_status == "processed" else 1,
+                        phase="webhook_finished",
+                        message=f"Webhook process action finished with status {delivery_status}.",
+                    ),
+                    current_item=f"paperless_document:{delivery.paperless_document_id}",
+                )
             finish_actor_execution(
                 actor_execution,
                 status="succeeded" if delivery_status == "processed" else "blocked",
@@ -267,6 +303,18 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
                 status="succeeded" if refresh.status == "processed" else "blocked",
                 error_type=refresh.blocked_reason or refresh.skipped_reason,
             )
+            if actor_execution.id is not None:
+                update_actor_execution_progress(
+                    actor_execution.id,
+                    ProgressSnapshot(
+                        total=3,
+                        done=3,
+                        failed=0 if refresh.status == "processed" else 1,
+                        phase="webhook_finished",
+                        message=f"Webhook embedding refresh finished with status {refresh.status}.",
+                    ),
+                    current_item=f"paperless_document:{delivery.paperless_document_id}",
+                )
             if refresh.status == "blocked":
                 publish_pipeline_event(
                     types.PIPELINE_BLOCKED_EMBEDDING_NOT_READY,
@@ -278,6 +326,17 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         else:
             deleted = _delete_document_embedding(delivery.paperless_document_id)
             mark_webhook_delivery_status(webhook_delivery_id, "processed", None)
+            if actor_execution.id is not None:
+                update_actor_execution_progress(
+                    actor_execution.id,
+                    ProgressSnapshot(
+                        total=3,
+                        done=3,
+                        phase="webhook_finished",
+                        message="Webhook delete action finished.",
+                    ),
+                    current_item=f"paperless_document:{delivery.paperless_document_id}",
+                )
             finish_actor_execution(actor_execution, status="succeeded")
             log.info(
                 "webhook deleted document embeddings",

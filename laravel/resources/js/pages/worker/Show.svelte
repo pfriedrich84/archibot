@@ -16,7 +16,8 @@
 </script>
 
 <script lang="ts">
-    import { Form } from '@inertiajs/svelte';
+    import { Form, router } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
@@ -177,6 +178,16 @@
             ? Math.min(100, Math.round((progressDone / progressTotal) * 100))
             : 0,
     );
+
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            if (['queued', 'running', 'cancelling'].includes(job.status)) {
+                router.reload({ only: ['job', 'logs'] });
+            }
+        }, 3000);
+
+        return () => window.clearInterval(interval);
+    });
 </script>
 
 <AppHead title={`Worker job ${job.id}`} />

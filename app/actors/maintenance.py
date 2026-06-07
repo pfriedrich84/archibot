@@ -50,6 +50,17 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
         limit=limit,
     )
 
+    if actor_execution.id is not None:
+        update_actor_execution_progress(
+            actor_execution.id,
+            ProgressSnapshot(
+                total=0,
+                done=0,
+                phase="poll_reconciliation_prepare",
+                message="Polling reconciliation actor accepted the request.",
+            ),
+        )
+
     try:
         if settings.paperless_inbox_tag_id <= 0:
             message = (
@@ -69,6 +80,16 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
             documents = documents[:limit]
 
         total = len(documents)
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=total,
+                    done=0,
+                    phase="poll_reconciliation",
+                    message="Polling reconciliation fetched inbox documents.",
+                ),
+            )
         for index, document in enumerate(documents, 1):
             document_id = int(document.id)
             start_or_attach_document_pipeline(

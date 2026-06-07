@@ -5,10 +5,21 @@ from app.jobs.actor_execution import ActorExecutionHandle
 from app.jobs.review_commit import ReviewCommitRecord
 
 
+def _capture_progress(monkeypatch):
+    progresses = []
+    monkeypatch.setattr(
+        review,
+        "update_actor_execution_progress",
+        lambda *args, **kwargs: progresses.append((args, kwargs)),
+    )
+    return progresses
+
+
 def test_commit_review_suggestion_actor_commits_and_marks_status(monkeypatch):
     statuses = []
     finishes = []
     events = []
+    progresses = _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         review,
@@ -58,12 +69,18 @@ def test_commit_review_suggestion_actor_commits_and_marks_status(monkeypatch):
     assert events[0][1]["paperless_document_id"] == 42
     assert events[0][1]["payload"]["command_id"] == 77
     assert finishes[0][1] == {"status": "succeeded"}
+    assert [call[0][1].phase for call in progresses] == [
+        "review_commit_load",
+        "review_commit_paperless",
+        "review_commit_finished",
+    ]
 
 
 def test_commit_review_suggestion_actor_schedules_retry_for_transient_failure(monkeypatch):
     statuses = []
     retries = []
     events = []
+    _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         review,
@@ -127,6 +144,7 @@ def test_commit_review_suggestion_actor_schedules_retry_for_transient_failure(mo
 def test_commit_review_suggestion_actor_skips_missing_record(monkeypatch):
     finishes = []
     events = []
+    _capture_progress(monkeypatch)
 
     monkeypatch.setattr(
         review,
