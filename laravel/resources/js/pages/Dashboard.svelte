@@ -18,7 +18,6 @@
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
     import { index as reviewIndex } from '@/routes/review';
-    import { index as workerJobsIndex } from '@/routes/worker-jobs';
 
     type DashboardStatus = {
         setup_complete: boolean;
@@ -36,14 +35,6 @@
 
     type Counts = {
         pending_reviews: number;
-        queued_or_running_workers: number;
-        queued_worker_jobs: number;
-        running_worker_jobs: number;
-        cancelling_worker_jobs: number;
-        failed_workers: number;
-        failed_worker_jobs: number;
-        stale_queued_worker_jobs: number;
-        stale_running_worker_jobs: number;
         queued_webhook_deliveries: number;
         active_pipeline_runs: number;
         pending_pipeline_runs: number;
@@ -299,8 +290,7 @@
     }
 
     const dashboardHasActiveWork = $derived(
-        counts.queued_or_running_workers > 0 ||
-            counts.active_pipeline_runs > 0 ||
+        counts.active_pipeline_runs > 0 ||
             counts.running_actor_executions > 0 ||
             embeddingIndex.status === 'building' ||
             embeddingIndex.pending_build_commands > 0 ||
@@ -324,7 +314,7 @@
 <div class="space-y-6">
     <Heading title="Dashboard" description="ArchiBot application status." />
 
-    <div class="grid gap-4 md:grid-cols-3">
+    <div class="grid gap-4 md:grid-cols-4">
         <a
             class="rounded-xl border p-4 hover:bg-muted/50"
             href={reviewIndex().url}
@@ -334,37 +324,12 @@
                 {counts.pending_reviews}
             </div>
         </a>
-        <a
-            class="rounded-xl border p-4 hover:bg-muted/50"
-            href={workerJobsIndex().url}
-        >
-            <div class="text-sm text-muted-foreground">
-                Queued/running workers
-            </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Queued webhooks</div>
             <div class="mt-2 text-3xl font-semibold">
-                {counts.queued_or_running_workers}
+                {counts.queued_webhook_deliveries}
             </div>
-            <div class="mt-1 text-xs text-muted-foreground">
-                {counts.queued_worker_jobs} queued · {counts.running_worker_jobs}
-                running · {counts.cancelling_worker_jobs} cancelling
-            </div>
-        </a>
-        <a
-            class="rounded-xl border p-4 hover:bg-muted/50"
-            href={workerJobsIndex().url}
-        >
-            <div class="text-sm text-muted-foreground">Failed workers</div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.failed_workers}
-            </div>
-            <div class="mt-1 text-xs text-muted-foreground">
-                {counts.stale_queued_worker_jobs} stale queued · {counts.stale_running_worker_jobs}
-                stale running
-            </div>
-        </a>
-    </div>
-
-    <div class="grid gap-4 md:grid-cols-3">
+        </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Running actors</div>
             <div class="mt-2 text-3xl font-semibold">
@@ -375,12 +340,6 @@
             <div class="text-sm text-muted-foreground">Failed actors</div>
             <div class="mt-2 text-3xl font-semibold">
                 {counts.failed_actor_executions}
-            </div>
-        </div>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">Queued webhooks</div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.queued_webhook_deliveries}
             </div>
         </div>
     </div>

@@ -28,7 +28,6 @@ class DashboardController extends Controller
         $inboxTagLabel = null;
         $pendingRedispatchSeconds = (int) config('archibot_workers.pending_redispatch_seconds', 900);
         $pendingRedispatchCutoff = now()->subSeconds($pendingRedispatchSeconds);
-        $staleRunningCutoff = now()->subMinutes((int) config('archibot_workers.stale_running_minutes', 10));
         $lastRecoverySuccess = AppSetting::getValue('worker_jobs.recovery.last_successful_at');
         $lastRecoveryError = AppSetting::getValue('worker_jobs.recovery.last_error');
         $lastRecoveryErrorAt = AppSetting::getValue('worker_jobs.recovery.last_error_at');
@@ -132,31 +131,6 @@ class DashboardController extends Controller
             ],
             'counts' => [
                 'pending_reviews' => ReviewSuggestion::pendingReviewQueueCount(),
-                'queued_or_running_workers' => WorkerJob::query()
-                    ->whereIn('status', [WorkerJob::STATUS_QUEUED, WorkerJob::STATUS_RUNNING])
-                    ->count(),
-                'queued_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_QUEUED)
-                    ->count(),
-                'running_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_RUNNING)
-                    ->count(),
-                'cancelling_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_CANCELLING)
-                    ->count(),
-                'failed_workers' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_FAILED)
-                    ->count(),
-                'failed_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_FAILED)
-                    ->count(),
-                'stale_queued_worker_jobs' => $staleQueuedWorkerJobs,
-                'stale_running_worker_jobs' => WorkerJob::query()
-                    ->where('status', WorkerJob::STATUS_RUNNING)
-                    ->where(fn ($query) => $query
-                        ->whereNull('heartbeat_at')
-                        ->orWhere('heartbeat_at', '<', $staleRunningCutoff))
-                    ->count(),
                 'queued_webhook_deliveries' => WebhookDelivery::query()
                     ->where('status', WebhookDelivery::STATUS_QUEUED)
                     ->count(),
