@@ -28,6 +28,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import traceback
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +43,19 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import init_db
 from app.jobs.embedding_index import finish_embedding_index_build, start_embedding_index_build
+
+
+def _exception_summary(exc: BaseException) -> str:
+    """Return a compact error summary with the first useful application frame."""
+    message = str(exc).strip()
+    summary = f"{type(exc).__name__}: {message[:700]}" if message else type(exc).__name__
+    frames = traceback.extract_tb(exc.__traceback__)
+    for frame in reversed(frames):
+        filename = frame.filename.rsplit("/", 1)[-1]
+        if frame.filename.endswith("app/cli.py"):
+            continue
+        return f"{summary} ({filename}:{frame.lineno} in {frame.name})"[:1000]
+    return summary[:1000]
 
 
 def _configure_logging() -> None:
@@ -1195,7 +1209,10 @@ def main() -> None:
     except Exception as exc:
         if contract is not None:
             _, output_path = contract
-            _write_worker_output(output_path, {"ok": False, "command": cmd_name, "error": str(exc)})
+            _write_worker_output(
+                output_path,
+                {"ok": False, "command": cmd_name, "error": _exception_summary(exc)},
+            )
         raise
 
 

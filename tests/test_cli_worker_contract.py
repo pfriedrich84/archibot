@@ -581,4 +581,7 @@ def test_main_worker_contract_writes_failure_output(
             main()
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload == {"ok": False, "command": "poll", "error": "boom"}
+    assert payload["ok"] is False
+    assert payload["command"] == "poll"
+    assert payload["error"].startswith("RuntimeError: boom")
+    assert ".py:" in payload["error"]
