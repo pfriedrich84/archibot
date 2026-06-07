@@ -56,6 +56,7 @@
 
     type EmbeddingBuildCommand = {
         id: number;
+        type: string;
         status: string;
         error: string | null;
         created_at: string | null;
@@ -72,6 +73,8 @@
         latestEmbeddingBuildCommand: EmbeddingBuildCommand | null;
     } = $props();
 
+    const activeStatuses = ['pending', 'queued', 'running', 'cancelling'];
+
     const progressPercent = $derived(
         latestReindexJob && (latestReindexJob.progress.total ?? 0) > 0
             ? Math.min(
@@ -83,6 +86,25 @@
                   ),
               )
             : 0,
+    );
+
+    const snapshotProgressPercent = $derived(
+        snapshot.document_count > 0
+            ? Math.min(
+                  100,
+                  Math.round(
+                      ((snapshot.embedded_count + snapshot.failed_count) /
+                          snapshot.document_count) *
+                          100,
+                  ),
+              )
+            : 0,
+    );
+
+    const snapshotBuildActive = $derived(
+        snapshot.status === 'building' ||
+            (latestEmbeddingBuildCommand !== null &&
+                activeStatuses.includes(latestEmbeddingBuildCommand.status)),
     );
 
     const knownDocumentCount = $derived(
@@ -99,10 +121,9 @@
     onMount(() => {
         const interval = window.setInterval(() => {
             if (
-                latestReindexJob &&
-                ['queued', 'running', 'cancelling'].includes(
-                    latestReindexJob.status,
-                )
+                snapshotBuildActive ||
+                (latestReindexJob !== null &&
+                    activeStatuses.includes(latestReindexJob.status))
             ) {
                 router.reload({
                     only: [
@@ -150,6 +171,38 @@
             <div class="mt-2 text-3xl font-semibold">{missingCount}</div>
         </div>
     </div>
+
+    {#if snapshotBuildActive || snapshot.document_count > 0}
+        <section class="rounded-xl border p-4">
+            <div
+                class="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+                <div>
+                    <div class="font-medium">
+                        Current pgvector build progress
+                    </div>
+                    <div class="text-muted-foreground">
+                        {snapshot.embedded_count + snapshot.failed_count} / {snapshot.document_count}
+                        processed
+                        {#if snapshot.failed_count}
+                            · {snapshot.failed_count} failed
+                        {/if}
+                    </div>
+                </div>
+                <div class="rounded-full bg-muted px-2 py-0.5 text-xs">
+                    {snapshot.status}
+                </div>
+            </div>
+            {#if snapshot.document_count > 0}
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                        class="h-full bg-primary transition-all"
+                        style={`width: ${snapshotProgressPercent}%`}
+                    ></div>
+                </div>
+            {/if}
+        </section>
+    {/if}
 
     <section class="grid gap-4 md:grid-cols-3">
         <div class="rounded-xl border p-4">
@@ -203,7 +256,7 @@
             {#if latestEmbeddingBuildCommand}
                 <div class="rounded-md border p-3">
                     <div class="font-medium">
-                        Embedding build command {latestEmbeddingBuildCommand.id}
+                        Embedding command {latestEmbeddingBuildCommand.id} · {latestEmbeddingBuildCommand.type}
                     </div>
                     <div class="text-muted-foreground">
                         Status: {latestEmbeddingBuildCommand.status}

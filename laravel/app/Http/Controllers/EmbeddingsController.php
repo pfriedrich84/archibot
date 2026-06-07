@@ -23,7 +23,7 @@ class EmbeddingsController extends Controller
             ->first();
 
         $latestEmbeddingBuildCommand = Command::query()
-            ->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)
+            ->whereIn('type', [Command::TYPE_EMBEDDING_INDEX_BUILD, Command::TYPE_REINDEX])
             ->latest()
             ->first();
 
@@ -42,6 +42,7 @@ class EmbeddingsController extends Controller
             ] : null,
             'latestEmbeddingBuildCommand' => $latestEmbeddingBuildCommand ? [
                 'id' => $latestEmbeddingBuildCommand->id,
+                'type' => $latestEmbeddingBuildCommand->type,
                 'status' => $latestEmbeddingBuildCommand->status,
                 'error' => $latestEmbeddingBuildCommand->error,
                 'created_at' => $latestEmbeddingBuildCommand->created_at?->toISOString(),

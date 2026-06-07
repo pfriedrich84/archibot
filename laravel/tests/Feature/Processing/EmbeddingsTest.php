@@ -3,6 +3,7 @@
 namespace Tests\Feature\Processing;
 
 use App\Models\AppSetting;
+use App\Models\Command;
 use App\Models\DocumentEmbedding;
 use App\Models\EmbeddingIndexState;
 use App\Models\User;
@@ -91,6 +92,37 @@ class EmbeddingsTest extends TestCase
                 ->where('snapshot.embedded_count', 138)
                 ->where('snapshot.pgvector_embedded_count', 0)
                 ->where('snapshot.missing_count', 0)
+            );
+    }
+
+    public function test_embeddings_page_exposes_active_reindex_command_for_pgvector_progress(): void
+    {
+        EmbeddingIndexState::query()->create([
+            'status' => 'building',
+            'document_count' => 10,
+            'embedded_count' => 4,
+            'failed_count' => 1,
+        ]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+            'payload' => ['ui_surface' => 'worker_jobs_quick_controls'],
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('processing/Embeddings')
+                ->where('snapshot.status', 'building')
+                ->where('snapshot.document_count', 10)
+                ->where('snapshot.embedded_count', 4)
+                ->where('snapshot.failed_count', 1)
+                ->where('latestEmbeddingBuildCommand.id', $command->id)
+                ->where('latestEmbeddingBuildCommand.type', Command::TYPE_REINDEX)
+                ->where('latestEmbeddingBuildCommand.status', Command::STATUS_RUNNING)
             );
     }
 
