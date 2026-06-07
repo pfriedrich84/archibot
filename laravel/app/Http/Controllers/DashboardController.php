@@ -163,6 +163,18 @@ class DashboardController extends Controller
                 'active_pipeline_runs' => PipelineRun::query()
                     ->whereIn('status', [PipelineRun::STATUS_PENDING, PipelineRun::STATUS_QUEUED, PipelineRun::STATUS_RUNNING, PipelineRun::STATUS_RETRYING])
                     ->count(),
+                'pending_pipeline_runs' => PipelineRun::query()
+                    ->where('status', PipelineRun::STATUS_PENDING)
+                    ->count(),
+                'queued_pipeline_runs' => PipelineRun::query()
+                    ->where('status', PipelineRun::STATUS_QUEUED)
+                    ->count(),
+                'running_pipeline_runs' => PipelineRun::query()
+                    ->where('status', PipelineRun::STATUS_RUNNING)
+                    ->count(),
+                'retrying_pipeline_runs' => PipelineRun::query()
+                    ->where('status', PipelineRun::STATUS_RETRYING)
+                    ->count(),
                 'blocked_pipeline_runs' => PipelineRun::query()
                     ->where('status', PipelineRun::STATUS_BLOCKED)
                     ->count(),

@@ -46,6 +46,10 @@
         stale_running_worker_jobs: number;
         queued_webhook_deliveries: number;
         active_pipeline_runs: number;
+        pending_pipeline_runs: number;
+        queued_pipeline_runs: number;
+        running_pipeline_runs: number;
+        retrying_pipeline_runs: number;
         blocked_pipeline_runs: number;
         failed_pipeline_runs: number;
         running_actor_executions: number;
@@ -384,10 +388,19 @@
     <div class="grid gap-4 md:grid-cols-3">
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">
-                Active pipeline runs
+                Pipeline work backlog
             </div>
             <div class="mt-2 text-3xl font-semibold">
                 {counts.active_pipeline_runs}
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+                {counts.pending_pipeline_runs} pending · {counts.queued_pipeline_runs}
+                queued · {counts.running_pipeline_runs} running · {counts.retrying_pipeline_runs}
+                retrying
+            </div>
+            <div class="mt-1 text-xs text-muted-foreground">
+                Inbox documents wait here after the embedding gate opens; they
+                are not trusted embedding context until the inbox tag is gone.
             </div>
         </div>
         <div class="rounded-xl border p-4">
