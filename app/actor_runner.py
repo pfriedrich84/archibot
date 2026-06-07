@@ -52,7 +52,9 @@ def _exception_summary(exc: BaseException) -> str:
 def _exception_location(exc: BaseException) -> str | None:
     frames = traceback.extract_tb(exc.__traceback__)
     for frame in reversed(frames):
-        if "/app/actor_runner.py" in frame.filename or frame.filename.endswith("app/actor_runner.py"):
+        if "/app/actor_runner.py" in frame.filename or frame.filename.endswith(
+            "app/actor_runner.py"
+        ):
             continue
         filename = frame.filename.rsplit("/", 1)[-1]
         return f"{filename}:{frame.lineno} in {frame.name}"
