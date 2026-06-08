@@ -15,7 +15,10 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import InputError from '@/components/InputError.svelte';
     import { Button } from '@/components/ui/button';
+    import { Input } from '@/components/ui/input';
+    import { Label } from '@/components/ui/label';
     import { formatDateTime } from '@/lib/datetime';
     import { recoverWorkerJobs, workerJobs } from '@/routes/admin/maintenance';
 
@@ -30,6 +33,7 @@
 
     let {
         workerJobCounts,
+        actionUrls,
         recentAuditLogs,
     }: {
         workerJobCounts: {
@@ -37,6 +41,10 @@
             running: number;
             cancelling: number;
             failed: number;
+        };
+        actionUrls: {
+            mark_embedding_stale: string;
+            document_pipeline: string;
         };
         recentAuditLogs: AuditLog[];
     } = $props();
@@ -48,6 +56,13 @@
             force: false,
             description:
                 'Create a durable inbox polling/reconciliation command now.',
+        },
+        {
+            label: 'Start forced poll reconciliation',
+            type: 'poll',
+            force: true,
+            description:
+                'Create a durable reconciliation command and ignore normal poll skips.',
         },
         {
             label: 'Start full reindex',
@@ -155,6 +170,63 @@
                 </Form>
             {/each}
         </div>
+    </section>
+
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-3 font-semibold">Embedding gate</h2>
+        <p class="mb-4 text-sm text-muted-foreground">
+            Mark the embedding index stale to close the document-processing gate
+            until a fresh build completes.
+        </p>
+        <Form method="post" action={actionUrls.mark_embedding_stale}>
+            {#snippet children({ processing })}
+                <Button type="submit" variant="outline" disabled={processing}
+                    >Mark embedding index stale</Button
+                >
+            {/snippet}
+        </Form>
+    </section>
+
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-3 font-semibold">Manual document pipeline</h2>
+        <p class="mb-4 text-sm text-muted-foreground">
+            Queue one Paperless document through the durable document pipeline.
+        </p>
+        <Form
+            method="post"
+            action={actionUrls.document_pipeline}
+            class="grid max-w-2xl gap-4"
+        >
+            {#snippet children({ errors, processing })}
+                <div class="grid gap-2">
+                    <Label for="paperless_document_id"
+                        >Paperless document ID</Label
+                    >
+                    <Input
+                        id="paperless_document_id"
+                        name="paperless_document_id"
+                        type="number"
+                        min="1"
+                        required
+                        placeholder="Paperless document reference"
+                    />
+                    <InputError message={errors.paperless_document_id} />
+                </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        name="force"
+                        value="1"
+                        class="h-4 w-4 rounded border-input"
+                    />
+                    Force a new reprocess run
+                </label>
+                <InputError message={errors.force} />
+                <Button type="submit" disabled={processing} class="w-fit">
+                    Queue document pipeline
+                </Button>
+            {/snippet}
+        </Form>
     </section>
 
     <section class="rounded-xl border p-4">

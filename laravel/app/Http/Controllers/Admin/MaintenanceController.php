@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
+use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Workers\WorkerJobRecovery;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,10 @@ class MaintenanceController extends Controller
                 'running' => WorkerJob::query()->where('status', WorkerJob::STATUS_RUNNING)->count(),
                 'cancelling' => WorkerJob::query()->where('status', WorkerJob::STATUS_CANCELLING)->count(),
                 'failed' => WorkerJob::query()->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])->count(),
+            ],
+            'actionUrls' => [
+                'mark_embedding_stale' => route('embedding-index.mark-stale'),
+                'document_pipeline' => route('admin.maintenance.document-pipeline'),
             ],
             'recentAuditLogs' => AuditLog::query()
                 ->where('event', 'like', 'maintenance.%')
@@ -52,6 +57,30 @@ class MaintenanceController extends Controller
         $this->audit($request, 'maintenance.worker_jobs_recovery_requested', 'worker_jobs', 'recovery', $summary);
 
         return back()->with('status', 'Worker job recovery completed.');
+    }
+
+    public function startDocumentPipeline(Request $request, DocumentPipelineStarter $pipelineStarter): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $validated = $request->validate([
+            'paperless_document_id' => ['required', 'integer', 'min:1'],
+            'force' => ['nullable', 'boolean'],
+        ]);
+
+        $force = $request->boolean('force');
+        $result = $pipelineStarter->start(
+            triggerSource: 'manual',
+            paperlessDocumentId: (int) $validated['paperless_document_id'],
+            reprocessRequested: $force,
+            reprocessReason: $force ? 'manual_force' : null,
+            reprocessMode: $force ? 'manual' : null,
+            forceNewRun: $force,
+            requestedByUserId: $request->user()->id,
+        );
+
+        return redirect()->route('pipeline-runs.show', $result->pipelineRun)
+            ->with('status', 'Document Pipeline Run queued.');
     }
 
     public function startWorkerJob(Request $request, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse

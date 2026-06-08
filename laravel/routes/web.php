@@ -121,6 +121,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
         Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
         Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
+        Route::post('admin/maintenance/document-pipeline', [MaintenanceController::class, 'startDocumentPipeline'])->name('admin.maintenance.document-pipeline');
         Route::post('admin/maintenance/worker-jobs', [MaintenanceController::class, 'startWorkerJob'])->name('admin.maintenance.worker-jobs');
     });
 

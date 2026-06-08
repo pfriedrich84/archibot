@@ -6,7 +6,7 @@ Related todo: `TODO-d471d631`.
 
 ## Purpose
 
-This is the required audit/plan before removing duplicate or obsolete GUI/CLI actions. It intentionally makes no code removals. The goal is to identify which actions should stay, move, or be removed after maintainer approval.
+This started as the required audit/plan before removing duplicate or obsolete GUI/CLI actions. It now records the implemented consolidation decisions and the remaining backend retirement prerequisites.
 
 ## Source files inspected
 
@@ -75,11 +75,14 @@ Relevant docs/decisions:
 | Action | GUI location | Backend route/controller | Durable path | Recommendation |
 | --- | --- | --- | --- | --- |
 | Run worker recovery now | Admin Maintenance / Recovery | `POST admin/maintenance/recover-worker-jobs` -> `MaintenanceController::recoverWorkerJobs` | `worker_jobs` recovery only | Keep temporarily until all `worker_jobs` rows are retired; consider adding pipeline actor recovery beside it |
-| Start poll reconciliation | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `poll` | Redirected to durable `poll_reconciliation` command | Keep, but rename/reword as command action |
+| Start poll reconciliation | Admin Maintenance / Maintenance commands | `POST admin/maintenance/worker-jobs` type `poll` | Redirected to durable `poll_reconciliation` command | Keep |
+| Start forced poll reconciliation | Admin Maintenance / Maintenance commands | same route, `force=1` | Durable `poll_reconciliation` command | Keep |
 | Start full reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex` | Redirected to durable `reindex` command | Keep, but rename/reword as command action |
 | Start OCR reindex | Admin Maintenance / Maintenance commands | `POST admin/maintenance/worker-jobs` type `reindex_ocr` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Keep; backend unified on 2026-06-08 |
 | Start OCR reindex force | Admin Maintenance / Maintenance commands | same route, `force=1` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Keep; backend unified on 2026-06-08 |
-| Start embedding reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex_embed` | Redirected to durable embedding build command | Keep, but rename/reword as embedding index build command |
+| Start embedding index build | Admin Maintenance / Maintenance commands | `POST admin/maintenance/worker-jobs` type `reindex_embed` | Redirected to durable embedding build command | Keep |
+| Mark embedding index stale | Admin Maintenance / Embedding gate | `POST embedding-index/mark-stale` | Durable embedding gate state + audit | Keep |
+| Queue document pipeline | Admin Maintenance / Manual document pipeline | `POST admin/maintenance/document-pipeline` | `DocumentPipelineStarter` / `pipeline_runs` | Keep |
 
 ### Control Center / Worker Jobs page
 
@@ -87,15 +90,15 @@ Relevant docs/decisions:
 
 | Action | GUI location | Backend route/controller | Durable path | Duplication / issue | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| Run poll reconciliation | Control Center quick controls | `POST maintenance/poll` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
-| Run forced poll reconciliation | Control Center quick controls | `POST maintenance/poll` with `force=1` | Durable command | Partly duplicates Maintenance, but Maintenance's poll form does not visibly expose force | Either move force-poll option into Maintenance or keep until Maintenance has it |
-| Queue all-document reindex command | Control Center quick controls | `POST maintenance/reindex` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
-| Queue OCR reindex command | Control Center quick controls | `POST worker-jobs` type `reindex_ocr` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicates Maintenance | Remove duplicate launcher from Control Center after approval |
-| Queue forced OCR reindex command | Control Center quick controls | `POST worker-jobs` type `reindex_ocr`, `force=1` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicates Maintenance | Remove duplicate launcher from Control Center after approval |
-| Queue embedding index build command | Control Center quick controls | `POST embedding-index/build` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
-| Mark embedding index stale | Control Center quick controls | `POST embedding-index/mark-stale` | Durable state/action | Duplicates Dashboard; missing from current Maintenance page | Move/add to Maintenance before removing from Control Center |
-| Process document ID | Control Center form | `POST worker-jobs` type `process_document` | Redirected to `DocumentPipelineStarter` / pipeline run | Useful action, but page name suggests worker job | Move to Maintenance or Pipeline runs as a manual pipeline action before retiring Control Center action |
-| Generic worker job type selector | Control Center form | `POST worker-jobs` with allowed types | Mixed durable/legacy | Duplicates all specific controls and exposes implementation terms | Remove after specific replacement actions are available elsewhere |
+| Run poll reconciliation | Removed Control Center quick controls | `POST maintenance/poll` | Durable command | Duplicated Dashboard and Maintenance | Removed from Control Center; keep in Dashboard/Maintenance |
+| Run forced poll reconciliation | Removed Control Center quick controls | `POST maintenance/poll` with `force=1` | Durable command | Needed a Maintenance replacement | Added to Maintenance and removed from Control Center |
+| Queue all-document reindex command | Removed Control Center quick controls | `POST maintenance/reindex` | Durable command | Duplicated Dashboard and Maintenance | Removed from Control Center; keep in Dashboard/Maintenance |
+| Queue OCR reindex command | Removed Control Center quick controls | `POST worker-jobs` type `reindex_ocr` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicated Maintenance | Removed from Control Center; keep in Maintenance |
+| Queue forced OCR reindex command | Removed Control Center quick controls | `POST worker-jobs` type `reindex_ocr`, `force=1` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicated Maintenance | Removed from Control Center; keep in Maintenance |
+| Queue embedding index build command | Removed Control Center quick controls | `POST embedding-index/build` | Durable command | Duplicated Dashboard and Maintenance | Removed from Control Center; keep in Dashboard/Maintenance |
+| Mark embedding index stale | Removed Control Center quick controls | `POST embedding-index/mark-stale` | Durable state/action | Duplicated Dashboard; missing from Maintenance | Added to Maintenance and removed from Control Center |
+| Process document ID | Removed Control Center form | `POST worker-jobs` type `process_document` | Redirected to `DocumentPipelineStarter` / pipeline run | Useful action with legacy naming | Added target-language Maintenance action and removed from Control Center |
+| Generic worker job type selector | Removed Control Center form | `POST worker-jobs` with allowed types | Mixed durable/legacy | Duplicated all specific controls and exposed implementation terms | Removed from Control Center |
 | Stop worker job | Temporary worker rows list | `POST worker-jobs/{id}/stop` | Legacy worker row mutation | Required only for active legacy rows | Keep as long as active legacy worker rows can exist |
 | Retry whole worker job | Temporary worker rows list | `POST worker-jobs/{id}/retry` | Migrates some types to pipeline/commands; legacy for OCR | Required for historical/active legacy rows | Keep as detail/history action until no legacy rows remain |
 | Retry failed documents only | Temporary worker rows list | `POST worker-jobs/{id}/retry` with `failed_only=1` | Migrates process-doc to pipeline; legacy for OCR | Required for historical/active legacy rows | Keep as detail/history action until no legacy rows remain |
@@ -140,11 +143,11 @@ This supports the maintainer observation that the job log is useful there. It sh
 | Action | CLI command | Current implementation | GUI/backend parity | Recommendation |
 | --- | --- | --- | --- | --- |
 | Reset | `archibot reset --yes` | Delegates to `php artisan archibot:reset --yes` | CLI-only by design | Keep |
-| Poll | `archibot poll [--force]` | Python CLI path | GUI now creates durable `poll_reconciliation` commands | Needs follow-up parity review before any GUI removal; do not assume obsolete |
-| Full reindex | `archibot reindex` | Python CLI path | GUI now creates durable `reindex` command | Needs follow-up parity review before any GUI removal; do not assume obsolete |
-| OCR reindex | `archibot reindex-ocr [--force]` | Python CLI path / legacy worker-compatible | GUI legacy worker path remains | Move to the same durable command/actor backend as poll/reindex/embedding before removing duplicate GUI actions |
-| Embedding reindex | `archibot reindex-embed` | Python CLI path | GUI now creates durable embedding build command | Needs follow-up parity review; may be operator/debug only after actor path is canonical |
-| Process document | `archibot process-doc <id> [--force]` | Python CLI path / worker-compatible | GUI manual processing now starts pipeline runs | Needs follow-up parity review; do not remove blindly |
+| Poll | `archibot poll [--force]` | Python CLI path | GUI creates durable `poll_reconciliation` commands | Needs follow-up parity review before changing CLI behavior |
+| Full reindex | `archibot reindex` | Python CLI path | GUI creates durable `reindex` command | Needs follow-up parity review before changing CLI behavior |
+| OCR reindex | `archibot reindex-ocr [--force]` | Python CLI path / legacy worker-compatible direct execution | GUI creates durable `reindex_ocr` command | Follow-up: decide whether CLI delegates to Laravel or remains direct actor/debug entrypoint |
+| Embedding reindex | `archibot reindex-embed` | Python CLI path | GUI creates durable embedding build command | Needs follow-up parity review; may be operator/debug only after actor path is canonical |
+| Process document | `archibot process-doc <id> [--force]` | Python CLI path / worker-compatible | GUI manual processing starts pipeline runs through Maintenance | Needs follow-up parity review before changing CLI behavior |
 | Worker jobs list/status | `archibot jobs list/status` | Read-only SQLite/Laravel DB adapter in `app/cli.py` | Worker detail UI still exists | Keep read-only for legacy visibility while worker rows exist |
 | Worker jobs stop/retry | `archibot jobs stop/retry` | Code prints deprecation/read-only message | GUI still mutates via Laravel admin routes | Docs in `docs/developer/cli.md` are stale and should be corrected |
 | Pipeline actor recovery | `php artisan archibot:recovery-scan` | Laravel service dispatches actor jobs | No direct GUI button found | Consider adding to Maintenance as target recovery action |
@@ -166,7 +169,7 @@ Conclusion: **do not remove `worker_jobs` backend/routes/controllers everywhere 
 
 ## Duplicate/obsolete candidates
 
-These are conservative candidates only; each should be confirmed before implementation.
+These were the conservative cleanup candidates. The GUI launcher consolidation candidates have now been implemented; backend `worker_jobs` retirement remains gated by the prerequisites below.
 
 ### Candidate 0: unify OCR reindex backend
 
@@ -244,22 +247,24 @@ Implemented on 2026-06-08 for the Laravel GUI/backend: Maintenance and Control C
 
 ### Stage 2: small documentation fix and Maintenance gap closure
 
-1. Update `docs/developer/cli.md` for read-only/deprecated `archibot jobs stop/retry` behavior.
-2. Add missing Maintenance actions that are currently only easy to find in Dashboard/Control Center:
+Implemented on 2026-06-08:
+
+1. `docs/developer/cli.md` documents deprecated/read-only `archibot jobs stop/retry` behavior.
+2. Maintenance now exposes the previously missing actions:
    - Mark embedding index stale.
-   - Forced poll reconciliation if this remains desired as a first-class admin action.
-3. Reword Maintenance labels away from "worker jobs" now that poll, reindex, OCR reindex, and embedding build should all create durable commands.
-4. Keep legacy worker recovery/status explicitly labeled as legacy/temporary for historical rows only.
+   - Forced poll reconciliation.
+   - Manual document pipeline start with optional forced reprocess.
+3. Maintenance labels use command/pipeline language instead of productive `worker_jobs` language.
+4. Legacy worker recovery/status remain explicitly scoped to temporary worker rows.
 
 ### Stage 3: remove duplicate action launchers from Control Center
 
-After durable OCR reindex exists and Stage 2 is reviewed/approved, remove Control Center quick controls and generic launch forms that are duplicated by Maintenance/Dashboard:
+Implemented on 2026-06-08. The Control Center no longer exposes duplicate quick controls, the manual process-document worker form, or the generic worker-job type selector. It preserves:
 
-- quick controls block;
-- generic worker-job type selector;
-- possibly manual process-document form only after it has a target-language replacement elsewhere.
-
-Preserve the command list and temporary worker row list/detail pages.
+- durable command list;
+- temporary worker row list;
+- links to worker detail/logs;
+- legacy stop/retry actions for existing rows.
 
 ### Stage 4: rename or narrow Control Center
 
@@ -269,7 +274,7 @@ If Control Center becomes only logs/history, decide whether to:
 - rename navigation/title to **Job history**;
 - split durable command history and legacy worker rows into separate sections/pages.
 
-Ask before doing this because it is user-facing navigation.
+Keep the existing name for now to preserve navigation stability while it still combines command history and legacy worker-row history.
 
 ### Stage 5: retire Worker Jobs fully only after prerequisites
 
@@ -282,9 +287,8 @@ Do not remove backend/routes/controllers/models until all prerequisites are true
 - reset/prune/recovery docs are updated;
 - tests prove equivalent actions remain available through commands/pipeline/actors.
 
-## Remaining approval questions before duplicate GUI removal
+## Remaining follow-ups
 
-1. Should **forced poll reconciliation** be a first-class Maintenance action, or remain dashboard/control-only?
-2. Should **manual process document** move to Maintenance, Pipeline Runs, or stay in Control Center until a separate design is chosen?
-3. If Control Center loses launch buttons, should its navigation label stay **Control Center** or become **Job history** / **Legacy worker jobs**?
-4. Should operator-facing `archibot reindex-ocr [--force]` delegate to Laravel command creation, or remain a direct Python debug entrypoint while GUI/backend actions use the durable command actor?
+1. Decide whether operator-facing `archibot reindex-ocr [--force]` should delegate to Laravel command creation or remain a direct Python debug entrypoint while GUI/backend actions use the durable command actor.
+2. Add a Maintenance pipeline actor recovery button if operators need GUI access to `php artisan archibot:recovery-scan`.
+3. Retire `worker_jobs` only after the Stage 5 prerequisites are satisfied.

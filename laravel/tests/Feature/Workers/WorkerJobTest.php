@@ -50,19 +50,11 @@ class WorkerJobTest extends TestCase
                 ->where('jobs.data.0.review_suggestions_count', 1)
                 ->where('jobs.data.0.review_suggestions.0.id', $suggestion->id)
                 ->where('jobs.data.0.review_suggestions.0.proposed_title', 'Imported invoice')
-                ->where('allowedTypes.0', WorkerJob::TYPE_POLL)
-                ->where('allowedTypes.1', WorkerJob::TYPE_PROCESS_DOCUMENT)
-                ->where('allowedTypes.2', WorkerJob::TYPE_REINDEX)
-                ->where('allowedTypes.3', WorkerJob::TYPE_REINDEX_OCR)
-                ->where('allowedTypes.4', WorkerJob::TYPE_REINDEX_EMBED)
+                ->missing('allowedTypes')
+                ->missing('quickControls')
                 ->where('commands.0.id', $command->id)
                 ->where('commands.0.type', Command::TYPE_POLL_RECONCILIATION)
                 ->where('commands.0.status', Command::STATUS_QUEUED)
-                ->where('quickControls.poll_url', route('maintenance.poll'))
-                ->where('quickControls.reindex_url', route('maintenance.reindex'))
-                ->where('quickControls.embedding_build_url', route('embedding-index.build'))
-                ->where('quickControls.embedding_mark_stale_url', route('embedding-index.mark-stale'))
-                ->where('quickControls.worker_job_store_url', route('worker-jobs.store'))
                 ->where('readiness.queued', 0)
                 ->where('readiness.running', 0)
                 ->where('readiness.failed', 0)
@@ -155,11 +147,12 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('workerJobShow(job.id).url', $indexPage);
     }
 
-    public function test_worker_job_index_exposes_full_control_labels(): void
+    public function test_worker_job_index_is_history_focused_without_launch_controls(): void
     {
         $indexPage = file_get_contents(resource_path('js/pages/worker/Index.svelte'));
         $showPage = file_get_contents(resource_path('js/pages/worker/Show.svelte'));
         $sidebar = file_get_contents(resource_path('js/components/AppSidebar.svelte'));
+        $maintenancePage = file_get_contents(resource_path('js/pages/admin/Maintenance.svelte'));
 
         $this->assertIsString($indexPage);
         $this->assertIsString($showPage);
@@ -167,22 +160,21 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Control Center', $indexPage);
         $this->assertStringContainsString('Control Center', $showPage);
         $this->assertStringContainsString('Control Center', $sidebar);
-        $this->assertStringContainsString('Run forced poll reconciliation', $indexPage);
-        $this->assertStringContainsString('Process document ID', $indexPage);
-        $this->assertStringContainsString('Force process document', $indexPage);
-        $this->assertStringContainsString('Queue forced OCR reindex command', $indexPage);
         $this->assertStringContainsString('Durable command jobs', $indexPage);
         $this->assertStringContainsString('Temporary worker_jobs rows', $indexPage);
-        $this->assertStringContainsString('Force poll, process document, or OCR reindex', $indexPage);
-        $this->assertStringContainsString('Queue job', $indexPage);
-        $this->assertStringContainsString('quickControls.poll_url', $indexPage);
-        $this->assertStringContainsString('quickControls.reindex_url', $indexPage);
-        $this->assertStringContainsString('quickControls.embedding_build_url', $indexPage);
-        $this->assertStringContainsString('quickControls.embedding_mark_stale_url', $indexPage);
-        $this->assertStringContainsString('Mark embedding index stale', $indexPage);
         $this->assertStringContainsString('Retry whole job', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $indexPage);
         $this->assertStringContainsString('Retry failed documents only', $showPage);
+
+        $this->assertStringNotContainsString('Quick controls', $indexPage);
+        $this->assertStringNotContainsString('Process document ID', $indexPage);
+        $this->assertStringNotContainsString('Queue forced OCR reindex command', $indexPage);
+        $this->assertStringNotContainsString('quickControls.', $indexPage);
+        $this->assertStringNotContainsString('{...store.form()}', $indexPage);
+
+        $this->assertStringContainsString('Start forced poll reconciliation', $maintenancePage);
+        $this->assertStringContainsString('Manual document pipeline', $maintenancePage);
+        $this->assertStringContainsString('Mark embedding index stale', $maintenancePage);
     }
 
     public function test_queueing_poll_routes_to_durable_command_not_worker_job(): void

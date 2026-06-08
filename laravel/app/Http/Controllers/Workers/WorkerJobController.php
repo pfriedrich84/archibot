@@ -68,15 +68,7 @@ class WorkerJobController extends Controller
         return Inertia::render('worker/Index', [
             'jobs' => $jobs,
             'commands' => $this->recentCommands(),
-            'allowedTypes' => $this->storeRequestTypes(),
             'isAdmin' => (bool) $request->user()?->is_admin,
-            'quickControls' => [
-                'poll_url' => route('maintenance.poll'),
-                'reindex_url' => route('maintenance.reindex'),
-                'embedding_build_url' => route('embedding-index.build'),
-                'embedding_mark_stale_url' => route('embedding-index.mark-stale'),
-                'worker_job_store_url' => route('worker-jobs.store'),
-            ],
             'readiness' => [
                 'queued' => WorkerJob::query()->where('status', WorkerJob::STATUS_QUEUED)->count(),
                 'running' => WorkerJob::query()->whereIn('status', WorkerJob::runningStatuses())->count(),

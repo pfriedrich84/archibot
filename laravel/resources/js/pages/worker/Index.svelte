@@ -16,20 +16,11 @@
     import { onMount } from 'svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
-    import InputError from '@/components/InputError.svelte';
     import { Button } from '@/components/ui/button';
-    import { Input } from '@/components/ui/input';
-    import { Label } from '@/components/ui/label';
-    import { Spinner } from '@/components/ui/spinner';
     import { formatDateTime } from '@/lib/datetime';
     import { displayEntries, formatDisplayValue } from '@/lib/display';
     import { show as reviewShow } from '@/routes/review';
-    import {
-        retry,
-        show as workerJobShow,
-        stop,
-        store,
-    } from '@/routes/worker-jobs';
+    import { retry, show as workerJobShow, stop } from '@/routes/worker-jobs';
 
     type ReviewSuggestionLink = {
         id: number;
@@ -96,22 +87,12 @@
     let {
         jobs,
         commands,
-        allowedTypes,
         isAdmin,
-        quickControls,
         readiness,
     }: {
         jobs: Paginator<WorkerJob>;
         commands: CommandJob[];
-        allowedTypes: string[];
         isAdmin: boolean;
-        quickControls: {
-            poll_url: string;
-            reindex_url: string;
-            embedding_build_url: string;
-            embedding_mark_stale_url: string;
-            worker_job_store_url: string;
-        };
         readiness: {
             queued: number;
             running: number;
@@ -165,7 +146,7 @@
 <div class="space-y-6">
     <Heading
         title="Control Center"
-        description="Queue ArchiBot commands, inspect durable command jobs, and monitor temporary worker rows."
+        description="Inspect durable command jobs and monitor temporary worker rows. Maintenance actions live on the Admin maintenance page."
     />
 
     <section class="rounded-xl border p-4">
@@ -181,195 +162,6 @@
             {/each}
         </dl>
     </section>
-
-    {#if isAdmin}
-        <section class="rounded-xl border p-4">
-            <h2 class="mb-3 font-semibold">Quick controls</h2>
-            <div class="flex flex-wrap gap-2">
-                <Form method="post" action={quickControls.poll_url}>
-                    {#snippet children({ processing })}
-                        <input
-                            type="hidden"
-                            name="ui_surface"
-                            value="worker_jobs_quick_controls"
-                        />
-                        <Button type="submit" disabled={processing}
-                            >Run poll reconciliation</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={quickControls.poll_url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="force" value="1" />
-                        <input
-                            type="hidden"
-                            name="ui_surface"
-                            value="worker_jobs_quick_controls"
-                        />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Run forced poll reconciliation</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={quickControls.reindex_url}>
-                    {#snippet children({ processing })}
-                        <input
-                            type="hidden"
-                            name="ui_surface"
-                            value="worker_jobs_quick_controls"
-                        />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Queue all-document reindex command</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={quickControls.worker_job_store_url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="reindex_ocr" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Queue OCR reindex command</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={quickControls.worker_job_store_url}>
-                    {#snippet children({ processing })}
-                        <input type="hidden" name="type" value="reindex_ocr" />
-                        <input type="hidden" name="force" value="1" />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Queue forced OCR reindex command</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form method="post" action={quickControls.embedding_build_url}>
-                    {#snippet children({ processing })}
-                        <input
-                            type="hidden"
-                            name="ui_surface"
-                            value="worker_jobs_quick_controls"
-                        />
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Queue embedding index build command</Button
-                        >
-                    {/snippet}
-                </Form>
-                <Form
-                    method="post"
-                    action={quickControls.embedding_mark_stale_url}
-                >
-                    {#snippet children({ processing })}
-                        <Button
-                            type="submit"
-                            variant="outline"
-                            disabled={processing}
-                            >Mark embedding index stale</Button
-                        >
-                    {/snippet}
-                </Form>
-            </div>
-        </section>
-
-        <Form
-            {...store.form()}
-            class="grid max-w-2xl gap-4 rounded-xl border p-4"
-        >
-            {#snippet children({ errors, processing })}
-                <input type="hidden" name="type" value="process_document" />
-                <div class="grid gap-2">
-                    <Label for="quick_paperless_document_id"
-                        >Process document ID</Label
-                    >
-                    <Input
-                        id="quick_paperless_document_id"
-                        name="paperless_document_id"
-                        type="number"
-                        min="1"
-                        required
-                        placeholder="Paperless document reference"
-                    />
-                    <InputError message={errors.paperless_document_id} />
-                </div>
-                <label class="flex items-center gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        name="force"
-                        value="1"
-                        class="h-4 w-4 rounded border-input"
-                    />
-                    Force process document
-                </label>
-                <InputError message={errors.force} />
-                <Button type="submit" disabled={processing} class="w-fit">
-                    {#if processing}<Spinner />{/if}
-                    Process document
-                </Button>
-            {/snippet}
-        </Form>
-
-        <Form
-            {...store.form()}
-            class="grid max-w-2xl gap-4 rounded-xl border p-4"
-        >
-            {#snippet children({ errors, processing })}
-                <div class="grid gap-2">
-                    <Label for="type">Worker job type</Label>
-                    <select
-                        id="type"
-                        name="type"
-                        required
-                        class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
-                    >
-                        {#each allowedTypes as type (type)}
-                            <option value={type}>{type}</option>
-                        {/each}
-                    </select>
-                    <InputError message={errors.type} />
-                    <p class="text-xs text-muted-foreground">
-                        Poll, full reindex, and embedding build create durable
-                        command jobs listed below. Document processing redirects
-                        to its Pipeline Run; old worker rows below are legacy
-                        visibility only.
-                    </p>
-                </div>
-
-                <label class="flex items-center gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        name="force"
-                        value="1"
-                        class="h-4 w-4 rounded border-input"
-                    />
-                    Force poll, process document, or OCR reindex
-                </label>
-                <InputError message={errors.force} />
-
-                <Button type="submit" disabled={processing} class="w-fit">
-                    {#if processing}<Spinner />{/if}
-                    Queue job
-                </Button>
-            {/snippet}
-        </Form>
-    {:else}
-        <div
-            class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground"
-        >
-            Control Center actions are available to administrators only.
-        </div>
-    {/if}
 
     <div class="rounded-xl border">
         <div class="border-b px-4 py-3">

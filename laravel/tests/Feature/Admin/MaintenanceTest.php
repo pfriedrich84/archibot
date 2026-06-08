@@ -6,6 +6,7 @@ use App\Jobs\RunPythonActorJob;
 use App\Jobs\RunPythonWorkerJob;
 use App\Models\AuditLog;
 use App\Models\Command;
+use App\Models\PipelineRun;
 use App\Models\User;
 use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -116,6 +117,44 @@ class MaintenanceTest extends TestCase
         Queue::assertPushed(RunPythonActorJob::class, 4);
         Queue::assertNotPushed(RunPythonWorkerJob::class);
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
+    }
+
+    public function test_admin_can_start_manual_document_pipeline_from_maintenance(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.maintenance.document-pipeline'), [
+                'paperless_document_id' => 42,
+                'force' => '1',
+            ])
+            ->assertRedirect();
+
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame('manual', $run->trigger_source);
+        $this->assertSame(42, $run->paperless_document_id);
+        $this->assertTrue($run->reprocess_requested);
+        $this->assertSame('manual_force', $run->reprocess_reason);
+        $this->assertSame('manual', $run->reprocess_mode);
+        $this->assertSame($admin->id, $run->requested_by_user_id);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertNotPushed(RunPythonWorkerJob::class);
+    }
+
+    public function test_non_admin_cannot_start_manual_document_pipeline_from_maintenance(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)
+            ->post(route('admin.maintenance.document-pipeline'), [
+                'paperless_document_id' => 42,
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('pipeline_runs', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_non_admin_cannot_dispatch_maintenance_worker_job(): void
