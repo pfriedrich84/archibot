@@ -6,6 +6,10 @@ import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 
+if (process.env.CI === 'true') {
+    process.env.LARAVEL_BYPASS_ENV_CHECK = '1';
+}
+
 const generateWayfinder = process.env.WAYFINDER_GENERATE !== 'false';
 const enableRefresh = process.env.CI !== 'true';
 
