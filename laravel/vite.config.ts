@@ -7,12 +7,13 @@ import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 
 const generateWayfinder = process.env.WAYFINDER_GENERATE !== 'false';
+const enableRefresh = process.env.CI !== 'true';
 
 export default defineConfig({
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.ts'],
-            refresh: true,
+            refresh: enableRefresh,
             fonts: [
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
