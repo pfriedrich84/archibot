@@ -8,6 +8,7 @@ import time
 import structlog
 
 from app.absurd_queue import queue_backend, queue_name
+from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.events import types
@@ -20,6 +21,7 @@ from app.jobs.actor_execution import (
 from app.jobs.pipeline_start import start_or_attach_document_pipeline
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
 log = structlog.get_logger(__name__)
 
@@ -158,9 +160,135 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
     )
 
 
+def _reindex_ocr_documents_impl(
+    *, command_id: int | None = None, limit: int | None = None, force: bool = False
+) -> None:
+    """Run OCR reindex through the durable maintenance actor path."""
+    started = time.monotonic()
+    actor_name = "reindex_ocr"
+    actor_execution = start_actor_execution(
+        actor_name=actor_name, queue_name=queue_name("blocking")
+    )
+    mode = effective_ocr_mode()
+    log.info(
+        "ocr reindex actor started",
+        event_type=types.ACTOR_STARTED,
+        actor_name=actor_name,
+        queue_name=queue_name("blocking"),
+        command_id=command_id,
+        limit=limit,
+        force=force,
+        mode=mode,
+    )
+
+    if actor_execution.id is not None:
+        update_actor_execution_progress(
+            actor_execution.id,
+            ProgressSnapshot(
+                total=0,
+                done=0,
+                phase="ocr_reindex_prepare",
+                message="OCR reindex actor accepted the request.",
+            ),
+        )
+
+    try:
+        if mode == "off":
+            message = "OCR reindex skipped because OCR_MODE is off."
+            publish_pipeline_event(
+                "ocr.reindex.skipped",
+                command_id=command_id,
+                level="warning",
+                message=message,
+                payload={"mode": mode, "force": force, "limit": limit},
+            )
+            finish_actor_execution(
+                actor_execution,
+                status="skipped",
+                error_type="ocr_mode_off",
+                error_message=message,
+            )
+            return
+
+        paperless = PaperlessClient()
+        provider = create_ai_provider()
+        try:
+            corrected = asyncio.run(
+                batch_correct_documents(paperless, provider, limit=limit, force=force)
+            )
+        finally:
+            asyncio.run(paperless.aclose())
+            asyncio.run(provider.aclose())
+
+        if actor_execution.id is not None:
+            update_actor_execution_progress(
+                actor_execution.id,
+                ProgressSnapshot(
+                    total=corrected,
+                    done=corrected,
+                    phase="ocr_reindex_finished",
+                    message="OCR reindex completed.",
+                ),
+            )
+
+        publish_pipeline_event(
+            "ocr.reindex.completed",
+            command_id=command_id,
+            message="OCR reindex completed.",
+            payload={"corrected": corrected, "mode": mode, "force": force, "limit": limit},
+        )
+        finish_actor_execution(actor_execution, status="succeeded")
+    except Exception as exc:
+        retry_class = classify_exception(exc)
+        attempt = 1
+        max_attempts = 5
+        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
+            backoff_seconds = retry_backoff_seconds(attempt)
+            schedule_actor_execution_retry(
+                actor_execution,
+                retry_class=retry_class.value,
+                retry_reason=type(exc).__name__,
+                backoff_seconds=backoff_seconds,
+                error_message=str(exc)[:1000],
+            )
+            publish_pipeline_event(
+                types.ACTOR_RETRY_SCHEDULED,
+                command_id=command_id,
+                level="warning",
+                message="OCR reindex actor retry scheduled.",
+                payload={
+                    "actor_name": actor_name,
+                    "retry_class": retry_class.value,
+                    "retry_reason": type(exc).__name__,
+                    "backoff_seconds": backoff_seconds,
+                },
+            )
+            raise
+
+        finish_actor_execution(
+            actor_execution,
+            status="failed",
+            error_type=retry_class.value,
+            error_message=str(exc)[:1000],
+        )
+        raise
+
+    log.info(
+        "ocr reindex actor succeeded",
+        event_type=types.ACTOR_SUCCEEDED,
+        actor_name=actor_name,
+        queue_name=queue_name("blocking"),
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
+
+
 if queue_backend is not None:
     reconcile_inbox_documents = queue_backend.actor(queue_name=queue_name("io"))(
         _reconcile_inbox_documents_impl
     )
+    reindex_ocr_documents = queue_backend.actor(queue_name=queue_name("blocking"))(
+        _reindex_ocr_documents_impl
+    )
 else:  # pragma: no cover - lets local imports work before deps are installed
     reconcile_inbox_documents = _reconcile_inbox_documents_impl
+    reindex_ocr_documents = _reindex_ocr_documents_impl

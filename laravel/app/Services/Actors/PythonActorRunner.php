@@ -22,6 +22,8 @@ class PythonActorRunner
 
     public const ACTOR_REINDEX = 'reindex';
 
+    public const ACTOR_REINDEX_OCR = 'reindex_ocr';
+
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
     /**
@@ -85,6 +87,15 @@ class PythonActorRunner
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX);
         $this->runCommandActor($command, self::ACTOR_REINDEX, ['reindex', '--command-id', (string) $command->id]);
+    }
+
+    /**
+     * Run the fixed OCR reindex actor command for a durable command row.
+     */
+    public function runReindexOcr(Command $command): void
+    {
+        $this->assertCommandType($command, Command::TYPE_REINDEX_OCR);
+        $this->runCommandActor($command, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
     }
 
     /**

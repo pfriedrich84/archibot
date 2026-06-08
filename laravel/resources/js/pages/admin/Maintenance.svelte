@@ -46,31 +46,33 @@
             label: 'Start poll reconciliation',
             type: 'poll',
             force: false,
-            description: 'Run the inbox polling/reconciliation worker now.',
+            description:
+                'Create a durable inbox polling/reconciliation command now.',
         },
         {
             label: 'Start full reindex',
             type: 'reindex',
             force: false,
-            description: 'Queue a full document reindex worker job.',
+            description: 'Create a durable full document reindex command.',
         },
         {
             label: 'Start OCR reindex',
             type: 'reindex_ocr',
             force: false,
-            description: 'Queue OCR reindex without force.',
+            description: 'Create a durable OCR reindex command without force.',
         },
         {
             label: 'Start OCR reindex force',
             type: 'reindex_ocr',
             force: true,
-            description: 'Queue OCR reindex and force OCR refresh.',
+            description:
+                'Create a durable OCR reindex command and force OCR refresh.',
         },
         {
-            label: 'Start embedding reindex',
+            label: 'Start embedding index build',
             type: 'reindex_embed',
             force: false,
-            description: 'Queue embedding reindex worker job.',
+            description: 'Create a durable embedding index build command.',
         },
     ];
 </script>
@@ -125,7 +127,7 @@
     </section>
 
     <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Maintenance worker jobs</h2>
+        <h2 class="mb-3 font-semibold">Maintenance commands</h2>
         <div class="grid gap-3 lg:grid-cols-2">
             {#each jobActions as action (action.label)}
                 <Form
@@ -147,7 +149,7 @@
                             variant="outline"
                             disabled={processing}
                         >
-                            Queue job
+                            Queue command
                         </Button>
                     {/snippet}
                 </Form>

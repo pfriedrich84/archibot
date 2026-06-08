@@ -4,11 +4,11 @@ Der Classifier stellt CLI-Befehle bereit, die im laufenden Container oder lokal
 ausgefuehrt werden koennen. Sie sind nuetzlich fuer Wartung, Debugging und
 manuelles Ausloesen der Pipeline-Phasen.
 
-Worker-Jobs, die ueber Laravel (`/worker-jobs`, Scheduler oder Webhooks) laufen,
-werden in der Tabelle `worker_jobs` persistiert. Die JSON-Worker-Ausfuehrung
-schreibt Status, Fortschritt und strukturierte Logs; aktive Reindex-Jobs blockieren
-andere Jobs, waehrend `poll` und mehrere `process-doc` Jobs parallel laufen koennen,
-solange nicht dieselbe Paperless-Dokument-ID aktiv ist.
+Neue Laravel-GUI-Aktionen fuer Polling, Reindex, OCR-Reindex, Embedding-Build,
+manuelle Dokumentverarbeitung und Review-Commit laufen ueber durable
+`commands`/`pipeline_runs` und fixe Python-Actor-Kommandos. Alte `worker_jobs`
+bleiben nur fuer Legacy-Sichtbarkeit, historische Logs und noch nicht entfernte
+Kompatibilitaet sichtbar.
 
 ## Aufruf
 
@@ -160,9 +160,10 @@ archibot jobs stop <job_id>
 archibot jobs retry <job_id>
 ```
 
-Diese Befehle lesen bzw. aktualisieren die Laravel-Worker-Job-Datenbank. `stop`
-setzt laufende Jobs auf `cancelling` bzw. noch nicht gestartete Jobs direkt auf
-`cancelled`; `retry` legt einen neuen `queued` Job mit derselben Payload an.
+Diese Befehle lesen die Laravel-Worker-Job-Datenbank fuer Legacy-Sichtbarkeit.
+`list` und `status` bleiben read-only verfuegbar. `stop` und `retry` sind im
+Python-CLI-Einstieg veraltet und mutieren keine Worker-Jobs mehr; nutze dafuer
+die Laravel Admin-Oberflaeche oder die durable Pipeline-/Command-Kontrollen.
 
 ---
 
@@ -173,7 +174,7 @@ Die Admin-UI unter `/worker-jobs` kann folgende persistente Jobs starten:
 - `poll`
 - `process_document` mit Paperless-Dokument-ID
 - `reindex`
-- `reindex_ocr`
+- `reindex_ocr` (neue GUI-Anfragen laufen als durable `commands`/Actor-Pfad; alte Worker-Job-Zeilen bleiben Legacy-Historie)
 - `reindex_embed`
 
 Statuswerte sind `queued`, `running`, `cancelling` (UI: „wird abgebrochen“),

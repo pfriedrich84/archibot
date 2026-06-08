@@ -30,6 +30,7 @@ python -m app.actor_runner build-embedding-index --command-id <commands.id>
 python -m app.actor_runner process-document --pipeline-run-id <pipeline_runs.id>
 python -m app.actor_runner reconcile-poll --command-id <commands.id>
 python -m app.actor_runner reindex --command-id <commands.id>
+python -m app.actor_runner reindex-ocr --command-id <commands.id>
 python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>
 python -m app.actor_runner commit-review --command-id <commands.id>
 ```
@@ -41,11 +42,12 @@ RunPythonActorJob::embeddingIndexBuild($commandId)
 RunPythonActorJob::documentPipeline($pipelineRunId)
 RunPythonActorJob::pollReconciliation($commandId)
 RunPythonActorJob::reindex($commandId)
+RunPythonActorJob::reindexOcr($commandId)
 RunPythonActorJob::webhookDelivery($deliveryId)
 RunPythonActorJob::reviewCommit($commandId)
 ```
 
-The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries, auto-commit behavior and progress remain Python-owned and PostgreSQL-backed. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation and reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` from `commands.payload` and owns the Paperless/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
+The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries, auto-commit behavior and progress remain Python-owned and PostgreSQL-backed. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
 
 ## Database migrations
 
@@ -167,6 +169,7 @@ Available event-driven controls include:
 - mark embedding index stale;
 - run poll now;
 - start reindex;
+- start OCR reindex;
 - commit accepted event-driven review suggestions to Paperless.
 
 Non-admin users must not be able to mutate job or pipeline execution state even if they bypass the UI.
@@ -187,12 +190,12 @@ Recovery behavior:
 - queued non-process webhook deliveries are redispatched to the webhook actor through Laravel queues;
 - pending document runs are redispatched to the document actor through Laravel queues;
 - due retrying document runs are redispatched after backoff;
-- pending embedding-build, poll, reindex and review-commit commands are redispatched through Laravel queues;
+- pending embedding-build, poll, reindex, OCR reindex and review-commit commands are redispatched through Laravel queues;
 - stale `running` actor executions are marked `retrying` with `retry_mode=recovery`;
 - `cancel_requested` pipeline runs are finalized as `cancelled`;
 - embedding-blocked runs are released when the embedding index is complete;
 - accepted review suggestions are enqueued for Paperless commit;
-- pending embedding, poll and reindex commands are bridged to actors.
+- pending embedding, poll, reindex and OCR reindex commands are bridged to actors.
 
 Document actor retry classification uses bounded default backoff for retryable failures such as transient network/provider/Paperless errors, rate limiting and recoverable processing failures. Permanent validation or missing-document failures should not retry forever.
 

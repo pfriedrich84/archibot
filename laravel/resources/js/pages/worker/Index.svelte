@@ -236,7 +236,7 @@
                             type="submit"
                             variant="outline"
                             disabled={processing}
-                            >Queue OCR reindex worker</Button
+                            >Queue OCR reindex command</Button
                         >
                     {/snippet}
                 </Form>
@@ -248,7 +248,7 @@
                             type="submit"
                             variant="outline"
                             disabled={processing}
-                            >Queue forced OCR reindex worker</Button
+                            >Queue forced OCR reindex command</Button
                         >
                     {/snippet}
                 </Form>
@@ -340,9 +340,9 @@
                     <InputError message={errors.type} />
                     <p class="text-xs text-muted-foreground">
                         Poll, full reindex, and embedding build create durable
-                        command jobs listed below. OCR reindex creates a
-                        temporary worker_jobs row. Document processing redirects
-                        to its Pipeline Run.
+                        command jobs listed below. Document processing redirects
+                        to its Pipeline Run; old worker rows below are legacy
+                        visibility only.
                     </p>
                 </div>
 

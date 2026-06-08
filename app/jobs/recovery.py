@@ -6,7 +6,7 @@ import structlog
 
 from app.actors.document import handle_document_pipeline
 from app.actors.embedding import build_initial_embedding_index
-from app.actors.maintenance import reconcile_inbox_documents
+from app.actors.maintenance import reconcile_inbox_documents, reindex_ocr_documents
 from app.actors.review import commit_review_suggestion
 from app.actors.webhook import handle_paperless_webhook
 from app.events import types
@@ -17,6 +17,7 @@ from app.jobs.actor_execution import (
 )
 from app.jobs.commands import (
     list_pending_embedding_build_commands,
+    list_pending_ocr_reindex_commands,
     list_pending_poll_reconciliation_commands,
     list_pending_reindex_commands,
     list_pending_review_commit_commands,
@@ -60,6 +61,23 @@ def enqueue_reindex_command(command_id: int, limit: int | None = None) -> None:
     to the existing PostgreSQL/pgvector embedding rebuild actor.
     """
     _enqueue_command_actor(command_id, build_initial_embedding_index, limit)
+
+
+def enqueue_ocr_reindex_command(
+    command_id: int, limit: int | None = None, *, force: bool = False
+) -> None:
+    """Enqueue an admin-requested OCR reindex command."""
+    mark_command_status(command_id, "queued")
+    try:
+        send = getattr(reindex_ocr_documents, "send", None)
+        if send is not None:
+            send(command_id=command_id, limit=limit, force=force)
+            return
+
+        reindex_ocr_documents(command_id=command_id, limit=limit, force=force)
+    except Exception as exc:
+        mark_command_status(command_id, "pending", f"enqueue_failed:{type(exc).__name__}")
+        raise
 
 
 def _enqueue_command_actor(command_id: int, actor, limit: int | None = None) -> None:
@@ -276,6 +294,15 @@ def run_recovery_scan(limit: int = 100) -> None:
             limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
         )
 
+    ocr_reindex_commands = list_pending_ocr_reindex_commands(limit=limit)
+    for command in ocr_reindex_commands:
+        limit_value = command.payload.get("limit")
+        enqueue_ocr_reindex_command(
+            command.id,
+            limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
+            force=bool(command.payload.get("force", False)),
+        )
+
     review_commit_commands = list_pending_review_commit_commands(limit=limit)
     for command in review_commit_commands:
         review_suggestion_id = command.payload.get("review_suggestion_id")
@@ -298,6 +325,7 @@ def run_recovery_scan(limit: int = 100) -> None:
         embedding_build_commands_requeued=len(embedding_build_commands),
         poll_reconciliation_commands_requeued=len(poll_reconciliation_commands),
         reindex_commands_requeued=len(reindex_commands),
+        ocr_reindex_commands_requeued=len(ocr_reindex_commands),
         review_commit_commands_requeued=len(review_commit_commands),
         review_commits_requeued=0,
     )

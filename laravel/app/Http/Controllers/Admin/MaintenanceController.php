@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\WorkerJob;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
-use App\Services\Workers\WorkerJobDispatcher;
 use App\Services\Workers\WorkerJobRecovery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,7 +54,7 @@ class MaintenanceController extends Controller
         return back()->with('status', 'Worker job recovery completed.');
     }
 
-    public function startWorkerJob(Request $request, WorkerJobDispatcher $dispatcher, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse
+    public function startWorkerJob(Request $request, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
@@ -96,16 +95,15 @@ class MaintenanceController extends Controller
             return back()->with('status', 'Embedding index build command queued.');
         }
 
-        $workerJob = $dispatcher->dispatch(
-            type: $type,
-            payload: ['mode' => 'ocr', 'force' => $force],
-            user: $request->user(),
-            request: $request,
-            auditEvent: 'maintenance.worker_job_requested',
-            auditMetadata: ['maintenance_action' => $type, 'legacy_worker_job' => true],
-        );
+        if ($type === WorkerJob::TYPE_REINDEX_OCR) {
+            $maintenanceCommands->queueOcrReindex($request, null, $force, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX_OCR,
+            ]);
 
-        return back()->with('status', 'Legacy maintenance worker job #'.$workerJob->id.' queued.');
+            return back()->with('status', 'OCR reindex command queued.');
+        }
+
+        abort(422, 'Unsupported maintenance action.');
     }
 
     /** @param array<string, mixed> $metadata */

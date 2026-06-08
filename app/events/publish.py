@@ -51,6 +51,7 @@ def publish_pipeline_event(
     *,
     pipeline_run_id: int | None = None,
     webhook_delivery_id: int | None = None,
+    command_id: int | None = None,
     paperless_document_id: int | None = None,
     level: str = "info",
     message: str | None = None,
@@ -67,6 +68,7 @@ def publish_pipeline_event(
         INSERT INTO pipeline_events (
             pipeline_run_id,
             webhook_delivery_id,
+            command_id,
             event_type,
             paperless_document_id,
             level,
@@ -76,6 +78,7 @@ def publish_pipeline_event(
         ) VALUES (
             :pipeline_run_id,
             :webhook_delivery_id,
+            :command_id,
             :event_type,
             :paperless_document_id,
             :level,
@@ -91,6 +94,7 @@ def publish_pipeline_event(
             {
                 "pipeline_run_id": pipeline_run_id,
                 "webhook_delivery_id": webhook_delivery_id,
+                "command_id": command_id,
                 "event_type": event_type,
                 "paperless_document_id": paperless_document_id,
                 "level": level,
@@ -103,6 +107,7 @@ def publish_pipeline_event(
         event_type=event_type,
         pipeline_run_id=pipeline_run_id,
         webhook_delivery_id=webhook_delivery_id,
+        command_id=command_id,
         paperless_document_id=paperless_document_id,
         **(payload or {}),
     )

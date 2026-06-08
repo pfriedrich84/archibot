@@ -90,6 +90,41 @@ class MaintenanceCommandDispatcher
         return $command;
     }
 
+    public function queueOcrReindex(Request $request, ?int $limit = null, bool $force = false, array $metadata = []): Command
+    {
+        $limit = $this->normalizedLimit($limit);
+        $payload = array_filter([
+            'limit' => $limit,
+            'force' => $force,
+            ...$metadata,
+        ], fn ($value): bool => $value !== null);
+        $command = $this->createCommand($request, Command::TYPE_REINDEX_OCR, $payload);
+
+        $this->recordEvent($request, $command, 'job_control.ocr_reindex_requested', 'info', 'OCR reindex requested by admin.', [
+            'action' => Command::TYPE_REINDEX_OCR,
+            'limit' => $limit,
+            'force' => $force,
+            ...$metadata,
+        ]);
+        $this->audit($request, 'maintenance.ocr_reindex_requested', $command, [
+            'limit' => $limit,
+            'force' => $force,
+            ...$metadata,
+        ]);
+
+        dispatch(RunPythonActorJob::reindexOcr($command->id));
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        $this->recordEvent($request, $command, 'job_control.ocr_reindex_actor_queued', 'info', 'OCR reindex queued through Laravel actor transport.', [
+            'action' => Command::TYPE_REINDEX_OCR,
+            'actor_name' => 'reindex_ocr',
+            'limit' => $limit,
+            'force' => $force,
+            ...$metadata,
+        ]);
+
+        return $command;
+    }
+
     public function queueEmbeddingIndexBuild(Request $request, ?int $limit = null, array $metadata = []): Command
     {
         $limit = $this->normalizedLimit($limit);

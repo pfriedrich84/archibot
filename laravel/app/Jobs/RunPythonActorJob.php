@@ -52,6 +52,11 @@ class RunPythonActorJob implements ShouldQueue
         return new self(PythonActorRunner::ACTOR_REINDEX, $commandId);
     }
 
+    public static function reindexOcr(int $commandId): self
+    {
+        return new self(PythonActorRunner::ACTOR_REINDEX_OCR, $commandId);
+    }
+
     public static function webhookDelivery(int $deliveryId): self
     {
         return new self(PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK, $deliveryId);
@@ -73,6 +78,9 @@ class RunPythonActorJob implements ShouldQueue
                 Command::query()->findOrFail($this->commandId),
             ),
             PythonActorRunner::ACTOR_REINDEX => $runner->runReindex(
+                Command::query()->findOrFail($this->commandId),
+            ),
+            PythonActorRunner::ACTOR_REINDEX_OCR => $runner->runReindexOcr(
                 Command::query()->findOrFail($this->commandId),
             ),
             PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK => $runner->runWebhookDelivery(

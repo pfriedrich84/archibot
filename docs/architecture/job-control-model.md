@@ -30,15 +30,16 @@ This model is allowed to be reliable. It should not be treated as the permanent 
 
 The Python CLI `jobs` adapter is now read-only for `worker_jobs`: it may list and show status for legacy visibility, but mutating actions such as stop and retry must go through Laravel admin controls or durable Pipeline Run / Command controls. This keeps job-control locality at the authorized Laravel seam instead of spreading Worker Job mutation into Python CLI code.
 
-New user-triggered job control has moved away from Worker Job where durable seams already exist:
+New user-triggered job control has moved away from Worker Job where durable seams exist:
 
 - manual Paperless Document processing creates a Pipeline Run via `DocumentPipelineStarter`;
 - poll/reconciliation creates a durable Command;
 - full reindex creates a durable Command and marks the embedding gate stale;
+- OCR reindex creates a durable `reindex_ocr` Command and runs through the fixed OCR reindex actor;
 - embedding index build creates a durable Command;
 - historical retries for those Worker Job types are routed to Pipeline Runs or Commands.
 
-OCR reindex remains a legacy Worker Job path until there is a durable OCR reindex actor. Worker Job recovery remains available for historical/active legacy rows.
+Worker Job recovery remains available for historical/active legacy rows while old rows can still exist.
 
 Embedding index builds are durable commands in the event-driven model. The migration to Laravel queued actor jobs starts with embedding builds, then document pipeline execution. Until a flow has migrated, existing compatibility glue may remain, but it must have a documented path to `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, and fixed Python actor commands.
 
@@ -99,7 +100,7 @@ In the target model:
 | `poll` | `poll_reconciliation` | `reconciliation` | Polling remains fallback/reconciliation, not the primary document trigger. |
 | `process_document` | `process_document` or `reprocess_document` | `document` scoped to `paperless_document_id` | Manual and webhook-triggered document work should converge on document pipeline runs. |
 | `reindex` | `reindex` | `reindex` | Full reindex should emit phase progress and block normal document processing when required. |
-| `reindex_ocr` | `reindex_ocr` | `ocr_reindex` | OCR-specific reindex/review work becomes actorized OCR pipeline work. |
+| `reindex_ocr` | `reindex_ocr` | `ocr_reindex` | OCR-specific reindex now uses a durable command and fixed OCR reindex actor for new GUI requests; old `worker_jobs` rows are legacy history. |
 | `reindex_embed` | `reindex_embed` or `build_embedding_index` | `embedding_index` | Embedding readiness remains a hard gate before document processing. |
 | `commit_review` | `review_commit` | `review_commit` scoped to review suggestion/document | Commit side effects are requested through durable `commands`/`pipeline_events` and executed by the review commit actor; legacy `worker_jobs` commit rows are historical only. |
 | `sync_entity_approval` | `sync_entity_approval` | `entity_approval_sync` scoped to entity approval | Entity approval sync becomes a durable command/pipeline action. |

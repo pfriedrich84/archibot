@@ -1,6 +1,6 @@
 # Laravel Worker Jobs
 
-Laravel `worker_jobs` are the temporary control plane for legacy Python processing from the Archibot UI while the event-driven `commands` / `pipeline_runs` architecture is being completed. New migrated flows must use Laravel queued actor jobs with durable command IDs instead of adding new `worker_jobs` paths; embedding index builds have already moved to `RunPythonActorJob::embeddingIndexBuild(<command-id>)`.
+Laravel `worker_jobs` are the temporary control plane for legacy Python processing from the Archibot UI while the event-driven `commands` / `pipeline_runs` architecture is being completed. New migrated flows must use Laravel queued actor jobs with durable command IDs instead of adding new `worker_jobs` paths; embedding index builds and OCR reindex requests now use `RunPythonActorJob` with durable command IDs instead of creating productive `worker_jobs` rows.
 
 ## How jobs run
 
@@ -147,4 +147,4 @@ php artisan archibot:reset --yes
 
 This clears Laravel/PostgreSQL runtime and job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, sessions/cache, chat state, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, entity approvals, audit logs, embedding index state, document embeddings, and LLM call history. Add `--include-config` only when intentionally clearing Laravel app settings, setup state, MCP tokens, and legacy config files too.
 
-Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands.
+Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New poll, full reindex, OCR reindex, embedding build, manual document processing, and review-commit controls should not create productive `worker_jobs` rows.

@@ -170,7 +170,7 @@ class WorkerJobTest extends TestCase
         $this->assertStringContainsString('Run forced poll reconciliation', $indexPage);
         $this->assertStringContainsString('Process document ID', $indexPage);
         $this->assertStringContainsString('Force process document', $indexPage);
-        $this->assertStringContainsString('Queue forced OCR reindex worker', $indexPage);
+        $this->assertStringContainsString('Queue forced OCR reindex command', $indexPage);
         $this->assertStringContainsString('Durable command jobs', $indexPage);
         $this->assertStringContainsString('Temporary worker_jobs rows', $indexPage);
         $this->assertStringContainsString('Force poll, process document, or OCR reindex', $indexPage);
@@ -342,7 +342,7 @@ class WorkerJobTest extends TestCase
         $this->assertSame('manual_force', $run->reprocess_reason);
     }
 
-    public function test_reindex_ocr_force_payload_is_queued(): void
+    public function test_reindex_ocr_force_queues_durable_command(): void
     {
         Queue::fake();
         $user = User::factory()->create(['is_admin' => true]);
@@ -351,7 +351,12 @@ class WorkerJobTest extends TestCase
             ->post(route('worker-jobs.store'), ['type' => WorkerJob::TYPE_REINDEX_OCR, 'force' => '1'])
             ->assertRedirect(route('worker-jobs.index'));
 
-        $this->assertSame(['mode' => 'ocr', 'force' => true], WorkerJob::query()->firstOrFail()->payload);
+        $this->assertDatabaseCount('worker_jobs', 0);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_REINDEX_OCR, $command->type);
+        $this->assertTrue($command->payload['force']);
+        $this->assertSame(WorkerJob::TYPE_REINDEX_OCR, $command->payload['legacy_worker_job_action']);
+        Queue::assertPushed(RunPythonActorJob::class, 1);
     }
 
     public function test_retry_creates_durable_command_for_migrated_poll_job(): void

@@ -16,7 +16,7 @@ import structlog
 
 from app.actors.document import _handle_document_pipeline_impl
 from app.actors.embedding import _build_initial_embedding_index_impl
-from app.actors.maintenance import _reconcile_inbox_documents_impl
+from app.actors.maintenance import _reconcile_inbox_documents_impl, _reindex_ocr_documents_impl
 from app.actors.review import _commit_review_suggestion_impl
 from app.actors.webhook import _handle_paperless_webhook_impl
 from app.jobs.commands import CommandRecord, load_command, mark_command_status
@@ -26,6 +26,7 @@ log = structlog.get_logger(__name__)
 EMBEDDING_INDEX_BUILD_COMMAND_TYPE = "embedding_index_build"
 POLL_RECONCILIATION_COMMAND_TYPE = "poll_reconciliation"
 REINDEX_COMMAND_TYPE = "reindex"
+REINDEX_OCR_COMMAND_TYPE = "reindex_ocr"
 REVIEW_COMMIT_COMMAND_TYPE = "review_commit"
 
 
@@ -71,6 +72,20 @@ def _payload_limit(command: CommandRecord) -> int | None:
     except (TypeError, ValueError) as exc:
         raise ActorRunnerError(f"Command {command.id} has invalid payload.limit") from exc
     return limit if limit > 0 else None
+
+
+def _payload_bool(command: CommandRecord, key: str) -> bool:
+    """Return a boolean payload flag from durable command payload values."""
+    raw_value = command.payload.get(key)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if raw_value is None or raw_value == "":
+        return False
+    if isinstance(raw_value, int | float):
+        return bool(raw_value)
+    if isinstance(raw_value, str):
+        return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def run_embedding_index_build_command(command_id: int) -> None:
@@ -151,6 +166,27 @@ def run_reindex_command(command_id: int) -> None:
         raise
     mark_command_status(command.id, "succeeded")
     log.info("reindex actor command succeeded", command_id=command.id)
+
+
+def run_reindex_ocr_command(command_id: int) -> None:
+    """Run OCR reindex from the durable command payload."""
+    command = _load_typed_command(command_id, REINDEX_OCR_COMMAND_TYPE)
+    limit = _payload_limit(command)
+    force = _payload_bool(command, "force")
+    mark_command_status(command.id, "running")
+    log.info(
+        "ocr reindex actor command started",
+        command_id=command.id,
+        limit=limit,
+        force=force,
+    )
+    try:
+        _reindex_ocr_documents_impl(command_id=command.id, limit=limit, force=force)
+    except Exception as exc:
+        mark_command_status(command.id, "failed", _exception_summary(exc))
+        raise
+    mark_command_status(command.id, "succeeded")
+    log.info("ocr reindex actor command succeeded", command_id=command.id)
 
 
 def run_document_pipeline(pipeline_run_id: int) -> None:
@@ -242,6 +278,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durable commands.id for a reindex command",
     )
 
+    ocr_reindex = subparsers.add_parser(
+        "reindex-ocr",
+        help="Run OCR reindex from a durable command id",
+    )
+    ocr_reindex.add_argument(
+        "--command-id",
+        type=int,
+        required=True,
+        help="Durable commands.id for a reindex_ocr command",
+    )
+
     webhook = subparsers.add_parser(
         "handle-webhook",
         help="Run a Paperless webhook actor from a durable webhook delivery id",
@@ -280,6 +327,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "reindex":
         run_reindex_command(args.command_id)
+        return 0
+    if args.command == "reindex-ocr":
+        run_reindex_ocr_command(args.command_id)
         return 0
     if args.command == "handle-webhook":
         run_webhook_delivery(args.delivery_id)

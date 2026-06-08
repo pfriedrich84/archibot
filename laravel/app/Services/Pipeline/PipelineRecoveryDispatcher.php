@@ -21,6 +21,7 @@ class PipelineRecoveryDispatcher
                 Command::TYPE_EMBEDDING_INDEX_BUILD,
                 Command::TYPE_POLL_RECONCILIATION,
                 Command::TYPE_REINDEX,
+                Command::TYPE_REINDEX_OCR,
                 Command::TYPE_REVIEW_COMMIT,
             ])
             ->oldest('updated_at')
@@ -32,6 +33,7 @@ class PipelineRecoveryDispatcher
                     Command::TYPE_EMBEDDING_INDEX_BUILD => RunPythonActorJob::embeddingIndexBuild($command->id),
                     Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($command->id),
                     Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
+                    Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($command->id),
                     Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
                     default => null,
                 };

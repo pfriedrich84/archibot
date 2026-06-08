@@ -85,7 +85,7 @@ class MaintenanceTest extends TestCase
         ]);
     }
 
-    public function test_maintenance_controls_route_migrated_actions_to_commands_and_keep_ocr_as_worker_job(): void
+    public function test_maintenance_controls_route_all_productive_actions_to_commands(): void
     {
         Queue::fake();
         Config::set('archibot.absurd_database_url', '');
@@ -107,22 +107,15 @@ class MaintenanceTest extends TestCase
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_POLL_RECONCILIATION)->count());
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_REINDEX)->count());
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_EMBEDDING_INDEX_BUILD)->count());
-        $this->assertDatabaseMissing('worker_jobs', [
-            'type' => WorkerJob::TYPE_REINDEX_EMBED,
-        ]);
-        $this->assertDatabaseHas('worker_jobs', [
-            'type' => WorkerJob::TYPE_REINDEX_OCR,
-            'status' => WorkerJob::STATUS_QUEUED,
-        ]);
-        $ocrWorkerJob = WorkerJob::query()
-            ->where('type', WorkerJob::TYPE_REINDEX_OCR)
-            ->firstOrFail();
-        $this->assertSame(['mode' => 'ocr', 'force' => true], $ocrWorkerJob->payload);
+        $this->assertSame(1, Command::query()->where('type', Command::TYPE_REINDEX_OCR)->count());
+        $ocrCommand = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
+        $this->assertTrue($ocrCommand->payload['force']);
+        $this->assertSame(WorkerJob::TYPE_REINDEX_OCR, $ocrCommand->payload['legacy_worker_job_action']);
 
-        Queue::assertPushed(RunPythonActorJob::class, 3);
-        Queue::assertPushed(RunPythonWorkerJob::class, 1);
-        $this->assertSame(1, WorkerJob::query()->count());
-        $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.worker_job_requested')->count());
+        $this->assertDatabaseCount('worker_jobs', 0);
+        Queue::assertPushed(RunPythonActorJob::class, 4);
+        Queue::assertNotPushed(RunPythonWorkerJob::class);
+        $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
     }
 
     public function test_non_admin_cannot_dispatch_maintenance_worker_job(): void

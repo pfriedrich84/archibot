@@ -77,8 +77,8 @@ Relevant docs/decisions:
 | Run worker recovery now | Admin Maintenance / Recovery | `POST admin/maintenance/recover-worker-jobs` -> `MaintenanceController::recoverWorkerJobs` | `worker_jobs` recovery only | Keep temporarily until all `worker_jobs` rows are retired; consider adding pipeline actor recovery beside it |
 | Start poll reconciliation | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `poll` | Redirected to durable `poll_reconciliation` command | Keep, but rename/reword as command action |
 | Start full reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex` | Redirected to durable `reindex` command | Keep, but rename/reword as command action |
-| Start OCR reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex_ocr` | Legacy `worker_jobs` path | Replace with durable OCR reindex command/actor before Control Center cleanup |
-| Start OCR reindex force | Admin Maintenance / Maintenance worker jobs | same route, `force=1` | Legacy `worker_jobs` path | Replace with durable OCR reindex command/actor before Control Center cleanup |
+| Start OCR reindex | Admin Maintenance / Maintenance commands | `POST admin/maintenance/worker-jobs` type `reindex_ocr` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Keep; backend unified on 2026-06-08 |
+| Start OCR reindex force | Admin Maintenance / Maintenance commands | same route, `force=1` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Keep; backend unified on 2026-06-08 |
 | Start embedding reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex_embed` | Redirected to durable embedding build command | Keep, but rename/reword as embedding index build command |
 
 ### Control Center / Worker Jobs page
@@ -90,8 +90,8 @@ Relevant docs/decisions:
 | Run poll reconciliation | Control Center quick controls | `POST maintenance/poll` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
 | Run forced poll reconciliation | Control Center quick controls | `POST maintenance/poll` with `force=1` | Durable command | Partly duplicates Maintenance, but Maintenance's poll form does not visibly expose force | Either move force-poll option into Maintenance or keep until Maintenance has it |
 | Queue all-document reindex command | Control Center quick controls | `POST maintenance/reindex` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
-| Queue OCR reindex worker | Control Center quick controls | `POST worker-jobs` type `reindex_ocr` | Legacy `worker_jobs` | Duplicates Maintenance and is the only remaining technical exception | Replace backend with durable OCR reindex command/actor first, then remove duplicate launcher from Control Center |
-| Queue forced OCR reindex worker | Control Center quick controls | `POST worker-jobs` type `reindex_ocr`, `force=1` | Legacy `worker_jobs` | Duplicates Maintenance and is the only remaining technical exception | Replace backend with durable OCR reindex command/actor first, then remove duplicate launcher from Control Center |
+| Queue OCR reindex command | Control Center quick controls | `POST worker-jobs` type `reindex_ocr` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicates Maintenance | Remove duplicate launcher from Control Center after approval |
+| Queue forced OCR reindex command | Control Center quick controls | `POST worker-jobs` type `reindex_ocr`, `force=1` | Durable `reindex_ocr` command + `RunPythonActorJob::reindexOcr` | Duplicates Maintenance | Remove duplicate launcher from Control Center after approval |
 | Queue embedding index build command | Control Center quick controls | `POST embedding-index/build` | Durable command | Duplicates Dashboard and Maintenance | Remove from Control Center after approval; keep in Dashboard/Maintenance |
 | Mark embedding index stale | Control Center quick controls | `POST embedding-index/mark-stale` | Durable state/action | Duplicates Dashboard; missing from current Maintenance page | Move/add to Maintenance before removing from Control Center |
 | Process document ID | Control Center form | `POST worker-jobs` type `process_document` | Redirected to `DocumentPipelineStarter` / pipeline run | Useful action, but page name suggests worker job | Move to Maintenance or Pipeline runs as a manual pipeline action before retiring Control Center action |
@@ -157,12 +157,12 @@ Worker Jobs are not yet removable everywhere. The audit found active references 
 
 - **Models/tables/factories/migrations:** `WorkerJob`, `WorkerJobLog`, `worker_jobs`, `worker_job_logs` still exist and are referenced by tests and reset/prune code.
 - **Runtime execution:** `RunPythonWorkerJob`, `WorkerJobDispatcher`, `PythonWorkerCommand`, `WorkerResultIngestor`, and `WorkerJobRecovery` still support legacy flows.
-- **Known legacy flow:** `reindex_ocr` still dispatches through `WorkerJobDispatcher` from Maintenance/Control Center. This is now treated as the main blocker to a unified backend: implement a durable OCR reindex command/actor so OCR reindex uses the same technical default as poll, full reindex, and embedding builds.
+- **Former legacy flow:** `reindex_ocr` no longer creates productive `worker_jobs` rows from Maintenance/Control Center. New GUI requests create durable `reindex_ocr` commands and dispatch `RunPythonActorJob::reindexOcr`, matching the technical default used by poll, full reindex, and embedding builds.
 - **Historical visibility:** dashboard/errors/stats/pipeline detail pages still show or link legacy worker rows.
 - **Review/entity compatibility:** existing review suggestions and entity approvals may still link to worker job IDs for Python-origin or legacy sync paths.
 - **Health/readiness:** `/healthz`, dashboard readiness, and worker recovery settings still check stale/failed worker jobs.
 
-Conclusion: **do not remove `worker_jobs` backend/routes/controllers everywhere yet**. It is still required for OCR reindex and historical/active legacy visibility. However, OCR reindex should no longer be preserved as a long-running exception. The next implementation stage should first move OCR reindex onto the unified durable command/actor backend, then remove the duplicate GUI launchers.
+Conclusion: **do not remove `worker_jobs` backend/routes/controllers everywhere yet**. OCR reindex is no longer the productive exception, but `worker_jobs` is still required for historical/active legacy visibility and old-row stop/retry/detail behavior. The next implementation stage can remove duplicate GUI launchers conservatively while preserving legacy history.
 
 ## Duplicate/obsolete candidates
 
@@ -190,8 +190,8 @@ Remove these quick-control buttons from `worker/Index.svelte` after the Maintena
 
 - Run poll reconciliation
 - Queue all-document reindex command
-- Queue OCR reindex worker, after it uses the durable OCR reindex command/actor
-- Queue forced OCR reindex worker, after it uses the durable OCR reindex command/actor
+- Queue OCR reindex command
+- Queue forced OCR reindex command
 - Queue embedding index build command
 - Mark embedding index stale, but only after adding it to Maintenance
 
@@ -240,11 +240,7 @@ Risk: documentation-only, low risk.
 
 ### Stage 1: unify OCR reindex first
 
-1. Implement OCR reindex as a durable command/actor path, using the same technical default as poll, full reindex, and embedding build.
-2. Ensure both normal and forced OCR reindex preserve current behavior while writing durable command/actor/pipeline progress instead of creating new productive `worker_jobs` rows.
-3. Route Maintenance OCR reindex actions through the new durable backend.
-4. Update CLI parity for `archibot reindex-ocr [--force]` so it no longer diverges from the GUI/backend semantics.
-5. Add focused tests for the GUI action, command payload, actor dispatch, force propagation, and CLI/backend parity.
+Implemented on 2026-06-08 for the Laravel GUI/backend: Maintenance and Control Center OCR reindex submissions now create durable `reindex_ocr` commands and dispatch the fixed OCR reindex actor. Follow-up remains to decide whether the operator-facing Python CLI should delegate to Laravel for OCR reindex or remain a direct actor/debug entrypoint.
 
 ### Stage 2: small documentation fix and Maintenance gap closure
 
@@ -286,11 +282,9 @@ Do not remove backend/routes/controllers/models until all prerequisites are true
 - reset/prune/recovery docs are updated;
 - tests prove equivalent actions remain available through commands/pipeline/actors.
 
-## Approval questions before code changes
+## Remaining approval questions before duplicate GUI removal
 
-1. Should the next implementation patch be the durable OCR reindex command/actor so all productive maintenance actions share one backend?
-2. What command type name should be canonical for OCR reindex: `ocr_reindex` or `reindex_ocr`?
-3. Should **forced poll reconciliation** be a first-class Maintenance action, or remain dashboard/control-only?
-4. Should **manual process document** move to Maintenance, Pipeline Runs, or stay in Control Center until a separate design is chosen?
-5. If Control Center loses launch buttons, should its navigation label stay **Control Center** or become **Job history** / **Legacy worker jobs**?
-6. Is it acceptable to update `docs/developer/cli.md` now to mark `archibot jobs stop/retry` as deprecated/read-only?
+1. Should **forced poll reconciliation** be a first-class Maintenance action, or remain dashboard/control-only?
+2. Should **manual process document** move to Maintenance, Pipeline Runs, or stay in Control Center until a separate design is chosen?
+3. If Control Center loses launch buttons, should its navigation label stay **Control Center** or become **Job history** / **Legacy worker jobs**?
+4. Should operator-facing `archibot reindex-ocr [--force]` delegate to Laravel command creation, or remain a direct Python debug entrypoint while GUI/backend actions use the durable command actor?

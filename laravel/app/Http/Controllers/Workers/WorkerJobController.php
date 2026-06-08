@@ -257,14 +257,15 @@ class WorkerJobController extends Controller
             return redirect()->route('worker-jobs.index')->with('status', 'Embedding index build command queued.');
         }
 
-        $dispatcher->dispatch(
-            type: $validated['type'],
-            payload: ['mode' => 'ocr', 'force' => $force],
-            user: $request->user(),
-            request: $request,
-        );
+        if ($validated['type'] === WorkerJob::TYPE_REINDEX_OCR) {
+            $maintenanceCommands->queueOcrReindex($request, null, $force, [
+                'legacy_worker_job_action' => WorkerJob::TYPE_REINDEX_OCR,
+            ]);
 
-        return redirect()->route('worker-jobs.index');
+            return redirect()->route('worker-jobs.index')->with('status', 'OCR reindex command queued.');
+        }
+
+        abort(422, 'Unsupported worker job action.');
     }
 
     public function stop(Request $request, WorkerJob $workerJob): RedirectResponse
@@ -436,6 +437,17 @@ class WorkerJobController extends Controller
             $maintenanceCommands->queueEmbeddingIndexBuild($request, null, $this->legacyRetryMetadata($workerJob, $retryFailedOnly));
 
             return redirect()->route('worker-jobs.index')->with('status', 'Legacy Worker Job retry queued as embedding build command.');
+        }
+
+        if ($workerJob->type === WorkerJob::TYPE_REINDEX_OCR) {
+            $maintenanceCommands->queueOcrReindex(
+                $request,
+                null,
+                (bool) data_get($payload, 'force', false),
+                $this->legacyRetryMetadata($workerJob, $retryFailedOnly),
+            );
+
+            return redirect()->route('worker-jobs.index')->with('status', 'Legacy Worker Job retry queued as OCR reindex command.');
         }
 
         $dispatcher->dispatch(
