@@ -6,7 +6,8 @@ from app.jobs.commands import CommandRecord
 
 
 @pytest.fixture(autouse=True)
-def default_no_pending_review_commit_commands(monkeypatch):
+def default_no_pending_commands(monkeypatch):
+    monkeypatch.setattr(recovery, "list_pending_ocr_reindex_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
 
 
@@ -491,6 +492,80 @@ def test_recovery_scan_does_not_enqueue_legacy_review_commits(monkeypatch):
     )
 
     recovery.run_recovery_scan(limit=10)
+
+
+def test_enqueue_ocr_reindex_command_uses_durable_actor(monkeypatch):
+    statuses = []
+    sent = []
+
+    class Actor:
+        @staticmethod
+        def send(**kwargs):
+            sent.append(kwargs)
+
+    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
+    monkeypatch.setattr(recovery, "reindex_ocr_documents", Actor())
+
+    recovery.enqueue_ocr_reindex_command(55, limit=12, force=True)
+
+    assert statuses == [(55, "queued")]
+    assert sent == [{"command_id": 55, "limit": 12, "force": True}]
+
+
+def test_enqueue_ocr_reindex_command_restores_pending_when_enqueue_fails(monkeypatch):
+    statuses = []
+
+    class Actor:
+        @staticmethod
+        def send(**kwargs):
+            raise RuntimeError("queue down")
+
+    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
+    monkeypatch.setattr(recovery, "reindex_ocr_documents", Actor())
+
+    with pytest.raises(RuntimeError):
+        recovery.enqueue_ocr_reindex_command(55, limit=12, force=True)
+
+    assert statuses == [
+        (55, "queued"),
+        (55, "pending", "enqueue_failed:RuntimeError"),
+    ]
+
+
+def test_recovery_scan_enqueues_ocr_reindex_commands(monkeypatch):
+    enqueued = []
+
+    monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
+    monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
+    monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
+    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
+    monkeypatch.setattr(
+        recovery,
+        "list_pending_ocr_reindex_commands",
+        lambda limit: [
+            CommandRecord(
+                id=55,
+                type="reindex_ocr",
+                status="pending",
+                payload={"limit": 12, "force": True},
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        recovery,
+        "enqueue_ocr_reindex_command",
+        lambda command_id, limit=None, force=False: enqueued.append((command_id, limit, force)),
+    )
+
+    recovery.run_recovery_scan(limit=10)
+
+    assert enqueued == [(55, 12, True)]
 
 
 def test_enqueue_webhook_delivery_uses_absurd_send_when_available(monkeypatch):
