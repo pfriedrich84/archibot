@@ -86,7 +86,6 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Legacy Laravel Worker Job** | Alte aktive/historische Kompatibilitaetszeilen | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
 | **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → `RunPythonActorJob::pollReconciliation(<command-id>)` → festes Python-Actor-Kommando | Ja, ueberspringt mit Log |
 | **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`; fuer Create/Process-Events startet es `pipeline_runs` und queued `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, fuer Refresh/Delete-Events queued es `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)` | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
@@ -99,7 +98,7 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 - **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless mit dem Token des angemeldeten Paperless-Benutzers
 - **Status-Anreicherung:** Fuer jedes Dokument wird der aktuelle Laravel-Review-Status aus `review_suggestions` eingeblendet
 - **Fehlerzustand:** Ist Paperless nicht erreichbar oder fehlt die Konfiguration, zeigt Laravel einen expliziten Fehler statt stale Berechtigungen zu erlauben
-- **Verarbeitung:** Manuelle Admin-Verarbeitung startet durable `pipeline_runs` aus Maintenance oder Review-Aktionen. Die alte `/worker-jobs` Oberflaeche ist zur Entfernung vorgesehen und wird nicht durch `/legacy-worker-jobs` ersetzt; alte Worker-Zeilen bleiben nur temporaere Backend-Kompatibilitaetsdaten und sollen in Operations-Log-Begriffen sichtbar werden, bis sie retired werden.
+- **Verarbeitung:** Manuelle Admin-Verarbeitung startet durable `pipeline_runs` aus Maintenance oder Review-Aktionen. Die alte `/worker-jobs` Oberflaeche und der `worker_jobs` Backendpfad werden fuer den naechsten Clean Install entfernt. Es gibt keine `/legacy-worker-jobs` Route, keine Migration alter Worker-Zeilen und keine Backend-Kompatibilitaet fuer historischen Worker-Job-State.
 
 ## Pipeline-Stufen im Detail
 

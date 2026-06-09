@@ -6,9 +6,9 @@ manuelles Ausloesen der Pipeline-Phasen.
 
 Neue Laravel-GUI-Aktionen fuer Polling, Reindex, OCR-Reindex, Embedding-Build,
 manuelle Dokumentverarbeitung und Review-Commit laufen ueber durable
-`commands`/`pipeline_runs` und fixe Python-Actor-Kommandos. Alte `worker_jobs`
-bleiben nur fuer Legacy-Sichtbarkeit, historische Logs und noch nicht entfernte
-Kompatibilitaet sichtbar.
+`commands`/`pipeline_runs` und fixe Python-Actor-Kommandos. `worker_jobs` wird
+als Clean-Install-Break entfernt; es gibt keine Legacy-Datenmigration oder
+Backend-Kompatibilitaet fuer alte Worker-Zeilen.
 
 ## Aufruf
 
@@ -151,7 +151,7 @@ Klassifikation oder Ollama-Probleme), ohne die gesamte Inbox zu starten.
 
 ---
 
-### `jobs` — Persistente Worker-Jobs beobachten
+### `jobs` — Entfernte Worker-Job-Kompatibilitaet
 
 ```bash
 archibot jobs list
@@ -160,16 +160,7 @@ archibot jobs stop <job_id>
 archibot jobs retry <job_id>
 ```
 
-Diese Befehle lesen die Laravel-Worker-Job-Datenbank nur noch fuer Legacy-Sichtbarkeit.
-`list` und `status` bleiben voruebergehend read-only verfuegbar. `stop` und
-`retry` sind im Python-CLI-Einstieg veraltet und mutieren keine Worker-Jobs mehr;
-nutze dafuer die Laravel Admin-Oberflaeche oder die durable Pipeline-/Command-Kontrollen.
-
----
-
-### Worker-Job Lifecycle
-
-`worker_jobs` ist keine neue produktive Benutzeroberflaeche mehr. Normale Admin-Aktionen laufen ueber Maintenance/Dashboard und erzeugen durable `commands` oder `pipeline_runs`:
+Diese Befehle sind zur Entfernung vorgesehen. ArchiBot bewahrt keine alten Worker-Job-Daten fuer Upgrades auf; Runtime-State wird vor dem naechsten Clean Install bereinigt. Normale Admin-Aktionen laufen ueber Maintenance/Dashboard und erzeugen durable `commands` oder `pipeline_runs`:
 
 - poll/reconciliation;
 - forced poll/reconciliation;
@@ -178,9 +169,7 @@ nutze dafuer die Laravel Admin-Oberflaeche oder die durable Pipeline-/Command-Ko
 - OCR reindex;
 - embedding index build.
 
-Die alte `/worker-jobs` Oberflaeche ist zur Entfernung vorgesehen und soll durch `/operations-log` ersetzt werden. Dabei darf keine neue `/legacy-worker-jobs` Route entstehen; noch benoetigte alte Worker-Zeilen werden als normalisierte Operations-Log-Historie behandelt, bis das Backend vollstaendig retired werden kann.
-
-Statuswerte historischer Worker-Zeilen sind `queued`, `running`, `cancelling` (UI: „wird abgebrochen“), `cancelled`, `succeeded`, `failed` und `partially_failed`. Stop/Retry fuer alte aktive Zeilen bleiben Laravel-autorisiert, bis durable Ersatzkontrollen vorhanden sind.
+Die alte `/worker-jobs` Oberflaeche wird entfernt und durch `/operations-log` auf Basis durable Tabellen ersetzt. Es gibt keine `/legacy-worker-jobs` Route und keine Backend-Kompatibilitaet fuer alte Worker-Zeilen.
 
 ---
 

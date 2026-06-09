@@ -74,7 +74,7 @@ Relevant docs/decisions:
 
 | Action | GUI location | Backend route/controller | Durable path | Recommendation |
 | --- | --- | --- | --- | --- |
-| Run worker recovery now | Admin Maintenance / Recovery | `POST admin/maintenance/recover-worker-jobs` -> `MaintenanceController::recoverWorkerJobs` | `worker_jobs` recovery only | Keep temporarily until all `worker_jobs` rows are retired; consider adding pipeline actor recovery beside it |
+| Run worker recovery now | Admin Maintenance / Recovery | `POST admin/maintenance/recover-worker-jobs` -> `MaintenanceController::recoverWorkerJobs` | `worker_jobs` recovery only | Remove; replace with durable pipeline/actor recovery |
 | Start poll reconciliation | Admin Maintenance / Maintenance commands | `POST admin/maintenance/worker-jobs` type `poll` | Redirected to durable `poll_reconciliation` command | Keep |
 | Start forced poll reconciliation | Admin Maintenance / Maintenance commands | same route, `force=1` | Durable `poll_reconciliation` command | Keep |
 | Start full reindex | Admin Maintenance / Maintenance worker jobs | `POST admin/maintenance/worker-jobs` type `reindex` | Redirected to durable `reindex` command | Keep, but rename/reword as command action |
@@ -86,7 +86,7 @@ Relevant docs/decisions:
 
 ### Control Center / Worker Jobs page
 
-`worker/Index.svelte` used to combine durable command visibility, quick controls, document processing, and temporary `worker_jobs` rows. Duplicate launchers have been removed. The next route-level cleanup is to replace the user-facing `/worker-jobs` surface with a unified Operations Log, without introducing a `/legacy-worker-jobs` replacement route.
+`worker/Index.svelte` used to combine durable command visibility, quick controls, document processing, and `worker_jobs` rows. Duplicate launchers have been removed. The next route-level cleanup is to remove the user-facing `/worker-jobs` surface and replace the useful history view with a unified Operations Log backed only by durable event-driven tables, without introducing a `/legacy-worker-jobs` replacement route.
 
 | Action | GUI location | Backend route/controller | Durable path | Duplication / issue | Recommendation |
 | --- | --- | --- | --- | --- | --- |
@@ -99,17 +99,19 @@ Relevant docs/decisions:
 | Mark embedding index stale | Removed Control Center quick controls | `POST embedding-index/mark-stale` | Durable state/action | Duplicated Dashboard; missing from Maintenance | Added to Maintenance and removed from Control Center |
 | Process document ID | Removed Control Center form | `POST worker-jobs` type `process_document` | Redirected to `DocumentPipelineStarter` / pipeline run | Useful action with legacy naming | Added target-language Maintenance action and removed from Control Center |
 | Generic worker job type selector | Removed Control Center form | `POST worker-jobs` with allowed types | Mixed durable/legacy | Duplicated all specific controls and exposed implementation terms | Removed from Control Center |
-| Stop worker job | Temporary worker rows list | `POST worker-jobs/{id}/stop` | Legacy worker row mutation | Required only for active legacy rows | Keep as long as active legacy worker rows can exist |
-| Retry whole worker job | Temporary worker rows list | `POST worker-jobs/{id}/retry` | Migrates some types to pipeline/commands; legacy for OCR | Required for historical/active legacy rows | Keep as detail/history action until no legacy rows remain |
-| Retry failed documents only | Temporary worker rows list | `POST worker-jobs/{id}/retry` with `failed_only=1` | Migrates process-doc to pipeline; legacy for OCR | Required for historical/active legacy rows | Keep as detail/history action until no legacy rows remain |
+| Stop worker job | Temporary worker rows list | `POST worker-jobs/{id}/stop` | Legacy worker row mutation | Superseded by clean-state removal | Remove with `/worker-jobs` and worker backend |
+| Retry whole worker job | Temporary worker rows list | `POST worker-jobs/{id}/retry` | Legacy worker retry | Superseded by durable retry controls | Remove with `/worker-jobs` and worker backend |
+| Retry failed documents only | Temporary worker rows list | `POST worker-jobs/{id}/retry` with `failed_only=1` | Legacy worker retry | Superseded by durable retry controls | Remove with `/worker-jobs` and worker backend |
 
-The useful, non-duplicated part of Control Center is the combined operational log/history view:
+The useful, non-duplicated part of Control Center is operational history. Preserve that value through `/operations-log` backed by durable tables only:
 
-- recent durable commands (`commands` list);
-- temporary `worker_jobs` rows and their logs;
-- worker job detail pages with payload/progress/result/logs/retry lineage/audit entries.
+- recent durable commands;
+- pipeline runs and events;
+- actor executions;
+- webhook delivery history;
+- audit entries.
 
-This supports the maintainer observation that the job log is useful there. It should be preserved as normalized operational history, not as a new legacy-worker-job product surface.
+Do not preserve old worker-job rows, detail pages, retry lineage, or logs. Runtime state will be cleaned before install, so no historical worker-job migration is required.
 
 ### Pipeline runs pages
 
@@ -120,14 +122,14 @@ This supports the maintainer observation that the job log is useful there. It sh
 | Retry run | Pipeline runs index/show | `PipelineRunController::retry` | Keep |
 | Retry failed items | Pipeline runs index/show | `PipelineRunController::retryFailedItems` | Keep |
 | Cancel run | Pipeline runs index/show | `PipelineRunController::cancel` | Keep |
-| Linked worker jobs | Pipeline run show | `PipelineRunController::linkedWorkerJobs` | Keep temporarily for migration/historical context; remove once `worker_jobs` is fully retired |
+| Linked worker jobs | Pipeline run show | `PipelineRunController::linkedWorkerJobs` | Remove; no worker-job compatibility after clean-state retirement |
 
 ### Errors and webhook pages
 
 | Action | GUI location | Backend route/controller | Recommendation |
 | --- | --- | --- | --- |
-| Retry whole worker job | Errors page, failed worker job section | `WorkerJobController::retry` | Keep temporarily while worker failures can exist; later replace with pipeline/actor failures only |
-| Retry failed worker documents only | Errors page | `WorkerJobController::retry` | Keep temporarily for historical/legacy rows |
+| Retry whole worker job | Errors page, failed worker job section | `WorkerJobController::retry` | Remove with worker-job backend; errors should target pipeline/actor/webhook failures |
+| Retry failed worker documents only | Errors page | `WorkerJobController::retry` | Remove with worker-job backend |
 | Retry webhook delivery | Errors, webhooks index/show | `WebhookDeliveryController::retry` | Keep |
 | Dismiss webhook failure | Errors, webhooks index/show | `WebhookDeliveryController::dismiss` | Keep |
 
@@ -148,28 +150,28 @@ This supports the maintainer observation that the job log is useful there. It sh
 | OCR reindex | `archibot reindex-ocr [--force]` | Python CLI path currently runs direct OCR logic | GUI creates durable `reindex_ocr` command | Follow-up: make CLI delegate to Laravel durable command creation; no direct operator mode |
 | Embedding reindex | `archibot reindex-embed` | Python CLI path | GUI creates durable embedding build command | Needs follow-up parity review; may be operator/debug only after actor path is canonical |
 | Process document | `archibot process-doc <id> [--force]` | Python CLI path / worker-compatible | GUI manual processing starts pipeline runs through Maintenance | Needs follow-up parity review before changing CLI behavior |
-| Worker jobs list/status | `archibot jobs list/status` | Read-only SQLite/Laravel DB adapter in `app/cli.py` | Worker detail UI still exists | Keep read-only for legacy visibility while worker rows exist |
-| Worker jobs stop/retry | `archibot jobs stop/retry` | Code prints deprecation/read-only message | GUI still mutates via Laravel admin routes | Docs in `docs/developer/cli.md` are stale and should be corrected |
-| Pipeline actor recovery | `php artisan archibot:recovery-scan` | Laravel service dispatches actor jobs | No direct GUI button found | Consider adding to Maintenance as target recovery action |
-| Worker job recovery | `php artisan worker-jobs:recover` | WorkerJobRecovery | GUI Maintenance button exists | Keep temporarily |
-| Cancel stale worker jobs | `php artisan worker-jobs:cancel-stale` | StaleWorkerJobCanceller | Indirect in UI through recovery/index controller | Keep temporarily |
+| Worker jobs list/status | `archibot jobs list/status` | Read-only SQLite/Laravel DB adapter in `app/cli.py` | Worker detail UI exists today | Remove with worker-job backend; no legacy data preservation |
+| Worker jobs stop/retry | `archibot jobs stop/retry` | Code prints deprecation/read-only message | GUI still mutates via Laravel admin routes today | Remove with worker-job backend |
+| Pipeline actor recovery | `php artisan archibot:recovery-scan` | Laravel service dispatches actor jobs | No direct GUI button found | Add to Maintenance as target recovery action |
+| Worker job recovery | `php artisan worker-jobs:recover` | WorkerJobRecovery | GUI Maintenance button exists today | Remove with worker-job backend |
+| Cancel stale worker jobs | `php artisan worker-jobs:cancel-stale` | StaleWorkerJobCanceller | Indirect in UI today | Remove with worker-job backend |
 
 ## Worker Jobs references and suspected remaining dependencies
 
-Worker Jobs are not yet removable everywhere. The audit found active references in these categories:
+Worker Jobs are now planned for clean-state removal. The audit found active references that must be removed rather than preserved for compatibility:
 
 - **Models/tables/factories/migrations:** `WorkerJob`, `WorkerJobLog`, `worker_jobs`, `worker_job_logs` still exist and are referenced by tests and reset/prune code.
 - **Runtime execution:** `RunPythonWorkerJob`, `WorkerJobDispatcher`, `PythonWorkerCommand`, `WorkerResultIngestor`, and `WorkerJobRecovery` still support legacy flows.
-- **Former legacy flow:** `reindex_ocr` no longer creates productive `worker_jobs` rows from Maintenance/Control Center. New GUI requests create durable `reindex_ocr` commands and dispatch `RunPythonActorJob::reindexOcr`, matching the technical default used by poll, full reindex, and embedding builds.
-- **Historical visibility:** dashboard/errors/stats/pipeline detail pages still show or link legacy worker rows.
-- **Review/entity compatibility:** existing review suggestions and entity approvals may still link to worker job IDs for Python-origin or legacy sync paths.
-- **Health/readiness:** `/healthz`, dashboard readiness, and worker recovery settings still check stale/failed worker jobs.
+- **Migrated flow:** `reindex_ocr` no longer creates productive `worker_jobs` rows from Maintenance/Control Center. GUI requests create durable `reindex_ocr` commands and dispatch `RunPythonActorJob::reindexOcr`, matching the technical default used by poll, full reindex, and embedding builds.
+- **Visibility references:** dashboard/errors/stats/pipeline detail pages still show or link worker rows and must move to durable command/pipeline/actor/webhook data or drop the worker section.
+- **Review/entity references:** existing review suggestions and entity approvals may still link to worker job IDs; because installs are clean, these links can be removed with the corresponding columns/relations or ignored during table removal.
+- **Health/readiness:** `/healthz`, dashboard readiness, and worker recovery settings still check stale/failed worker jobs and must be removed or redirected to durable actors.
 
-Conclusion: **do not remove the `worker_jobs` backend/table everywhere yet**. OCR reindex is no longer the productive exception, but `worker_jobs` is still required for historical/active compatibility and old-row stop/retry behavior until those actions are normalized. However, do not preserve or create user-facing `/worker-jobs` or `/legacy-worker-jobs` routes as long-term surfaces; expose any still-needed historical information through Operations Log terminology and durable command/pipeline/actor views.
+Conclusion: remove the `worker_jobs` backend/table/routes/controllers/jobs/recovery/results/tests/docs as a clean-install breaking cleanup after durable replacements exist. Do not migrate old rows, do not keep backend compatibility, and do not create `/worker-jobs` or `/legacy-worker-jobs` surfaces.
 
 ## Duplicate/obsolete candidates
 
-These were the conservative cleanup candidates. The GUI launcher consolidation candidates have now been implemented; backend `worker_jobs` retirement remains gated by the prerequisites below.
+These were the conservative cleanup candidates. The GUI launcher consolidation candidates have now been implemented; backend `worker_jobs` retirement is now a clean-install removal, not a compatibility migration.
 
 ### Candidate 0: unify OCR reindex backend
 
@@ -180,7 +182,7 @@ Before removing duplicate Control Center actions, implement OCR reindex on the s
 - add a fixed Python actor-runner contract, for example `python -m app.actor_runner reindex-ocr --command-id <commands.id>`;
 - persist OCR reindex progress through `commands`, `pipeline_runs` / `pipeline_items` where appropriate, `pipeline_events`, and `actor_executions`, not through new productive `worker_jobs` rows;
 - move `MaintenanceCommandDispatcher` / Maintenance GUI OCR actions to create this durable command instead of calling `WorkerJobDispatcher`;
-- make Control Center retry/visibility treat old OCR worker rows as legacy history only;
+- remove Control Center retry/visibility for old OCR worker rows instead of preserving legacy history;
 - update CLI parity so `archibot reindex-ocr [--force]` delegates to the same Laravel/durable command path; do not keep a separate direct operator entrypoint.
 
 Rationale: the maintainer wants a unified backend and OCR reindex appears to be the only remaining productive GUI action still based on `worker_jobs`.
@@ -209,7 +211,7 @@ After Candidate A, replace the user-facing Control Center / Worker Jobs surface 
 - route should be `/operations-log`, not `/worker-jobs`;
 - do not introduce `/operations-log/legacy-worker-jobs/{id}` or any `/legacy-worker-jobs` route;
 - durable commands, pipeline runs/events, actor executions, webhook deliveries and audit entries should be the primary records;
-- any still-needed old `worker_jobs` data should appear only as normalized archived operation details, without making "Legacy Worker Jobs" a product/navigation concept.
+- do not show old `worker_jobs` data; clean runtime state means there is no historical data to preserve.
 
 Rationale: preserves useful job/log history while preventing the temporary `worker_jobs` model from becoming the new user-facing architecture.
 
@@ -249,22 +251,21 @@ Implemented on 2026-06-08 for the Laravel GUI/backend: Maintenance and former Co
 
 Implemented on 2026-06-08:
 
-1. `docs/developer/cli.md` documents deprecated/read-only `archibot jobs stop/retry` behavior.
+1. `docs/developer/cli.md` documents deprecated/read-only `archibot jobs stop/retry` behavior pending removal.
 2. Maintenance now exposes the previously missing actions:
    - Mark embedding index stale.
    - Forced poll reconciliation.
    - Manual document pipeline start with optional forced reprocess.
 3. Maintenance labels use command/pipeline language instead of productive `worker_jobs` language.
-4. Legacy worker recovery/status remain explicitly scoped to temporary worker rows.
+
+Refined decision on 2026-06-09: remove worker recovery/status rather than preserving temporary worker rows.
 
 ### Stage 3: remove duplicate action launchers from Control Center
 
 Implemented on 2026-06-08. The Control Center no longer exposes duplicate quick controls, the manual process-document worker form, or the generic worker-job type selector. It preserves:
 
 - durable command list;
-- temporary worker row list;
-- links to worker detail/logs;
-- legacy stop/retry actions for existing rows.
+No worker row list, worker detail/log links, or legacy stop/retry actions should remain after the clean-state cleanup.
 
 ### Stage 4: replace `/worker-jobs` with Operations Log
 
@@ -273,23 +274,24 @@ Planned next route/UI cleanup:
 1. Add a user-facing `/operations-log` route and navigation label **Operations Log**.
 2. Remove the user-facing `/worker-jobs` route instead of keeping it as a compatibility URL.
 3. Do not add `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}`.
-4. Normalize still-needed old worker-row visibility into Operations Log entries/details using generic operation language such as source `legacy`, not product language such as "Worker Jobs".
-5. Keep backend `worker_jobs` models/tables only as temporary compatibility storage until the Stage 5 retirement prerequisites are satisfied.
+4. Build Operations Log from durable commands, pipeline events/items, actor executions, webhook deliveries and audit logs.
+5. Remove backend `worker_jobs` models/tables/controllers/jobs/recovery/result ingestion/tests/docs in the same clean-install cleanup; do not preserve compatibility storage.
 
-### Stage 5: retire Worker Jobs fully only after prerequisites
+### Stage 5: retire Worker Jobs fully as clean-install cleanup
 
-Do not remove backend/routes/controllers/models until all prerequisites are true:
+Remove backend/routes/controllers/models once these prerequisites are true:
 
 - durable OCR reindex actor exists and has GUI/CLI parity;
-- no current code creates productive `worker_jobs` rows, including OCR reindex;
-- historical worker rows either have an accepted migration/archival strategy or the UI can safely ignore them;
+- all required GUI/CLI actions create durable commands or pipeline runs;
 - stats/errors/dashboard/health/review/entity/pipeline links no longer depend on `WorkerJob`;
-- reset/prune/recovery docs are updated;
+- reset/prune/recovery docs no longer mention worker-job compatibility;
 - tests prove equivalent actions remain available through commands/pipeline/actors.
+
+No historical worker-row migration or archive is required. Operators will clean runtime state before install.
 
 ## Remaining follow-ups
 
 1. Make operator-facing `archibot reindex-ocr [--force]` delegate to Laravel durable command creation; do not keep a direct operator mode.
 2. Add a Maintenance pipeline actor recovery button for `php artisan archibot:recovery-scan`.
 3. Replace `/worker-jobs` with `/operations-log` and do not introduce `/legacy-worker-jobs` routes.
-4. Retire the `worker_jobs` backend/table only after the Stage 5 prerequisites are satisfied.
+4. Retire the `worker_jobs` backend/table/routes/controllers/jobs/recovery/tests/docs as a clean-install removal after durable replacements are in place.
