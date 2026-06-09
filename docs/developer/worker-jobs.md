@@ -36,6 +36,14 @@ Operators will clean runtime state before the relevant install/deployment. No ol
 
 Any still-required operation must be rebuilt on the durable command/pipeline/actor model before removing its worker-job path.
 
+## Current worker-recovery configuration pending removal
+
+The current code still contains worker-recovery settings until the clean-install retirement is implemented. They are documented here only so tests and operators can identify the code slated for deletion:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ARCHIBOT_PENDING_REDISPATCH_SECONDS` | `900` | Base age after which queued worker jobs are considered stale by the current recovery code. Remove with worker-job recovery. |
+
 ## Reset
 
 Destructive reset remains CLI-only and delegates to Laravel/PostgreSQL:
