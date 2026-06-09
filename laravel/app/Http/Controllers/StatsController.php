@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\ActorExecution;
 use App\Models\ChatSession;
+use App\Models\Command;
 use App\Models\EntityApproval;
 use App\Models\OcrReview;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use App\Services\LegacyPythonState;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -36,14 +36,6 @@ class StatsController extends Controller
                 'rejected' => EntityApproval::query()->where('status', EntityApproval::STATUS_REJECTED)->count(),
             ],
             'entityApprovalMatrix' => $this->matrixCounts(EntityApproval::class, 'type', 'status'),
-            'workers' => [
-                'queued' => WorkerJob::query()->where('status', WorkerJob::STATUS_QUEUED)->count(),
-                'running' => WorkerJob::query()->whereIn('status', [WorkerJob::STATUS_RUNNING, WorkerJob::STATUS_CANCELLING])->count(),
-                'failed' => WorkerJob::query()->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])->count(),
-                'succeeded' => WorkerJob::query()->where('status', WorkerJob::STATUS_SUCCEEDED)->count(),
-            ],
-            'workerStatusCounts' => $this->countsBy(WorkerJob::class, 'status'),
-            'workerTypeMatrix' => $this->matrixCounts(WorkerJob::class, 'type', 'status'),
             'ocrReviewStatusCounts' => $this->countsBy(OcrReview::class, 'status'),
             'webhookStatusCounts' => $this->countsBy(WebhookDelivery::class, 'status'),
             'pipelineRunStatusCounts' => $this->countsBy(PipelineRun::class, 'status'),
@@ -130,7 +122,7 @@ class StatsController extends Controller
         return $buckets;
     }
 
-    /** @return array<int, array{date: string, reviews_created: int, reviews_completed: int, worker_jobs_finished: int, webhook_deliveries: int, pipeline_runs: int}> */
+    /** @return array<int, array{date: string, reviews_created: int, reviews_completed: int, commands_finished: int, webhook_deliveries: int, pipeline_runs: int}> */
     private function dailyActivity(): array
     {
         $start = now()->subDays(6)->startOfDay();
@@ -139,7 +131,7 @@ class StatsController extends Controller
                 'date' => $start->copy()->addDays($offset)->toDateString(),
                 'reviews_created' => 0,
                 'reviews_completed' => 0,
-                'worker_jobs_finished' => 0,
+                'commands_finished' => 0,
                 'webhook_deliveries' => 0,
                 'pipeline_runs' => 0,
             ],
@@ -147,7 +139,7 @@ class StatsController extends Controller
 
         $this->incrementDailyCounts($days, ReviewSuggestion::query()->where('created_at', '>=', $start)->pluck('created_at')->all(), 'reviews_created');
         $this->incrementDailyCounts($days, ReviewSuggestion::query()->where('reviewed_at', '>=', $start)->pluck('reviewed_at')->all(), 'reviews_completed');
-        $this->incrementDailyCounts($days, WorkerJob::query()->where('finished_at', '>=', $start)->pluck('finished_at')->all(), 'worker_jobs_finished');
+        $this->incrementDailyCounts($days, Command::query()->where('finished_at', '>=', $start)->pluck('finished_at')->all(), 'commands_finished');
         $this->incrementDailyCounts($days, WebhookDelivery::query()->where('received_at', '>=', $start)->pluck('received_at')->all(), 'webhook_deliveries');
         $this->incrementDailyCounts($days, PipelineRun::query()->where('created_at', '>=', $start)->pluck('created_at')->all(), 'pipeline_runs');
 

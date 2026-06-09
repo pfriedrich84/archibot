@@ -10,8 +10,8 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\SetupState;
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use App\Services\Paperless\PaperlessClient;
+use App\Support\ActiveOperationsSnapshot;
 use App\Support\EmbeddingIndexSnapshot;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -19,18 +19,13 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots): Response
+    public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots, ActiveOperationsSnapshot $activeOperations): Response
     {
         $paperlessUrl = AppSetting::getValue('paperless.url');
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $paperlessAvailable = null;
         $paperlessError = null;
         $inboxTagLabel = null;
-        $pendingRedispatchSeconds = (int) config('archibot_workers.pending_redispatch_seconds', 900);
-        $pendingRedispatchCutoff = now()->subSeconds($pendingRedispatchSeconds);
-        $lastRecoverySuccess = AppSetting::getValue('worker_jobs.recovery.last_successful_at');
-        $lastRecoveryError = AppSetting::getValue('worker_jobs.recovery.last_error');
-        $lastRecoveryErrorAt = AppSetting::getValue('worker_jobs.recovery.last_error_at');
         $llmProvider = $this->settingValue('llm.provider');
         $ollamaUrl = $this->settingValue('ollama.url');
         $ocrMode = $this->settingValue('ocr.mode');
@@ -71,23 +66,6 @@ class DashboardController extends Controller
             ->whereIn('status', Command::activeStatuses())
             ->count();
 
-        $lastSuccessfulWorkerJob = WorkerJob::query()
-            ->where('status', WorkerJob::STATUS_SUCCEEDED)
-            ->latest('finished_at')
-            ->latest()
-            ->first();
-        $lastFailedWorkerJob = WorkerJob::query()
-            ->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])
-            ->latest('finished_at')
-            ->latest()
-            ->first();
-        $staleQueuedWorkerJobs = WorkerJob::query()
-            ->where('status', WorkerJob::STATUS_QUEUED)
-            ->where(fn ($query) => $query
-                ->whereNull('dispatched_at')
-                ->orWhere('dispatched_at', '<', $pendingRedispatchCutoff))
-            ->count();
-
         return Inertia::render('Dashboard', [
             'status' => [
                 'setup_complete' => SetupState::current()->is_complete,
@@ -114,19 +92,13 @@ class DashboardController extends Controller
                 'pending_poll_commands' => $pendingPollCommands,
                 'pending_reindex_commands' => $pendingReindexCommands,
                 'poll_interval_seconds' => (int) config('archibot.poll_interval_seconds', 600),
-                'last_worker_recovery_successful_at' => $lastRecoverySuccess,
-                'last_worker_recovery_error' => $lastRecoveryError,
-                'last_worker_recovery_error_at' => $lastRecoveryErrorAt,
-                'worker_queue_warning' => $staleQueuedWorkerJobs > 0
-                    ? "{$staleQueuedWorkerJobs} queued worker job(s) are stale. Check that Laravel queue workers are consuming jobs."
-                    : null,
-                'document_processing_active' => WorkerJob::query()
-                    ->whereIn('type', WorkerJob::documentProcessingTypes())
-                    ->whereIn('status', WorkerJob::activeStatuses())
+                'document_processing_active' => PipelineRun::query()
+                    ->where('type', 'document')
+                    ->whereIn('status', [PipelineRun::STATUS_PENDING, PipelineRun::STATUS_QUEUED, PipelineRun::STATUS_RUNNING, PipelineRun::STATUS_RETRYING])
                     ->exists(),
-                'reindex_active' => WorkerJob::query()
-                    ->whereIn('type', WorkerJob::blockingTypes())
-                    ->whereIn('status', WorkerJob::activeStatuses())
+                'reindex_active' => Command::query()
+                    ->whereIn('type', [Command::TYPE_REINDEX, Command::TYPE_REINDEX_OCR, Command::TYPE_EMBEDDING_INDEX_BUILD])
+                    ->whereIn('status', Command::activeStatuses())
                     ->exists(),
             ],
             'counts' => [
@@ -162,6 +134,7 @@ class DashboardController extends Controller
                     ->where('status', ActorExecution::STATUS_FAILED)
                     ->count(),
             ],
+            'activeOperations' => $activeOperations->make(),
             'recentWebhookDeliveries' => WebhookDelivery::query()
                 ->latest('received_at')
                 ->limit(5)
@@ -252,14 +225,7 @@ class DashboardController extends Controller
                         PipelineRun::STATUS_RETRYING,
                     ], true),
                 ]),
-            'lastSuccessfulWorkerJob' => $this->workerJobSummary($lastSuccessfulWorkerJob),
-            'lastFailedWorkerJob' => $this->workerJobSummary($lastFailedWorkerJob),
             'recentErrors' => $this->recentErrors(),
-            'recentWorkerJobs' => WorkerJob::query()
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(fn (WorkerJob $job) => $this->workerJobSummary($job)),
         ]);
     }
 
@@ -293,41 +259,9 @@ class DashboardController extends Controller
             ->all();
     }
 
-    /** @return array{id: int, type: string, status: string, created_at: ?string, started_at: ?string, finished_at: ?string, error: ?string}|null */
-    private function workerJobSummary(?WorkerJob $job): ?array
-    {
-        if (! $job) {
-            return null;
-        }
-
-        return [
-            'id' => $job->id,
-            'type' => $job->type,
-            'status' => $job->status,
-            'created_at' => $job->created_at?->toISOString(),
-            'started_at' => $job->started_at?->toISOString(),
-            'finished_at' => $job->finished_at?->toISOString(),
-            'error' => $job->error,
-        ];
-    }
-
     /** @return array<int, array{source: string, id: int, status: string, message: ?string, occurred_at: ?string}> */
     private function recentErrors(): array
     {
-        $workerErrors = WorkerJob::query()
-            ->whereIn('status', [WorkerJob::STATUS_FAILED, WorkerJob::STATUS_PARTIALLY_FAILED])
-            ->latest('finished_at')
-            ->latest()
-            ->limit(5)
-            ->get()
-            ->map(fn (WorkerJob $job): array => [
-                'source' => 'worker_job',
-                'id' => $job->id,
-                'status' => $job->status,
-                'message' => $job->error,
-                'occurred_at' => $job->finished_at?->toISOString() ?? $job->updated_at?->toISOString(),
-            ]);
-
         $webhookErrors = WebhookDelivery::query()
             ->whereIn('status', [
                 WebhookDelivery::STATUS_FAILED,
@@ -346,8 +280,26 @@ class DashboardController extends Controller
                 'occurred_at' => $delivery->processed_at?->toISOString() ?? $delivery->received_at?->toISOString(),
             ]);
 
-        return $workerErrors
-            ->concat($webhookErrors)
+        $pipelineErrors = PipelineRun::query()
+            ->whereIn('status', [
+                PipelineRun::STATUS_FAILED,
+                PipelineRun::STATUS_FAILED_PERMANENT,
+                PipelineRun::STATUS_PARTIALLY_FAILED,
+            ])
+            ->latest('finished_at')
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(fn (PipelineRun $run): array => [
+                'source' => 'pipeline_run',
+                'id' => $run->id,
+                'status' => $run->status,
+                'message' => $run->error,
+                'occurred_at' => $run->finished_at?->toISOString() ?? $run->updated_at?->toISOString(),
+            ]);
+
+        return $webhookErrors
+            ->concat($pipelineErrors)
             ->sortByDesc('occurred_at')
             ->take(5)
             ->values()

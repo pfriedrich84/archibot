@@ -38,9 +38,10 @@
     import { index as maintenanceIndex } from '@/routes/admin/maintenance';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as inboxIndex } from '@/routes/inbox';
+    import { index as operationsLogIndex } from '@/routes/operations-log';
     import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     import { index as reviewIndex } from '@/routes/review';
-    import { index as workerJobsIndex } from '@/routes/worker-jobs';
+    // eslint-disable-next-line import/order -- Wayfinder-generated route files change resolver grouping in CI.
     import type { NavItem } from '@/types';
 
     let {
@@ -99,8 +100,8 @@
 
     const processingNavItems: NavItem[] = $derived([
         {
-            title: 'Control Center',
-            href: workerJobsIndex(),
+            title: 'Operations Log',
+            href: operationsLogIndex(),
             icon: Workflow,
         },
         {

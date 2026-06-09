@@ -61,7 +61,7 @@ _reindex_progress_stdout_enabled = False
 
 
 def enable_reindex_progress_stdout(enabled: bool = True) -> None:
-    """Emit machine-readable progress lines for Laravel worker jobs."""
+    """Emit machine-readable progress lines for Laravel actor commands."""
     global _reindex_progress_stdout_enabled
     _reindex_progress_stdout_enabled = enabled
 

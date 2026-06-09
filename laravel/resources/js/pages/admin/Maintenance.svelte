@@ -13,6 +13,7 @@
 
 <script lang="ts">
     import { Form } from '@inertiajs/svelte';
+    import ActiveOperationsPanel from '@/components/ActiveOperationsPanel.svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import InputError from '@/components/InputError.svelte';
@@ -20,7 +21,36 @@
     import { Input } from '@/components/ui/input';
     import { Label } from '@/components/ui/label';
     import { formatDateTime } from '@/lib/datetime';
-    import { recoverWorkerJobs, workerJobs } from '@/routes/admin/maintenance';
+
+    type ActiveOperation = {
+        key: string;
+        kind: string;
+        id: number;
+        label: string;
+        status: string;
+        detail: string;
+        progress_total: number;
+        progress_done: number;
+        progress_failed: number;
+        progress_skipped: number;
+        progress_message: string | null;
+        created_at: string | null;
+        started_at: string | null;
+        updated_at: string | null;
+        href: string;
+    };
+
+    type ActiveOperations = {
+        summary: {
+            total: number;
+            queued: number;
+            running: number;
+            retrying: number;
+            blocked: number;
+        };
+        items: ActiveOperation[];
+        operations_log_url: string;
+    };
 
     type AuditLog = {
         id: number;
@@ -32,17 +62,21 @@
     };
 
     let {
-        workerJobCounts,
+        commandCounts,
+        activeOperations,
         actionUrls,
         recentAuditLogs,
     }: {
-        workerJobCounts: {
+        commandCounts: {
+            pending: number;
             queued: number;
             running: number;
-            cancelling: number;
             failed: number;
         };
+        activeOperations: ActiveOperations;
         actionUrls: {
+            commands: string;
+            recover_pipeline_actors: string;
             mark_embedding_stale: string;
             document_pipeline: string;
         };
@@ -100,42 +134,40 @@
         description="Admin-only recovery and reindex controls. Destructive reset is CLI-only for operators."
     />
 
+    <ActiveOperationsPanel operations={activeOperations} />
+
     <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Worker status</h2>
+        <h2 class="mb-3 font-semibold">Command status</h2>
         <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
+                <dt class="text-sm text-muted-foreground">Pending</dt>
+                <dd class="text-2xl font-semibold">{commandCounts.pending}</dd>
+            </div>
+            <div>
                 <dt class="text-sm text-muted-foreground">Queued</dt>
-                <dd class="text-2xl font-semibold">{workerJobCounts.queued}</dd>
+                <dd class="text-2xl font-semibold">{commandCounts.queued}</dd>
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">Running</dt>
-                <dd class="text-2xl font-semibold">
-                    {workerJobCounts.running}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-sm text-muted-foreground">Cancelling</dt>
-                <dd class="text-2xl font-semibold">
-                    {workerJobCounts.cancelling}
-                </dd>
+                <dd class="text-2xl font-semibold">{commandCounts.running}</dd>
             </div>
             <div>
                 <dt class="text-sm text-muted-foreground">Failed</dt>
-                <dd class="text-2xl font-semibold">{workerJobCounts.failed}</dd>
+                <dd class="text-2xl font-semibold">{commandCounts.failed}</dd>
             </div>
         </dl>
     </section>
 
     <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Recovery</h2>
+        <h2 class="mb-3 font-semibold">Durable recovery</h2>
         <p class="mb-4 text-sm text-muted-foreground">
-            Redispatch stale queued jobs, recover stale running jobs and close
-            stale cancelling jobs.
+            Redispatch safe queued webhook deliveries, document pipeline runs
+            and pending commands through Laravel queued actor jobs.
         </p>
-        <Form method="post" action={recoverWorkerJobs().url}>
+        <Form method="post" action={actionUrls.recover_pipeline_actors}>
             {#snippet children({ processing })}
                 <Button type="submit" disabled={processing}
-                    >Run worker recovery now</Button
+                    >Run durable recovery now</Button
                 >
             {/snippet}
         </Form>
@@ -147,7 +179,7 @@
             {#each jobActions as action (action.label)}
                 <Form
                     method="post"
-                    action={workerJobs().url}
+                    action={actionUrls.commands}
                     class="rounded-lg border p-3"
                 >
                     {#snippet children({ processing })}

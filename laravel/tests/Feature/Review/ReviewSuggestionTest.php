@@ -9,7 +9,6 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -115,13 +114,9 @@ class ReviewSuggestionTest extends TestCase
         ]);
 
         $user = User::factory()->create(['paperless_token' => 'user-token']);
-        $workerJob = WorkerJob::factory()->create();
-        $commitWorkerJob = WorkerJob::factory()->create();
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 456,
             'reasoning' => 'Classifier reasoning',
-            'worker_job_id' => $workerJob->id,
-            'commit_worker_job_id' => $commitWorkerJob->id,
             'original_correspondent_id' => 7,
             'original_document_type_id' => 8,
             'original_storage_path_id' => 9,
@@ -134,8 +129,6 @@ class ReviewSuggestionTest extends TestCase
                 ->component('review/Show')
                 ->where('suggestion.paperless_document_id', 456)
                 ->where('suggestion.reasoning', 'Classifier reasoning')
-                ->where('suggestion.worker_job_url', route('worker-jobs.show', $workerJob))
-                ->where('suggestion.commit_worker_job_url', route('worker-jobs.show', $commitWorkerJob))
                 ->where('suggestion.original.title', 'Original document title')
                 ->where('suggestion.original.correspondent_name', 'Original sender')
                 ->where('suggestion.original.document_type_name', 'Invoice')
@@ -186,11 +179,9 @@ class ReviewSuggestionTest extends TestCase
         $suggestion->refresh();
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->status);
         $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
-        $this->assertNull($suggestion->commit_worker_job_id);
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertSame($command->id, $suggestion->commit_command_id);
-        $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $command->id);
     }
 
@@ -215,8 +206,6 @@ class ReviewSuggestionTest extends TestCase
         $suggestion->refresh();
         $this->assertSame(ReviewSuggestion::COMMIT_STATUS_QUEUED, $suggestion->commit_status);
         $this->assertSame($command->id, $suggestion->commit_command_id);
-        $this->assertNull($suggestion->commit_worker_job_id);
-        $this->assertDatabaseCount('worker_jobs', 0);
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,
             'event_type' => 'job_control.review_commit_requested',
@@ -428,7 +417,6 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $second->refresh()->status);
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $reviewed->refresh()->status);
         $this->assertSame(2, Command::query()->where('type', Command::TYPE_REVIEW_COMMIT)->count());
-        $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertPushed(RunPythonActorJob::class, 2);
     }
 

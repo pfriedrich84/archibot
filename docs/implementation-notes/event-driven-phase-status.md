@@ -47,7 +47,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Initial embedding-index actor now fetches Paperless documents, embeds them with Ollama, stores vectors in PostgreSQL/pgvector `document_embeddings`, updates durable progress, and marks the index `complete` when all embeddings succeed.
   - Polling reconciliation actor fetches Paperless inbox documents every configured poll interval and uses `start_or_attach_document_pipeline(...)`, so polling and webhooks share dedupe/gate/run logic.
   - Accepted review suggestions are picked up by recovery, enqueued to a review commit actor, patched to Paperless using reviewed IDs only, and marked committed/failed in `review_suggestions.commit_status`.
-  - Accepting event-driven review suggestions now marks `commit_status=queued` without creating legacy worker jobs; legacy Python-origin suggestions still use the existing worker job path.
+  - Accepting review suggestions now creates durable `review_commit` commands and dispatches the review commit actor without creating legacy worker jobs.
   - Admin-only manual reprocess is available from review detail pages and creates durable `pipeline_runs` with `trigger_source=manual` and reprocess metadata.
   - Relevant Paperless change/update webhooks now mark pipeline runs with automatic reprocess metadata (`reprocess_requested`, `reprocess_reason`, `reprocess_mode=webhook`) while create/delete events do not.
   - Existing Laravel dashboard now surfaces event-driven operations state: queued webhooks, active/blocked/failed pipeline runs, running/failed actor executions, recent actor executions, recent pipeline runs, progress counters, phase and reprocess markers.
@@ -71,7 +71,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
 
 - `ruff check app/ tests/`: passing.
 - `ruff format --check app/ tests/`: passing.
-- `pytest tests/ -q`: passing, 393 tests.
+- `pytest tests/ -q`: passing, 487 passed / 1 skipped.
 - Targeted recovery enqueue-failure validation: `ruff check app/jobs/recovery.py tests/test_recovery.py` and `pytest tests/test_recovery.py -q` passing, 20 tests.
 - `COMPOSER_ALLOW_SUPERUSER=1 composer test` from `laravel/`: passing, 136 tests / 981 assertions. Targeted webhook direct-enqueue validation: `php artisan test tests/Feature/Webhooks/PaperlessEventWebhookTest.php` passing, 7 tests / 40 assertions. Targeted embedding-gate retry/reprocess validation: `php artisan test tests/Feature/Review/ReviewSuggestionTest.php tests/Feature/PipelineRunControlTest.php tests/Feature/Webhooks/PaperlessEventWebhookTest.php` passing, 36 tests / 236 assertions.
 - `npm run format:check` from `laravel/`: passing.
@@ -80,7 +80,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
 - Targeted recovery validation: `ruff check app/ tests/test_recovery.py tests/test_actor_execution.py` and `pytest tests/test_recovery.py tests/test_actor_execution.py -q` passing, 15 tests.
 - `python3 scripts/check_dependency_age.py --min-days 3`: passing, 77 packages.
 - `bash -n entrypoint.sh`: passing.
-- Docker build smoke check: not run locally because `docker` is unavailable in this environment.
+- Docker build smoke check: covered by GitHub CI `docker-build` for the worker-job retirement commit.
 
 ## Open implementation notes
 

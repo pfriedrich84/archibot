@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\User;
+use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Services\Pipeline\MaintenanceCommandDispatcher;
+use Illuminate\Console\Command as ConsoleCommand;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class DispatchMaintenanceCommand extends ConsoleCommand
+{
+    protected $signature = 'archibot:maintenance-command
+        {type : poll, reindex, reindex_ocr, reindex_embed, or process_document}
+        {--force : Force the action where supported}
+        {--limit= : Optional positive item limit for command-backed actions}
+        {--document-id= : Paperless document id for process_document}';
+
+    protected $description = 'Dispatch the same durable maintenance backend used by the admin Maintenance UI.';
+
+    public function handle(MaintenanceCommandDispatcher $maintenanceCommands, DocumentPipelineStarter $pipelineStarter): int
+    {
+        $type = $this->normalizeType((string) $this->argument('type'));
+        $force = (bool) $this->option('force');
+        $limit = $this->normalizedLimit($this->option('limit'));
+        try {
+            $request = $this->adminRequest();
+        } catch (RuntimeException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        try {
+            validator(
+                ['type' => $type],
+                ['type' => ['required', Rule::in(['poll', 'reindex', 'reindex_ocr', 'reindex_embed', 'process_document'])]],
+            )->validate();
+        } catch (ValidationException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if ($type === 'process_document') {
+            $documentId = $this->normalizedDocumentId($this->option('document-id'));
+            if ($documentId === null) {
+                $this->error('The --document-id option is required for process_document.');
+
+                return self::FAILURE;
+            }
+
+            $result = $pipelineStarter->start(
+                triggerSource: 'manual',
+                paperlessDocumentId: $documentId,
+                reprocessRequested: $force,
+                reprocessReason: $force ? 'manual_force' : null,
+                reprocessMode: $force ? 'manual' : null,
+                forceNewRun: $force,
+                requestedByUserId: $request->user()->id,
+            );
+
+            $this->info("Document pipeline run {$result->pipelineRun->id} queued for Paperless document {$documentId}.");
+
+            return self::SUCCESS;
+        }
+
+        $metadata = ['source' => 'cli'];
+        if ($type === 'poll') {
+            $command = $maintenanceCommands->queuePollReconciliation($request, $limit, [
+                'force' => $force,
+                ...$metadata,
+            ]);
+        } elseif ($type === 'reindex') {
+            $command = $maintenanceCommands->queueReindex($request, $limit, $metadata);
+        } elseif ($type === 'reindex_embed') {
+            $command = $maintenanceCommands->queueEmbeddingIndexBuild($request, $limit, $metadata);
+        } else {
+            $command = $maintenanceCommands->queueOcrReindex($request, $limit, $force, $metadata);
+        }
+
+        $this->info("Durable {$command->type} command {$command->id} queued through Laravel Maintenance.");
+
+        return self::SUCCESS;
+    }
+
+    private function adminRequest(): Request
+    {
+        $admin = User::query()->where('is_admin', true)->orderBy('id')->first();
+        if ($admin === null) {
+            throw new RuntimeException('No admin user exists; create an admin account before dispatching maintenance commands.');
+        }
+
+        $request = Request::create('/cli/archibot/maintenance-command', 'POST');
+        $request->setUserResolver(fn (): User => $admin);
+        $request->headers->set('User-Agent', 'archibot-cli');
+        $request->server->set('REMOTE_ADDR', '127.0.0.1');
+
+        return $request;
+    }
+
+    private function normalizeType(string $type): string
+    {
+        return str_replace('-', '_', $type);
+    }
+
+    private function normalizedLimit(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $limit = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+        return $limit === false ? null : $limit;
+    }
+
+    private function normalizedDocumentId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $documentId = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+        return $documentId === false ? null : $documentId;
+    }
+}

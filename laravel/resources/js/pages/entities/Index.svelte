@@ -24,7 +24,6 @@
         paperless_id: number | null;
         source_review_suggestion_id: number | null;
         sync_status: string | null;
-        sync_worker_job_id: number | null;
         created_at: string | null;
     };
 
@@ -97,9 +96,6 @@
                         {/if}
                         {#if entity.sync_status}
                             · Python sync: {entity.sync_status}
-                            {#if entity.sync_worker_job_id}
-                                via worker job {entity.sync_worker_job_id}
-                            {/if}
                         {/if}
                     </div>
                 </div>

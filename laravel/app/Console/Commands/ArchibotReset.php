@@ -16,8 +16,6 @@ class ArchibotReset extends Command
 
     /** @var array<int, string> */
     private array $operationalTables = [
-        'worker_job_logs',
-        'worker_jobs',
         'jobs',
         'job_batches',
         'failed_jobs',

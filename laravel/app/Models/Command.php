@@ -18,6 +18,8 @@ class Command extends Model
 
     public const TYPE_REVIEW_COMMIT = 'review_commit';
 
+    public const TYPE_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_QUEUED = 'queued';

@@ -2,147 +2,59 @@
 
 ## Purpose
 
-This document records the current Laravel job-control model, the future event-driven model and the rules that prevent drift between them.
+This document records the current ArchiBot job-control model and the rules that prevent drift back to retired worker-job paths.
 
-`worker_jobs` was a hardened temporary stabilization layer. Per ADR-0016 it is now scheduled for clean-install retirement rather than backend/data compatibility. The durable model is commands, pipeline runs, pipeline events, pipeline items, actor executions, Laravel queued actor jobs, and fixed Python actor commands.
+`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active model is durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
 
-## Retired Temporary Model
-
-Retired control flow:
+## Current durable model
 
 ```text
-Laravel UI
--> WorkerJobDispatcher
--> worker_jobs
--> RunPythonWorkerJob
--> Python CLI/Core
-```
-
-Responsibilities in this retired temporary model were:
-
-1. Laravel validates the admin action and calls `WorkerJobDispatcher`.
-2. `WorkerJobDispatcher` normalizes payloads, computes dedupe keys, writes audit logs, creates or reuses a `worker_jobs` row and dispatches `RunPythonWorkerJob`.
-3. `RunPythonWorkerJob` acquires a lease and invokes the Python CLI/core for the requested worker job type.
-4. The Python process performs document or maintenance work and emits structured progress/output.
-5. Laravel ingests results, updates status/progress/logs and exposes the job in the UI.
-
-This model should not receive new feature work. Remaining code should be removed once required durable replacements are in place; old rows do not need migration because the next install/deployment boundary may clean runtime state.
-
-The Python CLI `jobs` adapter is transitional only and should be removed with the worker-job backend. Operator-facing CLI actions that remain must use durable Command / Pipeline Run controls through Laravel.
-
-New user-triggered job control has moved away from Worker Job where durable seams exist:
-
-- manual Paperless Document processing creates a Pipeline Run via `DocumentPipelineStarter`;
-- poll/reconciliation creates a durable Command;
-- full reindex creates a durable Command and marks the embedding gate stale;
-- OCR reindex creates a durable `reindex_ocr` Command and runs through the fixed OCR reindex actor;
-- embedding index build creates a durable Command;
-- historical retries for those Worker Job types are routed to Pipeline Runs or Commands.
-
-Worker Job recovery is slated for removal, not compatibility preservation. Durable recovery should target pipeline runs, commands, actor executions and webhook deliveries. The user-facing route cleanup removes `/worker-jobs` and must not replace it with `/legacy-worker-jobs`.
-
-Embedding index builds are durable commands in the event-driven model. Remaining flows must move to `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, and fixed Python actor commands before their worker-job code is removed.
-
-## Current `worker_jobs` Schema Terms
-
-Important control-plane fields:
-
-| Field | Meaning |
-|---|---|
-| `dispatch_key` | Stable dedupe key derived from job type and normalized payload. Active jobs with the same key are reused instead of duplicated. |
-| `dispatch_attempts` | Number of times Laravel has attempted to dispatch the queued backend job for this worker job. |
-| `dispatched_at` | Timestamp of the most recent dispatch attempt. |
-| `worker_id` | Identifier of the Laravel queue worker/process that acquired the job lease. |
-| `lease_expires_at` | Time at which the current worker lease is considered expired if not renewed. |
-| `heartbeat_at` | Last heartbeat written by the running job/process. Used for recovery and operational visibility. |
-
-These fields existed to make `worker_jobs` safer during the temporary period, but they are not the final pipeline state model and should not be preserved for clean installs.
-
-## Why `worker_jobs` Is Temporary
-
-`worker_jobs` wraps the current Laravel-subprocess/Python-CLI path. That path gives Laravel a usable control plane while the Python core still runs as CLI commands, but it is not the target architecture because:
-
-- one large CLI execution is harder to split into idempotent, retryable actor steps;
-- subprocess execution does not provide queue routing, dead-lettering or actor-level observability;
-- progress and recovery should be expressed as durable pipeline events, not only worker job status and logs;
-- Paperless webhooks, scheduler reconciliation and manual admin actions should converge on one command/pipeline model;
-- Archibot must not keep parallel permanent job-control systems.
-
-Therefore `worker_jobs` must be retired in favor of `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs, and fixed Python actor commands.
-
-## Future Event-Driven Model
-
-Target control flow:
-
-```text
-Laravel UI / Paperless Webhook / Scheduler
--> commands
--> pipeline_runs
--> pipeline_events
+Maintenance UI / Dashboard / CLI / Paperless Webhook / Poll Scheduler
+-> durable commands and/or pipeline_runs
+-> pipeline_events / pipeline_items / actor_executions
 -> Laravel database queue
--> fixed Python actor commands
+-> fixed allowlisted Python actor command
 -> PostgreSQL / pgvector
 ```
 
-In the target model:
+Current operator surfaces:
 
-- `commands` record requested control actions and their initiator.
-- `pipeline_runs` are the durable user-visible unit of work.
-- `pipeline_events` record state changes, progress, retries, failures and audit-relevant execution details.
-- Laravel database queues are transport only; PostgreSQL remains the source of truth.
-- Laravel queued jobs invoke fixed, allowlisted Python actor commands that emit durable events.
-- Laravel reads PostgreSQL for UI, readiness, job control and audit views.
+- **Maintenance** is the canonical admin action-launch surface.
+- **Pipeline Runs** shows durable document/reprocess/retry/cancel state.
+- **Operations Log** (`/operations-log`) shows durable commands, pipeline runs/events/items, actor executions, webhook deliveries and audit logs.
+- **CLI overlap actions** (`archibot poll`, `reindex`, `reindex-ocr`, `reindex-embed`, `process-doc`) delegate to `php artisan archibot:maintenance-command ...`, the same backend used by Maintenance.
+- **Reset** remains CLI-only and delegates to `php artisan archibot:reset`.
 
-## Mapping from `worker_jobs` to Future Commands and Pipeline Runs
+There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worker-jobs/{id}`, worker-job backend compatibility, or migration/archive path for old worker-job rows.
 
-| Current `worker_jobs.type` or action | Future command | Future `pipeline_runs` type/scope | Notes |
+## Active action mapping
+
+| Action | Durable owner | Transport/execution | Visibility |
 |---|---|---|---|
-| `poll` | `poll_reconciliation` | `reconciliation` | Polling remains fallback/reconciliation, not the primary document trigger. |
-| `process_document` | `process_document` or `reprocess_document` | `document` scoped to `paperless_document_id` | Manual and webhook-triggered document work should converge on document pipeline runs. |
-| `reindex` | `reindex` | `reindex` | Full reindex should emit phase progress and block normal document processing when required. |
-| `reindex_ocr` | `reindex_ocr` | `ocr_reindex` | OCR-specific reindex uses a durable command and fixed OCR reindex actor; no old row migration is required for clean installs. |
-| `reindex_embed` | `reindex_embed` or `build_embedding_index` | `embedding_index` | Embedding readiness remains a hard gate before document processing. |
-| `commit_review` | `review_commit` | `review_commit` scoped to review suggestion/document | Commit side effects are requested through durable `commands`/`pipeline_events` and executed by the review commit actor. |
-| `sync_entity_approval` | `sync_entity_approval` | `entity_approval_sync` scoped to entity approval | Entity approval sync becomes a durable command/pipeline action. |
-| maintenance worker recovery | remove; use durable recovery | `maintenance` / `recovery` | Worker recovery is retired; final recovery targets pipeline runs, commands, webhook deliveries and actor executions. |
-| maintenance reset | `maintenance_reset` | `maintenance_reset` | Destructive admin action remains Laravel-authorized and audited; execution should be durable and observable. |
+| Poll reconciliation | `Command(type=poll_reconciliation)` | `RunPythonActorJob::pollReconciliation` -> `python -m app.actor_runner reconcile-poll --command-id ...` | Operations Log, command events |
+| Full reindex | `Command(type=reindex)`; marks embedding gate stale | `RunPythonActorJob::reindex` -> fixed actor runner | Operations Log, embedding state/events |
+| OCR reindex | `Command(type=reindex_ocr)` with `force` in payload | `RunPythonActorJob::reindexOcr` -> fixed actor runner | Operations Log, actor execution/events |
+| Embedding build | `Command(type=embedding_index_build)` | `RunPythonActorJob::embeddingIndexBuild` -> fixed actor runner | Operations Log, embedding pages/state |
+| Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` | `RunPythonActorJob::documentPipeline` -> fixed actor runner | Pipeline Runs, Operations Log |
+| Paperless document webhook | `WebhookDelivery` + `PipelineRun(type=document)` | same document actor transport | Webhook Deliveries, Pipeline Runs, Operations Log |
+| Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
+| Entity approval sync | `Command(type=sync_entity_approval)` | sync entity approval actor | Entity approval status, Operations Log |
+| Durable recovery scan | `php artisan archibot:recovery-scan` | redispatches safe pending commands/runs/webhooks through actor jobs | Pipeline/command/webhook events |
+| Reset | `php artisan archibot:reset` | Laravel/PostgreSQL-owned destructive reset | CLI output; reset remains outside GUI |
 
-## State Machines
+## State machines
 
-### Current `worker_jobs` State Machine
+### `commands`
 
 ```text
-queued
-  -> running
-  -> succeeded
-  -> partially_failed
-  -> failed
-
-queued
-  -> cancelled
-
-running
-  -> cancelling
-  -> cancelled
-
-running
-  -> failed        (process failure, lease recovery or unrecoverable error)
-running
-  -> queued        (recovery may requeue safely when no live worker owns the job)
-cancelling
-  -> failed        (force kill or cancellation failure)
+pending -> queued -> running -> succeeded
+pending|queued|running -> failed
+failed -> queued   (safe redispatch/retry where supported)
 ```
 
-Status groups:
+Command payloads are the durable source of truth for actor options such as `limit`, OCR `force`, review suggestion id, or entity approval id. Actor runner invocations should pass only stable ids (`--command-id`, `--pipeline-run-id`, `--webhook-delivery-id`) and load options from PostgreSQL.
 
-- active: `queued`, `running`, `cancelling`
-- terminal: `cancelled`, `succeeded`, `failed`, `partially_failed`
-
-This state machine is retained only to understand code being removed. Clean installs should not rely on `worker_jobs` rows.
-
-### Future `pipeline_runs` State Machine
-
-Recommended target state machine:
+### `pipeline_runs`
 
 ```text
 pending
@@ -166,7 +78,7 @@ State meanings:
 
 | State | Meaning |
 |---|---|
-| `pending` | Command accepted and persisted; execution has not been enqueued yet. |
+| `pending` | Request accepted and persisted; execution has not been enqueued yet. |
 | `blocked` | Durable precondition is not satisfied, such as the embedding index readiness gate. |
 | `queued` | Actor work has been enqueued or is ready to be enqueued. |
 | `running` | At least one actor execution is actively processing the run. |
@@ -179,19 +91,21 @@ State meanings:
 
 `pipeline_events` should explain every significant transition and progress update.
 
-## Ownership Rules
+## Ownership rules
 
-### Laravel Owns UI, Control, Audit and Readiness
+### Laravel owns UI, control, audit and readiness
 
 Laravel is the operations console. It owns:
 
 - admin authorization for job-control actions;
-- UI buttons and pages for starts, retries, cancellation, commits and maintenance;
-- command creation and audit logging;
+- Maintenance action launchers;
+- command and pipeline-run creation;
+- audit logging;
 - readiness/health reporting;
+- retry, cancellation and durable recovery controls;
 - user-visible status, progress and logs read from PostgreSQL.
 
-### Python Owns Document Processing Logic
+### Python owns document processing logic
 
 Python owns:
 
@@ -200,41 +114,33 @@ Python owns:
 - review suggestion generation;
 - LLM/provider integration through the processing layer.
 
-In the retired temporary model this logic was reached through the broad CLI/core worker contract. In the target model it is reached through fixed Python actor commands invoked by Laravel queued jobs.
+Laravel reaches Python through fixed, allowlisted actor commands. Operator-facing CLI commands that overlap GUI actions must not call the direct processing functions as an alternate backend; they must delegate to Laravel Maintenance.
 
-### Event-Driven Actors Own Durable Processing
+### PostgreSQL is the source of truth
 
-Fixed Python actor commands invoked by Laravel queued jobs own durable execution of pipeline steps. Actors must:
+PostgreSQL stores durable command, pipeline, event, item, actor, webhook and audit state. Laravel queues are transport only. Recovery must redispatch from durable records rather than reconstruct work from queue state.
 
-- be idempotent;
-- write durable progress/state through PostgreSQL-backed models;
-- emit `pipeline_events`;
-- honor cancellation and retry semantics;
-- treat Laravel queues as transport, not the source of truth.
+## Retired temporary model
 
-## Pipeline Runs and Operations Log Visibility
+The retired control flow was:
 
-Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the future durable job view. The next user-facing history surface should be `/operations-log`, not `/worker-jobs`, and it should read durable event-driven tables only.
+```text
+Laravel UI
+-> WorkerJobDispatcher
+-> worker_jobs
+-> RunPythonWorkerJob
+-> Python CLI/Core
+```
 
-The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery and related audit entries. Do not create or preserve a public Legacy Worker Jobs route.
+This model, including route helpers, models, migrations, queue job, dispatcher, result ingestor, stale cancellation, recovery commands, UI pages and tests, has been removed for clean installs. The old state machine and schema terms are historical only and must not be reintroduced.
 
-Manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in Pipeline Runs and Operations Log before worker-job code is removed. Review suggestion commit requests now use `Command(type=review_commit) -> PipelineEvent(job_control.review_commit_requested) -> review commit actor` rather than creating new `worker_jobs`.
+## Rules for future contributors
 
-## Migration Plan
-
-1. Complete durable replacements for any still-required operation using `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions` and fixed actor commands.
-2. Make manual Laravel actions create commands and pipeline runs first, then enqueue actor work.
-3. Remove `/worker-jobs` and do not add `/legacy-worker-jobs`.
-4. Build `/operations-log` from durable event-driven tables only.
-5. Move recovery, retry, cancellation, progress and logs from worker-job-only semantics to pipeline-run/event semantics.
-6. Remove the Laravel-subprocess/Python-CLI worker path, `worker_jobs` tables/models/controllers/jobs/recovery/result ingestion/tests/docs, assuming clean runtime state before install.
-
-## Rules for Future Contributors
-
-- Do not add new `worker_jobs` functionality.
-- Do not create a third long-lived job-control system.
-- New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events` and Python actors.
-- Remove remaining worker-job code rather than preserving backend compatibility for old rows.
+- Do not add new `worker_jobs` functionality or compatibility storage.
+- Do not add `/worker-jobs`, `/legacy-worker-jobs`, or legacy detail routes under `/operations-log`.
+- Do not add GUI buttons that target retired worker-job routes, controllers or command names.
+- Do not add top-level CLI escape hatches for GUI-overlapping actions; use Laravel Maintenance.
+- New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs and fixed Python actors.
 - Keep Laravel as the UI/control/audit/readiness owner.
 - Keep Python as the document-processing owner.
 - Keep PostgreSQL as the source of truth for progress, retries and recovery.
@@ -245,7 +151,6 @@ Manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEve
 - [ADR-0016: Clean-install Retirement of Worker Jobs](../decisions/0016-clean-install-worker-jobs-retirement.md)
 - [ADR-0012: Worker Jobs as Temporary Laravel Control Plane](../decisions/0012-worker-jobs-as-temporary-control-plane.md)
 - [Event-driven implementation plan](../implementation-plan-event-driven-archibot.md)
-- [Laravel job-control implementation plan](../implementation-plan-laravel-job-control.md)
 - [Authorization for Job Control](authorization-job-control.md)
 - [Durable Progress Tracking](progress-tracking.md)
 - [Failure Retry Recovery](failure-retry-recovery.md)

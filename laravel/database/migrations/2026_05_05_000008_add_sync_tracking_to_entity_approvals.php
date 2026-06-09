@@ -10,14 +10,12 @@ return new class extends Migration
     {
         Schema::table('entity_approvals', function (Blueprint $table) {
             $table->string('sync_status')->nullable()->index();
-            $table->foreignId('sync_worker_job_id')->nullable()->constrained('worker_jobs')->nullOnDelete();
         });
     }
 
     public function down(): void
     {
         Schema::table('entity_approvals', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('sync_worker_job_id');
             $table->dropColumn('sync_status');
         });
     }

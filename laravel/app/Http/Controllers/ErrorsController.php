@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use App\Services\LegacyPythonState;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -15,7 +14,7 @@ class ErrorsController extends Controller
     public function __invoke(Request $request, LegacyPythonState $legacyPythonState): Response
     {
         $validated = $request->validate([
-            'source' => ['nullable', Rule::in(['all', 'worker', 'webhook', 'legacy'])],
+            'source' => ['nullable', Rule::in(['all', 'webhook', 'legacy'])],
             'status' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -23,41 +22,11 @@ class ErrorsController extends Controller
         $status = $validated['status'] ?? 'all';
         $isAdmin = (bool) $request->user()?->is_admin;
 
-        $workerStatuses = [
-            WorkerJob::STATUS_FAILED,
-            WorkerJob::STATUS_PARTIALLY_FAILED,
-            WorkerJob::STATUS_CANCELLED,
-        ];
         $webhookStatuses = [
             WebhookDelivery::STATUS_FAILED,
             WebhookDelivery::STATUS_BLOCKED,
             WebhookDelivery::STATUS_FAILED_PERMANENT,
         ];
-
-        $failedJobs = WorkerJob::query()
-            ->when(! in_array($source, ['all', 'worker'], true), fn ($query) => $query->whereRaw('1 = 0'))
-            ->whereIn('status', $workerStatuses)
-            ->when(in_array($status, $workerStatuses, true), fn ($query) => $query->where('status', $status))
-            ->latest()
-            ->paginate(15, ['*'], 'worker_page')
-            ->withQueryString()
-            ->through(fn (WorkerJob $job) => [
-                'id' => $job->id,
-                'type' => $job->type,
-                'status' => $job->status,
-                'error' => $job->error,
-                'payload' => $job->payload ?? [],
-                'progress' => $job->progress ?? [],
-                'result' => $job->result ?? [],
-                'exit_code' => $job->exit_code,
-                'created_at' => $job->created_at?->toISOString(),
-                'started_at' => $job->started_at?->toISOString(),
-                'finished_at' => $job->finished_at?->toISOString(),
-                'show_url' => route('worker-jobs.show', $job),
-                'retry_url' => $isAdmin ? route('worker-jobs.retry', $job) : null,
-                'can_retry' => $isAdmin && in_array($job->status, WorkerJob::terminalStatuses(), true),
-                'can_retry_failed_only' => $isAdmin && in_array($job->status, WorkerJob::terminalStatuses(), true) && $this->failedDocumentIds($job) !== [],
-            ]);
 
         $webhookErrors = WebhookDelivery::query()
             ->when(! in_array($source, ['all', 'webhook'], true), fn ($query) => $query->whereRaw('1 = 0'))
@@ -75,10 +44,9 @@ class ErrorsController extends Controller
                 'status' => $status,
             ],
             'filterOptions' => [
-                'sources' => ['all', 'worker', 'webhook', 'legacy'],
-                'statuses' => array_values(array_unique(array_merge(['all'], $workerStatuses, $webhookStatuses))),
+                'sources' => ['all', 'webhook', 'legacy'],
+                'statuses' => array_values(array_unique(array_merge(['all'], $webhookStatuses))),
             ],
-            'failedJobs' => $failedJobs,
             'webhookErrors' => $webhookErrors,
             'legacyErrors' => in_array($source, ['all', 'legacy'], true) ? $legacyPythonState->recentErrors(25) : [],
             'isAdmin' => $isAdmin,
@@ -128,25 +96,6 @@ class ErrorsController extends Controller
                 'key' => (string) $key,
                 'value' => is_scalar($entry) || $entry === null ? $entry : json_encode($entry),
             ])
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<int, int>
-     */
-    private function failedDocumentIds(WorkerJob $job): array
-    {
-        $ids = data_get($job->result ?? [], 'failed_document_ids', data_get($job->progress ?? [], 'failed_document_ids', []));
-
-        if (! is_array($ids)) {
-            return [];
-        }
-
-        return collect($ids)
-            ->filter(fn ($id) => is_numeric($id))
-            ->map(fn ($id) => (int) $id)
-            ->unique()
             ->values()
             ->all();
     }

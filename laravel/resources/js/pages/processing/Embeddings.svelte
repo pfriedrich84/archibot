@@ -34,26 +34,6 @@
         ready: boolean;
     };
 
-    type WorkerJob = {
-        id: number;
-        type: string;
-        status: string;
-        progress: {
-            phase?: string;
-            done?: number;
-            total?: number;
-            failed?: number;
-            message?: string;
-            document_id?: number;
-            document_title?: string | null;
-        };
-        result: Record<string, unknown>;
-        error: string | null;
-        created_at: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-    };
-
     type EmbeddingBuildCommand = {
         id: number;
         type: string;
@@ -65,28 +45,13 @@
 
     let {
         snapshot,
-        latestReindexJob,
         latestEmbeddingBuildCommand,
     }: {
         snapshot: Snapshot;
-        latestReindexJob: WorkerJob | null;
         latestEmbeddingBuildCommand: EmbeddingBuildCommand | null;
     } = $props();
 
     const activeStatuses = ['pending', 'queued', 'running', 'cancelling'];
-
-    const progressPercent = $derived(
-        latestReindexJob && (latestReindexJob.progress.total ?? 0) > 0
-            ? Math.min(
-                  100,
-                  Math.round(
-                      ((latestReindexJob.progress.done ?? 0) /
-                          (latestReindexJob.progress.total ?? 1)) *
-                          100,
-                  ),
-              )
-            : 0,
-    );
 
     const snapshotProgressPercent = $derived(
         snapshot.document_count > 0
@@ -120,17 +85,9 @@
 
     onMount(() => {
         const interval = window.setInterval(() => {
-            if (
-                snapshotBuildActive ||
-                (latestReindexJob !== null &&
-                    activeStatuses.includes(latestReindexJob.status))
-            ) {
+            if (snapshotBuildActive) {
                 router.reload({
-                    only: [
-                        'snapshot',
-                        'latestReindexJob',
-                        'latestEmbeddingBuildCommand',
-                    ],
+                    only: ['snapshot', 'latestEmbeddingBuildCommand'],
                 });
             }
         }, 3000);
@@ -275,58 +232,6 @@
             {:else}
                 <div class="text-muted-foreground">
                     No pgvector embedding build command has been queued yet.
-                </div>
-            {/if}
-
-            {#if latestReindexJob}
-                <div class="rounded-md border p-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="font-medium"
-                            >Legacy worker job {latestReindexJob.id} · {latestReindexJob.type}</span
-                        >
-                        <span class="rounded-full bg-muted px-2 py-0.5"
-                            >{latestReindexJob.status}</span
-                        >
-                        <span class="text-muted-foreground">
-                            Phase: {latestReindexJob.progress.phase ?? '—'} · {latestReindexJob
-                                .progress.done ?? 0}/{latestReindexJob.progress
-                                .total ?? 0}
-                        </span>
-                        {#if latestReindexJob.progress.failed}
-                            <span class="text-destructive"
-                                >{latestReindexJob.progress.failed} failed</span
-                            >
-                        {/if}
-                    </div>
-
-                    {#if (latestReindexJob.progress.total ?? 0) > 0}
-                        <div
-                            class="mt-3 h-2 overflow-hidden rounded-full bg-muted"
-                        >
-                            <div
-                                class="h-full bg-primary"
-                                style={`width: ${progressPercent}%`}
-                            ></div>
-                        </div>
-                    {/if}
-
-                    {#if latestReindexJob.progress.message || latestReindexJob.progress.document_id}
-                        <div class="mt-2 text-muted-foreground">
-                            {latestReindexJob.progress.message ?? 'Last update'}
-                            {#if latestReindexJob.progress.document_title}
-                                · {latestReindexJob.progress.document_title}
-                            {:else if latestReindexJob.progress.document_id}
-                                · Document reference {latestReindexJob.progress
-                                    .document_id}
-                            {/if}
-                        </div>
-                    {/if}
-
-                    {#if latestReindexJob.error}
-                        <div class="mt-2 text-destructive">
-                            {latestReindexJob.error}
-                        </div>
-                    {/if}
                 </div>
             {/if}
         </div>

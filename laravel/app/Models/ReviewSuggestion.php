@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'worker_job_id',
     'source_suggestion_id',
     'dedupe_key',
     'pipeline_run_id',
@@ -41,7 +40,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reviewed_by_user_id',
     'reviewed_at',
     'commit_status',
-    'commit_worker_job_id',
     'commit_command_id',
 ])]
 class ReviewSuggestion extends Model
@@ -101,19 +99,9 @@ class ReviewSuggestion extends Model
         return self::pendingReviewQueueQuery()->count();
     }
 
-    public function workerJob(): BelongsTo
-    {
-        return $this->belongsTo(WorkerJob::class);
-    }
-
     public function pipelineRun(): BelongsTo
     {
         return $this->belongsTo(PipelineRun::class);
-    }
-
-    public function commitWorkerJob(): BelongsTo
-    {
-        return $this->belongsTo(WorkerJob::class, 'commit_worker_job_id');
     }
 
     public function commitCommand(): BelongsTo

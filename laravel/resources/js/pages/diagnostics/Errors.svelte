@@ -22,24 +22,6 @@
         details: Record<string, unknown> | null;
     };
 
-    type FailedJob = {
-        id: number;
-        type: string;
-        status: string;
-        error: string | null;
-        payload: Record<string, unknown>;
-        progress: Record<string, unknown>;
-        result: Record<string, unknown>;
-        exit_code: number | null;
-        created_at: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        show_url: string;
-        retry_url: string | null;
-        can_retry: boolean;
-        can_retry_failed_only: boolean;
-    };
-
     type WebhookError = {
         id: number;
         source: string;
@@ -74,14 +56,12 @@
     let {
         filters,
         filterOptions,
-        failedJobs,
         webhookErrors,
         legacyErrors,
         isAdmin,
     }: {
         filters: { source: string; status: string };
         filterOptions: { sources: string[]; statuses: string[] };
-        failedJobs: Paginator<FailedJob>;
         webhookErrors: Paginator<WebhookError>;
         legacyErrors: LegacyError[];
         isAdmin: boolean;
@@ -104,7 +84,7 @@
 <div class="space-y-6">
     <Heading
         title="Errors"
-        description="Diagnose failed worker jobs, blocked webhook deliveries, and recent legacy Python errors from one operations page."
+        description="Diagnose blocked webhook deliveries and recent legacy Python errors from one operations page."
     />
 
     <form
@@ -145,116 +125,6 @@
             >
         </div>
     </form>
-
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            {failedJobs.total} worker diagnostic event{failedJobs.total === 1
-                ? ''
-                : 's'}
-        </div>
-
-        {#each failedJobs.data as job (job.id)}
-            <article class="space-y-3 border-b p-4 text-sm last:border-b-0">
-                <div class="flex flex-wrap items-center gap-2">
-                    <a
-                        class="font-medium underline-offset-4 hover:underline"
-                        href={job.show_url}>Worker job {job.id} · {job.type}</a
-                    >
-                    <span class="rounded-full bg-muted px-2 py-0.5"
-                        >{job.status}</span
-                    >
-                    {#if job.exit_code !== null}
-                        <span class="text-muted-foreground"
-                            >exit {job.exit_code}</span
-                        >
-                    {/if}
-                    {#if job.finished_at}
-                        <span class="text-muted-foreground"
-                            >finished {formatDateTime(job.finished_at)}</span
-                        >
-                    {/if}
-                </div>
-                {#if job.error}
-                    <p class="text-destructive">{job.error}</p>
-                {/if}
-                <dl class="grid gap-1 text-xs md:grid-cols-2">
-                    <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                        <dt class="text-muted-foreground">Created</dt>
-                        <dd>{formatDateTime(job.created_at)}</dd>
-                    </div>
-                    <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                        <dt class="text-muted-foreground">Started</dt>
-                        <dd>{formatDateTime(job.started_at)}</dd>
-                    </div>
-                    {#each displayEntries(job.payload).slice(0, 4) as entry (entry.key)}
-                        <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                            <dt class="text-muted-foreground">{entry.label}</dt>
-                            <dd>{entry.value}</dd>
-                        </div>
-                    {/each}
-                    {#each displayEntries(job.progress).slice(0, 4) as entry (entry.key)}
-                        <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                            <dt class="text-muted-foreground">{entry.label}</dt>
-                            <dd>{entry.value}</dd>
-                        </div>
-                    {/each}
-                </dl>
-                {#if isAdmin && job.can_retry && job.retry_url}
-                    <div class="flex flex-wrap gap-2">
-                        <Form method="post" action={job.retry_url}>
-                            {#snippet children({ processing })}
-                                <Button
-                                    type="submit"
-                                    variant="outline"
-                                    disabled={processing}
-                                    >Retry whole job</Button
-                                >
-                            {/snippet}
-                        </Form>
-                        {#if job.can_retry_failed_only}
-                            <Form method="post" action={job.retry_url}>
-                                {#snippet children({ processing })}
-                                    <input
-                                        type="hidden"
-                                        name="failed_only"
-                                        value="1"
-                                    />
-                                    <Button
-                                        type="submit"
-                                        variant="outline"
-                                        disabled={processing}
-                                        >Retry failed documents only</Button
-                                    >
-                                {/snippet}
-                            </Form>
-                        {/if}
-                    </div>
-                {/if}
-            </article>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No worker errors match the current filters.
-            </div>
-        {/each}
-
-        {#if failedJobs.links.length > 3}
-            <nav class="flex flex-wrap gap-2 border-t p-4 text-sm">
-                {#each failedJobs.links as link, index (`${link.label}-${link.url ?? index}`)}
-                    {#if link.url}
-                        <a
-                            class:font-semibold={link.active}
-                            class="rounded-md border px-3 py-1"
-                            href={link.url}>{paginationLabel(link.label)}</a
-                        >
-                    {:else}
-                        <span class="rounded-md border px-3 py-1 opacity-50"
-                            >{paginationLabel(link.label)}</span
-                        >
-                    {/if}
-                {/each}
-            </nav>
-        {/if}
-    </section>
 
     <section class="rounded-xl border">
         <div class="border-b px-4 py-3 text-sm text-muted-foreground">

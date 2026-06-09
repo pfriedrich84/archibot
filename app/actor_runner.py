@@ -8,11 +8,13 @@ calling allowlisted Python actor implementations.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import traceback
 from collections.abc import Sequence
 from typing import NoReturn
 
 import structlog
+from sqlalchemy import text as sql_text
 
 from app.actors.document import _handle_document_pipeline_impl
 from app.actors.embedding import _build_initial_embedding_index_impl
@@ -20,6 +22,7 @@ from app.actors.maintenance import _reconcile_inbox_documents_impl, _reindex_ocr
 from app.actors.review import _commit_review_suggestion_impl
 from app.actors.webhook import _handle_paperless_webhook_impl
 from app.jobs.commands import CommandRecord, load_command, mark_command_status
+from app.jobs.database import engine
 
 log = structlog.get_logger(__name__)
 
@@ -28,6 +31,7 @@ POLL_RECONCILIATION_COMMAND_TYPE = "poll_reconciliation"
 REINDEX_COMMAND_TYPE = "reindex"
 REINDEX_OCR_COMMAND_TYPE = "reindex_ocr"
 REVIEW_COMMIT_COMMAND_TYPE = "review_commit"
+SYNC_ENTITY_APPROVAL_COMMAND_TYPE = "sync_entity_approval"
 
 
 class ActorRunnerError(RuntimeError):
@@ -189,6 +193,60 @@ def run_reindex_ocr_command(command_id: int) -> None:
     log.info("ocr reindex actor command succeeded", command_id=command.id)
 
 
+def run_sync_entity_approval_command(command_id: int) -> None:
+    """Run entity approval sync from durable command payload."""
+    from app.cli import cmd_sync_entity_approval
+    from app.db import init_db
+
+    command = _load_typed_command(command_id, SYNC_ENTITY_APPROVAL_COMMAND_TYPE)
+    action = command.payload.get("action")
+    entity_type = command.payload.get("type")
+    name = command.payload.get("name")
+    paperless_id = command.payload.get("paperless_id")
+    if not isinstance(action, str) or not isinstance(entity_type, str) or not isinstance(name, str):
+        raise ActorRunnerError(f"Command {command.id} requires payload action, type, and name")
+    if paperless_id is not None:
+        try:
+            paperless_id = int(paperless_id)
+        except (TypeError, ValueError) as exc:
+            raise ActorRunnerError(
+                f"Command {command.id} has invalid payload.paperless_id"
+            ) from exc
+
+    entity_approval_id = command.payload.get("entity_approval_id")
+    mark_command_status(command.id, "running")
+    log.info(
+        "entity approval sync actor command started",
+        command_id=command.id,
+        action=action,
+        entity_type=entity_type,
+    )
+    try:
+        init_db()
+        asyncio.run(cmd_sync_entity_approval(action, entity_type, name, paperless_id))
+    except Exception as exc:
+        mark_command_status(command.id, "failed", _exception_summary(exc))
+        _mark_entity_approval_sync_status(entity_approval_id, "failed")
+        raise
+    mark_command_status(command.id, "succeeded")
+    _mark_entity_approval_sync_status(entity_approval_id, "synced")
+    log.info("entity approval sync actor command succeeded", command_id=command.id)
+
+
+def _mark_entity_approval_sync_status(entity_approval_id: object, status: str) -> None:
+    if not isinstance(entity_approval_id, int):
+        return
+    with engine().begin() as connection:
+        connection.execute(
+            sql_text("""
+                UPDATE entity_approvals
+                SET sync_status = :status, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+            """),
+            {"status": status, "id": entity_approval_id},
+        )
+
+
 def run_document_pipeline(pipeline_run_id: int) -> None:
     """Run one durable document pipeline run."""
     log.info("document actor command started", pipeline_run_id=pipeline_run_id)
@@ -300,6 +358,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durable webhook_deliveries.id for a Paperless webhook delivery",
     )
 
+    sync_entity = subparsers.add_parser(
+        "sync-entity-approval",
+        help="Run entity approval sync from a durable command id",
+    )
+    sync_entity.add_argument(
+        "--command-id",
+        type=int,
+        required=True,
+        help="Durable commands.id for a sync_entity_approval command",
+    )
+
     review = subparsers.add_parser(
         "commit-review",
         help="Run a review commit actor from a durable command id",
@@ -336,6 +405,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "commit-review":
         run_review_commit_command(args.command_id)
+        return 0
+    if args.command == "sync-entity-approval":
+        run_sync_entity_approval_command(args.command_id)
         return 0
 
     raise ActorRunnerError(f"Unsupported actor command: {args.command}")

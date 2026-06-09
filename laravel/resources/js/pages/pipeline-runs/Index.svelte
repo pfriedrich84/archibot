@@ -77,7 +77,7 @@
 <div class="space-y-6">
     <Heading
         title="Pipeline runs"
-        description="Durable pipeline visibility for commands, webhooks, progress, events, and the future worker-jobs replacement."
+        description="Durable pipeline visibility for commands, webhooks, progress, events, and actor executions."
     />
 
     <div class="rounded-xl border">

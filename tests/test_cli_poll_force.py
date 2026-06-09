@@ -45,28 +45,26 @@ def test_cmd_poll_passes_force() -> None:
 
 
 def test_main_parses_force_flag_for_poll(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() parses --force and passes it to cmd_poll."""
+    """main() routes poll --force through durable Laravel Maintenance."""
     monkeypatch.setattr(sys, "argv", ["cli", "poll", "--force"])
+    mock_laravel = MagicMock()
+    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}):
-        from app.cli import main
+    main()
 
-        main()
-
-    mock_cmd.assert_called_once_with(force=True)
+    mock_laravel.assert_called_once_with("poll", force=True, limit=None)
 
 
 def test_main_poll_no_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() passes force=False for poll when --force is not provided."""
+    """main() routes poll without --force through durable Laravel Maintenance."""
     monkeypatch.setattr(sys, "argv", ["cli", "poll"])
+    mock_laravel = MagicMock()
+    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"poll": ("desc", mock_cmd)}):
-        from app.cli import main
+    main()
 
-        main()
-
-    mock_cmd.assert_called_once_with(force=False)
+    mock_laravel.assert_called_once_with("poll", force=False, limit=None)

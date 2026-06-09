@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
+use App\Models\Command;
 use App\Models\EntityApproval;
-use App\Models\WorkerJob;
+use App\Models\PipelineEvent;
 use App\Services\Paperless\PaperlessClient;
-use App\Services\Workers\WorkerJobDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -107,7 +108,6 @@ class EntityApprovalController extends Controller
                 'paperless_id' => $entity->paperless_id,
                 'source_review_suggestion_id' => $entity->source_review_suggestion_id,
                 'sync_status' => $entity->sync_status,
-                'sync_worker_job_id' => $entity->sync_worker_job_id,
                 'created_at' => $entity->created_at?->toISOString(),
             ])
             ->all();
@@ -141,25 +141,30 @@ class EntityApprovalController extends Controller
             'paperless_id' => $entityApproval->paperless_id,
         ];
 
-        $workerJob = app(WorkerJobDispatcher::class)->dispatch(
-            type: WorkerJob::TYPE_SYNC_ENTITY_APPROVAL,
-            payload: $payload,
-            user: $request->user(),
-            request: $request,
-            dedupeKey: WorkerJobDispatcher::dispatchKey(WorkerJob::TYPE_SYNC_ENTITY_APPROVAL, [
-                'entity_approval_id' => $entityApproval->id,
-                'action' => $action,
-            ]),
-            auditMetadata: [
-                'entity_approval_id' => $entityApproval->id,
-                'entity_type' => $entityApproval->type,
-                'action' => $action,
+        $command = Command::query()->create([
+            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
+            'status' => Command::STATUS_PENDING,
+            'payload' => $payload,
+            'created_by_user_id' => $request->user()->id,
+        ]);
+
+        PipelineEvent::query()->create([
+            'command_id' => $command->id,
+            'event_type' => 'job_control.entity_approval_sync_requested',
+            'level' => 'info',
+            'message' => 'Entity approval sync requested by admin.',
+            'payload' => [
+                'actor_user_id' => $request->user()->id,
+                'command_id' => $command->id,
+                ...$payload,
             ],
-        );
+        ]);
+
+        dispatch(RunPythonActorJob::syncEntityApproval($command->id));
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
 
         $entityApproval->forceFill([
             'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
-            'sync_worker_job_id' => $workerJob->id,
         ])->save();
     }
 

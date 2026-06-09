@@ -4,7 +4,6 @@ namespace Tests\Feature\Webhooks;
 
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,7 +15,6 @@ class PaperlessWebhookTest extends TestCase
     {
         $this->postJson('/webhook/new', ['document_id' => 42])->assertNotFound();
 
-        $this->assertDatabaseCount((new WorkerJob)->getTable(), 0);
         $this->assertDatabaseCount((new WebhookDelivery)->getTable(), 0);
         $this->assertDatabaseCount((new PipelineRun)->getTable(), 0);
     }
@@ -25,7 +23,6 @@ class PaperlessWebhookTest extends TestCase
     {
         $this->postJson('/webhook/edit', ['document_id' => 42])->assertNotFound();
 
-        $this->assertDatabaseCount((new WorkerJob)->getTable(), 0);
         $this->assertDatabaseCount((new WebhookDelivery)->getTable(), 0);
         $this->assertDatabaseCount((new PipelineRun)->getTable(), 0);
     }

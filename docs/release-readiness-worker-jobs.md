@@ -2,6 +2,8 @@
 
 Date: 2026-05-14
 
+> Historical note: this readiness review covered the temporary `worker_jobs` stabilization phase. It is superseded by [ADR-0016](decisions/0016-clean-install-worker-jobs-retirement.md) and the durable job-control model in [docs/architecture/job-control-model.md](architecture/job-control-model.md). `worker_jobs` has since been retired for clean installs.
+
 ## Scope
 
 This review stabilizes the current Laravel `worker_jobs` control plane and the operational parity sweep before Phase 13/event-driven migration. It intentionally does not start the Absurd actor migration and does not add feature behavior.
@@ -29,14 +31,14 @@ All requested checks passed on `main` after the documentation cleanup:
 
 - Maintenance reset is no longer exposed in the Laravel GUI. Destructive reset is CLI-only via `archibot reset --yes`, which delegates to `php artisan archibot:reset --yes` and clears Laravel/PostgreSQL worker/job-control, pipeline, embedding, audit, chat, session/cache, webhook, review, OCR and entity-approval state.
 - Some Svelte navigation still uses hardcoded internal paths instead of generated route helpers. This is low-risk for the default deployment, but can matter for deployments using `archibot.path_prefix`.
-- The Python `archibot jobs` CLI still inspects job state through legacy assumptions; Laravel remains the canonical operator surface for job control.
+- Historical only: the Python `archibot jobs` CLI noted here has since been removed. Operator-facing CLI actions that overlap GUI actions now delegate to Laravel Maintenance and durable commands/pipeline runs.
 
 ## Remaining partial parity items
 
 From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 
 - Dashboard: deeper phase-level historical analytics and deployment-specific checks beyond lightweight `/healthz` probes.
-- Inbox: local poll/reprocess controls are not directly embedded in the Inbox page; controls live in Worker Jobs/Maintenance.
+- Inbox: local poll/reprocess controls are not directly embedded in the Inbox page; controls live in Dashboard/Maintenance.
 - Review Detail: raw/original debugging snapshots may need fuller exposure if operators still rely on them.
 - Embeddings: page still reads legacy Python SQLite metadata; final state should use PostgreSQL/pgvector and pipeline-run state.
 - Stats: detailed phase timing/error-rate analytics remain deferred to pipeline events or a later explicit decision.
@@ -49,4 +51,4 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 
 ## Readiness summary
 
-The current Laravel `worker_jobs` control plane is stable enough to enter Phase 13 planning, provided the event-driven migration continues to treat `worker_jobs` as temporary and destructive reset remains a deliberate operator CLI action outside the GUI.
+Historical conclusion at the time: the temporary Laravel `worker_jobs` control plane was stable enough to enter Phase 13 planning. Current state: `worker_jobs` has been retired, Operations Log and Pipeline Runs provide durable visibility, Maintenance is the only admin action-launch surface, and destructive reset remains a deliberate operator CLI action outside the GUI.

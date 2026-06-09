@@ -15,9 +15,6 @@
         reviewJudgeCounts,
         entities,
         entityApprovalMatrix,
-        workers,
-        workerStatusCounts,
-        workerTypeMatrix,
         ocrReviewStatusCounts,
         webhookStatusCounts,
         pipelineRunStatusCounts,
@@ -34,9 +31,6 @@
         reviewJudgeCounts: Record<string, number>;
         entities: Record<string, number>;
         entityApprovalMatrix: Record<string, Record<string, number>>;
-        workers: Record<string, number>;
-        workerStatusCounts: Record<string, number>;
-        workerTypeMatrix: Record<string, Record<string, number>>;
         ocrReviewStatusCounts: Record<string, number>;
         webhookStatusCounts: Record<string, number>;
         pipelineRunStatusCounts: Record<string, number>;
@@ -58,7 +52,6 @@
     const groups = $derived([
         { title: 'Review', values: review },
         { title: 'Entity approvals', values: entities },
-        { title: 'Workers', values: workers },
         { title: 'Chat/RAG', values: chat },
     ]);
 
@@ -70,11 +63,9 @@
         { title: 'Webhook delivery status', values: webhookStatusCounts },
         { title: 'Pipeline run status', values: pipelineRunStatusCounts },
         { title: 'Actor execution status', values: actorStatusCounts },
-        { title: 'Worker job status', values: workerStatusCounts },
     ]);
 
     const matrixGroups = $derived([
-        { title: 'Worker jobs by type', values: workerTypeMatrix },
         { title: 'Entity approvals by type', values: entityApprovalMatrix },
         { title: 'Pipeline runs by type', values: pipelineRunTypeMatrix },
         { title: 'Actor executions by actor', values: actorNameMatrix },
@@ -196,7 +187,7 @@
                         <th class="py-2">Date</th>
                         <th class="py-2">Reviews created</th>
                         <th class="py-2">Reviews completed</th>
-                        <th class="py-2">Worker jobs finished</th>
+                        <th class="py-2">Commands finished</th>
                         <th class="py-2">Webhook deliveries</th>
                         <th class="py-2">Pipeline runs</th>
                     </tr>
@@ -207,7 +198,7 @@
                             <td class="py-2">{day.date}</td>
                             <td class="py-2">{day.reviews_created}</td>
                             <td class="py-2">{day.reviews_completed}</td>
-                            <td class="py-2">{day.worker_jobs_finished}</td>
+                            <td class="py-2">{day.commands_finished}</td>
                             <td class="py-2">{day.webhook_deliveries}</td>
                             <td class="py-2">{day.pipeline_runs}</td>
                         </tr>

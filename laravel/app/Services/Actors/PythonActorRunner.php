@@ -24,6 +24,8 @@ class PythonActorRunner
 
     public const ACTOR_REINDEX_OCR = 'reindex_ocr';
 
+    public const ACTOR_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
+
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
     /**
@@ -96,6 +98,15 @@ class PythonActorRunner
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX_OCR);
         $this->runCommandActor($command, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
+    }
+
+    /**
+     * Run the fixed entity approval sync actor command for a durable command row.
+     */
+    public function runSyncEntityApproval(Command $command): void
+    {
+        $this->assertCommandType($command, Command::TYPE_SYNC_ENTITY_APPROVAL);
+        $this->runCommandActor($command, self::ACTOR_SYNC_ENTITY_APPROVAL, ['sync-entity-approval', '--command-id', (string) $command->id]);
     }
 
     /**

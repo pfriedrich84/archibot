@@ -37,21 +37,21 @@ class MaintenanceCommandTest extends TestCase
         ]);
     }
 
-    public function test_worker_jobs_quick_control_can_queue_forced_poll_reconciliation(): void
+    public function test_maintenance_quick_control_can_queue_forced_poll_reconciliation(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
             ->post(route('maintenance.poll'), [
                 'force' => '1',
-                'ui_surface' => 'worker_jobs_quick_controls',
+                'ui_surface' => 'maintenance_quick_controls',
             ])
             ->assertRedirect();
 
         $command = Command::query()->firstOrFail();
         $this->assertSame('poll_reconciliation', $command->type);
         $this->assertTrue($command->payload['force']);
-        $this->assertSame('worker_jobs_quick_controls', $command->payload['ui_surface']);
+        $this->assertSame('maintenance_quick_controls', $command->payload['ui_surface']);
     }
 
     public function test_non_admin_cannot_queue_poll_reconciliation(): void
@@ -99,17 +99,17 @@ class MaintenanceCommandTest extends TestCase
         ]);
     }
 
-    public function test_worker_jobs_quick_control_can_queue_reindex_command(): void
+    public function test_maintenance_quick_control_can_queue_reindex_command(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
-            ->post(route('maintenance.reindex'), ['ui_surface' => 'worker_jobs_quick_controls'])
+            ->post(route('maintenance.reindex'), ['ui_surface' => 'maintenance_quick_controls'])
             ->assertRedirect();
 
         $command = Command::query()->firstOrFail();
         $this->assertSame('reindex', $command->type);
-        $this->assertSame('worker_jobs_quick_controls', $command->payload['ui_surface']);
+        $this->assertSame('maintenance_quick_controls', $command->payload['ui_surface']);
     }
 
     public function test_non_admin_cannot_queue_reindex(): void

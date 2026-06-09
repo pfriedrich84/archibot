@@ -138,7 +138,7 @@ def _fake_connection():
 
 
 def test_init_db_does_not_emit_info_noise(monkeypatch, tmp_path):
-    """CLI worker jobs should not print routine SQLite setup chatter."""
+    """CLI commands should not print routine SQLite setup chatter."""
     monkeypatch.setattr(db, "settings", SimpleNamespace(db_path=tmp_path / "classifier.db"))
     monkeypatch.setattr(db, "_connect", lambda _path: _fake_connection())
     monkeypatch.setattr(db, "_migrate", lambda _conn: None)

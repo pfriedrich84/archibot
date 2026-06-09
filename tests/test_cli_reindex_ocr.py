@@ -58,28 +58,26 @@ def test_cmd_reindex_ocr_default_no_force() -> None:
 
 
 def test_main_parses_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() parses --force and passes it to cmd_reindex_ocr."""
+    """main() routes reindex-ocr --force through durable Laravel Maintenance."""
     monkeypatch.setattr(sys, "argv", ["cli", "reindex-ocr", "--force"])
+    mock_laravel = MagicMock()
+    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"reindex-ocr": ("desc", mock_cmd)}):
-        from app.cli import main
+    main()
 
-        main()
-
-    mock_cmd.assert_called_once_with(force=True)
+    mock_laravel.assert_called_once_with("reindex_ocr", force=True, limit=None)
 
 
 def test_main_no_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() passes force=False when --force is not given."""
+    """main() routes reindex-ocr without --force through durable Laravel Maintenance."""
     monkeypatch.setattr(sys, "argv", ["cli", "reindex-ocr"])
+    mock_laravel = MagicMock()
+    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"reindex-ocr": ("desc", mock_cmd)}):
-        from app.cli import main
+    main()
 
-        main()
-
-    mock_cmd.assert_called_once_with(force=False)
+    mock_laravel.assert_called_once_with("reindex_ocr", force=False, limit=None)

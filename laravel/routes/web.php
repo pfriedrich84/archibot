@@ -13,13 +13,13 @@ use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
+use App\Http\Controllers\OperationsLogController;
 use App\Http\Controllers\PaperlessEventWebhookController;
 use App\Http\Controllers\PipelineRunController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\WebhookDeliveryController;
-use App\Http\Controllers\Workers\WorkerJobController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -91,6 +91,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('stats', StatsController::class)->name('stats.index');
         Route::get('errors', ErrorsController::class)->name('errors.index');
 
+        Route::get('operations-log', OperationsLogController::class)->name('operations-log.index');
         Route::get('pipeline-runs', [PipelineRunController::class, 'index'])->name('pipeline-runs.index');
         Route::get('pipeline-runs/{pipelineRun}', [PipelineRunController::class, 'show'])->name('pipeline-runs.show');
         Route::post('pipeline-runs/{pipelineRun}/retry', [PipelineRunController::class, 'retry'])->name('pipeline-runs.retry');
@@ -105,12 +106,6 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('webhook-deliveries/{webhookDelivery}/retry', [WebhookDeliveryController::class, 'retry'])->name('webhook-deliveries.retry');
         Route::post('webhook-deliveries/{webhookDelivery}/dismiss', [WebhookDeliveryController::class, 'dismiss'])->name('webhook-deliveries.dismiss');
 
-        Route::get('worker-jobs', [WorkerJobController::class, 'index'])->name('worker-jobs.index');
-        Route::get('worker-jobs/{workerJob}', [WorkerJobController::class, 'show'])->name('worker-jobs.show');
-        Route::post('worker-jobs', [WorkerJobController::class, 'store'])->name('worker-jobs.store');
-        Route::post('worker-jobs/{workerJob}/stop', [WorkerJobController::class, 'stop'])->name('worker-jobs.stop');
-        Route::post('worker-jobs/{workerJob}/force-kill', [WorkerJobController::class, 'forceKill'])->name('worker-jobs.force-kill');
-        Route::post('worker-jobs/{workerJob}/retry', [WorkerJobController::class, 'retry'])->name('worker-jobs.retry');
         Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 
         Route::get('admin/settings/{section?}', [SettingsController::class, 'edit'])->name('admin.settings.edit');
@@ -120,9 +115,9 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');
         Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
         Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
-        Route::post('admin/maintenance/recover-worker-jobs', [MaintenanceController::class, 'recoverWorkerJobs'])->name('admin.maintenance.recover-worker-jobs');
+        Route::post('admin/maintenance/recover-pipeline-actors', [MaintenanceController::class, 'recoverPipelineActors'])->name('admin.maintenance.recover-pipeline-actors');
         Route::post('admin/maintenance/document-pipeline', [MaintenanceController::class, 'startDocumentPipeline'])->name('admin.maintenance.document-pipeline');
-        Route::post('admin/maintenance/worker-jobs', [MaintenanceController::class, 'startWorkerJob'])->name('admin.maintenance.worker-jobs');
+        Route::post('admin/maintenance/commands', [MaintenanceController::class, 'startCommand'])->name('admin.maintenance.commands');
     });
 
     require __DIR__.'/settings.php';

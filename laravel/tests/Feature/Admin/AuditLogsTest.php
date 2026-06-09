@@ -6,7 +6,6 @@ use App\Models\AuditLog;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -43,7 +42,6 @@ class AuditLogsTest extends TestCase
     public function test_audit_logs_include_operator_target_links_for_known_surfaces(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
-        $workerJob = WorkerJob::factory()->create();
         $webhookDelivery = WebhookDelivery::query()->create([
             'source' => 'paperless',
             'event_type' => 'document.updated',
@@ -56,11 +54,6 @@ class AuditLogsTest extends TestCase
         ]);
         $reviewSuggestion = ReviewSuggestion::factory()->create();
 
-        $workerLog = AuditLog::query()->create([
-            'event' => 'worker_job.queued',
-            'target_type' => 'worker_job',
-            'target_id' => (string) $workerJob->id,
-        ]);
         $webhookLog = AuditLog::query()->create([
             'event' => 'webhook_delivery.retry_queued',
             'target_type' => 'webhook_delivery',
@@ -72,7 +65,6 @@ class AuditLogsTest extends TestCase
             'target_id' => (string) $reviewSuggestion->id,
         ]);
 
-        $workerLog->forceFill(['created_at' => now()->subMinutes(2)])->save();
         $webhookLog->forceFill(['created_at' => now()->subMinute()])->save();
         $reviewLog->forceFill(['created_at' => now()])->save();
 
@@ -81,10 +73,9 @@ class AuditLogsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('admin/AuditLogs')
-                ->has('logs', 3)
+                ->has('logs', 2)
                 ->where('logs.0.target_url', route('review.show', $reviewSuggestion))
                 ->where('logs.1.target_url', route('webhook-deliveries.show', $webhookDelivery))
-                ->where('logs.2.target_url', route('worker-jobs.show', $workerJob))
             );
     }
 }

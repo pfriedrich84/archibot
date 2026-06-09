@@ -50,17 +50,6 @@
         error: string | null;
     };
 
-    type LinkedWorkerJob = {
-        id: number;
-        type: string;
-        status: string;
-        paperless_document_id: number | null;
-        dispatch_key: string | null;
-        created_at: string | null;
-        updated_at: string | null;
-        show_url: string;
-    };
-
     type AuditLog = {
         id: number;
         event: string;
@@ -133,7 +122,6 @@
         } | null;
         events: PipelineEvent[];
         items: PipelineItem[];
-        linked_worker_jobs: LinkedWorkerJob[];
         audit_logs: AuditLog[];
     };
 
@@ -445,31 +433,6 @@
     </section>
 
     <section class="grid gap-4 lg:grid-cols-2">
-        <div class="rounded-xl border p-4">
-            <h2 class="mb-3 font-semibold">Linked worker jobs</h2>
-            <div class="space-y-2 text-sm">
-                {#each run.linked_worker_jobs as job (job.id)}
-                    <div class="rounded-md bg-muted/40 p-3">
-                        <a
-                            class="font-medium underline-offset-4 hover:underline"
-                            href={job.show_url}>Worker job {job.id}</a
-                        >
-                        <div class="text-muted-foreground">
-                            {job.type} · {job.status} · document {job.paperless_document_id ??
-                                '—'}
-                        </div>
-                        <div class="break-all text-xs text-muted-foreground">
-                            {job.dispatch_key ?? '—'}
-                        </div>
-                    </div>
-                {:else}
-                    <div class="text-muted-foreground">
-                        No related temporary worker jobs were found.
-                    </div>
-                {/each}
-            </div>
-        </div>
-
         <div class="rounded-xl border p-4">
             <h2 class="mb-3 font-semibold">Linked audit log entries</h2>
             <div class="space-y-2 text-sm">

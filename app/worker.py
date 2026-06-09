@@ -64,13 +64,13 @@ _poll_progress_stdout_enabled = False
 
 
 def enable_poll_progress_stdout(enabled: bool = True) -> None:
-    """Emit machine-readable poll progress lines for Laravel worker jobs."""
+    """Emit machine-readable poll progress lines for Laravel actor commands."""
     global _poll_progress_stdout_enabled
     _poll_progress_stdout_enabled = enabled
 
 
 def emit_poll_progress(**extra: object) -> None:
-    """Print the current poll progress in the Laravel worker PROGRESS protocol."""
+    """Print the current poll progress in the Laravel actor progress protocol."""
     if not _poll_progress_stdout_enabled:
         return
     payload = {

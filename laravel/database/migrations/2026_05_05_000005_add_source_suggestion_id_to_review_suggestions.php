@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('review_suggestions', function (Blueprint $table) {
             $table->unsignedBigInteger('source_suggestion_id')
                 ->nullable()
-                ->after('worker_job_id')
+                ->after('id')
                 ->index();
         });
     }

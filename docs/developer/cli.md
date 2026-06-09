@@ -4,11 +4,7 @@ Der Classifier stellt CLI-Befehle bereit, die im laufenden Container oder lokal
 ausgefuehrt werden koennen. Sie sind nuetzlich fuer Wartung, Debugging und
 manuelles Ausloesen der Pipeline-Phasen.
 
-Neue Laravel-GUI-Aktionen fuer Polling, Reindex, OCR-Reindex, Embedding-Build,
-manuelle Dokumentverarbeitung und Review-Commit laufen ueber durable
-`commands`/`pipeline_runs` und fixe Python-Actor-Kommandos. `worker_jobs` wird
-als Clean-Install-Break entfernt; es gibt keine Legacy-Datenmigration oder
-Backend-Kompatibilitaet fuer alte Worker-Zeilen.
+CLI-Aktionen, die sich mit der Laravel-GUI ueberschneiden, delegieren an denselben durable Laravel-Backendpfad wie Maintenance: `archibot poll`, `reindex`, `reindex-ocr`, `reindex-embed` und `process-doc` rufen intern `php artisan archibot:maintenance-command ...` auf. Dadurch entstehen dieselben durable `commands`/`pipeline_runs`, Laravel-Queue-Jobs und fixen Python-Actor-Kommandos wie bei GUI-Buttons. `worker_jobs` ist als Clean-Install-Break entfernt; es gibt keine Legacy-Datenmigration oder Backend-Kompatibilitaet fuer alte Worker-Zeilen.
 
 ## Aufruf
 
@@ -35,9 +31,9 @@ archibot reindex
 ```
 
 **Was passiert:**
-1. Die Embedding-Gate-State wird auf `building` gesetzt
-2. Phase 0: OCR-Korrektur fuer alle Dokumente (wenn aktiviert), Ergebnisse in `doc_ocr_cache`
-3. Phase 1: Embeddings fuer vertrauenswuerdige Dokumente ohne Inbox-/Posteingang-Tag berechnen und in PostgreSQL/pgvector schreiben
+1. Die CLI delegiert an `php artisan archibot:maintenance-command reindex`
+2. Laravel erzeugt einen durable `reindex` Command, markiert die Embedding-Gate-State als stale und queued `RunPythonActorJob::reindex`
+3. Der fixe Python-Actor laedt Optionen aus `commands.payload`, fuehrt OCR/Embedding-Reindex aus und schreibt Fortschritt in durable Pipeline-/Actor-Tabellen
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, bei beschaedigter Vektor-DB,
 oder beim ersten Setup.
@@ -63,9 +59,10 @@ archibot reindex-ocr --force
 | `--force` | OCR-Cache ignorieren und die Clean-Text-Heuristik fuer `text`/`vision_light` umgehen. Ohne dieses Flag werden bereits gecachte Korrekturen uebersprungen und sauber wirkende Texte nicht neu ans OCR-Modell gesendet. |
 
 **Was passiert:**
-- Alle Dokumente aus Paperless werden geholt
-- Fuer jedes Dokument wird `maybe_correct_ocr()` ausgefuehrt
-- Ergebnisse landen in `doc_ocr_cache` (nie in Paperless)
+- Die CLI delegiert an `php artisan archibot:maintenance-command reindex_ocr`
+- Laravel erzeugt einen durable `reindex_ocr` Command und queued `RunPythonActorJob::reindexOcr`
+- Der fixe Python-Actor laedt `force` aus `commands.payload`
+- Ergebnisse landen in `doc_ocr_cache` (nie direkt in Paperless)
 - Bereits gecachte Korrekturen werden uebersprungen (ausser mit `--force`)
 - `--force` sendet auch sauber wirkende Texte erneut ans OCR-Modell; `OCR_REQUESTED_TAG_ID` gilt weiterhin
 
@@ -83,8 +80,9 @@ archibot reindex-embed
 ```
 
 **Was passiert:**
-1. Ein dauerhafter Embedding-Build wird in PostgreSQL gestartet
-2. Fuer jedes vertrauenswuerdige Dokument: OCR-Cache pruefen, dann Embedding berechnen und in `document_embeddings` speichern
+1. Die CLI delegiert an `php artisan archibot:maintenance-command reindex_embed`
+2. Laravel erzeugt einen durable `embedding_index_build` Command und queued `RunPythonActorJob::embeddingIndexBuild`
+3. Der fixe Python-Actor startet den PostgreSQL/pgvector-Build und speichert Embeddings in `document_embeddings`
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, wenn OCR-Cache
 bereits aktuell ist.
@@ -109,19 +107,10 @@ archibot poll --force
 | `--force` | Ignoriert den Idempotency-Skip (`processed_documents`) und verarbeitet Inbox-Dokumente erneut, auch wenn sich `modified` nicht geaendert hat. |
 
 **Was passiert:**
-1. Dokumente mit Inbox-Tag aus Paperless holen
-2. Prepare-Phase: Idempotency-Skip pruefen und Dokumente als pending markieren
-3. OCR-Phase fuer alle Dokumente (wenn `OCR_MODE != off`), Ergebnisse pro Dokument speichern
-4. Embedding-Phase fuer alle Dokumente: Embedding berechnen + Kontext-Dokumente finden
-5. Klassifikations-Phase fuer alle Dokumente
-6. Judge-Phase fuer alle erfolgreichen Klassifikationen (oder `skipped`, wenn nicht noetig)
-7. Store/Postprocess/Finalize: Vorschlaege speichern, Review/Auto-Commit ausfuehren, Embeddings persistieren
-
-Laravel-Worker-Jobs erhalten waehrend `poll` laufend `PROGRESS`-Zeilen mit
-phasenlokalen Zaehlern (`done`/`total`, z. B. `4/19`). Die Modellphasen bleiben
-gebuendelt, damit unterschiedliche OCR-, Embedding-, Klassifikations- und
-Judge-Modelle nicht pro Dokument gewechselt werden muessen. Persistiert wird
-innerhalb jeder Phase nach jedem Dokument.
+1. Die CLI delegiert an `php artisan archibot:maintenance-command poll`
+2. Laravel erzeugt einen durable `poll_reconciliation` Command und queued `RunPythonActorJob::pollReconciliation`
+3. Der fixe Python-Actor nutzt denselben Pipeline-Start-/Dedupe-/Lock-Pfad wie Webhook- und GUI-Starts
+4. Fortschritt, Events und Actor-Ausfuehrung werden in durable PostgreSQL-Tabellen sichtbar, insbesondere in `/operations-log` und `/pipeline-runs`.
 
 **Wann nutzen:** Zum Testen der Pipeline oder wenn man nicht auf den
 naechsten automatischen Poll warten will.
@@ -144,32 +133,12 @@ archibot process-doc 224 --force
 **Flags:**
 | Flag | Beschreibung |
 |------|-------------|
-| `--force` | Loescht den bestehenden Eintrag in `processed_documents` fuer diese Dokument-ID und erzwingt dadurch eine Neuverarbeitung. |
+| `--force` | Erzwingt wie der Maintenance-Button einen neuen durable Pipeline Run (`manual_force`). |
+
+**Was passiert:** Die CLI delegiert an `php artisan archibot:maintenance-command process_document --document-id=<id>`. Laravel startet denselben durable `pipeline_runs`-Pfad wie der Maintenance-Button.
 
 **Wann nutzen:** Ideal fuer Debugging einzelner Faelle (z. B. fehlerhafte
 Klassifikation oder Ollama-Probleme), ohne die gesamte Inbox zu starten.
-
----
-
-### `jobs` — Entfernte Worker-Job-Kompatibilitaet
-
-```bash
-archibot jobs list
-archibot jobs status <job_id>
-archibot jobs stop <job_id>
-archibot jobs retry <job_id>
-```
-
-Diese Befehle sind zur Entfernung vorgesehen. ArchiBot bewahrt keine alten Worker-Job-Daten fuer Upgrades auf; Runtime-State wird vor dem naechsten Clean Install bereinigt. Normale Admin-Aktionen laufen ueber Maintenance/Dashboard und erzeugen durable `commands` oder `pipeline_runs`:
-
-- poll/reconciliation;
-- forced poll/reconciliation;
-- manual document pipeline;
-- full reindex;
-- OCR reindex;
-- embedding index build.
-
-Die alte `/worker-jobs` Oberflaeche wird entfernt und durch `/operations-log` auf Basis durable Tabellen ersetzt. Es gibt keine `/legacy-worker-jobs` Route und keine Backend-Kompatibilitaet fuer alte Worker-Zeilen.
 
 ---
 

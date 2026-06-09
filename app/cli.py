@@ -10,10 +10,6 @@ Usage::
     python -m app.cli poll --force     # Reprocess inbox docs (ignore idempotency skip)
     python -m app.cli process-doc 224  # Process one document by ID
     python -m app.cli process-doc 224 --force  # Reprocess one document
-    python -m app.cli jobs list        # List Laravel worker jobs
-    python -m app.cli jobs status 12   # Show one Laravel worker job
-    python -m app.cli jobs stop 12     # Deprecated: use Laravel admin controls
-    python -m app.cli jobs retry 12    # Deprecated: use Laravel admin controls
     python -m app.cli reset --yes      # Reset through Laravel/PostgreSQL
     python -m app.cli reset --yes --include-config  # Also clear config/setup state
 """
@@ -25,7 +21,6 @@ import contextlib
 import json
 import logging
 import signal
-import sqlite3
 import subprocess
 import sys
 import traceback
@@ -578,6 +573,36 @@ def cmd_reset(include_config: bool = False) -> None:
     print("Reset complete via Laravel/PostgreSQL.")
 
 
+def cmd_laravel_maintenance(
+    command_type: str,
+    *,
+    force: bool = False,
+    document_id: int | None = None,
+    limit: int | None = None,
+) -> None:
+    """Dispatch GUI-overlapping CLI actions through Laravel Maintenance."""
+    artisan = _laravel_artisan_path()
+    if artisan is None:
+        print(
+            "This action is Laravel/PostgreSQL-owned, but Laravel artisan was not found. "
+            "Run from the container or Laravel project with: php artisan archibot:maintenance-command",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    command = ["php", str(artisan), "archibot:maintenance-command", command_type]
+    if force:
+        command.append("--force")
+    if document_id is not None:
+        command.append(f"--document-id={document_id}")
+    if limit is not None:
+        command.append(f"--limit={limit}")
+
+    result = subprocess.run(command, cwd=artisan.parent, check=False)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 def _laravel_db_path() -> Path:
     env_path = None
     with contextlib.suppress(Exception):
@@ -610,104 +635,17 @@ def _display_datetime(value: Any) -> str:
     return when.astimezone(display_tz).strftime(f"{settings.gui_date_format} %H:%M:%S %Z")
 
 
-def cmd_jobs(args: list[str]) -> None:
-    """Inspect legacy Laravel Worker Jobs from the Python CLI.
-
-    Worker Job is temporary migration infrastructure. This CLI Adapter is
-    intentionally read-only so durable job control stays local to Laravel admin
-    controls and Pipeline Run / Command seams.
-    """
-    if not args or args[0] in {"-h", "--help"}:
-        print("Usage: archibot jobs <list|status> [job_id]")
-        print("Deprecated mutating actions: stop, retry. Use Laravel admin controls instead.")
-        return
-
-    db_path = _laravel_db_path()
-    if not db_path.exists():
-        print(f"Laravel worker DB not found: {db_path}")
-        sys.exit(1)
-
-    action = args[0]
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        if action == "list":
-            rows = conn.execute(
-                """
-                SELECT id, type, status, created_at, started_at, finished_at, error
-                FROM worker_jobs
-                ORDER BY id DESC
-                LIMIT 25
-                """
-            ).fetchall()
-            for row in rows:
-                print(
-                    f"#{row['id']} {row['type']} {row['status']} "
-                    f"created={_display_datetime(row['created_at'])} "
-                    f"started={_display_datetime(row['started_at'])} "
-                    f"finished={_display_datetime(row['finished_at'])}"
-                )
-            return
-
-        if len(args) < 2:
-            print(f"Usage: archibot jobs {action} <job_id>")
-            sys.exit(1)
-        try:
-            job_id = int(args[1])
-        except ValueError:
-            print(f"Invalid job_id: {args[1]}")
-            sys.exit(1)
-
-        row = conn.execute("SELECT * FROM worker_jobs WHERE id = ?", (job_id,)).fetchone()
-        if row is None:
-            print(f"Worker job #{job_id} not found")
-            sys.exit(1)
-
-        if action == "status":
-            print(json.dumps(dict(row), ensure_ascii=False, indent=2, default=str))
-            logs = conn.execute(
-                """
-                SELECT level, phase, event, paperless_document_id, message, created_at
-                FROM worker_job_logs
-                WHERE worker_job_id = ?
-                ORDER BY id ASC
-                LIMIT 100
-                """,
-                (job_id,),
-            ).fetchall()
-            for log_row in logs:
-                doc = (
-                    f" doc=#{log_row['paperless_document_id']}"
-                    if log_row["paperless_document_id"]
-                    else ""
-                )
-                print(
-                    f"[{log_row['level']}] {_display_datetime(log_row['created_at'])} "
-                    f"{log_row['phase'] or log_row['event'] or 'log'}{doc}: {log_row['message']}"
-                )
-            return
-
-        if action in {"stop", "retry"}:
-            print(
-                f"archibot jobs {action} is deprecated and read-only; "
-                "use Laravel admin controls or durable Pipeline Run / Command controls instead."
-            )
-            sys.exit(1)
-
-        print(f"Unknown jobs action: {action}")
-        sys.exit(1)
-
-
 COMMANDS = {
-    "reindex": ("Full reindex (OCR + embedding)", cmd_reindex),
+    "reindex": ("Queue full reindex through Laravel Maintenance", cmd_reindex),
     "reindex-ocr": (
-        "OCR correction only (--force ignores cache and text-clean heuristic)",
+        "Queue OCR reindex through Laravel Maintenance (--force supported)",
         cmd_reindex_ocr,
     ),
-    "reindex-embed": ("Rebuild embeddings only", cmd_reindex_embed),
-    "poll": ("Process inbox (OCR + embed + classify, --force to reprocess)", cmd_poll),
-    "process-doc": ("Process a single document by ID (optional --force)", cmd_process_doc),
+    "reindex-embed": ("Queue embedding build through Laravel Maintenance", cmd_reindex_embed),
+    "poll": ("Queue poll reconciliation through Laravel Maintenance (--force supported)", cmd_poll),
+    "process-doc": ("Queue one document pipeline through Laravel Maintenance", cmd_process_doc),
     "process-document": (
-        "Process a single document by ID via Laravel worker contract",
+        "Queue one document pipeline through Laravel Maintenance",
         cmd_process_doc,
     ),
     "commit-review": (
@@ -722,7 +660,6 @@ COMMANDS = {
         "Answer one stateless Chat/RAG request from a JSON contract",
         cmd_chat_ask,
     ),
-    "jobs": ("List/status/stop/retry persistent Laravel worker jobs", None),
     "reset": ("Reset via Laravel/PostgreSQL (--yes required)", None),
 }
 
@@ -759,7 +696,7 @@ def _load_worker_contract(extra_args: list[str]) -> tuple[dict[str, object], Pat
 
 
 def _write_worker_output(output_path: Path, payload: dict[str, object]) -> None:
-    """Write a JSON result for Laravel worker job ingestion."""
+    """Write a JSON result for a legacy Python contract invocation."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
@@ -1045,10 +982,6 @@ def main() -> None:
 
     _configure_logging()
 
-    if cmd_name == "jobs":
-        cmd_jobs(sys.argv[2:])
-        return
-
     # reset delegates to Laravel/PostgreSQL and must NOT call init_db() first
     if cmd_name == "reset":
         extra_args = sys.argv[2:]
@@ -1060,13 +993,45 @@ def main() -> None:
         cmd_reset(include_config="--include-config" in extra_args)
         return
 
-    init_db()
-
     extra_args = sys.argv[2:]
     force = "--force" in extra_args
+    limit_arg = next((a.split("=", 1)[1] for a in extra_args if a.startswith("--limit=")), None)
+    limit = None
+    if limit_arg is not None:
+        try:
+            limit = int(limit_arg)
+        except ValueError:
+            print(f"Invalid limit: {limit_arg}")
+            sys.exit(1)
 
     _, cmd_func = COMMANDS[cmd_name]
     contract = _load_worker_contract(extra_args)
+
+    if contract is None and cmd_name in {"poll", "reindex", "reindex-ocr", "reindex-embed"}:
+        maintenance_type = {
+            "poll": "poll",
+            "reindex": "reindex",
+            "reindex-ocr": "reindex_ocr",
+            "reindex-embed": "reindex_embed",
+        }[cmd_name]
+        cmd_laravel_maintenance(maintenance_type, force=force, limit=limit)
+        return
+
+    if contract is None and cmd_name in {"process-doc", "process-document"}:
+        doc_arg = next((a for a in extra_args if not a.startswith("-")), None)
+        if doc_arg is None:
+            print("Usage: archibot process-doc <document_id> [--force]")
+            sys.exit(1)
+        try:
+            document_id = int(doc_arg)
+        except ValueError:
+            print(f"Invalid document_id: {doc_arg}")
+            sys.exit(1)
+        cmd_laravel_maintenance("process_document", force=force, document_id=document_id)
+        return
+
+    init_db()
+
     try:
         if contract is not None:
             input_payload, output_path = contract
@@ -1174,19 +1139,6 @@ def main() -> None:
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)
-        elif cmd_name in {"reindex-ocr", "poll"}:
-            asyncio.run(cmd_func(force=force))
-        elif cmd_name in {"process-doc", "process-document"}:
-            doc_arg = next((a for a in extra_args if not a.startswith("-")), None)
-            if doc_arg is None:
-                print("Usage: archibot process-doc <document_id> [--force]")
-                sys.exit(1)
-            try:
-                document_id = int(doc_arg)
-            except ValueError:
-                print(f"Invalid document_id: {doc_arg}")
-                sys.exit(1)
-            asyncio.run(cmd_func(document_id, force=force))
         elif cmd_name == "commit-review":
             suggestion_arg = next((a for a in extra_args if not a.startswith("-")), None)
             if suggestion_arg is None:

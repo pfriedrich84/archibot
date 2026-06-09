@@ -98,7 +98,7 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 - **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless mit dem Token des angemeldeten Paperless-Benutzers
 - **Status-Anreicherung:** Fuer jedes Dokument wird der aktuelle Laravel-Review-Status aus `review_suggestions` eingeblendet
 - **Fehlerzustand:** Ist Paperless nicht erreichbar oder fehlt die Konfiguration, zeigt Laravel einen expliziten Fehler statt stale Berechtigungen zu erlauben
-- **Verarbeitung:** Manuelle Admin-Verarbeitung startet durable `pipeline_runs` aus Maintenance oder Review-Aktionen. Die alte `/worker-jobs` Oberflaeche und der `worker_jobs` Backendpfad werden fuer den naechsten Clean Install entfernt. Es gibt keine `/legacy-worker-jobs` Route, keine Migration alter Worker-Zeilen und keine Backend-Kompatibilitaet fuer historischen Worker-Job-State.
+- **Verarbeitung:** Manuelle Admin-Verarbeitung startet durable `pipeline_runs` und `commands` aus Maintenance oder Review-Aktionen. `/operations-log` zeigt durable Commands, Pipeline Runs/Events/Items, Actor Executions, Webhooks und Audit-Logs. Die alte `/worker-jobs` Oberflaeche und der `worker_jobs` Backendpfad sind fuer Clean Installs entfernt; es gibt keine `/legacy-worker-jobs` Route, keine Migration alter Worker-Zeilen und keine Backend-Kompatibilitaet fuer historischen Worker-Job-State.
 
 ## Pipeline-Stufen im Detail
 

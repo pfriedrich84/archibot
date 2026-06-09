@@ -31,10 +31,8 @@ class EmbeddingIndexControlTest extends TestCase
         $this->assertSame('embedding_index_build', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(10, $command->payload['limit']);
-        $this->assertArrayNotHasKey('legacy_fallback_worker_job_id', $command->payload);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
-        $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->actorName === 'build_embedding_index'
             && $queued->commandId === $command->id);
 
@@ -52,18 +50,18 @@ class EmbeddingIndexControlTest extends TestCase
         ]);
     }
 
-    public function test_worker_jobs_quick_control_can_queue_embedding_index_build_command(): void
+    public function test_maintenance_quick_control_can_queue_embedding_index_build_command(): void
     {
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
-            ->post(route('embedding-index.build'), ['ui_surface' => 'worker_jobs_quick_controls'])
+            ->post(route('embedding-index.build'), ['ui_surface' => 'maintenance_quick_controls'])
             ->assertRedirect();
 
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
-        $this->assertSame('worker_jobs_quick_controls', $command->payload['ui_surface']);
+        $this->assertSame('maintenance_quick_controls', $command->payload['ui_surface']);
     }
 
     public function test_non_admin_cannot_queue_embedding_index_build_command(): void
@@ -90,7 +88,6 @@ class EmbeddingIndexControlTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
-        $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->commandId === $command->id);
     }
 

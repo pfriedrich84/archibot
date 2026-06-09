@@ -7,7 +7,6 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
-use App\Models\WorkerJob;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -294,61 +293,10 @@ class PipelineRunController extends Controller
                 'finished_at' => $item->finished_at?->toISOString(),
                 'error' => $item->error,
             ])->values();
-            $payload['linked_worker_jobs'] = $this->linkedWorkerJobs($run);
             $payload['audit_logs'] = $this->linkedAuditLogs($run);
         }
 
         return $payload;
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function linkedWorkerJobs(PipelineRun $run): array
-    {
-        return WorkerJob::query()
-            ->when($run->paperless_document_id !== null, function ($query) use ($run): void {
-                $documentId = $run->paperless_document_id;
-                $query->where(function ($query) use ($documentId): void {
-                    $query
-                        ->where('payload->paperless_document_id', $documentId)
-                        ->orWhere('payload->document_id', $documentId);
-                });
-            })
-            ->when($run->paperless_document_id === null, function ($query) use ($run): void {
-                $query->whereIn('type', $this->workerJobTypesForPipelineRun($run));
-            })
-            ->latest('updated_at')
-            ->limit(10)
-            ->get(['id', 'type', 'status', 'payload', 'dispatch_key', 'created_at', 'updated_at'])
-            ->map(fn (WorkerJob $job) => [
-                'id' => $job->id,
-                'type' => $job->type,
-                'status' => $job->status,
-                'paperless_document_id' => $job->paperlessDocumentId(),
-                'dispatch_key' => $job->dispatch_key,
-                'created_at' => $job->created_at?->toISOString(),
-                'updated_at' => $job->updated_at?->toISOString(),
-                'show_url' => route('worker-jobs.show', $job),
-            ])
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function workerJobTypesForPipelineRun(PipelineRun $run): array
-    {
-        return match ($run->type) {
-            'reindex' => [WorkerJob::TYPE_REINDEX, WorkerJob::TYPE_REINDEX_OCR, WorkerJob::TYPE_REINDEX_EMBED],
-            'embedding_index' => [WorkerJob::TYPE_REINDEX_EMBED],
-            'ocr_reindex' => [WorkerJob::TYPE_REINDEX_OCR],
-            'reconciliation' => [WorkerJob::TYPE_POLL],
-            'review_commit' => [],
-            'entity_approval_sync' => [WorkerJob::TYPE_SYNC_ENTITY_APPROVAL],
-            default => [WorkerJob::TYPE_PROCESS_DOCUMENT, WorkerJob::TYPE_POLL],
-        };
     }
 
     /**

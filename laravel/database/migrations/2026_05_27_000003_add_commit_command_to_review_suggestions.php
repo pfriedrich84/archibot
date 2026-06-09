@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('review_suggestions', function (Blueprint $table) {
             $table->foreignId('commit_command_id')
                 ->nullable()
-                ->after('commit_worker_job_id')
+                ->after('commit_status')
                 ->constrained('commands')
                 ->nullOnDelete();
         });

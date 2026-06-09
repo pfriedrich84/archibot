@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['type', 'name', 'status', 'paperless_id', 'source_review_suggestion_id', 'reviewed_by_user_id', 'reviewed_at', 'sync_status', 'sync_worker_job_id'])]
+#[Fillable(['type', 'name', 'status', 'paperless_id', 'source_review_suggestion_id', 'reviewed_by_user_id', 'reviewed_at', 'sync_status'])]
 class EntityApproval extends Model
 {
     use HasFactory;
@@ -46,11 +46,6 @@ class EntityApproval extends Model
     public function reviewedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by_user_id');
-    }
-
-    public function syncWorkerJob(): BelongsTo
-    {
-        return $this->belongsTo(WorkerJob::class, 'sync_worker_job_id');
     }
 
     public function mark(string $status, User $user, ?int $paperlessId = null): void

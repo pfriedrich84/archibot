@@ -57,6 +57,11 @@ class RunPythonActorJob implements ShouldQueue
         return new self(PythonActorRunner::ACTOR_REINDEX_OCR, $commandId);
     }
 
+    public static function syncEntityApproval(int $commandId): self
+    {
+        return new self(PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL, $commandId);
+    }
+
     public static function webhookDelivery(int $deliveryId): self
     {
         return new self(PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK, $deliveryId);
@@ -85,6 +90,9 @@ class RunPythonActorJob implements ShouldQueue
             ),
             PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK => $runner->runWebhookDelivery(
                 WebhookDelivery::query()->findOrFail($this->commandId),
+            ),
+            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $runner->runSyncEntityApproval(
+                Command::query()->findOrFail($this->commandId),
             ),
             default => throw new InvalidArgumentException("Unsupported Python actor {$this->actorName}."),
         };

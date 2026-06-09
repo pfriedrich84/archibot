@@ -10,18 +10,12 @@ return new class extends Migration
     {
         Schema::table('review_suggestions', function (Blueprint $table) {
             $table->string('commit_status')->nullable()->after('reviewed_at')->index();
-            $table->foreignId('commit_worker_job_id')
-                ->nullable()
-                ->after('commit_status')
-                ->constrained('worker_jobs')
-                ->nullOnDelete();
         });
     }
 
     public function down(): void
     {
         Schema::table('review_suggestions', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('commit_worker_job_id');
             $table->dropIndex(['commit_status']);
             $table->dropColumn('commit_status');
         });

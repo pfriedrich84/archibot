@@ -9,7 +9,6 @@ use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Models\User;
 use App\Models\WebhookDelivery;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -84,7 +83,7 @@ class PipelineRunVisibilityTest extends TestCase
             );
     }
 
-    public function test_pipeline_run_detail_shows_links_events_items_worker_jobs_and_audit(): void
+    public function test_pipeline_run_detail_shows_links_events_items_and_audit(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
         $command = Command::query()->create([
@@ -137,12 +136,6 @@ class PipelineRunVisibilityTest extends TestCase
             'attempt' => 2,
             'error' => 'bad response',
         ]);
-        $workerJob = WorkerJob::factory()->create([
-            'type' => WorkerJob::TYPE_PROCESS_DOCUMENT,
-            'status' => WorkerJob::STATUS_FAILED,
-            'payload' => ['paperless_document_id' => 456],
-            'dispatch_key' => hash('sha256', 'worker-456'),
-        ]);
         AuditLog::query()->create([
             'actor_user_id' => $admin->id,
             'event' => 'pipeline_run.retry_queued',
@@ -164,7 +157,6 @@ class PipelineRunVisibilityTest extends TestCase
                 ->where('run.webhook_delivery.request_id', 'request-456')
                 ->where('run.events.0.event_type', 'pipeline.failed')
                 ->where('run.items.0.item_type', PipelineItem::TYPE_REVIEW_SUGGESTION)
-                ->where('run.linked_worker_jobs.0.id', $workerJob->id)
                 ->where('run.audit_logs.0.event', 'pipeline_run.retry_queued')
                 ->where('run.can_retry', true)
                 ->where('isAdmin', true)

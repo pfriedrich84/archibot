@@ -10,7 +10,7 @@ Retired by clean-install decision. See [ADR-0016: Clean-install Retirement of Wo
 
 Do not preserve `worker_jobs` as a route, product concept, backend compatibility layer, or historical-data archive.
 
-The next cleanup removes:
+The clean-install cleanup has removed:
 
 - `/worker-jobs` routes and route helpers;
 - Worker Jobs Svelte pages/navigation;
@@ -20,7 +20,7 @@ The next cleanup removes:
 - `archibot jobs ...` CLI compatibility;
 - dashboard/errors/stats/health/readiness sections that depend on worker-job state.
 
-Do not add `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}`. `/operations-log`, when implemented, must read from durable operation tables only:
+Do not add `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}`. `/operations-log` reads from durable operation tables only:
 
 - `commands`;
 - `pipeline_runs`;
@@ -34,15 +34,7 @@ Do not add `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}`. `
 
 Operators will clean runtime state before the relevant install/deployment. No old `worker_jobs` rows need to be migrated, archived, retried, stopped, displayed, or recovered.
 
-Any still-required operation must be rebuilt on the durable command/pipeline/actor model before removing its worker-job path.
-
-## Current worker-recovery configuration pending removal
-
-The current code still contains worker-recovery settings until the clean-install retirement is implemented. They are documented here only so tests and operators can identify the code slated for deletion:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `ARCHIBOT_PENDING_REDISPATCH_SECONDS` | `900` | Base age after which queued worker jobs are considered stale by the current recovery code. Remove with worker-job recovery. |
+Any still-required operation must be rebuilt on the durable command/pipeline/actor model; do not reintroduce the retired worker-job path.
 
 ## Reset
 

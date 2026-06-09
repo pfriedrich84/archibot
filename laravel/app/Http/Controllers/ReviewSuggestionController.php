@@ -318,7 +318,6 @@ class ReviewSuggestionController extends Controller
             $reviewSuggestion->forceFill([
                 'commit_status' => ReviewSuggestion::COMMIT_STATUS_QUEUED,
                 'commit_command_id' => $command->id,
-                'commit_worker_job_id' => null,
             ])->save();
 
             dispatch(RunPythonActorJob::reviewCommit($command->id));
@@ -434,11 +433,7 @@ class ReviewSuggestionController extends Controller
             'source_suggestion_id' => $suggestion->source_suggestion_id,
             'paperless_document_id' => $suggestion->paperless_document_id,
             'commit_status' => $suggestion->commit_status,
-            'worker_job_id' => $suggestion->worker_job_id,
-            'commit_worker_job_id' => $suggestion->commit_worker_job_id,
             'commit_command_id' => $suggestion->commit_command_id,
-            'worker_job_url' => $suggestion->worker_job_id ? route('worker-jobs.show', $suggestion->worker_job_id) : null,
-            'commit_worker_job_url' => $suggestion->commit_worker_job_id ? route('worker-jobs.show', $suggestion->commit_worker_job_id) : null,
             'preview_url' => route('review.preview', $suggestion),
             'status' => $suggestion->status,
             'confidence' => $suggestion->confidence,

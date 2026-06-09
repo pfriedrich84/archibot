@@ -14,6 +14,7 @@
 <script lang="ts">
     import { Form, page, router } from '@inertiajs/svelte';
     import { onMount } from 'svelte';
+    import ActiveOperationsPanel from '@/components/ActiveOperationsPanel.svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
@@ -69,12 +70,38 @@
         pending_poll_commands: number;
         pending_reindex_commands: number;
         poll_interval_seconds: number;
-        last_worker_recovery_successful_at: string | null;
-        last_worker_recovery_error: string | null;
-        last_worker_recovery_error_at: string | null;
-        worker_queue_warning: string | null;
         document_processing_active: boolean;
         reindex_active: boolean;
+    };
+
+    type ActiveOperation = {
+        key: string;
+        kind: string;
+        id: number;
+        label: string;
+        status: string;
+        detail: string;
+        progress_total: number;
+        progress_done: number;
+        progress_failed: number;
+        progress_skipped: number;
+        progress_message: string | null;
+        created_at: string | null;
+        started_at: string | null;
+        updated_at: string | null;
+        href: string;
+    };
+
+    type ActiveOperations = {
+        summary: {
+            total: number;
+            queued: number;
+            running: number;
+            retrying: number;
+            blocked: number;
+        };
+        items: ActiveOperation[];
+        operations_log_url: string;
     };
 
     type RecentWebhookDelivery = {
@@ -135,16 +162,6 @@
         can_cancel: boolean;
     };
 
-    type RecentWorkerJob = {
-        id: number;
-        type: string;
-        status: string;
-        created_at: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        error: string | null;
-    };
-
     type RecentError = {
         source: string;
         id: number;
@@ -158,25 +175,21 @@
         counts,
         embeddingIndex,
         maintenance,
+        activeOperations,
         recentWebhookDeliveries,
         recentActorExecutions,
         recentPipelineRuns,
-        lastSuccessfulWorkerJob,
-        lastFailedWorkerJob,
         recentErrors,
-        recentWorkerJobs,
     }: {
         status: DashboardStatus;
         counts: Counts;
         embeddingIndex: EmbeddingIndex;
         maintenance: MaintenanceState;
+        activeOperations: ActiveOperations;
         recentWebhookDeliveries: RecentWebhookDelivery[];
         recentActorExecutions: RecentActorExecution[];
         recentPipelineRuns: RecentPipelineRun[];
-        lastSuccessfulWorkerJob: RecentWorkerJob | null;
-        lastFailedWorkerJob: RecentWorkerJob | null;
         recentErrors: RecentError[];
-        recentWorkerJobs: RecentWorkerJob[];
     } = $props();
 
     const isAdmin = $derived(Boolean(page.props.auth.user?.is_admin));
@@ -313,6 +326,8 @@
 
 <div class="space-y-6">
     <Heading title="Dashboard" description="ArchiBot application status." />
+
+    <ActiveOperationsPanel operations={activeOperations} />
 
     <div class="grid gap-4 md:grid-cols-4">
         <a
@@ -570,13 +585,6 @@
                 </div>
             {/if}
         </div>
-        {#if maintenance.worker_queue_warning}
-            <div
-                class="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
-            >
-                {maintenance.worker_queue_warning}
-            </div>
-        {/if}
         <dl class="grid gap-3 text-sm md:grid-cols-3">
             <div>
                 <dt class="text-muted-foreground">Pending poll commands</dt>
@@ -599,69 +607,6 @@
             <div>
                 <dt class="text-muted-foreground">Reindex active</dt>
                 <dd>{maintenance.reindex_active ? 'Yes' : 'No'}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">
-                    Last worker recovery success
-                </dt>
-                <dd>
-                    {formatDateTime(
-                        maintenance.last_worker_recovery_successful_at,
-                        'Unknown',
-                    )}
-                </dd>
-            </div>
-            <div class="md:col-span-3">
-                <dt class="text-muted-foreground">
-                    Last worker recovery error
-                </dt>
-                <dd>
-                    {#if maintenance.last_worker_recovery_error}
-                        {maintenance.last_worker_recovery_error}
-                        {#if maintenance.last_worker_recovery_error_at}
-                            · {formatDateTime(
-                                maintenance.last_worker_recovery_error_at,
-                            )}
-                        {/if}
-                    {:else}
-                        None recorded
-                    {/if}
-                </dd>
-            </div>
-        </dl>
-    </section>
-
-    <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Worker readiness</h2>
-        <dl class="grid gap-3 text-sm md:grid-cols-2">
-            <div>
-                <dt class="text-muted-foreground">
-                    Last successful worker job
-                </dt>
-                <dd>
-                    {#if lastSuccessfulWorkerJob}
-                        #{lastSuccessfulWorkerJob.id} · {lastSuccessfulWorkerJob.type}
-                        · {formatDateTime(
-                            lastSuccessfulWorkerJob.finished_at,
-                            'not finished',
-                        )}
-                    {:else}
-                        None recorded
-                    {/if}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Last failed worker job</dt>
-                <dd>
-                    {#if lastFailedWorkerJob}
-                        #{lastFailedWorkerJob.id} · {lastFailedWorkerJob.type} · {formatDateTime(
-                            lastFailedWorkerJob.finished_at,
-                            'not finished',
-                        )}
-                    {:else}
-                        None recorded
-                    {/if}
-                </dd>
             </div>
         </dl>
     </section>
@@ -925,34 +870,6 @@
         {:else}
             <div class="p-8 text-center text-muted-foreground">
                 No pipeline runs yet.
-            </div>
-        {/each}
-    </section>
-
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 font-semibold">Recent worker jobs</div>
-        {#each recentWorkerJobs as job (job.id)}
-            <div
-                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
-            >
-                <span class="font-medium">Worker job {job.id} · {job.type}</span
-                >
-                <span class="rounded-full bg-muted px-2 py-0.5"
-                    >{job.status}</span
-                >
-                {#if job.finished_at}
-                    <span class="text-muted-foreground"
-                        >finished {formatDateTime(job.finished_at)}</span
-                    >
-                {:else if job.created_at}
-                    <span class="text-muted-foreground"
-                        >created {formatDateTime(job.created_at)}</span
-                    >
-                {/if}
-            </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No worker jobs yet.
             </div>
         {/each}
     </section>

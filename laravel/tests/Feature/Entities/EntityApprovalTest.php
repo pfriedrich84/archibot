@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Entities;
 
-use App\Jobs\RunPythonWorkerJob;
+use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
+use App\Models\Command;
 use App\Models\EntityApproval;
 use App\Models\User;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -65,16 +65,16 @@ class EntityApprovalTest extends TestCase
         $this->assertSame($admin->id, $entity->reviewed_by_user_id);
         $this->assertNotNull($entity->reviewed_at);
         $this->assertSame(EntityApproval::SYNC_STATUS_QUEUED, $entity->sync_status);
-        $workerJob = WorkerJob::query()->firstOrFail();
-        $this->assertSame(WorkerJob::TYPE_SYNC_ENTITY_APPROVAL, $workerJob->type);
-        $this->assertSame($workerJob->id, $entity->sync_worker_job_id);
+        $command = Command::query()->firstOrFail();
+        $this->assertSame(Command::TYPE_SYNC_ENTITY_APPROVAL, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertSame([
             'entity_approval_id' => $entity->id,
             'action' => 'approved',
             'type' => EntityApproval::TYPE_TAG,
             'name' => 'Accounting',
             'paperless_id' => 77,
-        ], $workerJob->payload);
+        ], $command->payload);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
             'event' => 'entity_approval.approved',
@@ -84,7 +84,7 @@ class EntityApprovalTest extends TestCase
         Http::assertSent(fn ($request) => $request->url() === 'https://paperless.test/api/tags/'
             && $request['name'] === 'Accounting'
             && $request->hasHeader('Authorization', 'Token admin-token'));
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $job) => $job->workerJobId === $workerJob->id);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job) => $job->commandId === $command->id);
     }
 
     public function test_non_admin_can_not_mutate_entity_approvals(): void

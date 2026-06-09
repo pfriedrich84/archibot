@@ -65,7 +65,7 @@ Er fuehrt durch:
 2. **Direkte Anmeldung** — ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt; danach erfolgt die GUI-Anmeldung mit Paperless-Zugangsdaten
 3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; Wizard-Werte gewinnen bei Konflikten
 4. **Admin-Settings** — AI-Provider/Ollama, Inbox-Tag, Klassifikation, Review, Worker, MCP und Audit-Retention werden in `/admin/settings` gepflegt
-5. **Worker Jobs** — Poll/Reindex/Einzeldokument-Verarbeitung werden ueber `/worker-jobs` und die Laravel Queue gestartet
+5. **Maintenance und Operations Log** — Poll/Reindex/Einzeldokument-Verarbeitung starten ueber Laravel Maintenance; `/operations-log` zeigt durable Commands, Pipeline Runs, Actor Executions, Webhooks und Audit-Logs.
 
 Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung und MCP aktiv.
 

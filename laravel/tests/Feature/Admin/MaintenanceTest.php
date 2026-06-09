@@ -3,12 +3,11 @@
 namespace Tests\Feature\Admin;
 
 use App\Jobs\RunPythonActorJob;
-use App\Jobs\RunPythonWorkerJob;
+use App\Models\ActorExecution;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineRun;
 use App\Models\User;
-use App\Models\WorkerJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -60,29 +59,25 @@ class MaintenanceTest extends TestCase
         ]);
     }
 
-    public function test_recovery_now_runs_recovery_safely_and_writes_audit_log(): void
+    public function test_recovery_now_runs_pipeline_actor_recovery_and_writes_audit_log(): void
     {
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
-        $job = WorkerJob::query()->create([
-            'type' => WorkerJob::TYPE_POLL,
-            'status' => WorkerJob::STATUS_QUEUED,
-            'payload' => ['mode' => 'inbox'],
-            'dispatch_key' => 'stale-queued',
+        ActorExecution::query()->create([
+            'actor_name' => 'test_actor',
+            'status' => ActorExecution::STATUS_RUNNING,
+            'started_at' => now()->subMinutes(30),
         ]);
 
         $this->actingAs($admin)
-            ->post(route('admin.maintenance.recover-worker-jobs'))
+            ->post(route('admin.maintenance.recover-pipeline-actors'))
             ->assertRedirect();
 
-        Queue::assertPushed(RunPythonWorkerJob::class, fn (RunPythonWorkerJob $queued): bool => $queued->workerJobId === $job->id);
-
-        $this->assertSame(1, $job->refresh()->dispatch_attempts);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
-            'event' => 'maintenance.worker_jobs_recovery_requested',
-            'target_type' => 'worker_jobs',
-            'target_id' => 'recovery',
+            'event' => 'maintenance.pipeline_recovery_requested',
+            'target_type' => 'pipeline_recovery',
+            'target_id' => 'scan',
         ]);
     }
 
@@ -93,16 +88,16 @@ class MaintenanceTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
-            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_POLL])
+            ->post(route('admin.maintenance.commands'), ['type' => 'poll'])
             ->assertRedirect();
         $this->actingAs($admin)
-            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX])
+            ->post(route('admin.maintenance.commands'), ['type' => 'reindex'])
             ->assertRedirect();
         $this->actingAs($admin)
-            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX_EMBED])
+            ->post(route('admin.maintenance.commands'), ['type' => 'reindex_embed'])
             ->assertRedirect();
         $this->actingAs($admin)
-            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_REINDEX_OCR, 'force' => '1'])
+            ->post(route('admin.maintenance.commands'), ['type' => 'reindex_ocr', 'force' => '1'])
             ->assertRedirect();
 
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_POLL_RECONCILIATION)->count());
@@ -111,12 +106,44 @@ class MaintenanceTest extends TestCase
         $this->assertSame(1, Command::query()->where('type', Command::TYPE_REINDEX_OCR)->count());
         $ocrCommand = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
         $this->assertTrue($ocrCommand->payload['force']);
-        $this->assertSame(WorkerJob::TYPE_REINDEX_OCR, $ocrCommand->payload['legacy_worker_job_action']);
 
-        $this->assertDatabaseCount('worker_jobs', 0);
         Queue::assertPushed(RunPythonActorJob::class, 4);
-        Queue::assertNotPushed(RunPythonWorkerJob::class);
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
+    }
+
+    public function test_cli_maintenance_command_uses_same_durable_backend(): void
+    {
+        Queue::fake();
+        User::factory()->create(['is_admin' => true]);
+
+        $this->artisan('archibot:maintenance-command', ['type' => 'reindex_ocr', '--force' => true])
+            ->assertSuccessful();
+
+        $command = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
+        $this->assertTrue($command->payload['force']);
+        $this->assertSame('cli', $command->payload['source']);
+        $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+    }
+
+    public function test_cli_maintenance_command_starts_manual_document_pipeline(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->artisan('archibot:maintenance-command', [
+            'type' => 'process_document',
+            '--document-id' => 42,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame('manual', $run->trigger_source);
+        $this->assertSame(42, $run->paperless_document_id);
+        $this->assertTrue($run->reprocess_requested);
+        $this->assertSame('manual_force', $run->reprocess_reason);
+        $this->assertSame('manual', $run->reprocess_mode);
+        $this->assertSame($admin->id, $run->requested_by_user_id);
     }
 
     public function test_admin_can_start_manual_document_pipeline_from_maintenance(): void
@@ -138,8 +165,7 @@ class MaintenanceTest extends TestCase
         $this->assertSame('manual_force', $run->reprocess_reason);
         $this->assertSame('manual', $run->reprocess_mode);
         $this->assertSame($admin->id, $run->requested_by_user_id);
-        $this->assertDatabaseCount('worker_jobs', 0);
-        Queue::assertNotPushed(RunPythonWorkerJob::class);
+
     }
 
     public function test_non_admin_cannot_start_manual_document_pipeline_from_maintenance(): void
@@ -157,40 +183,32 @@ class MaintenanceTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_non_admin_cannot_dispatch_maintenance_worker_job(): void
+    public function test_non_admin_cannot_dispatch_maintenance_command(): void
     {
         Queue::fake();
         $user = User::factory()->create(['is_admin' => false]);
 
         $this->actingAs($user)
-            ->post(route('admin.maintenance.worker-jobs'), ['type' => WorkerJob::TYPE_POLL])
+            ->post(route('admin.maintenance.commands'), ['type' => 'poll'])
             ->assertForbidden();
 
-        $this->assertDatabaseCount('worker_jobs', 0);
+        $this->assertDatabaseCount('commands', 0);
         Queue::assertNothingPushed();
     }
 
-    public function test_cli_reset_clears_worker_job_state(): void
+    public function test_cli_reset_clears_durable_operational_state(): void
     {
-        $workerJob = WorkerJob::factory()->create([
-            'status' => WorkerJob::STATUS_FAILED,
-        ]);
-        $workerJob->logs()->create([
-            'stream' => 'stdout',
-            'level' => 'error',
-            'event' => 'test_log',
-            'message' => 'old log',
-            'context' => [],
+        Command::query()->create([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_FAILED,
         ]);
 
-        $this->assertDatabaseCount('worker_jobs', 1);
-        $this->assertDatabaseCount('worker_job_logs', 1);
+        $this->assertDatabaseCount('commands', 1);
 
         $this->artisan('archibot:reset', ['--yes' => true])
             ->expectsOutput('Archibot Laravel reset complete.')
             ->assertSuccessful();
 
-        $this->assertDatabaseCount('worker_jobs', 0);
-        $this->assertDatabaseCount('worker_job_logs', 0);
+        $this->assertDatabaseCount('commands', 0);
     }
 }

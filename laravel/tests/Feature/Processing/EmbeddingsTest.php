@@ -106,7 +106,7 @@ class EmbeddingsTest extends TestCase
         $command = Command::query()->create([
             'type' => Command::TYPE_REINDEX,
             'status' => Command::STATUS_RUNNING,
-            'payload' => ['ui_surface' => 'worker_jobs_quick_controls'],
+            'payload' => ['ui_surface' => 'maintenance_quick_controls'],
         ]);
 
         $user = User::factory()->create(['paperless_token' => 'user-token']);

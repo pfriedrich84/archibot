@@ -1,8 +1,8 @@
 """Durable progress helper contracts.
 
 Progress must be stored in PostgreSQL and derived from item state where possible.
-This module centralizes the helper names actors should use as the migration moves
-processing out of the legacy worker path.
+This module centralizes the helper names actors should use for durable command and
+pipeline progress.
 """
 
 from __future__ import annotations

@@ -41,7 +41,7 @@ und entweder als Review sichtbar oder automatisch committet.
 
 ### 1. Dokument wird erkannt
 
-Der Worker pollt die Paperless-Inbox, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; Verarbeitung kann manuell in der UI unter `/worker-jobs` gestartet werden.
+Die Pipeline kann die Paperless-Inbox periodisch reconciliieren, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche und ist in `/operations-log` nachvollziehbar.
 Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam in der Worker-Job-Historie mit Status, Fortschritt und Logs.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.

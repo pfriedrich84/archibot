@@ -89,27 +89,23 @@ def test_cmd_process_doc_without_force_keeps_processed_row() -> None:
 
 
 def test_main_process_doc_parses_id_and_force(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() parses doc id and --force for process-doc."""
+    """main() routes process-doc through durable Laravel Maintenance."""
     monkeypatch.setattr(sys, "argv", ["cli", "process-doc", "224", "--force"])
+    mock_laravel = MagicMock()
+    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"process-doc": ("desc", mock_cmd)}):
-        from app.cli import main
+    main()
 
-        main()
-
-    mock_cmd.assert_called_once_with(224, force=True)
+    mock_laravel.assert_called_once_with("process_document", force=True, document_id=224)
 
 
 def test_main_process_doc_requires_id(monkeypatch: pytest.MonkeyPatch) -> None:
     """main() exits with error when process-doc is missing document id."""
     monkeypatch.setattr(sys, "argv", ["cli", "process-doc"])
 
-    mock_cmd = AsyncMock()
+    from app.cli import main
 
-    with patch("app.cli.COMMANDS", {"process-doc": ("desc", mock_cmd)}):
-        from app.cli import main
-
-        with pytest.raises(SystemExit, match="1"):
-            main()
+    with pytest.raises(SystemExit, match="1"):
+        main()
