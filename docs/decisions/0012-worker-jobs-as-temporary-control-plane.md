@@ -40,6 +40,8 @@ Use `worker_jobs` as a temporary Laravel control plane while the legacy subproce
 
 The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New durable pipeline functionality should target those models and actor commands, not only `worker_jobs`. Review suggestion commit requests are migrated to durable `review_commit` commands and the review commit actor; new review commits must not create `worker_jobs`.
 
+User-facing operations must not preserve `worker_jobs` as a product route or concept. The follow-up route migration is to replace `/worker-jobs` with a unified `/operations-log` surface. Do not introduce `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}` as transitional product routes; any still-needed old worker-row data should be normalized into Operations Log details while the backend table remains temporary compatibility storage.
+
 ## Consequences
 
 - Short-term reliability improves without rewriting the Python core first.
@@ -47,6 +49,7 @@ The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeli
 - Python remains the owner of document processing logic.
 - `worker_jobs` is hardened but still temporary.
 - No permanent product architecture should be built solely on `worker_jobs`.
+- User-facing routes and navigation should converge on Operations Log and durable command/pipeline/actor terminology, not Worker Jobs or Legacy Worker Jobs.
 - Each new `worker_jobs` feature must have a migration path to `commands`, `pipeline_runs` and `pipeline_events`.
 - Future contributors must avoid creating a third long-lived job-control system.
 

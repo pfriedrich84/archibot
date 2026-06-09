@@ -1,6 +1,8 @@
 # Laravel Worker Jobs
 
-Laravel `worker_jobs` are the temporary control plane for legacy Python processing from the Archibot UI while the event-driven `commands` / `pipeline_runs` architecture is being completed. New migrated flows must use Laravel queued actor jobs with durable command IDs instead of adding new `worker_jobs` paths; embedding index builds and OCR reindex requests now use `RunPythonActorJob` with durable command IDs instead of creating productive `worker_jobs` rows.
+Laravel `worker_jobs` are temporary backend compatibility storage for legacy Python processing while the event-driven `commands` / `pipeline_runs` architecture is being completed. New migrated flows must use Laravel queued actor jobs with durable command IDs instead of adding new `worker_jobs` paths; embedding index builds and OCR reindex requests now use `RunPythonActorJob` with durable command IDs instead of creating productive `worker_jobs` rows.
+
+User-facing operations should not preserve `worker_jobs` as a route or product concept. The planned UI migration is `/operations-log`, not `/worker-jobs`, and it must not introduce `/legacy-worker-jobs`; old rows that remain useful should be normalized as archived operation history until the backend table is retired.
 
 ## How jobs run
 
@@ -73,7 +75,7 @@ php artisan worker-jobs:recover --dry-run
 
 ## Debugging stuck jobs
 
-1. Check the worker job status, `dispatch_attempts`, `dispatched_at`, `worker_id`, `lease_expires_at`, and `heartbeat_at` in the Laravel database or worker UI.
+1. Check the worker job status, `dispatch_attempts`, `dispatched_at`, `worker_id`, `lease_expires_at`, and `heartbeat_at` in the Laravel database or, while it still exists, the temporary worker UI.
 2. Review worker job logs for `worker_job.redispatched`, `worker_job.queued_dispatch_failed`, `worker_job.stale_running_requeued`, or `worker_job.stale_running_failed` system events.
 3. Check `app_settings` for the last successful recovery run and last recovery error.
 4. Run `php artisan worker-jobs:recover --dry-run` to see what recovery would change without dispatching new queue work.
@@ -147,4 +149,4 @@ php artisan archibot:reset --yes
 
 This clears Laravel/PostgreSQL runtime and job-control tables including `worker_jobs`, `worker_job_logs`, `jobs`, `failed_jobs`, sessions/cache, chat state, webhook deliveries, command/pipeline tables, actor executions, review suggestions, OCR reviews, entity approvals, audit logs, embedding index state, document embeddings, and LLM call history. Add `--include-config` only when intentionally clearing Laravel app settings, setup state, MCP tokens, and legacy config files too.
 
-Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New poll, full reindex, OCR reindex, embedding build, manual document processing, and review-commit controls should not create productive `worker_jobs` rows.
+Do not use this path as new permanent architecture. New durable processing should continue to move toward `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New poll, full reindex, OCR reindex, embedding build, manual document processing, and review-commit controls should not create productive `worker_jobs` rows. Route cleanup should remove user-facing `/worker-jobs` without replacing it with `/legacy-worker-jobs`; Operations Log is the durable-history direction.

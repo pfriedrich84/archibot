@@ -39,7 +39,7 @@ New user-triggered job control has moved away from Worker Job where durable seam
 - embedding index build creates a durable Command;
 - historical retries for those Worker Job types are routed to Pipeline Runs or Commands.
 
-Worker Job recovery remains available for historical/active legacy rows while old rows can still exist.
+Worker Job recovery remains available for historical/active legacy rows while old rows can still exist. This is backend compatibility only: user-facing route cleanup should remove `/worker-jobs` and must not replace it with `/legacy-worker-jobs`. Old row data that remains useful should be shown through Operations Log/durable-operation terminology.
 
 Embedding index builds are durable commands in the event-driven model. The migration to Laravel queued actor jobs starts with embedding builds, then document pipeline execution. Until a flow has migrated, existing compatibility glue may remain, but it must have a documented path to `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, and fixed Python actor commands.
 
@@ -212,13 +212,13 @@ Fixed Python actor commands invoked by Laravel queued jobs own durable execution
 - honor cancellation and retry semantics;
 - treat Laravel queues as transport, not the source of truth.
 
-## Pipeline Runs Visibility During Phase 13
+## Pipeline Runs and Operations Log Visibility
 
-Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the future durable job view without replacing `worker_jobs` yet.
+Phase 13 starts by exposing `/pipeline-runs` and `/pipeline-runs/{id}` as the future durable job view. The next user-facing history surface should be `/operations-log`, not `/worker-jobs`.
 
-The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery, related audit entries and best-effort links to temporary `worker_jobs`. These links let operators compare the temporary Laravel subprocess control plane with the future command/pipeline model while both exist.
+The Pipeline Runs pages are intentionally read-first visibility surfaces. They show the durable run status, type, scope, trigger source, document scope, progress, events, items, linked command, linked webhook delivery and related audit entries. Any best-effort historical `worker_jobs` context should be treated as archived operation detail and should not create or preserve a public Legacy Worker Jobs route.
 
-Until a specific flow is migrated to Laravel queued actor jobs, `worker_jobs` remains the hardened control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not remove or weaken `worker_jobs` controls.
+Until a specific flow is migrated to Laravel queued actor jobs, `worker_jobs` remains the backend compatibility control plane for Laravel-subprocess execution, dedupe, leases, heartbeats, cancellation, retry and recovery. Pipeline Run retry/cancel controls only update durable pipeline state for already-created pipeline runs; they do not remove necessary backend compatibility controls until replacement durable controls exist.
 
 As flows migrate, manual Laravel actions should converge on `Command -> PipelineRun -> PipelineEvents -> actors`, with equivalent operator visibility in the Pipeline Runs pages before the matching `worker_jobs` path is retired. Review suggestion commit requests now use `Command(type=review_commit) -> PipelineEvent(job_control.review_commit_requested) -> review commit actor` rather than creating new `worker_jobs`.
 
@@ -229,7 +229,7 @@ As flows migrate, manual Laravel actions should converge on `Command -> Pipeline
 3. Introduce or complete `commands`, `pipeline_runs` and `pipeline_events` as the final job truth.
 4. Make manual Laravel actions create commands and pipeline runs first, then enqueue actor work.
 5. Move individual worker job types to Laravel queued actor jobs and fixed Python actor commands one flow at a time, starting with embedding builds and then document pipeline execution.
-6. Preserve UI parity during migration by linking old `worker_jobs` to new pipeline runs where needed.
+6. Preserve UI parity during migration through Operations Log and durable pipeline/command/actor views; do not keep `/worker-jobs` or add `/legacy-worker-jobs` as user-facing routes.
 7. Move recovery, retry, cancellation, progress and logs from worker-job-only semantics to pipeline-run/event semantics.
 8. Stop adding new durable functionality exclusively to `worker_jobs` once a flow has a pipeline-run implementation.
 9. Retire the Laravel-subprocess/Python-CLI worker path after equivalent actor flows are tested and visible in Laravel.
@@ -239,7 +239,7 @@ As flows migrate, manual Laravel actions should converge on `Command -> Pipeline
 - Do not add permanent architecture only to `worker_jobs`.
 - Do not create a third long-lived job-control system.
 - New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events` and Python actors.
-- If a temporary `worker_jobs` change is necessary for reliability, document its migration path to pipeline runs.
+- If a temporary `worker_jobs` change is necessary for reliability, document its migration path to pipeline runs and keep it out of permanent user-facing route names.
 - Keep Laravel as the UI/control/audit/readiness owner.
 - Keep Python as the document-processing owner.
 - Keep PostgreSQL as the source of truth for progress, retries and recovery.

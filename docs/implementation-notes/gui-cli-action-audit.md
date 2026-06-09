@@ -86,7 +86,7 @@ Relevant docs/decisions:
 
 ### Control Center / Worker Jobs page
 
-`worker/Index.svelte` combines durable command visibility, quick controls, document processing, and temporary `worker_jobs` rows. This is where most duplication exists.
+`worker/Index.svelte` used to combine durable command visibility, quick controls, document processing, and temporary `worker_jobs` rows. Duplicate launchers have been removed. The next route-level cleanup is to replace the user-facing `/worker-jobs` surface with a unified Operations Log, without introducing a `/legacy-worker-jobs` replacement route.
 
 | Action | GUI location | Backend route/controller | Durable path | Duplication / issue | Recommendation |
 | --- | --- | --- | --- | --- | --- |
@@ -109,7 +109,7 @@ The useful, non-duplicated part of Control Center is the combined operational lo
 - temporary `worker_jobs` rows and their logs;
 - worker job detail pages with payload/progress/result/logs/retry lineage/audit entries.
 
-This supports the maintainer observation that the job log is useful there. It should be preserved or moved before removing the Control Center navigation entry.
+This supports the maintainer observation that the job log is useful there. It should be preserved as normalized operational history, not as a new legacy-worker-job product surface.
 
 ### Pipeline runs pages
 
@@ -145,7 +145,7 @@ This supports the maintainer observation that the job log is useful there. It sh
 | Reset | `archibot reset --yes` | Delegates to `php artisan archibot:reset --yes` | CLI-only by design | Keep |
 | Poll | `archibot poll [--force]` | Python CLI path | GUI creates durable `poll_reconciliation` commands | Needs follow-up parity review before changing CLI behavior |
 | Full reindex | `archibot reindex` | Python CLI path | GUI creates durable `reindex` command | Needs follow-up parity review before changing CLI behavior |
-| OCR reindex | `archibot reindex-ocr [--force]` | Python CLI path / legacy worker-compatible direct execution | GUI creates durable `reindex_ocr` command | Follow-up: decide whether CLI delegates to Laravel or remains direct actor/debug entrypoint |
+| OCR reindex | `archibot reindex-ocr [--force]` | Python CLI path currently runs direct OCR logic | GUI creates durable `reindex_ocr` command | Follow-up: make CLI delegate to Laravel durable command creation; no direct operator mode |
 | Embedding reindex | `archibot reindex-embed` | Python CLI path | GUI creates durable embedding build command | Needs follow-up parity review; may be operator/debug only after actor path is canonical |
 | Process document | `archibot process-doc <id> [--force]` | Python CLI path / worker-compatible | GUI manual processing starts pipeline runs through Maintenance | Needs follow-up parity review before changing CLI behavior |
 | Worker jobs list/status | `archibot jobs list/status` | Read-only SQLite/Laravel DB adapter in `app/cli.py` | Worker detail UI still exists | Keep read-only for legacy visibility while worker rows exist |
@@ -165,7 +165,7 @@ Worker Jobs are not yet removable everywhere. The audit found active references 
 - **Review/entity compatibility:** existing review suggestions and entity approvals may still link to worker job IDs for Python-origin or legacy sync paths.
 - **Health/readiness:** `/healthz`, dashboard readiness, and worker recovery settings still check stale/failed worker jobs.
 
-Conclusion: **do not remove `worker_jobs` backend/routes/controllers everywhere yet**. OCR reindex is no longer the productive exception, but `worker_jobs` is still required for historical/active legacy visibility and old-row stop/retry/detail behavior. The next implementation stage can remove duplicate GUI launchers conservatively while preserving legacy history.
+Conclusion: **do not remove the `worker_jobs` backend/table everywhere yet**. OCR reindex is no longer the productive exception, but `worker_jobs` is still required for historical/active compatibility and old-row stop/retry behavior until those actions are normalized. However, do not preserve or create user-facing `/worker-jobs` or `/legacy-worker-jobs` routes as long-term surfaces; expose any still-needed historical information through Operations Log terminology and durable command/pipeline/actor views.
 
 ## Duplicate/obsolete candidates
 
@@ -181,7 +181,7 @@ Before removing duplicate Control Center actions, implement OCR reindex on the s
 - persist OCR reindex progress through `commands`, `pipeline_runs` / `pipeline_items` where appropriate, `pipeline_events`, and `actor_executions`, not through new productive `worker_jobs` rows;
 - move `MaintenanceCommandDispatcher` / Maintenance GUI OCR actions to create this durable command instead of calling `WorkerJobDispatcher`;
 - make Control Center retry/visibility treat old OCR worker rows as legacy history only;
-- update CLI parity so `archibot reindex-ocr [--force]` either delegates to the same Laravel/durable command path or is clearly a direct actor/debug entrypoint with matching backend semantics.
+- update CLI parity so `archibot reindex-ocr [--force]` delegates to the same Laravel/durable command path; do not keep a separate direct operator entrypoint.
 
 Rationale: the maintainer wants a unified backend and OCR reindex appears to be the only remaining productive GUI action still based on `worker_jobs`.
 
@@ -202,18 +202,18 @@ Rationale: these controls duplicate Dashboard/Maintenance operations, and the ma
 
 Risk: forced poll and mark-stale are currently visible in Control Center/Dashboard but not as explicit Maintenance actions. Add or preserve them before removal.
 
-### Candidate B: keep Control Center as log/history, not action launcher
+### Candidate B: replace Control Center with Operations Log, not legacy worker pages
 
-After Candidate A, retain Control Center if it still provides useful operational logs:
+After Candidate A, replace the user-facing Control Center / Worker Jobs surface with **Operations Log**:
 
-- durable command list;
-- temporary worker row list;
-- links to worker detail/logs;
-- maybe rename it from **Control Center** to **Job history** or **Legacy worker jobs** once it no longer has launch actions.
+- route should be `/operations-log`, not `/worker-jobs`;
+- do not introduce `/operations-log/legacy-worker-jobs/{id}` or any `/legacy-worker-jobs` route;
+- durable commands, pipeline runs/events, actor executions, webhook deliveries and audit entries should be the primary records;
+- any still-needed old `worker_jobs` data should appear only as normalized archived operation details, without making "Legacy Worker Jobs" a product/navigation concept.
 
-Rationale: avoids removing the job log the maintainer likes.
+Rationale: preserves useful job/log history while preventing the temporary `worker_jobs` model from becoming the new user-facing architecture.
 
-Risk: naming change affects navigation/tests/user docs.
+Risk: route and route-helper changes affect navigation, errors/review/audit links, tests and docs; implement as a focused route/UI migration.
 
 ### Candidate C: move manual document processing out of generic Worker Job form
 
@@ -243,7 +243,7 @@ Risk: documentation-only, low risk.
 
 ### Stage 1: unify OCR reindex first
 
-Implemented on 2026-06-08 for the Laravel GUI/backend: Maintenance and Control Center OCR reindex submissions now create durable `reindex_ocr` commands and dispatch the fixed OCR reindex actor. Follow-up remains to decide whether the operator-facing Python CLI should delegate to Laravel for OCR reindex or remain a direct actor/debug entrypoint.
+Implemented on 2026-06-08 for the Laravel GUI/backend: Maintenance and former Control Center OCR reindex submissions now create durable `reindex_ocr` commands and dispatch the fixed OCR reindex actor. Follow-up: make the operator-facing Python CLI delegate to Laravel durable command creation as the only supported operator path.
 
 ### Stage 2: small documentation fix and Maintenance gap closure
 
@@ -266,15 +266,15 @@ Implemented on 2026-06-08. The Control Center no longer exposes duplicate quick 
 - links to worker detail/logs;
 - legacy stop/retry actions for existing rows.
 
-### Stage 4: rename or narrow Control Center
+### Stage 4: replace `/worker-jobs` with Operations Log
 
-If Control Center becomes only logs/history, decide whether to:
+Planned next route/UI cleanup:
 
-- keep the page title as **Control Center** for now;
-- rename navigation/title to **Job history**;
-- split durable command history and legacy worker rows into separate sections/pages.
-
-Keep the existing name for now to preserve navigation stability while it still combines command history and legacy worker-row history.
+1. Add a user-facing `/operations-log` route and navigation label **Operations Log**.
+2. Remove the user-facing `/worker-jobs` route instead of keeping it as a compatibility URL.
+3. Do not add `/legacy-worker-jobs` or `/operations-log/legacy-worker-jobs/{id}`.
+4. Normalize still-needed old worker-row visibility into Operations Log entries/details using generic operation language such as source `legacy`, not product language such as "Worker Jobs".
+5. Keep backend `worker_jobs` models/tables only as temporary compatibility storage until the Stage 5 retirement prerequisites are satisfied.
 
 ### Stage 5: retire Worker Jobs fully only after prerequisites
 
@@ -289,6 +289,7 @@ Do not remove backend/routes/controllers/models until all prerequisites are true
 
 ## Remaining follow-ups
 
-1. Decide whether operator-facing `archibot reindex-ocr [--force]` should delegate to Laravel command creation or remain a direct Python debug entrypoint while GUI/backend actions use the durable command actor.
-2. Add a Maintenance pipeline actor recovery button if operators need GUI access to `php artisan archibot:recovery-scan`.
-3. Retire `worker_jobs` only after the Stage 5 prerequisites are satisfied.
+1. Make operator-facing `archibot reindex-ocr [--force]` delegate to Laravel durable command creation; do not keep a direct operator mode.
+2. Add a Maintenance pipeline actor recovery button for `php artisan archibot:recovery-scan`.
+3. Replace `/worker-jobs` with `/operations-log` and do not introduce `/legacy-worker-jobs` routes.
+4. Retire the `worker_jobs` backend/table only after the Stage 5 prerequisites are satisfied.

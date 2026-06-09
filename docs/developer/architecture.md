@@ -86,11 +86,11 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Laravel Worker Job** | UI-Aktion, Queue, Scheduler | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
+| **Legacy Laravel Worker Job** | Alte aktive/historische Kompatibilitaetszeilen | `laravel/app/Jobs/RunPythonWorkerJob.php` → `app/cli.py` | Ja, via Python Guard |
 | **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → `RunPythonActorJob::pollReconciliation(<command-id>)` → festes Python-Actor-Kommando | Ja, ueberspringt mit Log |
 | **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`; fuer Create/Process-Events startet es `pipeline_runs` und queued `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, fuer Refresh/Delete-Events queued es `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)` | Ja, Delivery bleibt durable/Run wird blockiert |
-| **Inbox-GUI** | Aktion in `/inbox` oder `/worker-jobs` | Laravel `worker_jobs` → Python CLI/Pipeline-Start | Ja, ueber denselben Gate/Run-Status |
-| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
+| **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py`; Ziel ist Delegation an Laravel durable Commands fuer produktive Operator-Aktionen | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
 
 ## Inbox-Seite (`/inbox`)
 
@@ -99,7 +99,7 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 - **Quelle:** `GET /api/documents/?tags__id__all=<inbox_tag_id>` gegen Paperless mit dem Token des angemeldeten Paperless-Benutzers
 - **Status-Anreicherung:** Fuer jedes Dokument wird der aktuelle Laravel-Review-Status aus `review_suggestions` eingeblendet
 - **Fehlerzustand:** Ist Paperless nicht erreichbar oder fehlt die Konfiguration, zeigt Laravel einen expliziten Fehler statt stale Berechtigungen zu erlauben
-- **Verarbeitung:** Manuelle Legacy-Jobs laufen noch ueber `/worker-jobs`, Laravel `worker_jobs` und den Python CLI-JSON-Kontrakt. Manuelles Reprocess aus dem Review und Paperless-Create-Webhooks starten durable `pipeline_runs` und queued Laravel actor jobs mit festen Python-Actor-Kommandos.
+- **Verarbeitung:** Manuelle Admin-Verarbeitung startet durable `pipeline_runs` aus Maintenance oder Review-Aktionen. Die alte `/worker-jobs` Oberflaeche ist zur Entfernung vorgesehen und wird nicht durch `/legacy-worker-jobs` ersetzt; alte Worker-Zeilen bleiben nur temporaere Backend-Kompatibilitaetsdaten und sollen in Operations-Log-Begriffen sichtbar werden, bis sie retired werden.
 
 ## Pipeline-Stufen im Detail
 

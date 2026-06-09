@@ -160,29 +160,27 @@ archibot jobs stop <job_id>
 archibot jobs retry <job_id>
 ```
 
-Diese Befehle lesen die Laravel-Worker-Job-Datenbank fuer Legacy-Sichtbarkeit.
-`list` und `status` bleiben read-only verfuegbar. `stop` und `retry` sind im
-Python-CLI-Einstieg veraltet und mutieren keine Worker-Jobs mehr; nutze dafuer
-die Laravel Admin-Oberflaeche oder die durable Pipeline-/Command-Kontrollen.
+Diese Befehle lesen die Laravel-Worker-Job-Datenbank nur noch fuer Legacy-Sichtbarkeit.
+`list` und `status` bleiben voruebergehend read-only verfuegbar. `stop` und
+`retry` sind im Python-CLI-Einstieg veraltet und mutieren keine Worker-Jobs mehr;
+nutze dafuer die Laravel Admin-Oberflaeche oder die durable Pipeline-/Command-Kontrollen.
 
 ---
 
 ### Worker-Job Lifecycle
 
-Die Admin-UI unter `/worker-jobs` kann folgende persistente Jobs starten:
+`worker_jobs` ist keine neue produktive Benutzeroberflaeche mehr. Normale Admin-Aktionen laufen ueber Maintenance/Dashboard und erzeugen durable `commands` oder `pipeline_runs`:
 
-- `poll`
-- `process_document` mit Paperless-Dokument-ID
-- `reindex`
-- `reindex_ocr` (neue GUI-Anfragen laufen als durable `commands`/Actor-Pfad; alte Worker-Job-Zeilen bleiben Legacy-Historie)
-- `reindex_embed`
+- poll/reconciliation;
+- forced poll/reconciliation;
+- manual document pipeline;
+- full reindex;
+- OCR reindex;
+- embedding index build.
 
-Statuswerte sind `queued`, `running`, `cancelling` (UI: „wird abgebrochen“),
-`cancelled`, `succeeded`, `failed` und `partially_failed`. Stop ist kooperativ:
-bei laufenden Jobs wird zuerst `cancelling` gespeichert und der Python-Prozess
-per Interrupt aufgefordert, an vorhandenen Checkpoints sauber abzubrechen. Retry
-legt einen neuen Job mit gleicher Payload an; wenn persistierte Dokumentfehler
-vorhanden sind, wird die Retry-Payload auf diese Paperless-IDs eingeschraenkt.
+Die alte `/worker-jobs` Oberflaeche ist zur Entfernung vorgesehen und soll durch `/operations-log` ersetzt werden. Dabei darf keine neue `/legacy-worker-jobs` Route entstehen; noch benoetigte alte Worker-Zeilen werden als normalisierte Operations-Log-Historie behandelt, bis das Backend vollstaendig retired werden kann.
+
+Statuswerte historischer Worker-Zeilen sind `queued`, `running`, `cancelling` (UI: „wird abgebrochen“), `cancelled`, `succeeded`, `failed` und `partially_failed`. Stop/Retry fuer alte aktive Zeilen bleiben Laravel-autorisiert, bis durable Ersatzkontrollen vorhanden sind.
 
 ---
 
