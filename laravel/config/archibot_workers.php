@@ -6,6 +6,7 @@ return [
     'lease_seconds' => (int) env('ARCHIBOT_WORKER_LEASE_SECONDS', 300),
     'heartbeat_seconds' => (int) env('ARCHIBOT_WORKER_HEARTBEAT_SECONDS', 15),
     'pending_redispatch_seconds' => (int) env('ARCHIBOT_PENDING_REDISPATCH_SECONDS', 900),
+    'stale_queued_minutes' => (int) env('ARCHIBOT_STALE_QUEUED_MINUTES', 5),
     'stale_running_minutes' => (int) env('ARCHIBOT_STALE_RUNNING_MINUTES', 10),
     'cancel_grace_seconds' => (int) env('ARCHIBOT_CANCEL_GRACE_SECONDS', 30),
     'max_dispatch_attempts' => (int) env('ARCHIBOT_WORKER_MAX_DISPATCH_ATTEMPTS', 3),

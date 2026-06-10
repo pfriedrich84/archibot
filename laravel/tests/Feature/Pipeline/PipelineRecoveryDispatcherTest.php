@@ -3,6 +3,7 @@
 namespace Tests\Feature\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
@@ -186,6 +187,63 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
     }
 
+    public function test_recovery_scan_redispatches_stale_queued_document_runs_without_active_actor(): void
+    {
+        Queue::fake();
+        config(['archibot_workers.stale_queued_minutes' => 5]);
+        $this->markEmbeddingIndexComplete();
+
+        $staleQueued = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_QUEUED,
+            'paperless_document_id' => 53,
+            'progress_updated_at' => now()->subMinutes(6),
+            'updated_at' => now()->subMinutes(6),
+        ]);
+        $freshQueued = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_QUEUED,
+            'paperless_document_id' => 54,
+            'progress_updated_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+        $activeQueued = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_QUEUED,
+            'paperless_document_id' => 55,
+            'progress_updated_at' => now()->subMinutes(6),
+            'updated_at' => now()->subMinutes(6),
+        ]);
+        ActorExecution::query()->create([
+            'pipeline_run_id' => $activeQueued->id,
+            'paperless_document_id' => 55,
+            'actor_name' => PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE,
+            'status' => ActorExecution::STATUS_RUNNING,
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverDocumentPipelineRuns(limit: 10);
+
+        $this->assertSame(1, $count);
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE
+            && $job->commandId === $staleQueued->id);
+        Queue::assertNotPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $freshQueued->id
+            || $job->commandId === $activeQueued->id);
+
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $staleQueued->fresh()->status);
+        $this->assertSame('Document actor redispatched from stale queued state by Laravel recovery.', $staleQueued->fresh()->progress_message);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $staleQueued->id,
+            'event_type' => 'recovery.stale_queued_document_actor_redispatched',
+            'paperless_document_id' => 53,
+        ]);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'pipeline_run_id' => $freshQueued->id,
+            'event_type' => 'recovery.stale_queued_document_actor_redispatched',
+        ]);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'pipeline_run_id' => $activeQueued->id,
+            'event_type' => 'recovery.stale_queued_document_actor_redispatched',
+        ]);
+    }
+
     public function test_recovery_scan_releases_embedding_blocked_document_runs_when_index_is_ready(): void
     {
         Queue::fake();
@@ -271,6 +329,53 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(Command::STATUS_QUEUED, $review->fresh()->status);
         $this->assertSame(Command::STATUS_RUNNING, $running->fresh()->status);
         $this->assertDatabaseCount('pipeline_events', 4);
+    }
+
+    public function test_recovery_scan_redispatches_stale_queued_commands_without_active_actor(): void
+    {
+        Queue::fake();
+        config(['archibot_workers.stale_queued_minutes' => 5]);
+
+        $stale = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_QUEUED,
+            'updated_at' => now()->subMinutes(6),
+        ]);
+        $fresh = $this->command([
+            'type' => Command::TYPE_REINDEX_OCR,
+            'status' => Command::STATUS_QUEUED,
+            'updated_at' => now()->subMinutes(2),
+        ]);
+        $active = $this->command([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_QUEUED,
+            'updated_at' => now()->subMinutes(6),
+        ]);
+        ActorExecution::query()->create([
+            'actor_name' => PythonActorRunner::ACTOR_POLL_RECONCILIATION,
+            'status' => ActorExecution::STATUS_RUNNING,
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
+
+        $this->assertSame(1, $count);
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_REINDEX
+            && $job->commandId === $stale->id);
+        Queue::assertNotPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $fresh->id
+            || $job->commandId === $active->id);
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $stale->id,
+            'event_type' => 'recovery.stale_queued_command_actor_redispatched',
+        ]);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'command_id' => $fresh->id,
+            'event_type' => 'recovery.stale_queued_command_actor_redispatched',
+        ]);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'command_id' => $active->id,
+            'event_type' => 'recovery.stale_queued_command_actor_redispatched',
+        ]);
     }
 
     public function test_recovery_scan_marks_invalid_pending_review_commit_command_permanently_failed(): void

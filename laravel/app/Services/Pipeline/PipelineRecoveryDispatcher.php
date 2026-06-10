@@ -3,6 +3,7 @@
 namespace App\Services\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
@@ -17,51 +18,47 @@ class PipelineRecoveryDispatcher
 
         Command::query()
             ->where('status', Command::STATUS_PENDING)
-            ->whereIn('type', [
-                Command::TYPE_EMBEDDING_INDEX_BUILD,
-                Command::TYPE_POLL_RECONCILIATION,
-                Command::TYPE_REINDEX,
-                Command::TYPE_REINDEX_OCR,
-                Command::TYPE_REVIEW_COMMIT,
-            ])
+            ->whereIn('type', $this->recoverableCommandTypes())
             ->oldest('updated_at')
             ->oldest('id')
             ->limit($limit)
             ->get()
             ->each(function (Command $command) use (&$recovered): void {
-                $job = match ($command->type) {
-                    Command::TYPE_EMBEDDING_INDEX_BUILD => RunPythonActorJob::embeddingIndexBuild($command->id),
-                    Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($command->id),
-                    Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
-                    Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($command->id),
-                    Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
-                    default => null,
-                };
+                if ($this->redispatchCommand(
+                    $command,
+                    'recovery.command_actor_redispatched',
+                    'Pending command redispatched through Laravel actor transport by recovery scan.',
+                )) {
+                    $recovered++;
+                }
+            });
 
-                if ($job === null) {
+        $remaining = max(0, $limit - $recovered);
+        if ($remaining <= 0) {
+            return $recovered;
+        }
+
+        Command::query()
+            ->where('status', Command::STATUS_QUEUED)
+            ->whereIn('type', $this->recoverableCommandTypes())
+            ->whereRaw('updated_at <= ?', [$this->staleQueuedCutoff()])
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($remaining)
+            ->get()
+            ->each(function (Command $command) use (&$recovered): void {
+                $actorName = $this->commandActorName($command->type);
+                if ($actorName !== null && $this->hasActiveCommandActor($actorName)) {
                     return;
                 }
 
-                dispatch($job);
-
-                $command->forceFill([
-                    'status' => Command::STATUS_QUEUED,
-                    'error' => null,
-                ])->save();
-
-                PipelineEvent::query()->create([
-                    'command_id' => $command->id,
-                    'event_type' => 'recovery.command_actor_redispatched',
-                    'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
-                    'level' => 'info',
-                    'message' => 'Pending command redispatched through Laravel actor transport by recovery scan.',
-                    'payload' => [
-                        'command_type' => $command->type,
-                        'transport' => 'laravel_database_queue',
-                    ],
-                ]);
-
-                $recovered++;
+                if ($this->redispatchCommand(
+                    $command,
+                    'recovery.stale_queued_command_actor_redispatched',
+                    'Stale queued command redispatched through Laravel actor transport by recovery scan.',
+                )) {
+                    $recovered++;
+                }
             });
 
         return $recovered;
@@ -90,30 +87,44 @@ class PipelineRecoveryDispatcher
             ->limit($limit)
             ->get()
             ->each(function (PipelineRun $run) use (&$recovered): void {
-                dispatch(RunPythonActorJob::documentPipeline($run->id));
+                $this->redispatchDocumentRun(
+                    $run,
+                    'recovery.document_actor_redispatched',
+                    'Document pipeline run redispatched through Laravel actor transport by recovery scan.',
+                    'Document actor redispatched through Laravel recovery.',
+                );
 
-                $run->forceFill([
-                    'status' => PipelineRun::STATUS_QUEUED,
-                    'progress_current_phase' => 'document_actor',
-                    'progress_message' => 'Document actor redispatched through Laravel recovery.',
-                    'progress_updated_at' => now(),
-                    'error_type' => null,
-                    'error' => null,
-                ])->save();
+                $recovered++;
+            });
 
-                PipelineEvent::query()->create([
-                    'pipeline_run_id' => $run->id,
-                    'webhook_delivery_id' => $run->webhook_delivery_id,
-                    'command_id' => $run->command_id,
-                    'event_type' => 'recovery.document_actor_redispatched',
-                    'paperless_document_id' => $run->paperless_document_id,
-                    'level' => 'info',
-                    'message' => 'Document pipeline run redispatched through Laravel actor transport by recovery scan.',
-                    'payload' => [
-                        'actor_name' => 'handle_document_pipeline',
-                        'transport' => 'laravel_database_queue',
-                    ],
-                ]);
+        $remaining = max(0, $limit - $recovered);
+        if ($remaining <= 0) {
+            return $recovered;
+        }
+
+        PipelineRun::query()
+            ->where('type', 'document')
+            ->where('status', PipelineRun::STATUS_QUEUED)
+            ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()])
+            ->whereDoesntHave('events', function ($query): void {
+                $query->where('event_type', 'recovery.document_actor_redispatched')
+                    ->where('created_at', '>', $this->staleQueuedCutoff());
+            })
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($remaining)
+            ->get()
+            ->each(function (PipelineRun $run) use (&$recovered): void {
+                if ($this->hasActivePipelineActor($run)) {
+                    return;
+                }
+
+                $this->redispatchDocumentRun(
+                    $run,
+                    'recovery.stale_queued_document_actor_redispatched',
+                    'Stale queued document pipeline run redispatched through Laravel actor transport by recovery scan.',
+                    'Document actor redispatched from stale queued state by Laravel recovery.',
+                );
 
                 $recovered++;
             });
@@ -157,6 +168,142 @@ class PipelineRecoveryDispatcher
             });
 
         return $recovered;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function recoverableCommandTypes(): array
+    {
+        return [
+            Command::TYPE_EMBEDDING_INDEX_BUILD,
+            Command::TYPE_POLL_RECONCILIATION,
+            Command::TYPE_REINDEX,
+            Command::TYPE_REINDEX_OCR,
+            Command::TYPE_REVIEW_COMMIT,
+        ];
+    }
+
+    private function redispatchCommand(Command $command, string $eventType, string $message): bool
+    {
+        $job = match ($command->type) {
+            Command::TYPE_EMBEDDING_INDEX_BUILD => RunPythonActorJob::embeddingIndexBuild($command->id),
+            Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($command->id),
+            Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
+            Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($command->id),
+            Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
+            default => null,
+        };
+
+        if ($job === null) {
+            return false;
+        }
+
+        dispatch($job);
+
+        $command->forceFill([
+            'status' => Command::STATUS_QUEUED,
+            'error' => null,
+        ])->save();
+
+        PipelineEvent::query()->create([
+            'command_id' => $command->id,
+            'event_type' => $eventType,
+            'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
+            'level' => 'info',
+            'message' => $message,
+            'payload' => [
+                'command_type' => $command->type,
+                'transport' => 'laravel_database_queue',
+                'stale_queued_minutes' => $this->staleQueuedMinutes(),
+            ],
+        ]);
+
+        return true;
+    }
+
+    private function redispatchDocumentRun(
+        PipelineRun $run,
+        string $eventType,
+        string $eventMessage,
+        string $progressMessage,
+    ): void {
+        dispatch(RunPythonActorJob::documentPipeline($run->id));
+
+        $run->forceFill([
+            'status' => PipelineRun::STATUS_QUEUED,
+            'progress_current_phase' => 'document_actor',
+            'progress_message' => $progressMessage,
+            'progress_updated_at' => now(),
+            'error_type' => null,
+            'error' => null,
+        ])->save();
+
+        PipelineEvent::query()->create([
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $run->webhook_delivery_id,
+            'command_id' => $run->command_id,
+            'event_type' => $eventType,
+            'paperless_document_id' => $run->paperless_document_id,
+            'level' => 'info',
+            'message' => $eventMessage,
+            'payload' => [
+                'actor_name' => 'handle_document_pipeline',
+                'transport' => 'laravel_database_queue',
+                'stale_queued_minutes' => $this->staleQueuedMinutes(),
+            ],
+        ]);
+    }
+
+    private function hasActivePipelineActor(PipelineRun $run): bool
+    {
+        return ActorExecution::query()
+            ->where('pipeline_run_id', $run->id)
+            ->whereIn('status', $this->activeActorStatuses())
+            ->exists();
+    }
+
+    private function hasActiveCommandActor(string $actorName): bool
+    {
+        return ActorExecution::query()
+            ->whereNull('pipeline_run_id')
+            ->where('actor_name', $actorName)
+            ->whereIn('status', $this->activeActorStatuses())
+            ->exists();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function activeActorStatuses(): array
+    {
+        return [
+            ActorExecution::STATUS_QUEUED,
+            ActorExecution::STATUS_RUNNING,
+            ActorExecution::STATUS_RETRYING,
+        ];
+    }
+
+    private function commandActorName(string $type): ?string
+    {
+        return match ($type) {
+            Command::TYPE_POLL_RECONCILIATION => 'reconcile_inbox_documents',
+            Command::TYPE_REINDEX => 'reindex',
+            Command::TYPE_REINDEX_OCR => 'reindex_ocr',
+            Command::TYPE_EMBEDDING_INDEX_BUILD => 'build_embedding_index',
+            Command::TYPE_REVIEW_COMMIT => 'commit_review_suggestion',
+            default => null,
+        };
+    }
+
+    private function staleQueuedCutoff(): \Illuminate\Support\Carbon
+    {
+        return now()->subMinutes($this->staleQueuedMinutes());
+    }
+
+    private function staleQueuedMinutes(): int
+    {
+        return max(1, (int) config('archibot_workers.stale_queued_minutes', 5));
     }
 
     private function releaseEmbeddingBlockedWebhookDeliveries(int $limit): int
