@@ -15,7 +15,7 @@ class DashboardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_exposes_durable_operational_state_with_durable_operations(): void
+    public function test_dashboard_exposes_durable_operational_state_with_running_operations_only(): void
     {
         $user = User::factory()->create(['is_admin' => true]);
 
@@ -52,9 +52,10 @@ class DashboardTest extends TestCase
                 ->where('maintenance.document_processing_active', true)
                 ->missing('lastSuccessfulRetiredJob')
                 ->missing('recentRetiredJobs')
-                ->has('activeOperations.items', 2)
+                ->has('activeOperations.items', 1)
+                ->where('activeOperations.items.0.status', PipelineRun::STATUS_RUNNING)
                 ->where('activeOperations.summary.running', 1)
-                ->where('activeOperations.summary.queued', 1)
+                ->where('activeOperations.summary.queued', 0)
                 ->has('recentPipelineRuns', 1)
                 ->has('recentActorExecutions', 1)
                 ->has('recentWebhookDeliveries', 1)

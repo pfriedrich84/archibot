@@ -15,8 +15,18 @@ class ActiveOperationsSnapshot
      *     operations_log_url: string
      * }
      */
-    public function make(int $limit = 8): array
+    public function make(int $limit = 8, ?array $commandStatuses = null, ?array $pipelineStatuses = null): array
     {
+        $commandStatuses ??= Command::activeStatuses();
+        $pipelineStatuses ??= [
+            PipelineRun::STATUS_PENDING,
+            PipelineRun::STATUS_BLOCKED,
+            PipelineRun::STATUS_QUEUED,
+            PipelineRun::STATUS_RUNNING,
+            PipelineRun::STATUS_RETRYING,
+            PipelineRun::STATUS_CANCEL_REQUESTED,
+        ];
+
         $actorProgress = ActorExecution::query()
             ->whereIn('status', [
                 ActorExecution::STATUS_QUEUED,
@@ -29,7 +39,7 @@ class ActiveOperationsSnapshot
             ->keyBy('actor_name');
 
         $commandItems = Command::query()
-            ->whereIn('status', Command::activeStatuses())
+            ->whereIn('status', $commandStatuses)
             ->latest('updated_at')
             ->limit($limit)
             ->get()
@@ -39,14 +49,7 @@ class ActiveOperationsSnapshot
             ));
 
         $pipelineItems = PipelineRun::query()
-            ->whereIn('status', [
-                PipelineRun::STATUS_PENDING,
-                PipelineRun::STATUS_BLOCKED,
-                PipelineRun::STATUS_QUEUED,
-                PipelineRun::STATUS_RUNNING,
-                PipelineRun::STATUS_RETRYING,
-                PipelineRun::STATUS_CANCEL_REQUESTED,
-            ])
+            ->whereIn('status', $pipelineStatuses)
             ->latest('updated_at')
             ->limit($limit)
             ->get()

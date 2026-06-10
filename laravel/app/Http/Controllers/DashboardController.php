@@ -134,7 +134,10 @@ class DashboardController extends Controller
                     ->where('status', ActorExecution::STATUS_FAILED)
                     ->count(),
             ],
-            'activeOperations' => $activeOperations->make(),
+            'activeOperations' => $activeOperations->make(
+                commandStatuses: [Command::STATUS_RUNNING],
+                pipelineStatuses: [PipelineRun::STATUS_RUNNING],
+            ),
             'recentWebhookDeliveries' => WebhookDelivery::query()
                 ->latest('received_at')
                 ->limit(5)

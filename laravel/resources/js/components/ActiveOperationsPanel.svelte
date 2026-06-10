@@ -91,7 +91,7 @@
             <h2 class="font-semibold">Active operations</h2>
             <p class="text-sm text-muted-foreground">
                 {#if operations.summary.total === 0}
-                    Nothing queued or running right now.
+                    Nothing running right now.
                 {:else}
                     {operations.summary.total} active · {operations.summary
                         .running} running · {operations.summary.queued} queued
@@ -113,8 +113,8 @@
         <div
             class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
         >
-            Start a Maintenance command, document pipeline, webhook retry, or
-            reindex to see live status here.
+            Running Maintenance commands, document pipelines, webhook retries,
+            and reindex operations will appear here.
         </div>
     {:else}
         <div class="space-y-3">
