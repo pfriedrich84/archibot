@@ -32,10 +32,6 @@ class PaperlessEventWebhookController extends Controller
         $payload = $this->payload($request);
         $normalizedPayload = $this->webhookNormalizer->normalize($payload);
         $documentId = $normalizedPayload['paperless_document_id'];
-        if ($documentId === null) {
-            return response()->json(['detail' => 'Could not extract document_id from payload'], 422);
-        }
-
         $eventType = $normalizedPayload['event_type'];
         $webhookAction = $normalizedPayload['webhook_action'];
         $paperlessModified = $normalizedPayload['paperless_modified'];
@@ -43,10 +39,46 @@ class PaperlessEventWebhookController extends Controller
         $dedupeKey = implode(':', [
             'paperless',
             $eventType,
-            (string) $documentId,
+            (string) ($documentId ?? 'missing_document_id'),
             $paperlessModified ?? 'unknown_modified',
             $payloadHash,
         ]);
+
+        if ($documentId === null) {
+            [$delivery, $duplicate] = $this->persistDelivery(
+                $request,
+                $eventType,
+                null,
+                $dedupeKey,
+                $payloadHash,
+                $payload,
+                $normalizedPayload,
+                WebhookDelivery::STATUS_FAILED_PERMANENT,
+                'missing_document_id',
+            );
+
+            PipelineEvent::query()->create([
+                'webhook_delivery_id' => $delivery->id,
+                'event_type' => $duplicate ? 'webhook.invalid_duplicate' : 'webhook.invalid_payload',
+                'paperless_document_id' => null,
+                'level' => 'warning',
+                'message' => 'Paperless webhook payload did not contain a usable document id.',
+                'payload' => [
+                    'dedupe_key' => $dedupeKey,
+                    'event_type' => $eventType,
+                    'webhook_action' => $webhookAction,
+                    'status' => $delivery->status,
+                    'error_type' => 'missing_document_id',
+                ],
+            ]);
+
+            return response()->json([
+                'detail' => 'Could not extract document_id from payload',
+                'status' => WebhookDelivery::STATUS_FAILED_PERMANENT,
+                'webhook_delivery_id' => $delivery->id,
+                'duplicate' => $duplicate,
+            ], 422);
+        }
 
         [$delivery, $duplicate] = $this->persistDelivery(
             $request,
@@ -331,11 +363,13 @@ class PaperlessEventWebhookController extends Controller
     private function persistDelivery(
         Request $request,
         string $eventType,
-        int $documentId,
+        ?int $documentId,
         string $dedupeKey,
         string $payloadHash,
         array $payload,
         array $normalizedPayload,
+        string $status = WebhookDelivery::STATUS_QUEUED,
+        ?string $error = null,
     ): array {
         $headers = collect($request->headers->all())
             ->map(fn (array $values, string $key): array => $this->redactSensitiveKey($key)
@@ -361,9 +395,11 @@ class PaperlessEventWebhookController extends Controller
             'raw_payload' => $this->redactSensitivePayload($payload),
             'normalized_payload' => $normalizedPayload,
             'headers' => $headers,
-            'status' => WebhookDelivery::STATUS_QUEUED,
+            'status' => $status,
             'request_id' => (string) $request->headers->get('X-Request-Id', Str::uuid()->toString()),
             'received_at' => now(),
+            'processed_at' => $status === WebhookDelivery::STATUS_FAILED_PERMANENT ? now() : null,
+            'error' => $error,
         ]);
 
         return [$delivery, false];

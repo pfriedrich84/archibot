@@ -104,6 +104,30 @@ class PaperlessEventWebhookTest extends TestCase
         ]);
     }
 
+    public function test_event_webhook_accepts_paperless_scalar_document_payload(): void
+    {
+        $this->markEmbeddingIndexComplete();
+
+        $this->postJson(route('api.webhooks.paperless'), [
+            'event' => 'document_created',
+            'document' => 45,
+        ])->assertOk()->assertJson([
+            'status' => 'processed',
+            'duplicate' => false,
+            'document_id' => 45,
+            'pipeline_outcome' => 'created',
+        ]);
+
+        $this->assertDatabaseHas('webhook_deliveries', [
+            'paperless_document_id' => 45,
+            'status' => WebhookDelivery::STATUS_PROCESSED,
+        ]);
+        $this->assertDatabaseHas('pipeline_runs', [
+            'trigger_source' => 'webhook',
+            'paperless_document_id' => 45,
+        ]);
+    }
+
     public function test_gate_closed_persists_delivery_and_creates_blocked_pipeline_run(): void
     {
         EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_STALE]);
@@ -342,13 +366,25 @@ class PaperlessEventWebhookTest extends TestCase
             ->assertOk();
     }
 
-    public function test_event_webhook_rejects_missing_document_id(): void
+    public function test_event_webhook_rejects_and_persists_missing_document_id_for_diagnostics(): void
     {
         $this->postJson(route('api.webhooks.paperless'), ['event' => 'document_created'])
             ->assertStatus(422)
-            ->assertJson(['detail' => 'Could not extract document_id from payload']);
+            ->assertJson([
+                'detail' => 'Could not extract document_id from payload',
+                'status' => WebhookDelivery::STATUS_FAILED_PERMANENT,
+                'duplicate' => false,
+            ]);
 
-        $this->assertDatabaseCount('webhook_deliveries', 0);
+        $delivery = WebhookDelivery::query()->firstOrFail();
+        $this->assertNull($delivery->paperless_document_id);
+        $this->assertSame(WebhookDelivery::STATUS_FAILED_PERMANENT, $delivery->status);
+        $this->assertSame('missing_document_id', $delivery->error);
+        $this->assertNull($delivery->normalized_payload['paperless_document_id']);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.invalid_payload',
+        ]);
         $this->assertDatabaseCount('pipeline_runs', 0);
     }
 

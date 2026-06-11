@@ -58,33 +58,42 @@ Du kannst in Paperless einen Workflow mit mehreren Triggern oder zwei Workflows 
 
 - **Aktionstyp:** Webhook
 - **Webhook-URL:** `http://<host>:8088/webhook`
+- **Parameter verwenden:** AN
 - **Webhook-Payload als JSON senden:** AN
-- **Dokument einbeziehen:** AN (optional — ArchiBot holt das Dokument sowieso via API)
+- **Dokument einbeziehen:** AUS (Paperless haengt sonst die Datei als Multipart-Anhang an; ArchiBot holt das Dokument selbst per API)
+- **Webhook-Parameter:** mindestens `document_id` mit Wert `{{id}}`; empfohlen zusaetzlich `event` passend zum Workflow-Trigger
 - **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
 
-**Payload-Format** (wird automatisch von Paperless gesendet):
+Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Laut Paperless-NGX Workflow-Dokumentation sendet die Webhook-Aktion einen POST an die URL; Body/Parameter und Header muessen explizit konfiguriert werden und duerfen Workflow-Platzhalter verwenden. ArchiBot benoetigt daher einen JSON-Body mit Dokument-ID.
+
+**Empfohlene Webhook-Parameter fuer einen "Dokument hinzugefuegt"-Workflow:**
+
+| Key | Value |
+|---|---|
+| `event` | `document_created` |
+| `document_id` | `{{id}}` |
+
+Mit **Payload als JSON senden** ergibt das:
 
 ```json
-{
-  "event": "document_created",
-  "object": {
-    "id": 123,
-    "correspondent": "Example Corp",
-    "document_type": "Invoice",
-    "storage_path": null,
-    "tags": [1, 5],
-    "created": "2026-04-14",
-    "content": "...raw text content...",
-    "mime_type": "application/pdf",
-    "filename": "2026-04-14_example_corp.pdf"
-  }
-}
+{"event":"document_created","document_id":123}
 ```
 
-Der Endpoint akzeptiert sowohl dieses Workflow-Format als auch das Legacy-Format:
+**Empfohlene Webhook-Parameter fuer einen "Dokument geaendert"-Workflow:**
+
+| Key | Value |
+|---|---|
+| `event` | `document_updated` |
+| `document_id` | `{{id}}` |
+
+Der Endpoint akzeptiert ausserdem diese JSON-Formen:
 
 ```json
-{"document_id": 123}
+{"event":"document_created","object":{"id":123}}
+```
+
+```json
+{"event":"document_created","document":123}
 ```
 
 ## 3. Netzwerk-Setup
@@ -188,6 +197,17 @@ Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 - `webhook.secret` in ArchiBot `/admin/settings` bzw. `WEBHOOK_SECRET` / `PAPERLESS_WEBHOOK_SECRET` in der ArchiBot `.env`
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
+
+### 422 Unprocessable Content
+
+ArchiBot konnte keine Dokument-ID aus dem Payload lesen. Pruefen:
+
+- Paperless **Parameter verwenden** ist aktiviert
+- Paperless **Payload als JSON senden** ist aktiviert
+- Paperless sendet einen Parameter `document_id` mit Wert `{{id}}`
+- `X-Webhook-Secret` ist ein Header, nicht Parameter
+
+Fehlerhafte Webhook-Aufrufe werden als `failed_permanent` in ArchiBot unter Webhook Deliveries gespeichert, damit Payload und Header diagnostiziert werden koennen.
 
 ### Dokument wird nicht verarbeitet
 

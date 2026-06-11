@@ -28,7 +28,7 @@ class PaperlessWebhookNormalizer
      */
     public function documentId(array $payload): ?int
     {
-        foreach (['document_id', 'document.id', 'object.id', 'id'] as $key) {
+        foreach (['document_id', 'document.id', 'document', 'object.id', 'object', 'id'] as $key) {
             $value = Arr::get($payload, $key);
             if ($value !== null && filter_var($value, FILTER_VALIDATE_INT) !== false) {
                 return (int) $value;
