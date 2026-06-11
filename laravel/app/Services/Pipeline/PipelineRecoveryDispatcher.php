@@ -9,6 +9,7 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
+use Illuminate\Support\Carbon;
 
 class PipelineRecoveryDispatcher
 {
@@ -296,7 +297,7 @@ class PipelineRecoveryDispatcher
         };
     }
 
-    private function staleQueuedCutoff(): \Illuminate\Support\Carbon
+    private function staleQueuedCutoff(): Carbon
     {
         return now()->subMinutes($this->staleQueuedMinutes());
     }
