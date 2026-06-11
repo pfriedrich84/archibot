@@ -4,6 +4,7 @@ namespace Tests\Feature\Webhooks;
 
 use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -102,6 +103,58 @@ class PaperlessEventWebhookTest extends TestCase
             'paperless_document_id' => 43,
             'status' => PipelineRun::STATUS_QUEUED,
         ]);
+    }
+
+    public function test_empty_paperless_webhook_payload_queues_poll_reconciliation_hint(): void
+    {
+        Queue::fake();
+
+        $response = $this->postJson(route('api.webhooks.paperless'), [])
+            ->assertOk()
+            ->assertJson([
+                'status' => WebhookDelivery::STATUS_PROCESSED,
+                'duplicate' => false,
+                'webhook_action' => 'poll_reconciliation',
+                'detail' => 'Empty Paperless webhook payload accepted as poll reconciliation hint.',
+            ]);
+
+        $delivery = WebhookDelivery::query()->firstOrFail();
+        $command = Command::query()->firstOrFail();
+        $response->assertJson([
+            'webhook_delivery_id' => $delivery->id,
+            'command_id' => $command->id,
+        ]);
+        $this->assertNull($delivery->paperless_document_id);
+        $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->status);
+        $this->assertSame('poll_reconciliation', $delivery->normalized_payload['webhook_action']);
+        $this->assertSame(Command::TYPE_POLL_RECONCILIATION, $command->type);
+        $this->assertSame(Command::STATUS_QUEUED, $command->status);
+        $this->assertNull($command->created_by_user_id);
+        $this->assertSame('webhook_empty_payload', $command->payload['trigger_source']);
+        $this->assertSame($delivery->id, $command->payload['webhook_delivery_id']);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'command_id' => $command->id,
+            'event_type' => 'webhook.empty_payload_poll_queued',
+        ]);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'reconcile_inbox_documents'
+            && $job->commandId === $command->id);
+    }
+
+    public function test_empty_paperless_webhook_payload_is_deduplicated_without_second_poll(): void
+    {
+        Queue::fake();
+
+        $this->postJson(route('api.webhooks.paperless'), [])->assertOk();
+        $this->postJson(route('api.webhooks.paperless'), [])->assertOk()->assertJson([
+            'status' => WebhookDelivery::STATUS_DUPLICATE,
+            'duplicate' => true,
+            'webhook_action' => 'poll_reconciliation',
+        ]);
+
+        $this->assertDatabaseCount('webhook_deliveries', 1);
+        $this->assertDatabaseCount('commands', 1);
+        Queue::assertPushed(RunPythonActorJob::class, 1);
     }
 
     public function test_event_webhook_accepts_paperless_scalar_document_payload(): void

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
+use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
@@ -43,6 +44,46 @@ class PaperlessEventWebhookController extends Controller
             $paperlessModified ?? 'unknown_modified',
             $payloadHash,
         ]);
+
+        if ($documentId === null && $payload === []) {
+            $normalizedPayload['webhook_action'] = 'poll_reconciliation';
+            $webhookAction = 'poll_reconciliation';
+            [$delivery, $duplicate] = $this->persistDelivery(
+                $request,
+                $eventType,
+                null,
+                $dedupeKey,
+                $payloadHash,
+                $payload,
+                $normalizedPayload,
+            );
+
+            $command = null;
+            if (! $duplicate || $delivery->status !== WebhookDelivery::STATUS_PROCESSED) {
+                try {
+                    $command = $this->queuePollReconciliationForEmptyWebhook($delivery);
+                } catch (\Throwable $exception) {
+                    $this->recordEmptyWebhookPollFailure($delivery, $exception::class);
+
+                    return response()->json([
+                        'status' => 'poll_reconciliation_enqueue_failed',
+                        'retry' => true,
+                        'duplicate' => false,
+                        'webhook_delivery_id' => $delivery->id,
+                        'webhook_action' => $webhookAction,
+                    ], 503);
+                }
+            }
+
+            return response()->json([
+                'status' => $duplicate ? WebhookDelivery::STATUS_DUPLICATE : WebhookDelivery::STATUS_PROCESSED,
+                'duplicate' => $duplicate,
+                'webhook_delivery_id' => $delivery->id,
+                'webhook_action' => $webhookAction,
+                'command_id' => $command?->id,
+                'detail' => 'Empty Paperless webhook payload accepted as poll reconciliation hint.',
+            ]);
+        }
 
         if ($documentId === null) {
             [$delivery, $duplicate] = $this->persistDelivery(
@@ -269,6 +310,77 @@ class PaperlessEventWebhookController extends Controller
         ]);
 
         return ['status' => 'requested'];
+    }
+
+    private function queuePollReconciliationForEmptyWebhook(WebhookDelivery $delivery): Command
+    {
+        $command = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_PENDING,
+            'payload' => [
+                'trigger_source' => 'webhook_empty_payload',
+                'webhook_delivery_id' => $delivery->id,
+            ],
+            'created_by_user_id' => null,
+        ]);
+
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'command_id' => $command->id,
+            'event_type' => 'webhook.empty_payload_poll_requested',
+            'paperless_document_id' => null,
+            'level' => 'info',
+            'message' => 'Empty Paperless webhook payload accepted as a poll reconciliation hint.',
+            'payload' => [
+                'webhook_delivery_id' => $delivery->id,
+                'command_id' => $command->id,
+                'action' => Command::TYPE_POLL_RECONCILIATION,
+            ],
+        ]);
+
+        dispatch(RunPythonActorJob::pollReconciliation($command->id));
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        $delivery->forceFill([
+            'status' => WebhookDelivery::STATUS_PROCESSED,
+            'processed_at' => now(),
+        ])->save();
+
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'command_id' => $command->id,
+            'event_type' => 'webhook.empty_payload_poll_queued',
+            'paperless_document_id' => null,
+            'level' => 'info',
+            'message' => 'Poll reconciliation queued from empty Paperless webhook payload.',
+            'payload' => [
+                'webhook_delivery_id' => $delivery->id,
+                'command_id' => $command->id,
+                'actor_name' => 'reconcile_inbox_documents',
+            ],
+        ]);
+
+        return $command;
+    }
+
+    private function recordEmptyWebhookPollFailure(WebhookDelivery $delivery, string $exceptionClass): void
+    {
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.empty_payload_poll_enqueue_failed',
+            'paperless_document_id' => null,
+            'level' => 'error',
+            'message' => 'Empty webhook delivery was persisted but poll reconciliation enqueue failed; Paperless should retry delivery.',
+            'payload' => [
+                'status' => $delivery->status,
+                'error_type' => 'poll_reconciliation_enqueue_failed',
+                'exception_class' => $exceptionClass,
+            ],
+        ]);
+
+        Log::error('paperless empty webhook poll enqueue failed', [
+            'webhook_delivery_id' => $delivery->id,
+            'exception_class' => $exceptionClass,
+        ]);
     }
 
     private function recordPipelineStartFailure(WebhookDelivery $delivery, string $exceptionClass): void

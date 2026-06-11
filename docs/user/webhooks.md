@@ -64,7 +64,9 @@ Du kannst in Paperless einen Workflow mit mehreren Triggern oder zwei Workflows 
 - **Webhook-Parameter:** mindestens `document_id` mit Wert `{{id}}`; empfohlen zusaetzlich `event` passend zum Workflow-Trigger
 - **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
 
-Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Laut Paperless-NGX Workflow-Dokumentation sendet die Webhook-Aktion einen POST an die URL; Body/Parameter und Header muessen explizit konfiguriert werden und duerfen Workflow-Platzhalter verwenden. ArchiBot benoetigt daher einen JSON-Body mit Dokument-ID.
+Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Laut Paperless-NGX Workflow-Dokumentation sendet die Webhook-Aktion einen POST an die URL; Body/Parameter und Header muessen explizit konfiguriert werden und duerfen Workflow-Platzhalter verwenden. Fuer praezise pro-Dokument-Verarbeitung benoetigt ArchiBot daher einen JSON-Body mit Dokument-ID.
+
+Wenn Paperless einen leeren Body sendet, akzeptiert ArchiBot den Webhook als Polling-Hinweis: Die Delivery wird gespeichert und eine Poll-Reconciliation wird eingereiht. Das ist robuster fuer Default-Workflows, aber weniger praezise als ein Payload mit `document_id`.
 
 **Empfohlene Webhook-Parameter fuer einen "Dokument hinzugefuegt"-Workflow:**
 
@@ -198,16 +200,24 @@ Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
 
+### Leerer Payload
+
+Wenn Paperless einen leeren Body sendet, speichert ArchiBot die Delivery und reiht eine Poll-Reconciliation ein. In Webhook Deliveries steht dann `webhook_action = poll_reconciliation`. Das ist ein Fallback fuer Paperless-Default-Webhooks ohne Parameter.
+
+Fuer bessere Latenz und eindeutige Zuordnung trotzdem empfohlen:
+
+- Paperless **Parameter verwenden** aktivieren
+- Paperless **Payload als JSON senden** aktivieren
+- Paperless Parameter `document_id` mit Wert `{{id}}` senden
+
 ### 422 Unprocessable Content
 
-ArchiBot konnte keine Dokument-ID aus dem Payload lesen. Pruefen:
+ArchiBot konnte keine Dokument-ID aus einem nicht-leeren Payload lesen. Pruefen:
 
-- Paperless **Parameter verwenden** ist aktiviert
-- Paperless **Payload als JSON senden** ist aktiviert
 - Paperless sendet einen Parameter `document_id` mit Wert `{{id}}`
 - `X-Webhook-Secret` ist ein Header, nicht Parameter
 
-Fehlerhafte Webhook-Aufrufe werden als `failed_permanent` in ArchiBot unter Webhook Deliveries gespeichert, damit Payload und Header diagnostiziert werden koennen.
+Fehlerhafte nicht-leere Webhook-Aufrufe werden als `failed_permanent` in ArchiBot unter Webhook Deliveries gespeichert, damit Payload und Header diagnostiziert werden koennen.
 
 ### Dokument wird nicht verarbeitet
 
