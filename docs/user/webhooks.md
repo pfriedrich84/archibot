@@ -31,14 +31,16 @@ ArchiBot unterscheidet Paperless-Events automatisch:
 
 ## 1. ArchiBot konfigurieren
 
-In der `.env`:
+Empfohlen: In ArchiBot als globale Admin-Einstellung `webhook.secret` unter `/admin/settings` pflegen. Das Secret ist bewusst nicht benutzerbezogen: Paperless ruft ArchiBot maschinell auf, ohne ArchiBot-Benutzersitzung.
+
+Alternativ fuer Deployment-/Bootstrap-Kompatibilitaet in der `.env`:
 
 ```env
 # Webhook-Secret (empfohlen). Leerer String = keine Authentifizierung.
 WEBHOOK_SECRET=mein-geheimer-webhook-token
 ```
 
-Alternativ kann fuer den event-driven Endpoint `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die Authentifizierung greift nur, wenn ein Secret gesetzt ist.
+Fuer den event-driven Endpoint kann auch `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die globale Admin-Einstellung hat Vorrang vor den Deployment-Umgebungsvariablen. Die Authentifizierung greift nur, wenn ein Secret gesetzt ist.
 
 ## 2. Paperless-NGX konfigurieren
 
@@ -136,7 +138,7 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 | Header | Wert | Pflicht? |
 |---|---|---|
 | `Content-Type` | `application/json` | Ja |
-| `X-Webhook-Secret` | Wert von `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Nur wenn ein Secret gesetzt ist |
+| `X-Webhook-Secret` | Wert der globalen ArchiBot-Einstellung `webhook.secret`, sonst `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Nur wenn ein Secret gesetzt ist |
 
 **Body** (Workflow-Format oder Legacy-Format):
 
@@ -183,7 +185,7 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 
 Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 
-- `WEBHOOK_SECRET` / `PAPERLESS_WEBHOOK_SECRET` in der ArchiBot `.env`
+- `webhook.secret` in ArchiBot `/admin/settings` bzw. `WEBHOOK_SECRET` / `PAPERLESS_WEBHOOK_SECRET` in der ArchiBot `.env`
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
 

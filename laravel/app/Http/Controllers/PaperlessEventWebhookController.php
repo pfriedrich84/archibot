@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\AppSetting;
 use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
@@ -164,7 +165,7 @@ class PaperlessEventWebhookController extends Controller
 
     private function verifySecret(Request $request): ?JsonResponse
     {
-        $configuredSecret = (string) config('archibot.paperless_webhook_secret', '');
+        $configuredSecret = (string) (AppSetting::getValue('webhook.secret') ?: config('archibot.paperless_webhook_secret', ''));
         if ($configuredSecret === '') {
             return null;
         }

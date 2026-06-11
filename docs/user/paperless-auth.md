@@ -44,8 +44,12 @@ As a fallback, permission arrays named `permissions` or `user_permissions` are t
 
 Setup still requires an admin/superuser profile. Normal login does not require admin; the detected value only controls ArchiBot admin UI access.
 
-## Review action permission checks
+## Review suggestion visibility and action permission checks
+
+Webhook and poll ingestion are system-triggered, not user-triggered. They may process any Paperless document visible to the configured ArchiBot integration identity, but that does not grant every ArchiBot user access to the resulting review suggestion.
+
+Non-admin users may only see review suggestions when ArchiBot can verify live Paperless document access for the specific document using that user's stored Paperless token. Detail and preview routes use the same fail-closed visibility boundary.
 
 Non-admin users may edit, accept, reject, or bulk-review suggestions only when ArchiBot can verify live Paperless change permission for the specific document using that user's stored Paperless token.
 
-The check is fail-closed: missing Paperless URL, missing user token, network errors, `401`/`403`/`404`, or an ambiguous Paperless `OPTIONS /api/documents/{id}/` response without explicit `PATCH` or `PUT` capability all deny the ArchiBot review mutation. Admin users may perform ArchiBot job-control actions through local `is_admin()` authorization.
+The mutation check is fail-closed: missing Paperless URL, missing user token, network errors, `401`/`403`/`404`, or an ambiguous Paperless `OPTIONS /api/documents/{id}/` response without explicit `PATCH` or `PUT` capability all deny the ArchiBot review mutation. Admin users may perform ArchiBot job-control actions through local `is_admin()` authorization.

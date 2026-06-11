@@ -109,6 +109,10 @@ Settings/Admin area:
 
 ## Review Suggestion Exception
 
+Review suggestions may be created by webhook or poll ingestion without a human actor. That system ingestion is intentionally not user-scoped; access control is enforced when suggestions are shown or acted on.
+
+Non-admin users may only list, view, or preview review suggestions for documents ArchiBot can verify they can access in Paperless using their stored Paperless token. This visibility check must fail closed so webhook-created suggestions do not leak documents outside the user's Paperless permissions.
+
 Review suggestion editing, accepting and rejecting is not general job control when performed by a non-admin user with verified Paperless change permission for the specific document. Laravel must verify this through the user's Paperless token before mutating the suggestion or queuing the commit command. Ambiguous or failed Paperless permission checks deny the action.
 
 Manual reprocess, retry, cancellation, reindexing, embedding builds, webhook failure controls and maintenance remain admin-only job-control actions even when the user can change the Paperless document.
@@ -155,7 +159,7 @@ Webhook security must be handled separately:
 
 - internal network only
 - reverse proxy ACLs
-- shared secret header if available
+- global shared secret header if available (`webhook.secret` app setting, with deployment env fallback)
 - request validation
 - durable webhook delivery persistence
 

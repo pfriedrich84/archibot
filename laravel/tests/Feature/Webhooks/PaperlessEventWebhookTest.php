@@ -3,6 +3,7 @@
 namespace Tests\Feature\Webhooks;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\AppSetting;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -321,6 +322,22 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertDatabaseCount('pipeline_runs', 0);
 
         $this->withHeader('X-Webhook-Secret', 'secret')
+            ->postJson(route('api.webhooks.paperless'), ['document_id' => 42])
+            ->assertOk();
+    }
+
+    public function test_event_webhook_requires_secret_from_app_settings(): void
+    {
+        AppSetting::put('webhook.secret', 'database-secret', encrypted: true);
+
+        $this->withHeader('X-Webhook-Secret', 'env-secret')
+            ->postJson(route('api.webhooks.paperless'), ['document_id' => 42])
+            ->assertForbidden()
+            ->assertJson(['detail' => 'Invalid webhook secret']);
+
+        $this->assertDatabaseCount('webhook_deliveries', 0);
+
+        $this->withHeader('X-Webhook-Secret', 'database-secret')
             ->postJson(route('api.webhooks.paperless'), ['document_id' => 42])
             ->assertOk();
     }

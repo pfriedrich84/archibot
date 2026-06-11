@@ -13,6 +13,7 @@ use App\Services\Paperless\PaperlessDocumentPermissions;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -87,10 +88,11 @@ class ReviewSuggestionController extends Controller
             default => $query->latest(),
         };
 
-        $suggestions = $query
-            ->paginate((int) ($filters['per_page'] ?? 25))
-            ->withQueryString()
-            ->through(fn (ReviewSuggestion $suggestion) => $this->summary($suggestion));
+        $suggestions = $this->visibleSuggestionsPaginator(
+            $request,
+            $query,
+            (int) ($filters['per_page'] ?? 25),
+        );
 
         return Inertia::render('review/Index', [
             'suggestions' => $suggestions,
@@ -115,6 +117,7 @@ class ReviewSuggestionController extends Controller
 
     public function show(Request $request, ReviewSuggestion $reviewSuggestion): Response
     {
+        $this->assertCanViewSuggestion($request, $reviewSuggestion);
         $entityOptions = $this->entityOptions($request);
 
         return Inertia::render('review/Show', [
@@ -227,6 +230,7 @@ class ReviewSuggestionController extends Controller
 
     public function preview(Request $request, ReviewSuggestion $reviewSuggestion)
     {
+        $this->assertCanViewSuggestion($request, $reviewSuggestion);
         $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
 
@@ -235,7 +239,6 @@ class ReviewSuggestionController extends Controller
         $client = new PaperlessClient($paperlessUrl);
 
         try {
-            $client->document($token, $reviewSuggestion->paperless_document_id);
             $preview = $client->documentPreview($token, $reviewSuggestion->paperless_document_id);
         } catch (\Throwable) {
             abort(403, 'Paperless document is not accessible.');
@@ -402,6 +405,14 @@ class ReviewSuggestionController extends Controller
         return null;
     }
 
+    private function assertCanViewSuggestion(Request $request, ReviewSuggestion $suggestion): void
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        $this->permissions->assertCanViewDocument($user, $suggestion->paperless_document_id);
+    }
+
     private function assertCanMutateSuggestion(Request $request, ReviewSuggestion $suggestion): void
     {
         $user = $request->user();
@@ -421,6 +432,37 @@ class ReviewSuggestionController extends Controller
             ->where('paperless_document_id', $suggestion->paperless_document_id)
             ->where('id', '>', $suggestion->id)
             ->exists();
+    }
+
+    private function visibleSuggestionsPaginator(Request $request, $query, int $perPage): LengthAwarePaginator
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        if ((bool) $user->is_admin) {
+            return $query
+                ->paginate($perPage)
+                ->withQueryString()
+                ->through(fn (ReviewSuggestion $suggestion) => $this->summary($suggestion));
+        }
+
+        $visible = $query
+            ->get()
+            ->filter(fn (ReviewSuggestion $suggestion): bool => $this->permissions->canViewDocument($user, $suggestion->paperless_document_id))
+            ->values();
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $items = $visible->forPage($page, $perPage)->values();
+
+        return (new LengthAwarePaginator(
+            $items->map(fn (ReviewSuggestion $suggestion): array => $this->summary($suggestion)),
+            $visible->count(),
+            $perPage,
+            $page,
+            [
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'query' => $request->query(),
+            ],
+        ))->withQueryString();
     }
 
     /**

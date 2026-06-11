@@ -21,7 +21,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_authenticated_users_can_view_pending_review_queue(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 123,
             'proposed_title' => 'Suggested title',
@@ -41,7 +41,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_pending_review_queue_only_shows_latest_suggestion_per_document(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $older = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 123,
             'proposed_title' => 'Older suggestion',
@@ -113,7 +113,7 @@ class ReviewSuggestionTest extends TestCase
             'paperless.example/api/storage_paths/*' => Http::response(['results' => [['id' => 9, 'name' => 'Archive']]], 200),
         ]);
 
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $user = User::factory()->create(['is_admin' => true, 'paperless_token' => 'user-token']);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 456,
             'reasoning' => 'Classifier reasoning',
@@ -134,6 +134,49 @@ class ReviewSuggestionTest extends TestCase
                 ->where('suggestion.original.document_type_name', 'Invoice')
                 ->where('suggestion.original.storage_path_name', 'Archive')
             );
+    }
+
+    public function test_non_admin_review_queue_only_shows_paperless_accessible_documents(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/111/' => Http::response(['id' => 111], 200),
+            'paperless.example/api/documents/222/' => Http::response([], 404),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $visible = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 111,
+            'proposed_title' => 'Visible suggestion',
+        ]);
+        ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 222,
+            'proposed_title' => 'Hidden suggestion',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('review.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('review/Index')
+                ->has('suggestions.data', 1)
+                ->where('suggestions.total', 1)
+                ->where('suggestions.data.0.id', $visible->id)
+                ->where('suggestions.data.0.proposed_title', 'Visible suggestion')
+            );
+    }
+
+    public function test_non_admin_cannot_view_inaccessible_review_detail(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        Http::fake([
+            'paperless.example/api/documents/222/' => Http::response([], 403),
+        ]);
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 222]);
+
+        $this->actingAs($user)
+            ->get(route('review.show', $suggestion))
+            ->assertForbidden();
     }
 
     public function test_accepting_a_pending_suggestion_records_decision_and_audit_log(): void
@@ -365,7 +408,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_review_queue_filters_by_confidence_judge_correspondent_and_storage(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $match = ReviewSuggestion::factory()->create([
             'confidence' => 88,
             'judge_verdict' => 'corrected',
