@@ -105,7 +105,7 @@ class PipelineRecoveryDispatcher
         PipelineRun::query()
             ->where('type', 'document')
             ->where('status', PipelineRun::STATUS_QUEUED)
-            ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()->toDateTimeString()])
+            ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()])
             ->whereDoesntHave('events', function ($query): void {
                 $query->where('event_type', 'recovery.document_actor_redispatched')
                     ->where('created_at', '>', $this->staleQueuedCutoff());
@@ -296,9 +296,9 @@ class PipelineRecoveryDispatcher
         };
     }
 
-    private function staleQueuedCutoff()
+    private function staleQueuedCutoff(): string
     {
-        return now()->subMinutes($this->staleQueuedMinutes());
+        return now()->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
     }
 
     private function staleQueuedMinutes(): int
