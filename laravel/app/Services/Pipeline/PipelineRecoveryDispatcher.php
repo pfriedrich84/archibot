@@ -41,7 +41,7 @@ class PipelineRecoveryDispatcher
         Command::query()
             ->where('status', Command::STATUS_QUEUED)
             ->whereIn('type', $this->recoverableCommandTypes())
-            ->whereRaw('updated_at <= ?', [$this->staleQueuedCutoff()])
+            ->where('updated_at', '<=', $this->staleQueuedCutoff())
             ->oldest('updated_at')
             ->oldest('id')
             ->limit($remaining)
@@ -105,7 +105,7 @@ class PipelineRecoveryDispatcher
         PipelineRun::query()
             ->where('type', 'document')
             ->where('status', PipelineRun::STATUS_QUEUED)
-            ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()])
+            ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()->toDateTimeString()])
             ->whereDoesntHave('events', function ($query): void {
                 $query->where('event_type', 'recovery.document_actor_redispatched')
                     ->where('created_at', '>', $this->staleQueuedCutoff());
@@ -296,9 +296,9 @@ class PipelineRecoveryDispatcher
         };
     }
 
-    private function staleQueuedCutoff(): string
+    private function staleQueuedCutoff()
     {
-        return now()->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
+        return now()->subMinutes($this->staleQueuedMinutes());
     }
 
     private function staleQueuedMinutes(): int
