@@ -17,6 +17,8 @@ class PaperlessWebhookNormalizerTest extends TestCase
         $this->assertSame(12, $normalizer->documentId(['object' => ['id' => 12]]));
         $this->assertSame(15, $normalizer->documentId(['object' => '15']));
         $this->assertSame(13, $normalizer->documentId(['id' => 13]));
+        $this->assertSame(16, $normalizer->documentId(['doc_url' => 'https://paperless.example.test/documents/16/']));
+        $this->assertSame(17, $normalizer->documentId(['document_url' => 'https://paperless.example.test/paperless/documents/17/']));
         $this->assertNull($normalizer->documentId(['document_id' => 'not-an-int']));
     }
 

@@ -35,6 +35,13 @@ class PaperlessWebhookNormalizer
             }
         }
 
+        foreach (['document_url', 'doc_url', 'url'] as $key) {
+            $value = Arr::get($payload, $key);
+            if (is_string($value) && preg_match('#/(?:paperless/)?documents/(\d+)(?:/|$)#', $value, $matches) === 1) {
+                return (int) $matches[1];
+            }
+        }
+
         return null;
     }
 

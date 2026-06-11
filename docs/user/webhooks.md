@@ -61,24 +61,24 @@ Du kannst in Paperless einen Workflow mit mehreren Triggern oder zwei Workflows 
 - **Parameter verwenden:** AN
 - **Webhook-Payload als JSON senden:** AN
 - **Dokument einbeziehen:** AUS (Paperless haengt sonst die Datei als Multipart-Anhang an; ArchiBot holt das Dokument selbst per API)
-- **Webhook-Parameter:** mindestens `document_id` mit Wert `{{id}}`; empfohlen zusaetzlich `event` passend zum Workflow-Trigger
+- **Webhook-Parameter:** mindestens `document_url` mit Wert `{{ doc_url }}`; empfohlen zusaetzlich `event` passend zum Workflow-Trigger
 - **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
 
-Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Laut Paperless-NGX Workflow-Dokumentation sendet die Webhook-Aktion einen POST an die URL; Body/Parameter und Header muessen explizit konfiguriert werden und duerfen Workflow-Platzhalter verwenden. Fuer praezise pro-Dokument-Verarbeitung benoetigt ArchiBot daher einen JSON-Body mit Dokument-ID.
+Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Die Workflow-Webhook-Parameter werden mit Paperless' Workflow-Platzhaltern gerendert. In aktuellen Paperless-NGX-Versionen gibt es keinen nackten `{{ id }}`-Platzhalter; verfuegbar ist aber `{{ doc_url }}` mit der Dokument-URL. ArchiBot kann daraus die Dokument-ID lesen.
 
-Wenn Paperless einen leeren Body sendet, akzeptiert ArchiBot den Webhook als Polling-Hinweis: Die Delivery wird gespeichert und eine Poll-Reconciliation wird eingereiht. Das ist robuster fuer Default-Workflows, aber weniger praezise als ein Payload mit `document_id`.
+Wenn Paperless einen leeren Body sendet, akzeptiert ArchiBot den Webhook als Polling-Hinweis: Die Delivery wird gespeichert und eine Poll-Reconciliation wird eingereiht. Das ist robuster fuer Default-Workflows, aber weniger praezise als ein Payload mit `document_url`.
 
 **Empfohlene Webhook-Parameter fuer einen "Dokument hinzugefuegt"-Workflow:**
 
 | Key | Value |
 |---|---|
 | `event` | `document_created` |
-| `document_id` | `{{id}}` |
+| `document_url` | `{{ doc_url }}` |
 
 Mit **Payload als JSON senden** ergibt das:
 
 ```json
-{"event":"document_created","document_id":123}
+{"event":"document_created","document_url":"https://paperless.example/documents/123/"}
 ```
 
 **Empfohlene Webhook-Parameter fuer einen "Dokument geaendert"-Workflow:**
@@ -86,7 +86,7 @@ Mit **Payload als JSON senden** ergibt das:
 | Key | Value |
 |---|---|
 | `event` | `document_updated` |
-| `document_id` | `{{id}}` |
+| `document_url` | `{{ doc_url }}` |
 
 Der Endpoint akzeptiert ausserdem diese JSON-Formen:
 
@@ -161,6 +161,10 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 {"document_id": 123}
 ```
 
+```json
+{"document_url": "https://paperless.example/documents/123/"}
+```
+
 **Responses:**
 
 | Status | Bedeutung |
@@ -208,13 +212,13 @@ Fuer bessere Latenz und eindeutige Zuordnung trotzdem empfohlen:
 
 - Paperless **Parameter verwenden** aktivieren
 - Paperless **Payload als JSON senden** aktivieren
-- Paperless Parameter `document_id` mit Wert `{{id}}` senden
+- Paperless Parameter `document_url` mit Wert `{{ doc_url }}` senden
 
 ### 422 Unprocessable Content
 
 ArchiBot konnte keine Dokument-ID aus einem nicht-leeren Payload lesen. Pruefen:
 
-- Paperless sendet einen Parameter `document_id` mit Wert `{{id}}`
+- Paperless sendet einen Parameter `document_url` mit Wert `{{ doc_url }}`, oder eine direkt numerische `document_id`
 - `X-Webhook-Secret` ist ein Header, nicht Parameter
 
 Fehlerhafte nicht-leere Webhook-Aufrufe werden als `failed_permanent` in ArchiBot unter Webhook Deliveries gespeichert, damit Payload und Header diagnostiziert werden koennen.
