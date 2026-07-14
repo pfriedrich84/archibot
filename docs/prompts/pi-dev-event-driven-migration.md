@@ -16,11 +16,11 @@ The agent does **not** need to stop after the foundation phases. Work as far as 
 
 Make small, logically grouped commits.
 
-The agent may commit after each phase or logical milestone, but must ensure CI/tests are green before moving on to the next phase.
+The agent may create milestone commits after each phase or logical milestone, but must ensure CI/tests are green before moving on to the next phase. Final commit and push behavior follows the canonical discipline in the root `AGENTS.md`.
 
 Parallelization through subagents is allowed and encouraged when it keeps changes reviewable and avoids conflicting edits.
 
-The agent must actively manage its own context and the context of subagents. Keep shared contracts, decisions, open tasks and phase progress summarized in repository files so later subagents do not rely on hidden chat history.
+The agent must actively manage its own context and the context of subagents under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md). Keep shared contracts, decisions and durable phase progress in canonical repository files; keep task-local checkpoints and raw evidence in safe non-committed storage so later agents do not rely on hidden chat history.
 
 ## Mission
 
@@ -31,8 +31,8 @@ Archibot is moving from the current Laravel-subprocess/Python-CLI/APScheduler/Po
 - Paperless webhooks as the primary trigger
 - periodic polling every 600 seconds as reconciliation/fallback
 - PostgreSQL + pgvector as the shared source of truth
-- Absurd as the PostgreSQL-backed queue
-- Python Absurd actors as the pipeline engine
+- Laravel database queues as the event-driven transport
+- fixed, allowlisted Python actor commands as the pipeline engine behind Laravel queued jobs
 - durable progress, retries, locks and recovery
 - centralized structured observability
 - the existing Laravel dashboard as the admin operations console
@@ -64,13 +64,13 @@ docs/decisions/0011-require-admin-authorization-for-job-control.md
 
 If `AGENTS.md` does not exist or does not reflect the current architecture, create/update it first.
 
-If the earlier ADRs are missing, create them before or alongside implementation. ADR-0013 is the governing queue decision and supersedes earlier broker/runtime choices.
+If the earlier ADRs are missing, create them before or alongside implementation. ADR-0015 is the governing queue decision and supersedes ADR-0013 and earlier broker/runtime choices.
 
 ```text
 docs/decisions/0002-use-postgresql-pgvector.md
 docs/decisions/0004-no-legacy-compatibility-mode.md
 docs/decisions/0005-use-webhooks-as-primary-trigger.md
-docs/decisions/0013-use-absurd-postgresql-queue.md
+docs/decisions/0015-use-laravel-database-queues-for-event-transport.md
 ```
 
 ## Non-negotiable Architecture Rules
@@ -83,7 +83,7 @@ docs/decisions/0013-use-absurd-postgresql-queue.md
 6. No document processing may start before the embedding index is complete.
 7. Webhooks may be accepted and persisted before the embedding index is complete, but processing must remain blocked/pending.
 8. PostgreSQL is the source of truth for state, progress, retries and audit data.
-9. Absurd is execution transport, not the only job state.
+9. Laravel database queues are execution transport; PostgreSQL pipeline tables are the durable product state.
 10. Progress must be durable and reconstructable after restart.
 11. Actors must be idempotent and retry-safe.
 12. Only admins may control jobs. All job-control API actions must check `is_admin()`.
@@ -104,9 +104,9 @@ You may use subagents for independent tracks, for example:
 
 ```text
 Subagent A: Governance, AGENTS.md, ADRs, docs
-Subagent B: Docker/infrastructure, PostgreSQL, Absurd/PostgreSQL, pgvector
-Subagent C: Laravel migrations/models/API/webhook endpoint
-Subagent D: Python Absurd actors, broker config, worker bootstrap
+Subagent B: Docker/infrastructure, PostgreSQL, Laravel database queues, pgvector
+Subagent C: Laravel migrations/models/queued actor wrappers/API/webhook endpoint
+Subagent D: Fixed Python actor commands, processing actors, worker bootstrap
 Subagent E: Progress/retry/recovery helpers and tests
 Subagent F: Existing Laravel dashboard buttons/actions and authorization tests
 Subagent G: Document pipeline migration
@@ -129,7 +129,7 @@ Rules for parallel work:
 
 ## Context Management for Subagents
 
-The agent must actively manage context.
+The agent must actively manage context and evidence under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
 
 Before launching or delegating to subagents:
 
@@ -137,7 +137,7 @@ Before launching or delegating to subagents:
 2. Define shared contracts first: tables, statuses, event names, queues, helper names, API boundaries.
 3. Assign each subagent a clear scope and file ownership where possible.
 4. Record open decisions and assumptions in docs, ADRs or a phase notes file.
-5. Keep summaries concise but durable in repository files.
+5. Keep durable summaries concise in their canonical repository files; keep revision-bound task evidence and recovery checkpoints in safe local non-committed storage.
 
 Recommended durable context files:
 
@@ -184,7 +184,7 @@ Laravel/PHP tests
 frontend/build checks if UI was changed
 migration smoke checks
 Docker compose startup smoke check
-Absurd worker startup smoke check
+Laravel queue worker and fixed Python actor-command smoke check
 webhook endpoint smoke check
 ```
 
@@ -197,7 +197,7 @@ However, respect this order:
 1. Governance and shared contracts.
 2. Infrastructure and database foundation.
 3. Webhook ingestion and durable state.
-4. Absurd worker foundation.
+4. Laravel queued actor foundation.
 5. Progress/retry/recovery/observability foundations.
 6. Shared pipeline-start/dedupe/lock logic.
 7. Embedding readiness gate and initial embedding build path.
@@ -231,7 +231,7 @@ Tasks:
 Required content in `AGENTS.md`:
 
 ```md
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Absurd, PostgreSQL and pgvector.
+Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
 Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
 Document processing must never start before the embedding index is complete.
 Progress, retry and recovery state must be durable in PostgreSQL.
@@ -246,7 +246,7 @@ Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 Add local development infrastructure for:
 
 - PostgreSQL with pgvector
-- Absurd/PostgreSQL
+- Laravel database queue tables and worker configuration
 - optional observability hooks if easy, but do not overbuild
 
 Update Docker/development configuration as appropriate.
@@ -255,8 +255,7 @@ Add required environment variables, for example:
 
 ```env
 DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-ABSURD_DATABASE_URL=postgresql://archibot:archibot@postgres:5432/archibot
-ARCHIBOT_QUEUE_PREFIX=archibot
+QUEUE_CONNECTION=database
 PAPERLESS_WEBHOOK_SECRET=change-me
 POLL_INTERVAL_SECONDS=600
 LLM_PROVIDER=ollama
@@ -329,9 +328,9 @@ The endpoint must:
 - write a `webhook.received` / `webhook.normalized` event where appropriate
 - return quickly
 - not perform OCR, embedding, classification or heavy Paperless/LLM work synchronously
-- handle Absurd/PostgreSQL unavailable without losing the persisted delivery
+- handle Laravel queue dispatch failure without losing the persisted delivery and return non-2xx when Paperless should retry
 
-## Phase 4: Absurd Foundation
+## Phase 4: Laravel Queued Actor Foundation
 
 Add Python package structure:
 
@@ -364,7 +363,8 @@ app/db/
 
 Add:
 
-- Absurd queue configuration for Absurd/PostgreSQL
+- Laravel queued job wrappers with small durable-record identifiers
+- fixed, allowlisted Python actor-runner commands
 - a webhook actor
 - actor execution tracking
 - structured logging context
@@ -727,9 +727,9 @@ At the end, provide:
 1. Summary of changed files
 2. Commands to run locally
 3. Migrations to run
-4. How to start PostgreSQL/Absurd/PostgreSQL
+4. How to start PostgreSQL and the Laravel database queue transport
 5. How to trigger a test webhook
-6. How to start the Absurd worker
+6. How to start the Laravel queue worker and verify fixed Python actor commands
 7. Which tests/smoke checks pass
 8. CI status / test status at each committed milestone
 9. What remains, if anything, for the next phase
@@ -743,7 +743,7 @@ Do not build a second operations UI; extend the existing Laravel dashboard.
 Do not introduce a legacy/new backend feature flag such as:
 
 ```env
-ARCHIBOT_WORKER_BACKEND=legacy|absurd
+ARCHIBOT_WORKER_BACKEND=legacy|new
 ```
 
 The architecture direction is replacement, not permanent dual-mode.

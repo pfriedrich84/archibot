@@ -6,6 +6,7 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 
 - Keep architecture decisions durable in `docs/decisions/`.
 - Keep implementation status and shared contracts in committed docs, not hidden chat history.
+- Keep active context compact while preserving revision-bound validation/review evidence and safe local raw artifacts under [`../agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
 - Prefer small, reviewable milestones with green tests before moving on.
 - Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
 - Do not add a permanent legacy/new compatibility mode.
@@ -20,21 +21,22 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 - Current phase status: `docs/implementation-notes/event-driven-phase-status.md` when present.
 - Trust boundaries: `docs/governance/trust-boundaries.md`.
 - Release expectations: `docs/governance/release-governance.md`.
+- Context, evidence, compaction and recovery contract: `docs/agent/CONTEXT_AND_EVIDENCE.md`.
 
 ## Commit scope
 
 Use small logical commits by layer where possible:
 
 - `docs:` governance, ADRs and implementation notes
-- `infra:` Docker, Absurd, PostgreSQL and deployment config
-- `laravel:` Laravel migrations, models, controllers, UI and tests
-- `python:` Absurd actors, queue adapter, DB/session helpers and worker bootstrap
+- `infra:` Docker, PostgreSQL, Laravel database queues and deployment config
+- `laravel:` Laravel migrations, models, queued actor wrappers, controllers, UI and tests
+- `python:` fixed actor commands, processing actors, DB/session helpers and worker bootstrap
 - `pipeline:` shared pipeline-start, locks, idempotency, progress and retry flows
 - `test:` focused tests and smoke checks
 
 ## Review rule
 
-Temporary direct-main mode is active as of 2026-06-05: agents and maintainers may commit directly on `main` while branch protection is intentionally disabled for active development. This does not relax validation, safety, or review evidence requirements; run the relevant checks from `docs/agent/CHECKS.md` before each push when local tooling is available, and record any skipped checks in the handoff.
+Temporary direct-main mode is active as of 2026-06-05: agents and maintainers may commit directly on `main` while branch protection is intentionally disabled for active development. This does not relax validation, safety, or review evidence requirements; run the relevant checks from `docs/agent/CHECKS.md` before each push when local tooling is available, classify current evidence under `docs/agent/CONTEXT_AND_EVIDENCE.md`, and record warnings, stale/incomplete coverage, and skipped checks in the handoff.
 
 Every change must be checked against `docs/governance/review-checklist.md` and the non-negotiable architecture rules in the migration prompt.
 

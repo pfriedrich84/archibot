@@ -28,4 +28,4 @@ Tool-neutral safety guidance for coding agents.
 
 Run the relevant checks from [`CHECKS.md`](CHECKS.md), or state clearly why checks were not run for documentation-only or planning-only work.
 
-If there are uncommitted changes, actively ask the user whether they want the changes committed, and whether they should also be pushed.
+Follow the commit and push discipline in the root [`AGENTS.md`](../../AGENTS.md). Always report the final commit and push state; supporting safety guidance must not override the canonical repository policy.

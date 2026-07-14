@@ -1,6 +1,8 @@
 # Agent Checks
 
-Validation commands for agents. Run the smallest relevant set before finishing code changes, and report what passed or failed.
+Validation commands for agents. Run the smallest relevant set while developing, then the final relevant set after the last material patch. Record outcomes using [`CONTEXT_AND_EVIDENCE.md`](CONTEXT_AND_EVIDENCE.md), including revision/patch identity, `PASS` / `PASS_WITH_WARNINGS` / `FAIL` / `INCONCLUSIVE` / `STALE`, counts, skips, warnings, and freshness.
+
+Exit code zero alone is not a pass. Inspect whether the expected scope and semantics were exercised, whether required tools or cases were skipped, and whether output was truncated. A later relevant edit makes prior evidence `STALE` until the affected check is rerun.
 
 ## Local CI parity and pre-push gate
 

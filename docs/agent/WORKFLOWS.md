@@ -6,11 +6,12 @@ Reusable, tool-neutral workflows for common repository tasks.
 
 1. Read [`RULES.md`](RULES.md) and the relevant project docs.
 2. Keep the change small and reviewable.
-3. Update tests and docs when behavior changes.
-4. For dependency-sensitive code/config changes, check current external documentation first (prefer Context7 when useful) and summarize the source or fallback used.
-5. Run the relevant checks from [`CHECKS.md`](CHECKS.md).
-6. For documentation changes, run `python3 scripts/check_markdown_links.py` from the repository root.
-7. Summarize changed files, validation results, documentation sources used, and any follow-up work.
+3. For long, delegated, or interruption-prone work, maintain the local checkpoint and revision-bound evidence index defined in [`CONTEXT_AND_EVIDENCE.md`](CONTEXT_AND_EVIDENCE.md); keep durable decisions in canonical repository docs.
+4. Update tests and docs when behavior changes.
+5. For dependency-sensitive code/config changes, check current external documentation first (prefer Context7 when useful) and summarize the source or fallback used.
+6. Run the relevant checks from [`CHECKS.md`](CHECKS.md), inspect semantics rather than only exit codes, and rerun evidence made `STALE` by later edits.
+7. For documentation changes, run `python3 scripts/check_markdown_links.py` from the repository root.
+8. Summarize changed files, current validation/review states, warnings, skipped or incomplete checks, documentation sources used, commit/push state, and follow-up work.
 
 ## Local CI simulation
 
@@ -83,4 +84,4 @@ Use the 3-day supply-chain rule for Python dependencies. This is a hard check fo
 7. For Docker/runtime dependency impact, also run the Docker build + Grype scan above when available.
 8. Summarize changed dependency files and validation results.
 
-Do not commit or push unless the user explicitly asks.
+Follow the commit and push discipline in the root [`AGENTS.md`](../../AGENTS.md); this dependency workflow does not override the canonical repository policy.
