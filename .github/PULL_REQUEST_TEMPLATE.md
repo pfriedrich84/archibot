@@ -19,17 +19,26 @@
 - [ ] New or changed trust boundaries are documented in `docs/governance/trust-boundaries.md`.
 - [ ] Release, rollback, migration, or provenance impact is noted when relevant.
 
-## Validation
+## Validation and evidence
 
-Commands run:
+Candidate identity:
 
-- [ ] `scripts/ci-local.sh --fast` or equivalent targeted checks
-- [ ] GitHub CI is expected to pass before merge
+- Clean tree / committed candidate: commit SHA.
+- Dirty tree: base `HEAD` plus a content digest/manifest covering the contents of all relevant staged, unstaged, and untracked files, or an equivalently immutable safe patch artifact.
 
-Details:
+Use the result states from `docs/agent/CONTEXT_AND_EVIDENCE.md` and record current evidence after the last material edit:
 
-- 
+- Local/targeted checks state (choose one): `<PASS | PASS_WITH_WARNINGS | FAIL | INCONCLUSIVE | STALE>`
+- GitHub CI state for this candidate (choose one): `<PASS | PASS_WITH_WARNINGS | FAIL | INCONCLUSIVE | STALE | not run>`
+- [ ] Exit codes, executed scope, counts, skips, warnings, and truncation were inspected
+- [ ] Required evidence is current; affected stale checks were rerun
+
+Commands, concise results, counts, warnings, and skipped/incomplete coverage:
+
+-
 
 ## Notes for reviewers
 
-Risks, skipped checks, or follow-ups:
+- [ ] Delegated/reviewer scopes are complete, and findings are dispositioned or marked `INCONCLUSIVE`
+
+Risks, assumptions, skipped checks, incomplete evidence, or follow-ups:

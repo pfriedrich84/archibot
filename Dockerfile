@@ -74,7 +74,7 @@ RUN pip install --upgrade pip setuptools wheel \
     && pip install -c constraints.txt \
         "httpx>=0.27.0" \
         "pydantic>=2.9.0,<=2.12.5" \
-        "pydantic-settings>=2.5.0,<=2.14.0" \
+        "pydantic-settings>=2.14.2,<=2.14.2" \
         "apscheduler>=3.10.4" \
         "absurd-sdk" \
         "sqlalchemy>=2.0.0,<3.0.0" \

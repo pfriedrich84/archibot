@@ -9,7 +9,7 @@ Use this checklist for every migration change.
 - Webhooks and polling use the same pipeline-start/dedupe/lock logic.
 - No document processing starts before `embedding_index_state.status = complete`.
 - PostgreSQL is the durable source of truth for progress, retries and audit state.
-- Absurd is execution transport, not the only job state.
+- Laravel database queues are execution transport; PostgreSQL pipeline tables remain the durable source of truth.
 - Actors are idempotent and retry-safe.
 - The existing Laravel dashboard is extended, not replaced.
 - No new legacy compatibility mode is introduced.
@@ -20,7 +20,7 @@ Use this checklist for every migration change.
 - Raw and normalized payloads are persisted before enqueueing.
 - Dedupe key is stable and enforced.
 - The HTTP request does no OCR, embedding, classification, LLM or heavy Paperless work.
-- Absurd/enqueue failure does not lose the persisted delivery.
+- Laravel queue dispatch/enqueue failure does not lose the persisted delivery and returns non-2xx when Paperless should retry.
 
 ## Durable progress/retry
 
@@ -45,8 +45,11 @@ Use this checklist for every migration change.
 - New or changed trust boundaries are documented in `docs/governance/trust-boundaries.md`.
 - Release, rollback, migration or provenance impact is documented when relevant.
 
-## Validation
+## Validation and evidence
 
 - Targeted tests or smoke checks cover changed behavior.
+- Validation and review use the identity, result states, truncation and freshness rules in [`../agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md); exit code zero alone is not approval.
+- Required delegated scopes and findings are complete and reconciled; missing coverage is `INCONCLUSIVE`.
+- Evidence is current for the final patch; affected earlier checks or reviews were marked `STALE` and rerun.
 - Migrations run on supported local drivers or clearly guard database-specific features.
 - The app remains runnable after the milestone.

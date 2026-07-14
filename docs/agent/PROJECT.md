@@ -65,6 +65,7 @@ Read these instead of expanding this file with duplicate details:
 - [`CODING.md`](CODING.md) — implementation guidance.
 - [`REVIEW.md`](REVIEW.md) — review checklist and focus areas.
 - [`CHECKS.md`](CHECKS.md) — validation commands.
+- [`CONTEXT_AND_EVIDENCE.md`](CONTEXT_AND_EVIDENCE.md) — context budgets, evidence states/freshness, compaction, and recovery.
 - [`WORKFLOWS.md`](WORKFLOWS.md) — reusable maintenance workflows.
 - [`SAFETY.md`](SAFETY.md) — safe/unsafe operations.
 - [`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md) — dependency and container safety guidance.
