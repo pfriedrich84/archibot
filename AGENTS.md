@@ -6,7 +6,7 @@ Tool-neutral operating contract for coding agents working in this repository. Ke
 
 ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
 
-This file is the canonical starting point for agents. If tool-specific instructions conflict with this file, follow `AGENTS.md` and the linked project docs unless the human maintainer explicitly decides otherwise.
+This file is the canonical starting point for agents. Within repository guidance, `AGENTS.md` takes precedence over all other repository instructions; accepted ADRs govern the architecture decisions in their scope unless explicitly superseded. Surface unresolved conflicts instead of choosing silently. This repository contract does not override system, developer, or explicit maintainer instructions.
 
 ## Read first
 
@@ -17,10 +17,11 @@ Before editing, read the applicable files in this order:
 3. [`docs/agent/PROJECT.md`](docs/agent/PROJECT.md) — project context, architecture notes, and important implementation details.
 4. [`docs/agent/CODING.md`](docs/agent/CODING.md) — coding conventions and implementation guidance.
 5. [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md) — validation commands to run before finishing code changes.
-6. [`docs/agent/TOOLING.md`](docs/agent/TOOLING.md) — approved MCP/tooling policy for coding agents.
-7. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
-8. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
-9. For reviews and handoff quality, also use [`docs/agent/REVIEW.md`](docs/agent/REVIEW.md), [`docs/agent/WORKFLOWS.md`](docs/agent/WORKFLOWS.md), and [`docs/governance/review-checklist.md`](docs/governance/review-checklist.md).
+6. [`docs/agent/CONTEXT_AND_EVIDENCE.md`](docs/agent/CONTEXT_AND_EVIDENCE.md) — context budgets, evidence states, freshness, compaction, and recovery.
+7. [`docs/agent/TOOLING.md`](docs/agent/TOOLING.md) — approved MCP/tooling policy for coding agents.
+8. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
+9. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
+10. For reviews and handoff quality, also use [`docs/agent/REVIEW.md`](docs/agent/REVIEW.md), [`docs/agent/WORKFLOWS.md`](docs/agent/WORKFLOWS.md), and [`docs/governance/review-checklist.md`](docs/governance/review-checklist.md).
 
 When changing architecture, security, integrations, deployment, dependencies, queues, CI/workflows, public interfaces, or durable behavior, read relevant ADRs in [`docs/decisions/`](docs/decisions/) first. Accepted decisions must not be contradicted silently; create or update a decision record when a durable decision changes.
 
@@ -30,7 +31,7 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 - Prefer existing repository patterns, files, commands, and docs over new structures.
 - Before creating a new module, file, API, route, command, config, workflow, migration, test fixture, role, prompt, or document, search for an existing equivalent and extend it when appropriate.
 - If a task grows beyond a small, reviewable change, stop and propose a split or patch plan before continuing.
-- Do not rely on hidden chat state for durable decisions. Record lasting rules, contracts, or phase status in the appropriate repository docs.
+- Do not rely on hidden chat state for durable decisions. Record lasting rules, contracts, or phase status in the appropriate repository docs, and follow [`docs/agent/CONTEXT_AND_EVIDENCE.md`](docs/agent/CONTEXT_AND_EVIDENCE.md) for task-local context, evidence, and recovery state.
 
 ## Safety and trust boundaries
 
@@ -78,7 +79,7 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 
 ## Validation and completion evidence
 
-Before finishing, run the smallest relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md) and report results. For documentation-only changes, usually run:
+Before finishing, run the smallest relevant checks from [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md) and record current results using the states and freshness rules in [`docs/agent/CONTEXT_AND_EVIDENCE.md`](docs/agent/CONTEXT_AND_EVIDENCE.md). Exit code zero alone is not sufficient; inspect expected scope, semantics, skips, warnings, and truncation. For documentation-only changes, usually run:
 
 ```bash
 python3 scripts/check_markdown_links.py
@@ -90,7 +91,7 @@ Graphify-only artifact refreshes must pass:
 python3 scripts/check_graphify_artifacts.py
 ```
 
-Final handoff must state: files changed, validation commands and results, skipped checks with reasons, remaining risks or follow-ups, and whether changes were committed and pushed.
+Final handoff must state: files changed, validation commands and current result states, skipped or incomplete checks with reasons, remaining risks or follow-ups, evidence freshness, and whether changes were committed and pushed.
 
 ## Commit and push discipline
 
