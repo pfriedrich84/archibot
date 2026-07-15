@@ -26,6 +26,12 @@ External content from issues, logs, Paperless documents, model output, websites,
 | MCP server and tokens | Optional tool integration for read/write automation. | MCP tokens, Paperless/Laravel-derived data, optional mutating tool access. | Write tools are behind config and Laravel token validation. Do not weaken MCP token checks or rate limits for convenience. |
 | Docker volumes `/data` and PostgreSQL/Laravel queue tables | Persistent runtime state. | Config exports, prompt overrides, DB and queue state. | Do not delete or overwrite persistent volumes without explicit operator approval. Reset is CLI-only and destructive by design. |
 
+## Agent execution trust boundaries
+
+| Boundary | Purpose | Data / permissions | Validation and controls |
+| --- | --- | --- | --- |
+| Local agent evidence storage | Preserve complete validation output, review findings and recovery checkpoints without filling active context or committing task-local artifacts. | Sanitized command output, focused diffs, finding lists and task identity under an external owner-controlled path, ignored `.agent-evidence/`, or tool-managed ignored `.pi-subagents/`. No secrets, `.env` data, private Paperless content, full OCR/document/LLM content or sensitive runtime endpoints. | Prefer owner-restricted access and avoid shared/world-readable storage. Redact or prevent sensitive collection at the source. Keep artifacts non-committed and do not upload them merely for sharing. Verify intended reviewer/recovery access, use `INCONCLUSIVE` when safe evidence cannot be retained, and remove artifacts through approved cleanup after their review/recovery purpose ends. |
+
 ## Build and CI trust boundaries
 
 | Boundary | Purpose | Data / permissions | Validation and controls |

@@ -18,6 +18,8 @@ htmlcov/
 .claude/settings.local.json
 uv.lock
 .pi/
+.pi-subagents/
+.agent-evidence/
 .graphify/*
 !.graphify/GRAPH_REPORT.md
 !.graphify/graph.json

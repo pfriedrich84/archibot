@@ -1,5 +1,12 @@
 # Agent Governance Changelog
 
+## 2026-07-14
+
+- Added a canonical context and evidence discipline covering active context, revision-bound evidence, safe raw artifacts, explicit result states, freshness, truncation, delegation, compaction, and interruption recovery.
+- Linked validation, review, workflow, definition-of-done, governance, trust-boundary, and PR guidance to the shared evidence contract instead of duplicating it.
+- Aligned supporting commit/push guidance with the canonical root `AGENTS.md` policy.
+- Updated the governing migration prompt and review checklist to use ADR-0015 Laravel database queue terminology instead of superseded Absurd transport instructions.
+
 ## 2026-05-23
 
 - Added explicit governance docs for trust boundaries and release/rollback expectations.

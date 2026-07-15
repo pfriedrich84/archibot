@@ -4,7 +4,8 @@ A change is ready for handoff when:
 
 - The implementation addresses the requested scope without unrelated churn.
 - ArchiBot safety invariants from [`RULES.md`](RULES.md) remain intact.
-- Relevant tests, lint, type, build, or docs checks from [`CHECKS.md`](CHECKS.md) were run and reported.
+- Relevant tests, lint, type, build, or docs checks from [`CHECKS.md`](CHECKS.md) were run and reported under the identity, result-state, and freshness rules in [`CONTEXT_AND_EVIDENCE.md`](CONTEXT_AND_EVIDENCE.md).
+- Required completion evidence is current for the final patch; no required gate remains `FAIL`, `INCONCLUSIVE`, or `STALE`.
 - Bug fixes include a regression-focused validation that would have caught the reported failure, including stdout/stderr or worker-job log assertions when the symptom was noisy or misleading runtime output.
 - Before every commit that changes or fixes user-facing UI behavior, validate each affected button/control path with an automated feature/browser test or an explicit manual smoke test, including the backend route/job/action it triggers and the user-visible success/failure state.
 - User-facing behavior changes are documented in README or `docs/user/`.
@@ -15,4 +16,5 @@ A change is ready for handoff when:
 - Remaining TODOs, skipped checks, and follow-ups are explicit in the final summary.
 - Before pushing to a protected or release branch, the local pre-push gate or equivalent GitHub CI checks have passed.
 - When working directly on `main`, watch the GitHub CI run after push until it passes; a red CI run is a regression and must be fixed immediately before unrelated work continues.
-- The user is told whether changes are uncommitted; commits and pushes happen only on explicit request.
+- The final handoff reports changed files, current validation/review states, warnings, skipped or incomplete checks, remaining risks, and commit/push state.
+- Repository changes follow the commit and push discipline in the root [`AGENTS.md`](../../AGENTS.md); this supporting document does not redefine that authority.
