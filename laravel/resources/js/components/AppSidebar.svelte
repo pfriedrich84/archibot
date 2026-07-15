@@ -41,7 +41,6 @@
     import { index as operationsLogIndex } from '@/routes/operations-log';
     import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     import { index as reviewIndex } from '@/routes/review';
-    // eslint-disable-next-line import/order -- Wayfinder-generated route files change resolver grouping in CI.
     import type { NavItem } from '@/types';
 
     let {
