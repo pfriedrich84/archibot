@@ -65,11 +65,7 @@
     let ocrMode = $state('off');
 
     type SetupStep =
-        | 'reset-token'
-        | 'paperless'
-        | 'tags'
-        | 'provider'
-        | 'models';
+        'reset-token' | 'paperless' | 'tags' | 'provider' | 'models';
     const setupSteps = $derived([
         ...(requiresResetToken
             ? [{ id: 'reset-token' as const, label: 'Reset token' }]
