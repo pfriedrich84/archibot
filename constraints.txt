@@ -17,7 +17,7 @@ absurd-sdk==0.4.0
 # upstream mcp package currently declares them even when using stdio transport.
 mcp<=1.28.1
 # anyio 4.14.2 is still inside the 3-day quarantine window as of 2026-07-14.
-anyio<=4.14.2
+anyio<=4.14.1
 # starlette 1.0.1 is a security fix for PYSEC-2026-161 (allowed as age exception)
 starlette<=1.3.1
 uvicorn<=0.51.0

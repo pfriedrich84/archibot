@@ -82,8 +82,8 @@ RUN pip install --upgrade pip setuptools wheel \
         "pgvector>=0.3.0,<1.0.0" \
         "structlog>=24.4.0,<=25.5.0" \
         "sqlite-vec>=0.1.3,<=0.1.9" \
-        "mcp[cli]>=1.20.0,<=1.27.0" \
-        "pymupdf>=1.24.0,<=1.27.2.3"
+        "mcp[cli]>=1.20.0,<=1.28.1" \
+        "pymupdf>=1.24.0,<=1.28.0"
 
 COPY app ./app
 COPY prompts ./prompts
