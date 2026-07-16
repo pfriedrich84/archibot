@@ -140,6 +140,36 @@ def _upsert_entity_approval(
     connection.execute(insert, params)
 
 
+def classified_document_ids(paperless_document_ids: list[int]) -> set[int]:
+    """Return Inbox Documents that already have a durable classification marker.
+
+    A Review Suggestion is written only after classification succeeds. Its
+    existence therefore remains a stable poll marker even when ArchiBot or a
+    user later changes Paperless metadata (and Paperless changes ``modified``).
+    Review status is intentionally irrelevant: pending, accepted, rejected,
+    committed and commit-error suggestions all represent completed
+    classification work. Manual force reprocess and webhook starts do not call
+    this poll-only helper.
+    """
+    document_ids = sorted({int(document_id) for document_id in paperless_document_ids})
+    if not document_ids:
+        return set()
+
+    statement = sql_text(
+        """
+        SELECT DISTINCT paperless_document_id
+        FROM review_suggestions
+        WHERE paperless_document_id = ANY(CAST(:paperless_document_ids AS BIGINT[]))
+        """
+    )
+    with engine().connect() as connection:
+        rows = (
+            connection.execute(statement, {"paperless_document_ids": document_ids}).mappings().all()
+        )
+
+    return {int(row["paperless_document_id"]) for row in rows}
+
+
 def store_review_suggestion(
     *,
     paperless_document_id: int,
