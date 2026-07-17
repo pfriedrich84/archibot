@@ -1,7 +1,7 @@
 """Public document processing seam for ArchiBot's classification pipeline.
 
 This module names the domain use case explicitly: turning a Paperless inbox
-Document into a stored classification suggestion, optionally auto-committed.
+Document into a stored classification suggestion for manual review.
 
 The implementation owns the one-document processing flow. ``app.worker`` keeps
 compatibility wrappers around older private function names while it shrinks
@@ -25,11 +25,9 @@ from app.models import (
     JudgeVerdict,
     PaperlessDocument,
     PaperlessEntity,
-    ReviewDecision,
     SuggestionRow,
 )
 from app.pipeline import classifier, context_builder
-from app.pipeline.committer import commit_suggestion
 from app.pipeline.context_builder import SimilarDocument
 from app.pipeline.ocr_correction import (
     _text_looks_broken,
@@ -118,7 +116,7 @@ async def process_document(
     This is the public Interface for one-off Dokument processing used by
     webhook, CLI, MCP, and future adapters. It hides idempotency, OCR,
     context search, classification, Vorschlag storage, notification,
-    auto-commit, and embedding update ordering behind one call.
+    and embedding update ordering behind one call.
     """
     if should_skip_document(doc):
         return "skipped"
@@ -175,7 +173,7 @@ async def process_document(
     )
     result = judge.result
 
-    suggestion = store_suggestion(
+    store_suggestion(
         doc,
         result,
         raw_response,
@@ -189,34 +187,13 @@ async def process_document(
         original_proposed_json=judge.original_proposed_json,
     )
 
-    will_auto_commit = (
-        settings.auto_commit_confidence > 0 and result.confidence >= settings.auto_commit_confidence
-    )
-
-    if will_auto_commit:
-        log.info("auto-committing", doc_id=doc.id, confidence=result.confidence)
-        tag_ids = [
-            tag_id for tag in result.tags if (tag_id := resolve_entity(tag.name, tags)) is not None
-        ]
-        decision = ReviewDecision(
-            suggestion_id=suggestion.id,
-            title=result.title,
-            date=suggestion.effective_date,
-            correspondent_id=suggestion.effective_correspondent_id,
-            doctype_id=suggestion.effective_doctype_id,
-            storage_path_id=suggestion.effective_storage_path_id,
-            tag_ids=tag_ids,
-            action="accept",
-        )
-        await commit_suggestion(suggestion, decision, paperless)
-
     if embedding is not None:
         try:
             context_builder.store_embedding(doc, embedding)
         except Exception as exc:
             log.warning("indexing failed", doc_id=doc.id, error=str(exc))
 
-    return "auto_committed" if will_auto_commit else "classified"
+    return "classified"
 
 
 async def maybe_run_judge(
@@ -721,10 +698,6 @@ async def phase_store_suggestions(
                 judge_reasoning=draft.judge.reasoning,
                 original_proposed_json=draft.judge.original_proposed_json,
             )
-            will_auto_commit = (
-                settings.auto_commit_confidence > 0
-                and result.confidence >= settings.auto_commit_confidence
-            )
             record_event(
                 job_id,
                 job_type,
@@ -739,7 +712,7 @@ async def phase_store_suggestions(
                     "judge": draft.judge.verdict,
                 },
             )
-            stored.append(StoredSuggestionResult(doc, suggestion, result, will_auto_commit))
+            stored.append(StoredSuggestionResult(doc, suggestion, result))
         except Exception as exc:
             record_event(
                 job_id,
@@ -764,7 +737,7 @@ async def phase_postprocess_suggestions(
     paperless: DocumentRepository,
     tags: list[PaperlessEntity],
 ) -> tuple[int, int, int]:
-    """Phase 6: notify or auto-commit stored suggestions. No LLM calls here."""
+    """Phase 6: publish stored suggestions as pending manual review. No LLM calls here."""
     from app import worker
 
     job_id = getattr(worker._poll_progress, "job_id", None)
@@ -778,56 +751,17 @@ async def phase_postprocess_suggestions(
         try:
             if item.error or item.suggestion is None or item.result is None:
                 raise RuntimeError(item.error or "suggestion missing")
-            if item.will_auto_commit:
-                record_event(
-                    job_id,
-                    job_type,
-                    "auto_commit_started",
-                    f"Dokument #{doc.id}: Auto-Commit gestartet.",
-                    phase="postprocess",
-                    document_id=doc.id,
-                    data={"confidence": item.result.confidence},
-                )
-                log.info("auto-committing", doc_id=doc.id, confidence=item.result.confidence)
-                tag_ids = [
-                    tid
-                    for t in item.result.tags
-                    if (tid := resolve_entity(t.name, tags)) is not None
-                ]
-                decision = ReviewDecision(
-                    suggestion_id=item.suggestion.id,
-                    title=item.result.title,
-                    date=item.suggestion.effective_date,
-                    correspondent_id=item.suggestion.effective_correspondent_id,
-                    doctype_id=item.suggestion.effective_doctype_id,
-                    storage_path_id=item.suggestion.effective_storage_path_id,
-                    tag_ids=tag_ids,
-                    action="accept",
-                )
-                await commit_suggestion(item.suggestion, decision, paperless)
-                record_event(
-                    job_id,
-                    job_type,
-                    "auto_committed",
-                    f"Dokument #{doc.id}: automatisch übernommen.",
-                    phase="postprocess",
-                    level="success",
-                    document_id=doc.id,
-                    data={"suggestion_id": item.suggestion.id},
-                )
-                auto_committed += 1
-            else:
-                record_event(
-                    job_id,
-                    job_type,
-                    "pending_review",
-                    f"Dokument #{doc.id}: Vorschlag wartet auf Review.",
-                    phase="postprocess",
-                    level="success",
-                    document_id=doc.id,
-                    data={"suggestion_id": item.suggestion.id},
-                )
-                classified += 1
+            record_event(
+                job_id,
+                job_type,
+                "pending_review",
+                f"Dokument #{doc.id}: Vorschlag wartet auf Review.",
+                phase="postprocess",
+                level="success",
+                document_id=doc.id,
+                data={"suggestion_id": item.suggestion.id},
+            )
+            classified += 1
             worker._poll_progress.succeeded += 1
             record_event(
                 job_id,
@@ -1382,7 +1316,7 @@ async def process_batch(
 
         if progress is not None:
             _set_poll_phase_progress(
-                "postprocess", len(stored), "Review/Auto-Commit wird verarbeitet."
+                "postprocess", len(stored), "Pending Review-Vorschlaege werden verarbeitet."
             )
         classified, auto_committed, errored = await phase_postprocess_suggestions(
             stored, paperless, tags

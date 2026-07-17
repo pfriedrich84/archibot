@@ -6,7 +6,7 @@
 
 > **Hinweis:** ArchiBot ist aktuell in aktiver Entwicklung. Es gibt noch keinen stabilen Release.
 >
-> **Security-Hardening ausstehend:** Vor Abschluss von [Hardening-Meilenstein 0](./docs/implementation-plan-security-architecture-hardening.md) ist ArchiBot nicht fuer einen oeffentlichen oder nicht voll vertrauenswuerdigen Multi-User-Betrieb freigegeben. Chat/RAG ist fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. ADR-0018 verlangt ausserdem die Abschaltung des Confidence-basierten Auto-Commit; bis Meilenstein 0.2 ausgeliefert ist, kann ein veralteter effektiver Python-Export konfigurierte Schwellenwerte weiterhin ausfuehren, selbst wenn Env oder UI `0` anzeigen. Es gibt deshalb keine verlaessliche reine Einstellungsminderung: Bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+> **Security-Hardening laeuft:** Vor Abschluss von [Hardening-Meilenstein 0](./docs/implementation-plan-security-architecture-hardening.md) ist ArchiBot nicht fuer einen oeffentlichen oder nicht voll vertrauenswuerdigen Multi-User-Betrieb freigegeben. Chat/RAG ist fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. Confidence-basiertes Auto-Commit ist gemaess ADR-0018 ebenfalls in Laravel-Export und Python-Verarbeitung deaktiviert: alte Env-, Import- oder Datenbankwerte sind wirkungslos, und jede Klassifikation bleibt bis zur manuellen Freigabe pending. Die weiteren offenen Meilenstein-0-Risiken bleiben davon unberuehrt.
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
@@ -14,7 +14,7 @@
 
 KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App und PostgreSQL/pgvector. Der event-driven Queue-Pfad wird auf Laravel Database Queues mit festen Python-Actor-Kommandos migriert; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
 
-Alle Vorschläge landen in einer Review-Queue und werden erst nach Freigabe (manuell oder ab einer Confidence-Schwelle) in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
+Alle Vorschläge landen in einer Review-Queue und werden erst nach ausdruecklicher manueller Freigabe in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
 Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür werden auch ähnliche bereits klassifizierte Dokumente über die Vektordatenbank ermittelt (Hybrid Search mit Distance und Keyword)
 
@@ -24,7 +24,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 - 🧠 Klassifikation via neutraler AI-Provider-Schnittstelle (Ollama-kompatibel oder OpenAI-kompatibel; Default-Modell: `gemma4:e4b`)
 - 📚 Kontextaware durch Embedding-Similarity-Search über bereits klassifizierte Dokumente (`pgvector`) — Kontext-Dokumente liefern ihre vollständige Klassifikation (Korrespondent, Typ, Tags, Speicherpfad) als Referenz
 - 🛡️ LLM-as-Judge (optional): zweiter LLM-Pass prüft und korrigiert unsichere Klassifikationen, nur bei niedriger Erst-Confidence + vorhandenem Kontext — kein zusätzlicher GPU-Swap wenn dasselbe Modell wiederverwendet wird
-- ⚡ Frühe Poll-Ergebnisse: Inbox-Polls veröffentlichen/auto-committen jedes Dokument direkt nach Klassifikation/Judge, sofern dafür kein separates Judge-Modell geladen werden muss
+- ⚡ Fruehe Poll-Ergebnisse: Inbox-Polls veroeffentlichen jedes Dokument direkt nach Klassifikation/Judge als pending Review-Vorschlag; Modell- oder Judge-Confidence autorisiert keinen Write
 - ✅ Review-GUI in der Svelte-Admin-App: Annehmen / Ablehnen / Editieren in einem Klick
 - 🏷️ Tag-Whitelist: Neue Tags werden vorgeschlagen, aber erst nach Freigabe in Paperless angelegt
 - 📝 Multi-Level OCR-Korrektur: text-only, vision-light oder vision-full (konfigurierbar via `OCR_MODE`), optional eingeschraenkt auf Dokumente mit `OCR_REQUESTED_TAG_ID`

@@ -1079,7 +1079,7 @@ def main() -> None:
                     cmd_func(document_id, force=_contract_force(input_payload, force))
                 )
                 output_payload["result"] = result
-                if result in {"classified", "auto_committed"}:
+                if result == "classified":
                     review_suggestions = _review_suggestion_payloads_since(
                         before_suggestion_id, document_id=document_id
                     )

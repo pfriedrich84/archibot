@@ -18,7 +18,7 @@ Paperless Webhooks / Laravel UI / 600-second reconciliation
   -> Python document processing and provider integrations
 ```
 
-Laravel queues are transport only. PostgreSQL pipeline records are the product state. Absurd is superseded by ADR-0015, `worker_jobs` is retired by ADR-0016, and [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) makes Laravel the sole Pipeline Start/transport owner while Python owns domain lifecycle. ADR-0018 requires auto-commit containment before document processing is considered safe. Active ordering comes from the [hardening plan](../implementation-plan-security-architecture-hardening.md).
+Laravel queues are transport only. PostgreSQL pipeline records are the product state. Absurd is superseded by ADR-0015, `worker_jobs` is retired by ADR-0016, and [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) makes Laravel the sole Pipeline Start/transport owner while Python owns domain lifecycle. ADR-0018 confidence auto-commit containment is implemented; do not restore model/judge-authorized writes. Active ordering comes from the [hardening plan](../implementation-plan-security-architecture-hardening.md).
 
 ## Load context by task
 
@@ -49,7 +49,7 @@ Read focused sections first. Expand only for unresolved contracts, warnings, fai
 - Long-running actors require explicit timeout, heartbeat, cooperative cancellation and recovery behavior; unbounded jobs are migration debt.
 - Laravel owns authorization, UI, command creation, Pipeline Start, dispatch and transport recovery; Python owns processing and domain lifecycle/retry behavior.
 - Only admins control jobs. Non-admin review actions still require Paperless document rights.
-- Preserve manual review, whitelists, storage-path safety and local-only OCR correction. ADR-0018 requires `auto_commit_confidence` to be disabled; do not run document processing before containment milestone 0.2 lands.
+- Preserve manual review, whitelists, storage-path safety and local-only OCR correction. ADR-0018 fixes effective `auto_commit_confidence` at zero; never restore confidence-based acceptance, command creation or Paperless writes.
 - Extend the existing Laravel operations UI instead of creating another console.
 - Do not reintroduce `worker_jobs` or add new behavior to the superseded Absurd transport.
 
@@ -75,7 +75,7 @@ Do not restate their full contracts in task prompts or committed phase notes.
 
 Use the implementation plan and phase status for current detail. Unless the task explicitly narrows scope, prefer this order:
 
-1. Validate the Laravel-only supervised runtime: scheduled 600-second reconciliation, source-linked recovery, cancellation, bounded retry attempts and auto-commit command handoff.
+1. Validate the Laravel-only supervised runtime: scheduled 600-second reconciliation, source-linked recovery, cancellation, bounded retry attempts and manual review-commit command handoff.
 2. Complete actual full-reindex and remaining CLI/UI backend parity.
 3. Remove Absurd dependencies, schema, configuration, compatibility wrappers and obsolete tests now that Supervisor no longer starts Absurd workers or recovery.
 4. Validate clean-install Docker runtime and end-to-end recovery without Absurd or `worker_jobs`.

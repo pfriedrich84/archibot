@@ -96,12 +96,14 @@ class SettingsController extends Controller
         $this->authorizeAdmin($request);
 
         $definitions = $catalog->definitions();
+        $isWritable = fn (string $key): bool => array_key_exists($key, $definitions)
+            && ! (bool) ($definitions[$key]['read_only'] ?? false);
         $requestedKeys = collect($request->input('__settings_keys', []))
-            ->filter(fn (mixed $key): bool => is_string($key) && array_key_exists($key, $definitions))
+            ->filter(fn (mixed $key): bool => is_string($key) && $isWritable($key))
             ->values();
 
-        if ($requestedKeys->isEmpty()) {
-            $requestedKeys = collect(array_keys($definitions));
+        if (! $request->has('__settings_keys')) {
+            $requestedKeys = collect(array_keys($definitions))->filter($isWritable)->values();
         }
 
         $rules = [];

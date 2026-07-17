@@ -43,7 +43,7 @@ Paperless Webhooks sind der primaere Trigger. Polling bleibt automatische Reconc
 - Actor-Verarbeitung ist idempotent und Retry darf weder Outputs noch Fortschritt doppelt zaehlen.
 - Fortschritt, Retry, Recovery und Fehler sind aus PostgreSQL rekonstruierbar, nicht aus Logs oder In-Memory-Countern.
 - Nur Admins steuern Jobs und Pipelines. Python entscheidet keine Benutzerautorisierung.
-- Manuelle Review- und Berechtigungsgrenzen sowie konfiguriertes `auto_commit_confidence` bleiben erhalten.
+- Manuelle Review- und Berechtigungsgrenzen bleiben erhalten. ADR-0018 setzt `auto_commit_confidence` unabhaengig von Altwerten effektiv auf `0`; Confidence kann keinen Commit autorisieren.
 - `worker_jobs` ist nach ADR-0016 fuer Clean Installs entfernt und darf nicht als Kompatibilitaets- oder Parallelmodell zurueckkehren.
 - Die bestehende Laravel-Oberflaeche bleibt Operations Console; keine zweite Operations UI.
 
@@ -142,7 +142,7 @@ Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](i
 - Laravel Database Queue, `RunPythonActorJob`, der allowlisted PHP Runner und `app.actor_runner` sind fuer die zentralen Actor-Flows implementiert.
 - Laravel `schedule:work` prueft jede Minute, ob die konfigurierte 600-Sekunden-Reconciliation faellig ist, und erzeugt einen deduplizierten durable Poll Command.
 - Actor Executions sind mit Command, Pipeline Run oder Webhook Delivery verknuepft; Laravel Recovery behandelt stale/rertryable Attempts, Cancellation und Entity Sync ueber diese Quelle.
-- Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Auto-Commit erzeugt einen pending `review_commit` Command statt direkt an Absurd zu senden.
+- Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Nur autorisierte manuelle Annahme erzeugt einen `review_commit` Command; Confidence-Auto-Commit ist gemaess ADR-0018 entfernt.
 - `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
 - Absurd-Code, SDK, Konfiguration, Schema und Tests bleiben als nicht gestartetes Cleanup-Delta. Full-Reindex-, CLI-Paritaets- und Runtime-Timeout-Luecken bleiben offen.
 

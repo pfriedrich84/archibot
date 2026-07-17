@@ -101,7 +101,7 @@ class PythonRuntimeConfigExporter
             ->oldest('id')
             ->first();
 
-        return array_merge(
+        $values = array_merge(
             $this->managedRuntimeValues(),
             [
                 'PAPERLESS_TOKEN' => $admin?->paperless_token,
@@ -114,6 +114,11 @@ class PythonRuntimeConfigExporter
             ],
             $overrides,
         );
+
+        // ADR-0018: neither PostgreSQL nor setup/import overrides may authorize writes.
+        $values['AUTO_COMMIT_CONFIDENCE'] = '0';
+
+        return $values;
     }
 
     /**

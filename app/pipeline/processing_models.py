@@ -13,7 +13,7 @@ from typing import Literal
 from app.models import ClassificationResult, PaperlessDocument, SuggestionRow
 from app.pipeline.context_builder import SimilarDocument
 
-ProcessResult = Literal["skipped", "classified", "auto_committed"]
+ProcessResult = Literal["skipped", "classified"]
 
 
 @dataclass
@@ -66,7 +66,6 @@ class StoredSuggestionResult:
     document: PaperlessDocument
     suggestion: SuggestionRow | None = None
     result: ClassificationResult | None = None
-    will_auto_commit: bool = False
     error: str | None = None
 
 

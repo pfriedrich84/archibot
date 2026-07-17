@@ -119,7 +119,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 ## Phase 3: Klassifikation
 
-> **Security-Hinweis:** ADR-0018 verlangt, Confidence-basiertes Auto-Commit abzuschalten. Bis Hardening-Meilenstein 0.2 ausgeliefert ist, kann ein veralteter effektiver Python-Export Werte groesser als `0` weiterhin ausfuehren, selbst wenn Env oder UI `0` anzeigen. Es gibt keine verlaessliche reine Einstellungsminderung; bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+> **Security-Hinweis:** Confidence-basiertes Auto-Commit ist gemaess ADR-0018 deaktiviert. Laravel exportiert den effektiven Wert `0`, Python erzwingt `0`, und alte Environment-, Import- oder PostgreSQL-Werte koennen weder Annahme noch Paperless-Write ausloesen. Das Admin-Feld ist deshalb read-only.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -127,7 +127,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation und Judge (Tokens). `CHAT_CONTEXT_WINDOW` ist keine Runtime-Setting; Chat/RAG ist deaktiviert. `JUDGE_CONTEXT_WINDOW` ist derzeit ebenfalls keine Runtime-Setting. |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
-| `AUTO_COMMIT_CONFIDENCE` | `0` | Nur `0` ist waehrend des ausstehenden Security-Hardenings zulaessig. Die aktuelle Runtime kann Werte 1–100 noch als automatische Commit-Schwelle interpretieren; ADR-0018 verbietet diese Nutzung bis zur sicheren Neugestaltung. |
+| `AUTO_COMMIT_CONFIDENCE` | `0` (fest) | Legacy-Kompatibilitaetsname ohne schreibwirksame Konfiguration. Jeder gelieferte Wert wird auf `0` normalisiert; Modell-/Judge-Confidence bleibt nur Review-Evidenz. |
 | `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der Klassifikationen prueft und ggf. korrigiert. |
 | `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
 | `JUDGE_MODEL` / `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `CLASSIFICATION_MODEL`/`OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |

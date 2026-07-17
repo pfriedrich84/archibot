@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; implementation pending. Supersedes the lightweight decision to preserve existing `auto_commit_confidence` behavior unchanged.
+Accepted; containment implemented in hardening milestone 0.2. Supersedes the lightweight decision to preserve existing `auto_commit_confidence` behavior unchanged.
 
 ## Context
 
@@ -24,7 +24,7 @@ An LLM judge may provide review evidence but is not, by itself, an authorization
 
 ## Consequences
 
-The first containment milestone must force the effective auto-commit setting off in both Laravel and Python, remove or disable misleading controls, and preserve pending Review Suggestions for manual review. Existing configured thresholds must not silently continue to write to Paperless. Re-enabling automation is a later milestone, not part of containment.
+The containment implementation forces the effective auto-commit setting off in both Laravel and Python, presents the control as read-only, and preserves pending Review Suggestions for manual review. Existing configured thresholds cannot write to Paperless. Re-enabling automation is a later milestone, not part of containment.
 
 ## References
 

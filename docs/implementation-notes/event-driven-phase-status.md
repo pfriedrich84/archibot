@@ -69,11 +69,11 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 - Supervisor starts `laravel-queue-worker`, `laravel-scheduler`, and `laravel-durable-recovery`; it no longer starts `app.event_worker` or an Absurd recovery bridge.
 - Scheduled polls skip active or recently completed scheduled poll Commands and dispatch through `RunPythonActorJob::pollReconciliation`.
 - Laravel Recovery handles source-linked stale/retryable Actor Executions with bounded attempts, safe cancellation finalization, stale running Commands, Entity Approval sync, and fresh webhook dispatch suppression.
-- Python auto-commit creates a durable pending `review_commit` Command. Laravel Recovery, not an Absurd `.send(...)` call, owns dispatch.
+- Confidence-based Python auto-commit is removed under ADR-0018. Only an authorized manual acceptance creates and dispatches a durable `review_commit` Command through Laravel.
 
 ## Confirmed transition debt
 
-Security containment milestone 0 is only partially implemented. Step 0.1 disables Chat/RAG for every user and preserves its stored rows without exposure; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) is the only redesign/re-enable track. Model-confidence auto-commit can still remain active through stale effective Python configuration, OCR write-back exists, and webhook ingress fails open when no secret is configured. Per the active plan, no document classification/processing is considered safe until milestone 0.2 disables auto-commit in code.
+Security containment milestone 0 is only partially implemented. Step 0.1 disables Chat/RAG for every user and preserves its stored rows without exposure; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) is the only redesign/re-enable track. Step 0.2 implements ADR-0018: stale confidence thresholds are forced to zero across Laravel export and Python, and model/judge output remains pending for manual review. OCR write-back still exists, and webhook ingress still fails open when no secret is configured; those independent containment risks remain open.
 
 Absurd is no longer a supervised runtime owner, but cleanup remains:
 
@@ -87,8 +87,8 @@ The runtime still needs a clean-install/live-service proof after these changes. 
 ## Next safe milestones
 
 0. **Security containment**
-   - Continue independent hardening-plan milestone 0 PRs after the completed Chat/RAG containment: suspend auto-commit, remove/authorize OCR write-back, require webhook authentication, harden setup, and restrict/structure diagnostics.
-   - Do not begin redesign work or claim safe processing before the applicable containment slice lands.
+   - Continue the remaining independent hardening-plan milestone 0 PRs after completed Chat/RAG and confidence auto-commit containment: remove/authorize OCR write-back, require webhook authentication, harden setup, and restrict/structure diagnostics.
+   - Do not begin redesign work or claim full milestone-0 containment before the remaining applicable slices land.
 
 1. **Runtime and recovery proof**
    - Map every producer to one `RunPythonActorJob` factory and one allowlisted `app.actor_runner` command.

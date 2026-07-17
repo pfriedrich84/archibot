@@ -74,6 +74,13 @@ def save_config(updates: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
         if key not in Settings.model_fields:
             continue
         env_key = key.upper()
+        if key == "auto_commit_confidence":
+            # ADR-0018: absorb legacy writes and normalize stale runtime exports to zero.
+            object.__setattr__(settings, key, 0)
+            if existing.get(env_key) != "0":
+                existing[env_key] = "0"
+                changed[key] = 0
+            continue
         str_val = str(new_value)
         old_val = existing.get(env_key)
         current_val = getattr(settings, key)

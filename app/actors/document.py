@@ -12,7 +12,6 @@ import structlog
 from app.absurd_queue import queue_backend, queue_name
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
-from app.config import settings
 from app.events import types
 from app.events.publish import publish_pipeline_event
 from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
@@ -40,11 +39,7 @@ from app.jobs.progress import (
     update_pipeline_run_progress,
 )
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
-from app.jobs.review_suggestions import (
-    ensure_review_commit_command,
-    mark_review_suggestion_auto_accepted,
-    store_review_suggestion,
-)
+from app.jobs.review_suggestions import store_review_suggestion
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import classify
 from app.pipeline.document_processing import maybe_run_judge
@@ -542,65 +537,6 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
 
         final_phase = "review_suggestion"
         final_message = "Document classification is ready for manual review."
-        if (
-            settings.auto_commit_confidence > 0
-            and result.confidence >= settings.auto_commit_confidence
-        ):
-            _ensure_not_cancelled(pipeline_run_id)
-            current_item = _phase_item(
-                pipeline_run_id=pipeline_run_id,
-                item_type="auto_commit",
-                paperless_document_id=run.paperless_document_id,
-            )
-            accepted, unresolved = mark_review_suggestion_auto_accepted(
-                suggestion.id,
-                reason="auto_commit_confidence",
-                confidence=result.confidence,
-            )
-            if accepted:
-                commit_command_id = ensure_review_commit_command(suggestion.id)
-                finish_pipeline_item(current_item.id, status="succeeded")
-                final_phase = "auto_commit"
-                final_message = (
-                    "Document classification created a durable automatic commit command."
-                )
-                publish_pipeline_event(
-                    types.DOCUMENT_AUTO_COMMIT_REQUESTED,
-                    pipeline_run_id=pipeline_run_id,
-                    paperless_document_id=run.paperless_document_id,
-                    message=(
-                        "Review suggestion auto-accepted; Laravel recovery will dispatch its "
-                        "durable commit command."
-                    ),
-                    payload={
-                        "review_suggestion_id": suggestion.id,
-                        "command_id": commit_command_id,
-                        "confidence": result.confidence,
-                        "transport_owner": "laravel_recovery",
-                    },
-                )
-            else:
-                finish_pipeline_item(
-                    current_item.id,
-                    status="skipped",
-                    error="Unresolved entities prevent auto-commit.",
-                )
-                publish_pipeline_event(
-                    types.DOCUMENT_AUTO_COMMIT_SKIPPED,
-                    pipeline_run_id=pipeline_run_id,
-                    paperless_document_id=run.paperless_document_id,
-                    level="warning",
-                    message="Auto-commit skipped because proposed entities are unresolved.",
-                    payload={"review_suggestion_id": suggestion.id, "unresolved": unresolved},
-                )
-            current_item = None
-            _update_item_derived_progress(
-                pipeline_run_id=pipeline_run_id,
-                actor_execution_id=actor_execution.id,
-                phase=final_phase,
-                message=final_message,
-                current_item=f"review_suggestion:{suggestion.id}",
-            )
 
         _ensure_not_cancelled(pipeline_run_id)
         mark_pipeline_run_status(

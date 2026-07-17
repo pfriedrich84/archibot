@@ -56,18 +56,18 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │  4. OCR-Korrektur (optional)                 │
 │  5. Kontext-Suche via document_embeddings    │
 │  6. Klassifikation + optionaler Judge        │
-│  7. Review-Suggestion speichern              │
-│  8. Optional Auto-Commit ueber Commit Actor   │
+│  7. Pending Review-Suggestion speichern      │
+│  8. Kein Confidence-basierter Write (ADR-0018)│
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────┐
-│  Review (manuell oder automatisch)           │
+│  Review (nur manuelle Entscheidung)          │
 │                                              │
-│  - GUI /review:  Annehmen / Ablehnen /       │
+│  - GUI /review: Annehmen / Ablehnen /        │
 │    Editieren                                 │
-│  - Auto-Commit: wenn Confidence >=           │
-│    AUTO_COMMIT_CONFIDENCE                    │
+│  - Confidence/Judge sind keine Write-        │
+│    Autorisierung                             │
 └──────────────────┬──────────────────────────┘
                    │ Accept
                    ▼
@@ -148,13 +148,11 @@ Der Judge bekommt Zieldokument + Kontext + den Erst-Vorschlag und gibt einen `Ju
 
 Timing wird separat unter `phase='judge'` in `phase_timing` erfasst.
 
-### 7. Auto-Commit
+### 7. Manuelle Review-Commit-Grenze
 
-> **Security-Hardening ausstehend:** ADR-0018 verlangt, diesen Confidence-basierten Schreibpfad abzuschalten. Bis Meilenstein 0.2 implementiert ist, bildet der folgende Absatz noch das aktuelle Runtime-Verhalten ab; ein veralteter effektiver Python-Export kann trotz Env/UI-Wert `0` aktiv bleiben. Es gibt keine verlaessliche reine Einstellungsminderung, daher darf bis Meilenstein 0.2 keine Dokumentklassifikation/-verarbeitung laufen.
+ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Document Actor sowie legacy/phased Processing speichern auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
 
-Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
-
-Akzeptierte Review-Suggestions erzeugen einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.
+Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.
 
 ## Reindex
 

@@ -2,7 +2,7 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation pending.
+Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG) and 0.2 (confidence auto-commit) are implemented; remaining milestones are pending.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
@@ -85,6 +85,8 @@ Acceptance:
 Rollback: route/UI containment can be reverted, but must not be reverted before the authorization redesign is approved.
 
 ### 0.2 Suspend auto-commit
+
+Status: implemented. Confidence remains review evidence only; safe automation is still a separate, unapproved redesign track.
 
 Scope:
 

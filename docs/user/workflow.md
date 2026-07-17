@@ -25,18 +25,15 @@ in Paperless-NGX.
          |
 7. Vorschlag speichern          Status: "pending" in der suggestions-Tabelle
          |
-   ┌─────┴──────┐
-   |             |
-8a. Auto-Commit               Wenn confidence >= AUTO_COMMIT_CONFIDENCE
-8b. Manuelles Review          GUI (/review)
+8. Manuelles Review             Autorisierte Annahme in der GUI (/review)
          |
-9. PATCH nach Paperless         Metadaten-Update (Titel, Datum, Korrespondent, ...)
+9. PATCH nach Paperless         Erst ueber den geprueften Review-Commit-Pfad
 
 Beim Inbox-Poll werden OCR und Embeddings weiterhin batchweise ausgefuehrt. Ab der
 Klassifikation veroeffentlicht ArchiBot Ergebnisse aber so frueh wie moeglich pro
 Dokument: Sobald ein Dokument klassifiziert ist und kein separates Judge-Modell
-fuer dieses Dokument geladen werden muss, wird der Vorschlag direkt gespeichert
-und entweder als Review sichtbar oder automatisch committet.
+fuer dieses Dokument geladen werden muss, wird der Vorschlag direkt als pending
+Review sichtbar. Ein Paperless-Write erfolgt erst nach manueller Annahme.
 ```
 
 ## Schritt fuer Schritt
@@ -82,21 +79,22 @@ Das LLM liefert strukturiertes JSON mit:
 - Nicht-Admins sehen Vorschlaege nur, wenn ihr gespeicherter Paperless-Token Zugriff auf das konkrete Paperless-Dokument nachweist
 - Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist
 
-#### Auto-Commit
+#### Confidence Auto-Commit (deaktiviert)
 
-> **Security-Hinweis:** ADR-0018 verlangt die Abschaltung dieses Verhaltens. Bis Hardening-Meilenstein 0.2 implementiert ist, kann ein veralteter effektiver Python-Export konfigurierte Schwellenwerte weiterhin anwenden, selbst wenn Env oder UI `0` anzeigen. Es gibt keine verlaessliche reine Einstellungsminderung; bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+ADR-0018 setzt den effektiven Schwellenwert fest auf `0`. Alte Werte aus Environment,
+importierter Runtime-Konfiguration oder PostgreSQL werden ignoriert. Auch eine Modell-
+oder Judge-Confidence von `100` bleibt lediglich Review-Evidenz und kann weder eine
+Annahme noch einen Paperless-Write ausloesen. Eine spaetere sichere Automation braucht
+deterministische Eligibility-Gates sowie ausdrueckliche Produkt-/Security-Freigabe.
 
-Wenn `AUTO_COMMIT_CONFIDENCE > 0` und der finale Confidence-Score darueber liegt,
-wird der Vorschlag automatisch committet — ohne manuelles Review. Im Inbox-Poll
-bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,
-Klassifikations- und Judge-Modelle nicht pro Dokument hin- und hergeladen
-werden muessen:
+Im Inbox-Poll bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,
+Klassifikations- und Judge-Modelle nicht pro Dokument hin- und hergeladen werden muessen:
 
 1. OCR fuer alle Dokumente, Ergebnisse pro Dokument speichern
 2. Embeddings/Kontextsuche fuer alle Dokumente, Ergebnisse pro Dokument merken
 3. Klassifikation fuer alle Dokumente
 4. Judge-Verifikation fuer alle erfolgreichen Klassifikationen
-5. Vorschlaege speichern, Review/Auto-Commit ausfuehren
+5. Vorschlaege als pending Review speichern
 6. Embeddings final pro Dokument in den Kontextindex schreiben
 
 Innerhalb jeder Phase wird nach jedem Dokument persistiert. Ein Absturz in
