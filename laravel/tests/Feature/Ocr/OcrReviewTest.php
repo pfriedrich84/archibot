@@ -5,7 +5,11 @@ namespace Tests\Feature\Ocr;
 use App\Models\AppSetting;
 use App\Models\OcrReview;
 use App\Models\User;
+use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -14,219 +18,487 @@ class OcrReviewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_creating_ocr_review_fetches_and_preserves_current_paperless_content(): void
+    protected function setUp(): void
     {
+        parent::setUp();
         AppSetting::put('paperless.url', 'https://paperless.example');
-        Http::fake([
-            'paperless.example/api/documents/123/' => Http::response([
-                'id' => 123,
-                'content' => 'Current Paperless OCR text',
-            ], 200),
-        ]);
+        Http::preventStrayRequests();
+    }
 
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
+    public function test_store_requires_change_permission_and_preserves_local_snapshots_without_patch(): void
+    {
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::sequence()
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS'])
+                ->push(['id' => 123, 'content' => 'Synthetic original snapshot'], 200)
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
+        ]);
+        $user = User::factory()->create(['paperless_token' => 'creator-token']);
 
         $response = $this->actingAs($user)->post(route('ocr-reviews.store'), [
             'paperless_document_id' => 123,
-            'ocr_content' => 'New OCR text',
+            'ocr_content' => 'Synthetic corrected snapshot',
         ]);
 
         $review = OcrReview::query()->firstOrFail();
         $response->assertRedirect(route('ocr-reviews.show', $review));
-        $this->assertSame('Current Paperless OCR text', $review->original_content);
-        $this->assertSame('New OCR text', $review->ocr_content);
+        $this->assertSame('Synthetic original snapshot', $review->original_content);
+        $this->assertSame('Synthetic corrected snapshot', $review->ocr_content);
         $this->assertSame(OcrReview::STATUS_PENDING, $review->status);
-        $this->assertDatabaseHas('audit_logs', [
-            'actor_user_id' => $user->id,
-            'event' => 'ocr_review.created',
-            'target_type' => 'ocr_review',
-            'target_id' => (string) $review->id,
-        ]);
-        Http::assertSent(fn ($request) => $request->method() === 'GET'
-            && $request->hasHeader('Authorization', 'Token user-token'));
+        Http::assertSentCount(3);
+        $this->assertNoPaperlessContentPatchWasSent();
     }
 
-    public function test_index_exposes_auto_write_warning_state(): void
+    public function test_store_fails_closed_before_fetching_content_when_change_permission_is_denied(): void
     {
-        AppSetting::put('ocr.auto_write_back', '1');
-        $user = User::factory()->create();
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::response([], 200, ['Allow' => 'GET, OPTIONS']),
+        ]);
+        $user = User::factory()->create(['paperless_token' => 'denied-token']);
+
+        $this->actingAs($user)->post(route('ocr-reviews.store'), [
+            'paperless_document_id' => 123,
+            'ocr_content' => 'Synthetic denied correction',
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('ocr_reviews', 0);
+        Http::assertSentCount(1);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_store_fails_closed_when_content_fetch_fails_after_permission_check(): void
+    {
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::sequence()
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS'])
+                ->push([], 500),
+        ]);
+        $user = User::factory()->create(['paperless_token' => 'creator-token']);
+
+        $this->actingAs($user)->post(route('ocr-reviews.store'), [
+            'paperless_document_id' => 123,
+            'ocr_content' => 'Must not persist after content API failure',
+        ])->assertStatus(500);
+
+        $this->assertDatabaseCount('ocr_reviews', 0);
+        Http::assertSentCount(2);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_store_rechecks_change_permission_immediately_before_local_mutation(): void
+    {
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::sequence()
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS'])
+                ->push(['id' => 123, 'content' => 'Synthetic original snapshot'], 200)
+                ->push([], 403),
+        ]);
+        $user = User::factory()->create(['paperless_token' => 'creator-token']);
+
+        $this->actingAs($user)->post(route('ocr-reviews.store'), [
+            'paperless_document_id' => 123,
+            'ocr_content' => 'Must not persist after permission revocation',
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('ocr_reviews', 0);
+        Http::assertSentCount(3);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_index_filters_rows_totals_and_pagination_before_serialization(): void
+    {
+        $user = User::factory()->create(['paperless_token' => 'reader-token']);
+        $otherUser = User::factory()->create();
+        foreach (range(1, 30) as $documentId) {
+            $creator = $documentId % 2 === 0 ? $otherUser : $user;
+            $this->review($creator, $documentId, "Accessible original {$documentId}", "Accessible correction {$documentId}");
+        }
+        $denied = $this->review($otherUser, 901, 'Denied original marker', 'Denied correction marker');
+        $this->review($otherUser, 902, 'Other denied original', 'Other denied correction');
+
+        Http::fake(function (HttpRequest $request) {
+            $documentId = (int) basename(trim($request->url(), '/'));
+
+            return $documentId <= 30
+                ? Http::response(['id' => $documentId], 200)
+                : Http::response([], 404);
+        });
+
+        $this->actingAs($user)
+            ->get(route('ocr-reviews.index', ['page' => 2]))
+            ->assertOk()
+            ->assertDontSee('Denied original marker')
+            ->assertDontSee('Denied correction marker')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('ocr/Index')
+                ->where('reviews.total', 30)
+                ->where('reviews.current_page', 2)
+                ->has('reviews.data', 5)
+                ->where('reviews.data', fn ($rows): bool => collect($rows)->every(
+                    fn (array $row): bool => $row['paperless_document_id'] <= 30
+                        && ! array_key_exists('original_content', $row)
+                        && ! array_key_exists('ocr_content', $row)
+                ))
+            );
+
+        $this->assertNotNull($denied->fresh());
+    }
+
+    public function test_index_denies_archibot_admin_without_live_paperless_view_permission(): void
+    {
+        $creator = User::factory()->create();
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        $this->review($creator, 456, 'Admin-denied original marker', 'Admin-denied correction marker');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response([], 403),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('ocr-reviews.index'))
+            ->assertOk()
+            ->assertDontSee('Admin-denied original marker')
+            ->assertDontSee('Admin-denied correction marker')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('reviews.total', 0)
+                ->has('reviews.data', 0)
+            );
+    }
+
+    public function test_index_fails_closed_on_paperless_api_errors_and_does_not_load_ocr_content_first(): void
+    {
+        $user = User::factory()->create(['paperless_token' => 'reader-token']);
+        $this->review($user, 456, 'Sensitive marker must not load', 'Sensitive corrected marker');
+        $queriesBeforePermission = [];
+        DB::listen(function ($query) use (&$queriesBeforePermission): void {
+            $queriesBeforePermission[] = strtolower($query->sql);
+        });
+        Http::fake(function () use (&$queriesBeforePermission) {
+            $this->assertFalse(collect($queriesBeforePermission)->contains(
+                fn (string $sql): bool => str_contains($sql, 'original_content') || str_contains($sql, 'ocr_content')
+            ));
+
+            return Http::response([], 500);
+        });
 
         $this->actingAs($user)
             ->get(route('ocr-reviews.index'))
             ->assertOk()
+            ->assertDontSee('Sensitive marker must not load')
             ->assertInertia(fn (Assert $page) => $page
-                ->component('ocr/Index')
-                ->where('autoWriteBackEnabled', true)
+                ->where('reviews.total', 0)
+                ->has('reviews.data', 0)
             );
     }
 
-    public function test_review_detail_shows_original_and_ocr_content_for_diff_review(): void
+    public function test_show_requires_live_view_permission_for_users_and_admins_without_existence_leak(): void
     {
-        $user = User::factory()->create();
-        $review = OcrReview::query()->create([
-            'paperless_document_id' => 456,
-            'original_content' => 'old text',
-            'ocr_content' => 'new text',
-            'status' => OcrReview::STATUS_PENDING,
-            'created_by_user_id' => $user->id,
-        ]);
+        $owner = User::factory()->create();
+        $review = $this->review($owner, 456, 'Synthetic original', 'Synthetic correction');
+        $allowed = User::factory()->create(['paperless_token' => 'allowed-token']);
+        $denied = User::factory()->create(['paperless_token' => 'denied-token']);
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        Http::fake(function (HttpRequest $request) {
+            return $request->hasHeader('Authorization', 'Token allowed-token')
+                ? Http::response(['id' => 456], 200)
+                : Http::response([], 403);
+        });
 
-        $this->actingAs($user)
+        $this->actingAs($allowed)
             ->get(route('ocr-reviews.show', $review))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('ocr/Show')
-                ->where('review.paperless_document_id', 456)
-                ->where('review.original_content', 'old text')
-                ->where('review.ocr_content', 'new text')
+                ->where('review.original_content', 'Synthetic original')
+                ->where('review.ocr_content', 'Synthetic correction')
             );
+        $this->actingAs($denied)->get(route('ocr-reviews.show', $review))->assertNotFound();
+        $this->actingAs($admin)->get(route('ocr-reviews.show', $review))->assertNotFound();
+        $this->actingAs($denied)->get(route('ocr-reviews.show', 999999))->assertNotFound();
     }
 
-    public function test_approving_ocr_review_writes_edited_content_back_to_paperless(): void
+    public function test_denied_show_authorizes_identifier_before_loading_local_content(): void
     {
-        AppSetting::put('paperless.url', 'https://paperless.example');
-        Http::fake([
-            'paperless.example/api/documents/123/' => Http::response(['id' => 123], 200),
-        ]);
+        $owner = User::factory()->create();
+        $review = $this->review($owner, 456, 'Never-loaded original marker', 'Never-loaded correction marker');
+        $denied = User::factory()->create(['paperless_token' => 'denied-token']);
+        $queriesBeforePermission = [];
+        DB::listen(function ($query) use (&$queriesBeforePermission): void {
+            $queriesBeforePermission[] = strtolower($query->sql);
+        });
+        Http::fake(function () use (&$queriesBeforePermission) {
+            $ocrQueries = collect($queriesBeforePermission)->filter(
+                fn (string $sql): bool => str_contains($sql, 'from "ocr_reviews"')
+                    || str_contains($sql, 'from `ocr_reviews`')
+            );
+            $this->assertTrue($ocrQueries->isNotEmpty());
+            $this->assertFalse($ocrQueries->contains(
+                fn (string $sql): bool => str_contains($sql, 'original_content') || str_contains($sql, 'ocr_content')
+            ));
 
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
-        $review = OcrReview::query()->create([
-            'paperless_document_id' => 123,
-            'original_content' => 'old text',
-            'ocr_content' => 'generated text',
-            'status' => OcrReview::STATUS_PENDING,
-            'created_by_user_id' => $user->id,
+            return Http::response([], 403);
+        });
+
+        $this->actingAs($denied)
+            ->get(route('ocr-reviews.show', $review))
+            ->assertNotFound()
+            ->assertDontSee('Never-loaded original marker')
+            ->assertDontSee('Never-loaded correction marker');
+    }
+
+    public function test_approve_is_local_only_and_requires_current_change_permission(): void
+    {
+        $owner = User::factory()->create();
+        $user = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $review = $this->review($owner, 123, 'Original retained', 'Correction retained');
+        Http::fake([
+            'paperless.example/api/documents/123/' => Http::response([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
         ]);
 
         $this->actingAs($user)
-            ->post(route('ocr-reviews.approve', $review), [
-                'approved_content' => 'edited approved text',
-            ])
+            ->post(route('ocr-reviews.approve', $review), ['approved_content' => 'Locally approved snapshot'])
             ->assertRedirect(route('ocr-reviews.show', $review));
 
         $review->refresh();
-        $this->assertSame(OcrReview::STATUS_WRITTEN_BACK, $review->status);
-        $this->assertSame('edited approved text', $review->approved_content);
-        $this->assertSame($user->id, $review->reviewed_by_user_id);
-        $this->assertNotNull($review->written_back_at);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'ocr_review.written_back',
-            'target_id' => (string) $review->id,
-        ]);
-        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
-            && $request->url() === 'https://paperless.example/api/documents/123/'
-            && $request['content'] === 'edited approved text');
+        $this->assertSame(OcrReview::STATUS_APPROVED, $review->status);
+        $this->assertSame('Original retained', $review->original_content);
+        $this->assertSame('Correction retained', $review->ocr_content);
+        $this->assertSame('Locally approved snapshot', $review->approved_content);
+        $this->assertNull($review->written_back_at);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'ocr_review.approved', 'target_id' => (string) $review->id]);
+        $this->assertNoPaperlessContentPatchWasSent();
     }
 
-    public function test_global_auto_write_mode_preserves_original_and_writes_generated_ocr_text(): void
+    public function test_permission_revocation_after_list_blocks_approve_without_mutation(): void
     {
-        AppSetting::put('paperless.url', 'https://paperless.example');
-        AppSetting::put('ocr.auto_write_back', '1');
+        $user = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $review = $this->review($user, 123, 'Original retained', 'Correction retained');
+        Http::fake(function (HttpRequest $request) {
+            return $request->method() === 'GET'
+                ? Http::response(['id' => 123], 200)
+                : Http::response([], 403);
+        });
+
+        $this->actingAs($user)->get(route('ocr-reviews.index'))->assertOk();
+        $this->actingAs($user)
+            ->post(route('ocr-reviews.approve', $review), ['approved_content' => 'Must not persist'])
+            ->assertNotFound();
+
+        $review->refresh();
+        $this->assertSame(OcrReview::STATUS_PENDING, $review->status);
+        $this->assertNull($review->approved_content);
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_approve_and_reject_require_change_permission_including_for_archibot_admin(): void
+    {
+        $owner = User::factory()->create();
+        $approveReview = $this->review($owner, 456, 'Approve original retained', 'Approve correction retained');
+        $rejectReview = $this->review($owner, 789, 'Reject original retained', 'Reject correction retained');
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
         Http::fake([
-            'paperless.example/api/documents/123/' => Http::sequence()
-                ->push(['id' => 123, 'content' => 'old text'], 200)
-                ->push(['id' => 123], 200),
+            'paperless.example/api/documents/456/' => Http::response([], 200, ['Allow' => 'GET, OPTIONS']),
+            'paperless.example/api/documents/789/' => Http::response([], 200, ['Allow' => 'GET, OPTIONS']),
         ]);
 
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
+        $this->actingAs($admin)
+            ->post(route('ocr-reviews.approve', $approveReview), ['approved_content' => 'Must not persist'])
+            ->assertNotFound();
+        $this->actingAs($admin)->post(route('ocr-reviews.reject', $rejectReview))->assertNotFound();
+        $this->assertSame(OcrReview::STATUS_PENDING, $approveReview->refresh()->status);
+        $this->assertNull($approveReview->approved_content);
+        $this->assertSame(OcrReview::STATUS_PENDING, $rejectReview->refresh()->status);
+        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
 
+    public function test_denied_mutations_check_permission_before_loading_local_ocr_content(): void
+    {
+        $owner = User::factory()->create();
+        $user = User::factory()->create(['paperless_token' => 'denied-token']);
+        $approveReview = $this->review($owner, 456, 'Never-loaded approve original', 'Never-loaded approve correction');
+        $rejectReview = $this->review($owner, 789, 'Never-loaded reject original', 'Never-loaded reject correction');
+        $queriesBeforePermission = [];
+        DB::listen(function ($query) use (&$queriesBeforePermission): void {
+            $queriesBeforePermission[] = strtolower($query->sql);
+        });
+        Http::fake(function () use (&$queriesBeforePermission) {
+            $ocrQueries = collect($queriesBeforePermission)->filter(
+                fn (string $sql): bool => str_contains($sql, 'from "ocr_reviews"')
+                    || str_contains($sql, 'from `ocr_reviews`')
+            );
+            $this->assertTrue($ocrQueries->isNotEmpty());
+            $this->assertFalse($ocrQueries->contains(
+                fn (string $sql): bool => str_contains($sql, 'original_content')
+                    || str_contains($sql, 'ocr_content')
+                    || str_contains($sql, 'approved_content')
+            ));
+
+            return Http::response([], 403);
+        });
+
+        $this->actingAs($user)
+            ->post(route('ocr-reviews.approve', $approveReview), ['approved_content' => 'Must not persist'])
+            ->assertNotFound();
+        $this->actingAs($user)->post(route('ocr-reviews.reject', $rejectReview))->assertNotFound();
+        $this->assertSame(OcrReview::STATUS_PENDING, $approveReview->newQuery()->whereKey($approveReview->id)->value('status'));
+        $this->assertSame(OcrReview::STATUS_PENDING, $rejectReview->newQuery()->whereKey($rejectReview->id)->value('status'));
+        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_approve_and_reject_recheck_change_permission_immediately_before_mutation(): void
+    {
+        $owner = User::factory()->create();
+        $user = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $approveReview = $this->review($owner, 456, 'Approve original retained', 'Approve correction retained');
+        $rejectReview = $this->review($owner, 789, 'Reject original retained', 'Reject correction retained');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::sequence()
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS'])
+                ->push([], 403),
+            'paperless.example/api/documents/789/' => Http::sequence()
+                ->push([], 200, ['Allow' => 'GET, PATCH, OPTIONS'])
+                ->push([], 403),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('ocr-reviews.approve', $approveReview), ['approved_content' => 'Must not persist'])
+            ->assertNotFound();
+        $this->actingAs($user)->post(route('ocr-reviews.reject', $rejectReview))->assertNotFound();
+
+        $this->assertSame(OcrReview::STATUS_PENDING, $approveReview->refresh()->status);
+        $this->assertNull($approveReview->approved_content);
+        $this->assertSame(OcrReview::STATUS_PENDING, $rejectReview->refresh()->status);
+        $this->assertDatabaseCount('audit_logs', 0);
+        Http::assertSentCount(4);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_paperless_api_failures_fail_closed_for_show_store_approve_and_reject(): void
+    {
+        $owner = User::factory()->create();
+        $user = User::factory()->create(['paperless_token' => 'error-token']);
+        $showReview = $this->review($owner, 111, 'API-error show original', 'API-error show correction');
+        $approveReview = $this->review($owner, 222, 'API-error approve original', 'API-error approve correction');
+        $rejectReview = $this->review($owner, 333, 'API-error reject original', 'API-error reject correction');
+        Http::fake(fn () => Http::response([], 500));
+
+        $this->actingAs($user)->get(route('ocr-reviews.show', $showReview))->assertNotFound();
         $this->actingAs($user)->post(route('ocr-reviews.store'), [
-            'paperless_document_id' => 123,
-            'ocr_content' => 'auto generated OCR text',
-        ]);
-
-        $review = OcrReview::query()->firstOrFail();
-        $this->assertSame('old text', $review->original_content);
-        $this->assertSame('auto generated OCR text', $review->approved_content);
-        $this->assertSame(OcrReview::STATUS_WRITTEN_BACK, $review->status);
-        $this->assertNotNull($review->written_back_at);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'ocr_review.auto_write_requested',
-            'target_id' => (string) $review->id,
-        ]);
-        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
-            && $request['content'] === 'auto generated OCR text');
-    }
-
-    public function test_failed_write_back_keeps_approved_content_for_retry(): void
-    {
-        AppSetting::put('paperless.url', 'https://paperless.example');
-        Http::fake([
-            'paperless.example/api/documents/123/' => Http::response([], 403),
-        ]);
-
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
-        $review = OcrReview::query()->create([
-            'paperless_document_id' => 123,
-            'original_content' => 'old text',
-            'ocr_content' => 'generated text',
-            'status' => OcrReview::STATUS_PENDING,
-            'created_by_user_id' => $user->id,
-        ]);
-
+            'paperless_document_id' => 444,
+            'ocr_content' => 'API-error store correction',
+        ])->assertForbidden();
         $this->actingAs($user)
-            ->post(route('ocr-reviews.approve', $review), [
-                'approved_content' => 'retry me later',
-            ])
-            ->assertRedirect(route('ocr-reviews.show', $review));
+            ->post(route('ocr-reviews.approve', $approveReview), ['approved_content' => 'Must not persist'])
+            ->assertNotFound();
+        $this->actingAs($user)->post(route('ocr-reviews.reject', $rejectReview))->assertNotFound();
 
-        $review->refresh();
-        $this->assertSame(OcrReview::STATUS_WRITE_BACK_FAILED, $review->status);
-        $this->assertSame('retry me later', $review->approved_content);
-        $this->assertSame('Could not update Paperless document content.', $review->write_back_error);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'ocr_review.write_back_failed',
-            'target_id' => (string) $review->id,
-        ]);
+        $this->assertDatabaseCount('ocr_reviews', 3);
+        $this->assertSame(OcrReview::STATUS_PENDING, $approveReview->refresh()->status);
+        $this->assertNull($approveReview->approved_content);
+        $this->assertSame(OcrReview::STATUS_PENDING, $rejectReview->refresh()->status);
+        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertNoPaperlessContentPatchWasSent();
     }
 
-    public function test_restore_writes_preserved_original_content_back_to_paperless(): void
+    public function test_store_denies_archibot_admin_without_live_change_permission(): void
     {
-        AppSetting::put('paperless.url', 'https://paperless.example');
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
         Http::fake([
-            'paperless.example/api/documents/123/' => Http::response(['id' => 123], 200),
+            'paperless.example/api/documents/456/' => Http::response([], 200, ['Allow' => 'GET, OPTIONS']),
         ]);
 
-        $user = User::factory()->create(['paperless_token' => 'user-token']);
-        $review = OcrReview::query()->create([
-            'paperless_document_id' => 123,
-            'original_content' => 'restore this original text',
-            'ocr_content' => 'generated text',
-            'approved_content' => 'approved text',
-            'status' => OcrReview::STATUS_WRITTEN_BACK,
-            'created_by_user_id' => $user->id,
-        ]);
-
-        $this->actingAs($user)
-            ->post(route('ocr-reviews.restore', $review))
-            ->assertRedirect(route('ocr-reviews.show', $review));
-
-        $review->refresh();
-        $this->assertSame(OcrReview::STATUS_RESTORED, $review->status);
-        $this->assertNotNull($review->restored_at);
-        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
-            && $request['content'] === 'restore this original text');
-    }
-
-    public function test_rejecting_pending_ocr_review_discards_the_result(): void
-    {
-        $user = User::factory()->create();
-        $review = OcrReview::query()->create([
+        $this->actingAs($admin)->post(route('ocr-reviews.store'), [
             'paperless_document_id' => 456,
-            'original_content' => 'old text',
-            'ocr_content' => 'new text',
-            'status' => OcrReview::STATUS_PENDING,
-            'created_by_user_id' => $user->id,
+            'ocr_content' => 'Admin-denied correction',
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('ocr_reviews', 0);
+        Http::assertSentCount(1);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_reject_with_change_permission_keeps_snapshots_and_sends_no_patch(): void
+    {
+        $owner = User::factory()->create();
+        $user = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $review = $this->review($owner, 456, 'Original retained', 'Correction retained');
+        Http::fake([
+            'paperless.example/api/documents/456/' => Http::response([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
         ]);
+
+        $this->actingAs($user)->post(route('ocr-reviews.reject', $review))->assertRedirect(route('ocr-reviews.index'));
+        $review->refresh();
+        $this->assertSame(OcrReview::STATUS_REJECTED, $review->status);
+        $this->assertSame('Original retained', $review->original_content);
+        $this->assertSame('Correction retained', $review->ocr_content);
+        $this->assertNoPaperlessContentPatchWasSent();
+    }
+
+    public function test_stats_does_not_expose_unscoped_ocr_counts_or_content(): void
+    {
+        $user = User::factory()->create(['paperless_token' => 'reader-token']);
+        $this->review($user, 456, 'Stats-hidden original marker', 'Stats-hidden correction marker');
 
         $this->actingAs($user)
-            ->post(route('ocr-reviews.reject', $review))
-            ->assertRedirect(route('ocr-reviews.index'));
+            ->get(route('stats.index'))
+            ->assertOk()
+            ->assertDontSee('Stats-hidden original marker')
+            ->assertDontSee('Stats-hidden correction marker')
+            ->assertInertia(fn (Assert $page) => $page->missing('ocrReviewStatusCounts'));
+    }
 
-        $this->assertSame(OcrReview::STATUS_REJECTED, $review->refresh()->status);
-        $this->assertDatabaseHas('audit_logs', [
-            'event' => 'ocr_review.rejected',
-            'target_id' => (string) $review->id,
+    public function test_restore_route_and_auto_write_setting_are_not_exposed_or_exported(): void
+    {
+        $user = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $review = $this->review($user, 456, 'Historical original', 'Historical correction', OcrReview::STATUS_WRITTEN_BACK);
+        AppSetting::put('ocr.auto_write_back', '1');
+
+        $this->actingAs($user)->post("/ocr-reviews/{$review->id}/restore")->assertNotFound();
+        $this->assertArrayNotHasKey('ocr.auto_write_back', config('archibot_settings.definitions'));
+        $admin = User::factory()->create(['is_admin' => true]);
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'ocr']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where(
+                'groups',
+                fn ($groups): bool => collect($groups)
+                    ->flatMap(fn (array $group) => $group['settings'])
+                    ->doesntContain(fn (array $setting): bool => $setting['key'] === 'ocr.auto_write_back')
+            ));
+
+        $path = config('archibot_settings.import_paths')[0];
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, "OCR_AUTO_WRITE_BACK=from-existing-file\n");
+        app(PythonRuntimeConfigExporter::class)->export([
+            'OCR_AUTO_WRITE_BACK' => 'from-explicit-override',
         ]);
+        $this->assertStringNotContainsString('OCR_AUTO_WRITE_BACK', File::get($path));
+
+        $review->refresh();
+        $this->assertSame('Historical original', $review->original_content);
+        $this->assertSame('Historical correction', $review->ocr_content);
+        $this->assertSame(OcrReview::STATUS_WRITTEN_BACK, $review->status);
+    }
+
+    private function review(
+        User $creator,
+        int $documentId,
+        string $original,
+        string $corrected,
+        string $status = OcrReview::STATUS_PENDING,
+    ): OcrReview {
+        return OcrReview::query()->create([
+            'paperless_document_id' => $documentId,
+            'original_content' => $original,
+            'ocr_content' => $corrected,
+            'status' => $status,
+            'created_by_user_id' => $creator->id,
+        ]);
+    }
+
+    private function assertNoPaperlessContentPatchWasSent(): void
+    {
+        Http::assertNotSent(fn (HttpRequest $request): bool => $request->method() === 'PATCH'
+            && array_key_exists('content', $request->data()));
     }
 }

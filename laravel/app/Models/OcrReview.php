@@ -24,8 +24,11 @@ class OcrReview extends Model
 {
     public const STATUS_PENDING = 'pending';
 
+    public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
 
+    // Historical states and columns remain readable so existing snapshots are retained.
     public const STATUS_WRITTEN_BACK = 'written_back';
 
     public const STATUS_WRITE_BACK_FAILED = 'write_back_failed';

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EntityApproval;
-use App\Models\OcrReview;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
@@ -35,7 +34,6 @@ class StatsController extends Controller
                 'rejected' => EntityApproval::query()->where('status', EntityApproval::STATUS_REJECTED)->count(),
             ],
             'entityApprovalMatrix' => $this->matrixCounts(EntityApproval::class, 'type', 'status'),
-            'ocrReviewStatusCounts' => $this->countsBy(OcrReview::class, 'status'),
             'webhookStatusCounts' => $this->countsBy(WebhookDelivery::class, 'status'),
             'pipelineRunStatusCounts' => $this->countsBy(PipelineRun::class, 'status'),
             'pipelineRunTypeMatrix' => $this->matrixCounts(PipelineRun::class, 'type', 'status'),

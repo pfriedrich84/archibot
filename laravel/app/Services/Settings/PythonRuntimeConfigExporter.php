@@ -30,6 +30,10 @@ class PythonRuntimeConfigExporter
             $values[$key] = $this->sanitize($value);
         }
 
+        // Hardening milestone 0.3: stale or explicitly overridden OCR write-back
+        // configuration is inert and must not survive a managed runtime export.
+        unset($values['OCR_AUTO_WRITE_BACK']);
+
         $directory = dirname($path);
         if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
             throw new RuntimeException("Could not create runtime config directory [{$directory}].");

@@ -409,6 +409,9 @@ class ReviewSuggestionController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 403);
+        if ((bool) $user->is_admin) {
+            return;
+        }
 
         $this->permissions->assertCanViewDocument($user, $suggestion->paperless_document_id);
     }
@@ -417,6 +420,9 @@ class ReviewSuggestionController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 403);
+        if ((bool) $user->is_admin) {
+            return;
+        }
 
         $this->permissions->assertCanChangeDocument($user, $suggestion->paperless_document_id);
     }

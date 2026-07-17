@@ -73,7 +73,7 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 
 ## Confirmed transition debt
 
-Security containment milestone 0 is only partially implemented. Step 0.1 disables Chat/RAG for every user and preserves its stored rows without exposure; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) is the only redesign/re-enable track. Step 0.2 implements ADR-0018: stale confidence thresholds are forced to zero across Laravel export and Python, and model/judge output remains pending for manual review. OCR write-back still exists, and webhook ingress still fails open when no secret is configured; those independent containment risks remain open.
+Security containment milestone 0 is only partially implemented. Step 0.1 disables Chat/RAG for every user and preserves its stored rows without exposure; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) is the only redesign/re-enable track. Step 0.2 implements ADR-0018: stale confidence thresholds are forced to zero across Laravel export and Python, and model/judge output remains pending for manual review. Step 0.3 removes Laravel OCR content write-back, restore, retry and auto-write configuration while retaining local snapshots; every OCR exposure and mutation now fails closed against live Paperless document permission without an ArchiBot-admin bypass. Webhook ingress still fails open when no secret is configured; that independent containment risk remains open.
 
 Absurd is no longer a supervised runtime owner, but cleanup remains:
 
@@ -87,7 +87,7 @@ The runtime still needs a clean-install/live-service proof after these changes. 
 ## Next safe milestones
 
 0. **Security containment**
-   - Continue the remaining independent hardening-plan milestone 0 PRs after completed Chat/RAG and confidence auto-commit containment: remove/authorize OCR write-back, require webhook authentication, harden setup, and restrict/structure diagnostics.
+   - Continue the remaining independent hardening-plan milestone 0 PRs after completed Chat/RAG, confidence auto-commit and local-only permission-scoped OCR containment: require webhook authentication, harden setup, and restrict/structure diagnostics.
    - Do not begin redesign work or claim full milestone-0 containment before the remaining applicable slices land.
 
 1. **Runtime and recovery proof**
