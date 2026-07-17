@@ -4,11 +4,13 @@
 
 Superseded by [ADR-0016: Clean-install Retirement of Worker Jobs](0016-clean-install-worker-jobs-retirement.md).
 
-## Context
+This record documents a historical stabilization decision. It is not an active implementation instruction.
 
-Archibot currently has more than one job-control model. The Python CLI/core is functional and already performs useful processing, while Laravel is the product surface for admin control, audit logs, readiness and user-visible status.
+## Historical context
 
-The current hardened model is:
+At the time this decision was accepted, ArchiBot had more than one job-control model. The Python CLI/core performed processing while Laravel needed reliable admin control, audit, status, retry, cancellation and recovery.
+
+The temporary flow was:
 
 ```text
 Laravel UI
@@ -18,43 +20,46 @@ Laravel UI
 -> Python CLI/Core
 ```
 
-This model centralizes dispatch, dedupe, audit logging, leases, heartbeats, recovery and UI controls around `worker_jobs`. It is intentionally a stabilization layer, not the final event-driven architecture.
+The intent was to reduce immediate product risk without making `worker_jobs` the permanent architecture.
 
-The target architecture remains:
+## Historical decision
+
+The project temporarily allowed `worker_jobs` to centralize dispatch, dedupe, leases, heartbeats, recovery, cancellation, retry, progress, logs and admin UI controls while the durable event-driven replacement was being built.
+
+New permanent architecture was not to be built solely on that table. The planned destination was durable commands, pipeline runs/events/items, actor executions, PostgreSQL state and queue-backed Python processing.
+
+## Superseding outcome
+
+The temporary model has now been retired for clean installs under ADR-0016. The active control flow is:
 
 ```text
-Laravel UI / Webhook / Scheduler
--> commands
--> pipeline_runs
--> pipeline_events
+Laravel UI / Webhook / Reconciliation
+-> commands and/or pipeline_runs
+-> pipeline_events / actor_executions
 -> Laravel database queue
--> fixed Python actor commands
+-> fixed, allowlisted Python actor command
 -> PostgreSQL / pgvector
 ```
 
-## Decision
+There is no active `worker_jobs` model, table migration, route, queue job, UI, recovery path or compatibility/archive backend. `/operations-log` uses durable command, pipeline, actor, webhook and audit state.
 
-Use `worker_jobs` as a temporary Laravel control plane while the legacy subprocess path is being replaced.
+Future work must not:
 
-`worker_jobs` may be hardened for reliability and operator visibility, including dispatch centralization, dedupe, leases, heartbeats, recovery, cancellation, retry, progress, logs and admin UI controls. These changes are allowed because they reduce product risk without rewriting the Python processing core first.
-
-The long-term durable control plane remains `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, Laravel queued actor jobs and fixed Python actor commands. New durable pipeline functionality should target those models and actor commands, not only `worker_jobs`. Review suggestion commit requests are migrated to durable `review_commit` commands and the review commit actor; new review commits must not create `worker_jobs`.
-
-User-facing operations must not preserve `worker_jobs` as a product route or concept. ADR-0016 supersedes the compatibility-storage approach: the next removal is a clean-install retirement of `worker_jobs`, not a migration of old rows into Operations Log. `/operations-log` must be built on durable command/pipeline/actor state, not worker-job compatibility data.
+- reintroduce `worker_jobs` or old Worker Job routes;
+- preserve old rows through a compatibility layer;
+- route GUI controls or CLI-overlap actions through the retired backend;
+- treat the archived stabilization plan as current work.
 
 ## Consequences
 
-- Short-term reliability improves without rewriting the Python core first.
-- Laravel remains the owner of UI, control actions, audit logs and readiness reporting.
-- Python remains the owner of document processing logic.
-- `worker_jobs` is hardened but still temporary.
-- No permanent product architecture should be built solely on `worker_jobs`.
-- User-facing routes and navigation should converge on Operations Log and durable command/pipeline/actor terminology, not Worker Jobs or Legacy Worker Jobs.
-- New `worker_jobs` features are no longer allowed; remove remaining worker-job paths after required durable replacements exist.
-- Future contributors must avoid creating a third long-lived job-control system.
+- Historical worker-job behavior remains available through this ADR and Git history for archaeology.
+- Current implementation and documentation use durable command/pipeline/actor terminology.
+- Remaining migration work concerns Laravel queue exclusivity, recovery/scheduling parity and Absurd removal, not worker-job hardening.
 
 ## References
 
-- [Job-control model](../architecture/job-control-model.md)
+- [ADR-0016: Clean-install Retirement of Worker Jobs](0016-clean-install-worker-jobs-retirement.md)
+- [ADR-0015: Use Laravel Database Queues for Event Transport](0015-use-laravel-database-queues-for-event-transport.md)
+- [Current job-control model](../architecture/job-control-model.md)
 - [Event-driven implementation plan](../implementation-plan-event-driven-archibot.md)
-- [Laravel job-control implementation plan](../implementation-plan-laravel-job-control.md)
+- [Archived Laravel job-control implementation plan](../implementation-plan-laravel-job-control.md)

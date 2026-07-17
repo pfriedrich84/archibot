@@ -41,7 +41,8 @@ und entweder als Review sichtbar oder automatisch committet.
 
 ### 1. Dokument wird erkannt
 
-Die Pipeline reconciliiert die Paperless-Inbox periodisch, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default sind `600` Sekunden. Ein [Webhook](./webhooks.md) kann die Verarbeitung sofort ausloesen; Polling bleibt der Fallback fuer verpasste Events. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam unter `/operations-log` mit Status, Fortschritt und Events.
+Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist, reconciliert die Pipeline die Inbox automatisch; Default sind `600` Sekunden. Polling repariert verpasste Events, und manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
+Webhook-, Reconciliation- und UI-Starts erscheinen gemeinsam in `/operations-log` als durable Commands, Pipeline Runs, Events und Actor Executions mit Status, Fortschritt und Logs.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) sind Poll-Kandidaten. Sobald ArchiBot nach erfolgreicher Klassifikation einen Review-Vorschlag gespeichert hat, dient dieser als dauerhafter Klassifikationsmarker. Weitere automatische Polls ueberspringen das Inbox-Dokument auch dann, wenn ein Review oder Commit den Paperless-`modified`-Zeitstempel geaendert hat und `KEEP_INBOX_TAG=true` ist. Ein abgelehnter Vorschlag bleibt ebenfalls markiert; fuer eine gewollte neue Klassifikation stehen der explizite Force-Poll und das manuelle Force-Reprocess zur Verfuegung. Parallel eintreffende Webhooks und Polls werden zusaetzlich ueber den gemeinsamen Pipeline-Dedupe-Key zusammengefuehrt.
 
@@ -98,7 +99,7 @@ werden muessen:
 
 Innerhalb jeder Phase wird nach jedem Dokument persistiert. Ein Absturz in
 Dokument 12/19 verliert also nicht die Ergebnisse der ersten 11 Dokumente.
-Die Worker-Job-Anzeige zeigt den aktuellen Phasenfortschritt, z. B.
+Die durable Pipeline-/Actor-Statusanzeige zeigt den aktuellen Phasenfortschritt, z. B.
 `Embedding 4/19` oder `Judge 2/7`.
 
 #### Judge-Verifikation (optional)

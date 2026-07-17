@@ -1,753 +1,96 @@
-# pi.dev Prompt: Event-driven Archibot Migration
+# pi.dev Prompt: Event-driven ArchiBot Migration
 
-This prompt is historical where it conflicts with later accepted decisions. ADR-0017 makes Laravel the sole Pipeline Start owner, removes SQLite/Absurd, and gives Python domain lifecycle ownership; ADR-0018 requires auto-commit suspension. New work follows [`../implementation-plan-security-architecture-hardening.md`](../implementation-plan-security-architecture-hardening.md). Stale phase instructions below must not override those sources.
+## When to use this prompt
 
-Repository:
+Use this prompt only for work that changes the event-driven migration, durable pipeline, queue transport, webhook/reconciliation coordination, actor execution, recovery, or retirement of superseded runtime paths.
 
-```text
-pfriedrich84/archibot
-```
-
-## Working Mode
-
-This repository/tool is actively in development. It is acceptable to work directly on `main` unless the operator explicitly asks for a branch.
-
-The agent does **not** need to stop after the foundation phases. Work as far as possible toward the full documented target architecture, as long as changes remain coherent, reviewable and aligned with the non-negotiable rules.
-
-Make small, logically grouped commits.
-
-The agent may create milestone commits after each phase or logical milestone, but must ensure CI/tests are green before moving on to the next phase. Final commit and push behavior follows the canonical discipline in the root `AGENTS.md`.
-
-Parallelization through subagents is allowed and encouraged when it keeps changes reviewable and avoids conflicting edits.
-
-The agent must actively manage its own context and the context of subagents under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md). Keep shared contracts, decisions and durable phase progress in canonical repository files; keep task-local checkpoints and raw evidence in safe non-committed storage so later agents do not rely on hidden chat history.
+Do not preload this prompt for unrelated product, UI, documentation, dependency, or maintenance tasks. The root [`AGENTS.md`](../../AGENTS.md) remains the canonical agent contract and determines the applicable reading order.
 
 ## Mission
 
-Migrate Archibot toward the documented event-driven target architecture.
-
-Archibot is moving from the current Laravel-subprocess/Python-CLI/APScheduler/PostgreSQL/pgvector architecture to:
-
-- Paperless webhooks as the primary trigger
-- periodic polling every 600 seconds as reconciliation/fallback
-- PostgreSQL + pgvector as the shared source of truth
-- Laravel database queues as the event-driven transport
-- fixed, allowlisted Python actor commands as the pipeline engine behind Laravel queued jobs
-- durable progress, retries, locks and recovery
-- centralized structured observability
-- the existing Laravel dashboard as the admin operations console
-- admin-only job control via `is_admin()`
-
-## Read First
-
-Before changing code, read these documents carefully:
+Move ArchiBot toward the target in [`docs/implementation-plan-event-driven-archibot.md`](../implementation-plan-event-driven-archibot.md):
 
 ```text
-docs/implementation-plan-event-driven-archibot.md
-
-docs/architecture/webhook-polling-coordination.md
-docs/architecture/embedding-readiness-gate.md
-docs/architecture/failure-retry-recovery.md
-docs/architecture/retry-concept.md
-docs/architecture/reprocess-triggers.md
-docs/architecture/progress-tracking.md
-docs/architecture/observability-logging.md
-docs/architecture/authorization-job-control.md
-
-docs/decisions/0006-require-complete-embedding-index-before-document-processing.md
-docs/decisions/0007-keep-periodic-polling-with-webhook-dedupe-locks.md
-docs/decisions/0008-use-durable-retries-and-recovery-for-pipeline-failures.md
-docs/decisions/0009-use-structured-centralized-observability.md
-docs/decisions/0010-use-durable-progress-tracking.md
-docs/decisions/0011-require-admin-authorization-for-job-control.md
+Paperless Webhooks / Laravel UI / 600-second reconciliation
+  -> durable PostgreSQL command and pipeline state
+  -> Laravel database queue transport
+  -> fixed, allowlisted Python actor commands
+  -> Python document processing and provider integrations
 ```
 
-If `AGENTS.md` does not exist or does not reflect the current architecture, create/update it first.
-
-If the earlier ADRs are missing, create them before or alongside implementation. ADR-0015 is the governing queue decision and supersedes ADR-0013 and earlier broker/runtime choices.
-
-```text
-docs/decisions/0002-use-postgresql-pgvector.md
-docs/decisions/0004-no-legacy-compatibility-mode.md
-docs/decisions/0005-use-webhooks-as-primary-trigger.md
-docs/decisions/0015-use-laravel-database-queues-for-event-transport.md
-```
-
-## Non-negotiable Architecture Rules
-
-1. Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
-2. Do not introduce a long-term legacy compatibility mode.
-3. Paperless webhooks are the primary trigger.
-4. Polling remains automatic every 600 seconds as reconciliation/fallback.
-5. Webhooks and polling must use the same pipeline-start/dedupe/lock logic.
-6. No document processing may start before the embedding index is complete.
-7. Webhooks may be accepted and persisted before the embedding index is complete, but processing must remain blocked/pending.
-8. PostgreSQL is the source of truth for state, progress, retries and audit data.
-9. Laravel database queues are execution transport; PostgreSQL pipeline tables are the durable product state.
-10. Progress must be durable and reconstructable after restart.
-11. Actors must be idempotent and retry-safe.
-12. Only admins may control jobs. All job-control API actions must check `is_admin()`.
-13. Every admin-only job-control function must have a Laravel UI button/action for admins.
-14. Python workers do not decide user authorization. Authorization happens at the Laravel/API boundary.
-15. Do not log secrets, API keys, full OCR text, full document contents or full LLM prompts.
-16. Per-document reprocess must be possible manually through Laravel and automatically through relevant Paperless webhooks.
-17. Manual per-document reprocess must have an admin-only Laravel button on the document detail page.
-18. The existing Laravel dashboard must be extended/reused. Do not invent a separate new operations UI unless explicitly requested.
-19. CI/tests must be green before moving from one phase/logical milestone to the next.
-20. Subagent work must be coordinated through explicit shared contracts and durable notes in the repo, not hidden context.
-
-## Parallelization / Subagents
-
-Parallelization is allowed and encouraged when it keeps changes reviewable.
-
-You may use subagents for independent tracks, for example:
-
-```text
-Subagent A: Governance, AGENTS.md, ADRs, docs
-Subagent B: Docker/infrastructure, PostgreSQL, Laravel database queues, pgvector
-Subagent C: Laravel migrations/models/queued actor wrappers/API/webhook endpoint
-Subagent D: Fixed Python actor commands, processing actors, worker bootstrap
-Subagent E: Progress/retry/recovery helpers and tests
-Subagent F: Existing Laravel dashboard buttons/actions and authorization tests
-Subagent G: Document pipeline migration
-Subagent H: Reconciliation/polling and reindex migration
-```
-
-Rules for parallel work:
-
-- Work on `main` is allowed for this development tool unless the operator asks otherwise.
-- Keep commits small and reviewable.
-- Commits are allowed after each phase or logical milestone.
-- Before starting the next phase or milestone, run the relevant tests/CI checks and ensure they are green.
-- If CI fails, fix CI before continuing with new feature work.
-- Avoid overlapping edits to the same files where possible.
-- Do not let subagents create conflicting schemas or duplicate abstractions.
-- Shared contracts must be written down before multiple agents implement against them.
-- Architecture decisions must be reflected in docs/ADRs.
-- If two subagents need the same interface, define the interface first.
-- Do not merge partial implementations that violate the non-negotiable rules.
-
-## Context Management for Subagents
-
-The agent must actively manage context and evidence under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
-
-Before launching or delegating to subagents:
-
-1. Create or update a short shared implementation outline.
-2. Define shared contracts first: tables, statuses, event names, queues, helper names, API boundaries.
-3. Assign each subagent a clear scope and file ownership where possible.
-4. Record open decisions and assumptions in docs, ADRs or a phase notes file.
-5. Keep durable summaries concise in their canonical repository files; keep revision-bound task evidence and recovery checkpoints in safe local non-committed storage.
-
-Recommended durable context files:
-
-```text
-docs/governance/agent-workflow.md
-docs/governance/review-checklist.md
-docs/implementation-plan-event-driven-archibot.md
-docs/prompts/pi-dev-event-driven-migration.md
-```
-
-If useful during implementation, create a temporary but committed phase note such as:
-
-```text
-docs/implementation-notes/event-driven-phase-status.md
-```
-
-This file may track:
-
-- current phase
-- completed commits
-- open tasks
-- schema contracts
-- shared helper names
-- known failing tests
-- next safe step
-
-Do not rely on hidden chat history for essential context.
-
-## CI / Test Gate
-
-After each phase or logical milestone:
-
-1. Run the relevant test suite and linters available in the repo.
-2. If GitHub Actions or another CI exists, ensure the latest commit is green before continuing.
-3. If a test cannot be run locally, document why and provide the closest smoke check.
-4. Do not continue with new feature work while known CI/test failures remain from your changes.
-5. Keep the app runnable after each committed milestone.
-
-Minimum expected checks, depending on what exists in the repo:
-
-```text
-Python tests / lint / type checks
-Laravel/PHP tests
-frontend/build checks if UI was changed
-migration smoke checks
-Docker compose startup smoke check
-Laravel queue worker and fixed Python actor-command smoke check
-webhook endpoint smoke check
-```
-
-## Implementation Strategy
-
-Do not artificially stop at Phase 0-4. Implement as much of the target architecture as possible.
-
-However, respect this order:
-
-1. Governance and shared contracts.
-2. Infrastructure and database foundation.
-3. Webhook ingestion and durable state.
-4. Laravel queued actor foundation.
-5. Progress/retry/recovery/observability foundations.
-6. Shared pipeline-start/dedupe/lock logic.
-7. Embedding readiness gate and initial embedding build path.
-8. Webhook-triggered document processing.
-9. Polling/reconciliation every 600 seconds through the same pipeline-start logic.
-10. Reprocess per document: manual admin button and webhook-triggered reprocess.
-11. Reindex migration.
-12. Legacy worker-path cleanup where safe.
-
-Before implementing code, produce a short implementation outline with:
-
-- files you intend to create/change
-- database tables/migrations
-- Laravel endpoints/controllers
-- existing Laravel dashboard/UI areas to extend
-- Python packages/modules
-- tests/smoke checks
-
-## Phase 0: Governance and Repo Guidance
-
-Tasks:
-
-- Create or update `AGENTS.md` as the central coding-agent entrypoint.
-- Add or update governance docs under `docs/governance/` if missing:
-  - `repository-governance.md`
-  - `agent-workflow.md`
-  - `review-checklist.md`
-- Ensure ADRs exist for the documented architecture decisions.
-- Make sure coding agents are instructed to follow the event-driven target architecture.
-
-Required content in `AGENTS.md`:
-
-```md
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
-Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback.
-Document processing must never start before the embedding index is complete.
-Progress, retry and recovery state must be durable in PostgreSQL.
-Only admins may control jobs via Laravel actions guarded by is_admin().
-Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks.
-Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate new UI.
-Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
-```
-
-## Phase 1: Infrastructure Foundation
-
-Add local development infrastructure for:
-
-- PostgreSQL with pgvector
-- Laravel database queue tables and worker configuration
-- optional observability hooks if easy, but do not overbuild
-
-Update Docker/development configuration as appropriate.
-
-Add required environment variables, for example:
-
-```env
-DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-QUEUE_CONNECTION=database
-PAPERLESS_WEBHOOK_SECRET=change-me
-POLL_INTERVAL_SECONDS=600
-LLM_PROVIDER=ollama
-LLM_BASE_URL=http://ollama:11434
-```
-
-## Phase 2: Database Foundation
-
-Add migrations/models for the new durable state model.
-
-Minimum tables/models:
-
-- `webhook_deliveries`
-- `commands`
-- `pipeline_runs`
-- `pipeline_events`
-- `actor_executions`
-- `pipeline_items`
-- `embedding_index_state`
-- `llm_calls`
-- `document_embeddings` with pgvector support
-
-Include fields required by the docs, especially:
-
-- durable progress fields
-- retry fields
-- status fields
-- trigger source
-- dedupe keys
-- actor execution identifiers
-- worker_id
-- timestamps
-- error fields
-- reprocess fields
-
-Recommended reprocess fields on `pipeline_runs`:
-
-```text
-reprocess_requested
-reprocess_reason
-reprocess_mode
-reprocess_of_run_id
-```
-
-Important constraints/indexes:
-
-- webhook delivery dedupe
-- document pipeline dedupe
-- paperless document id indexes
-- status/time indexes for recovery scans
-- pgvector index for embeddings where appropriate
-
-## Phase 3: Webhook Ingestion
-
-Add a Laravel Paperless webhook endpoint.
-
-Suggested route:
-
-```text
-POST /api/webhooks/paperless
-```
-
-The endpoint must:
-
-- require and validate the webhook secret/header; reject every request when the effective secret is absent (ADR hardening milestone 0.4)
-- validate payload shape
-- persist raw payload in `webhook_deliveries`
-- compute a webhook dedupe key
-- deduplicate repeated deliveries
-- write a `webhook.received` / `webhook.normalized` event where appropriate
-- return quickly
-- not perform OCR, embedding, classification or heavy Paperless/LLM work synchronously
-- handle Laravel queue dispatch failure without losing the persisted delivery and return non-2xx when Paperless should retry
-
-## Phase 4: Laravel Queued Actor Foundation
-
-Add Python package structure:
-
-```text
-app/actors/
-  __init__.py
-  webhook.py
-  document.py
-  embedding.py
-  maintenance.py
-
-app/events/
-  __init__.py
-  types.py
-  publish.py
-
-app/jobs/
-  __init__.py
-  context.py
-  progress.py
-  locks.py
-  idempotency.py
-  retry.py
-  recovery.py
-
-app/db/
-  session.py
-  models.py
-```
-
-Add:
-
-- Laravel queued job wrappers with small durable-record identifiers
-- fixed, allowlisted Python actor-runner commands
-- a webhook actor
-- actor execution tracking
-- structured logging context
-- durable progress helper
-- embedding readiness gate helper
-- Laravel-owned `App\\Services\\Pipeline\\DocumentPipelineStarter::start(...)` as the sole Pipeline Start seam
-- recovery scan
-- retry classification
-
-The first actor path should prove:
-
-```text
-webhook delivery -> persisted -> actor enqueued -> actor execution persisted -> pipeline event written
-```
-
-## Progress Control Requirements
-
-Progress control is mandatory.
-
-Progress is not just logging. Progress must be durable in PostgreSQL.
-
-Hard rule:
-
-```text
-The UI must read progress from PostgreSQL state, not from logs or in-memory counters.
-```
-
-Support progress like:
-
-```text
-Embedding index: 10 / 130 completed, 0 failed
-Current phase: embedding
-Last update: 12:04:31
-```
-
-Minimum progress fields on `pipeline_runs`:
-
-```text
-progress_total
-progress_done
-progress_failed
-progress_skipped
-progress_current_phase
-progress_phase_total
-progress_phase_done
-progress_message
-progress_updated_at
-```
-
-Minimum progress fields on `actor_executions`:
-
-```text
-progress_total
-progress_done
-progress_failed
-progress_skipped
-progress_current_item
-progress_message
-progress_updated_at
-worker_id
-```
-
-For multi-document work, use durable item-level state.
-
-Recommended `pipeline_items` fields:
-
-```text
-pipeline_run_id
-paperless_document_id
-item_type
-status              pending | running | succeeded | failed | skipped
-attempt
-error
-started_at
-finished_at
-created_at
-updated_at
-```
-
-Progress must be derived from durable item state where possible:
-
-```text
-total   = count(pipeline_items)
-done    = count(status = succeeded)
-failed  = count(status = failed)
-skipped = count(status = skipped)
-```
-
-Do not blindly increment counters on retry.
-
-Bad:
-
-```text
-retry item -> progress_done += 1 again
-```
-
-Good:
-
-```text
-mark item succeeded once -> derive done count from item states
-```
-
-For embedding builds, progress must continue after restart:
-
-```text
-progress_done = count(document_embeddings matching build scope/model/content_hash)
-progress_total = discovered document count
-```
-
-Every meaningful progress update should be written to:
-
-1. durable progress fields in PostgreSQL
-2. `pipeline_events`
-3. structured logs
-
-Example structured progress log:
-
-```json
-{
-  "level": "info",
-  "message": "embedding progress",
-  "event_type": "embedding_index.progress",
-  "pipeline_run_id": "run_...",
-  "actor_execution_id": "exec_...",
-  "phase": "embedding",
-  "progress_done": 10,
-  "progress_total": 130,
-  "progress_failed": 0,
-  "paperless_document_id": 123,
-  "worker_id": "worker-1"
-}
-```
-
-## Required Design Details
-
-### Embedding Readiness Gate
-
-Implement a shared gate helper:
-
-```python
-ensure_embedding_index_ready()
-```
-
-Behavior:
-
-- allow processing only if `embedding_index_state.status == "complete"`
-- otherwise mark work as blocked/pending
-- emit `pipeline.blocked.embedding_index_not_ready`
-- do not start document processing
-
-### Webhook + Polling Coordination
-
-Use Laravel's sole Pipeline Start owner:
-
-```text
-App\\Services\\Pipeline\\DocumentPipelineStarter::start(...)
-```
-
-Python discovery/processing must not implement a second start decision. The Laravel Module must handle:
-
-- embedding gate
-- document lock
-- dedupe key
-- existing active/completed run
-- coalescing webhook/poll/manual/retry triggers
-- enqueueing only when a new run is needed
-
-### Polling
-
-Keep automatic polling every 600 seconds.
-
-Polling is reconciliation/fallback, not a separate competing processing path.
-
-Polling and webhooks must both reach Laravel `DocumentPipelineStarter::start(...)`. Python polling persists/reports durable candidates for Laravel consumption; it must not create/coalesce Pipeline Runs directly.
-
-### Retry and Recovery
-
-Implement:
-
-- retry classification
-- retry status fields
-- recovery scan
-- stuck running actor detection
-- retryable vs permanent errors
-- manual retry hooks for failed runs/items where practical
-
-### Reprocess
-
-Per-document reprocess must be possible through two paths:
-
-```text
-manual   -> admin clicks Laravel button
-webhook  -> Paperless reports relevant document change
-```
-
-Manual reprocess requirements:
-
-- admin-only
-- Laravel document detail page must have a `Force reprocess` button/action
-- backend must check `is_admin()` before command creation
-- create a new pipeline run
-- set `trigger_source = manual`
-- set `reprocess_requested = true`
-- set `reprocess_mode`
-- respect document lock
-- respect embedding readiness gate
-
-Webhook-triggered reprocess requirements:
-
-- no user-session `is_admin()` because this is not a user action
-- webhook security still applies
-- persist and dedupe webhook delivery
-- use Laravel-owned Pipeline Start/dedupe/coalescing logic under ADR-0017
-- set `trigger_source = webhook`
-- link `webhook_delivery_id`
-- do not duplicate runs for duplicate deliveries or unchanged document state
-
-Recommended manual reprocess modes:
-
-```text
-reprocess_metadata_only
-reprocess_classification_only
-reprocess_full_document_pipeline
-reprocess_full_document_pipeline_force_embeddings
-```
-
-### Existing Laravel Dashboard / Operations UI
-
-The Laravel dashboard already exists. Extend the existing dashboard and existing pages/components where appropriate.
-
-Do not create a separate new operations UI unless explicitly requested.
-
-Admin-facing job controls should be added to the existing dashboard/document/review/settings areas:
-
-```text
-Dashboard / operations overview:
-- pipeline status
-- embedding index status
-- failed/retrying/blocked counts
-- webhook delivery status
-- polling/reconciliation status
-
-Document detail page:
-- Process document
-- Retry document
-- Force reprocess
-
-Pipeline run detail/list:
-- Retry failed items
-- Cancel run
-
-Embedding status area:
-- Start embedding build
-- Resume embedding build
-- Mark embedding index stale
-
-Maintenance/reindex area:
-- Start reindex
-- Run reconciliation now
-- Run poll now
-
-Webhook delivery list/detail:
-- Retry webhook delivery
-- Dismiss webhook failure
-
-Review suggestion UI:
-- Commit to Paperless
-
-Entity approval UI:
-- Sync entity approval
-
-Settings/admin area:
-- Save worker settings
-- Save LLM settings
-```
-
-### Logging and Observability
-
-Use structured logs.
-
-Include IDs when available:
-
-- request_id
-- webhook_delivery_id
-- pipeline_run_id
-- actor_execution_id
-- message_id
-- paperless_document_id
-- trigger_source
-- queue_name
-- actor_name
-- worker_id
-
-Do not log secrets or full document/LLM content.
-
-### Admin-only Job Control
-
-All Laravel endpoints that mutate jobs/pipelines must check:
-
-```php
-abort_unless(auth()->user()?->is_admin(), 403);
-```
-
-or the project-standard equivalent.
-
-Required buttons/actions include:
-
-- Process document
-- Retry document
-- Retry failed items
-- Retry webhook delivery
-- Cancel run
-- Force reprocess
-- Start embedding build
-- Resume embedding build
-- Mark embedding index stale
-- Start reindex
-- Run reconciliation now
-- Run poll now
-- Dismiss webhook failure
-- Commit to Paperless
-- Sync entity approval
-- Save worker settings
-- Save LLM settings
-
-Buttons must be visible/enabled only for admins and protected by backend authorization.
-
-## Tests / Smoke Checks
-
-Add tests or documented smoke checks for:
-
-- webhook delivery can be received and persisted
-- duplicate webhook is deduped
-- webhook endpoint returns quickly
-- actor can be enqueued and processed
-- actor execution is persisted
-- pipeline event is persisted
-- non-admin cannot call job-control endpoints
-- admin can call job-control endpoints
-- admin buttons render for admins
-- non-admin buttons are hidden or disabled
-- admin sees per-document `Force reprocess` button/action
-- non-admin cannot use per-document `Force reprocess`
-- manual reprocess creates a new pipeline run for a succeeded document
-- webhook-triggered document change can create a new run
-- duplicate webhook does not create duplicate reprocess run
-- embedding gate blocks document processing when not complete
-- poll/reconciliation and webhook use shared dedupe/lock path
-- progress is stored in DB, not parsed from logs
-- embedding progress can represent `10 / 130 completed`
-- retry of a completed item does not double-count progress
-- worker/container restart recovery can requeue safe stuck work
-
-## Expected Output
-
-Make small, reviewable commits.
-
-At the end, provide:
-
-1. Summary of changed files
-2. Commands to run locally
-3. Migrations to run
-4. How to start PostgreSQL and the Laravel database queue transport
-5. How to trigger a test webhook
-6. How to start the Laravel queue worker and verify fixed Python actor commands
-7. Which tests/smoke checks pass
-8. CI status / test status at each committed milestone
-9. What remains, if anything, for the next phase
-
-## Guardrails
-
-Do not perform heavy document processing inside the webhook HTTP request.
-
-Do not build a second operations UI; extend the existing Laravel dashboard.
-
-Do not introduce a legacy/new backend feature flag such as:
-
-```env
-ARCHIBOT_WORKER_BACKEND=legacy|new
-```
-
-The architecture direction is replacement, not permanent dual-mode.
-
-If a change risks breaking the running app, prefer a small safe step plus a documented smoke check over a huge unreviewable rewrite.
-
-Do not continue to a new phase while CI/tests are red because of your changes. Fix the failures first.
+Laravel queues are transport only. PostgreSQL pipeline records are the product state. Absurd is superseded by ADR-0015, `worker_jobs` is retired by ADR-0016, and [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) makes Laravel the sole Pipeline Start/transport owner while Python owns domain lifecycle. ADR-0018 requires auto-commit containment before document processing is considered safe. Active ordering comes from the [hardening plan](../implementation-plan-security-architecture-hardening.md).
+
+## Load context by task
+
+First follow the task-triggered routing in [`AGENTS.md`](../../AGENTS.md). For migration work, add only the relevant sources below:
+
+| Change area | Required context |
+| --- | --- |
+| Overall target or phase sequencing | [Hardening plan](../implementation-plan-security-architecture-hardening.md), [event-driven detail plan](../implementation-plan-event-driven-archibot.md), and [current phase status](../implementation-notes/event-driven-phase-status.md) |
+| Queue transport, actor runner, or superseded runtime cleanup | [ADR-0015](../decisions/0015-use-laravel-database-queues-for-event-transport.md), [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md), and [job-control model](../architecture/job-control-model.md) |
+| Webhooks or polling | [Webhook/polling coordination](../architecture/webhook-polling-coordination.md), [ADR-0005](../decisions/0005-use-webhooks-as-primary-trigger.md), and [ADR-0007](../decisions/0007-keep-periodic-polling-with-webhook-dedupe-locks.md) |
+| Embedding startup/readiness | [Embedding gate](../architecture/embedding-readiness-gate.md) and [ADR-0006](../decisions/0006-require-complete-embedding-index-before-document-processing.md) |
+| Retry or recovery | [Failure/retry/recovery](../architecture/failure-retry-recovery.md), [retry concept](../architecture/retry-concept.md), and [ADR-0008](../decisions/0008-use-durable-retries-and-recovery-for-pipeline-failures.md) |
+| Progress or item state | [Progress tracking](../architecture/progress-tracking.md) and [ADR-0010](../decisions/0010-use-durable-progress-tracking.md) |
+| Logging or audit | [Observability](../architecture/observability-logging.md) and [ADR-0009](../decisions/0009-use-structured-centralized-observability.md) |
+| Job controls or reprocess | [Authorization](../architecture/authorization-job-control.md), [reprocess triggers](../architecture/reprocess-triggers.md), [ADR-0011](../decisions/0011-require-admin-authorization-for-job-control.md), and [ADR-0019](../decisions/0019-separate-review-decisions-from-admin-job-control.md) |
+
+Read focused sections first. Expand only for unresolved contracts, warnings, failures, or behavior touched by the task.
+
+## Non-negotiable direction
+
+- Paperless Webhooks are primary; polling remains automatic every 600 seconds as reconciliation/fallback.
+- Webhooks and polling reach the same Laravel-owned Pipeline Start, dedupe and coalescing logic; Python must not gain new start callers.
+- No document processing starts before the embedding index is complete.
+- PostgreSQL stores durable state, progress, retries, recovery and audit evidence.
+- Laravel database queues dispatch jobs carrying only an allowlisted actor name and one stable durable ID; actor options are loaded from PostgreSQL.
+- Laravel jobs invoke fixed commands exposed by `python -m app.actor_runner`; arbitrary command strings are forbidden.
+- Actor work is idempotent, retry-safe and must not double-count progress or duplicate outputs.
+- Long-running actors require explicit timeout, heartbeat, cooperative cancellation and recovery behavior; unbounded jobs are migration debt.
+- Laravel owns authorization, UI, command creation, Pipeline Start, dispatch and transport recovery; Python owns processing and domain lifecycle/retry behavior.
+- Only admins control jobs. Non-admin review actions still require Paperless document rights.
+- Preserve manual review, whitelists, storage-path safety and local-only OCR correction. ADR-0018 requires `auto_commit_confidence` to be disabled; do not run document processing before containment milestone 0.2 lands.
+- Extend the existing Laravel operations UI instead of creating another console.
+- Do not reintroduce `worker_jobs` or add new behavior to the superseded Absurd transport.
+
+## Working method
+
+1. Confirm repository, branch, `HEAD`, patch state, scope and approval boundaries.
+2. Read only the routed context for the affected area.
+3. Inspect current code and tests before trusting phase notes or historical plans.
+4. Write a short patch plan when work crosses Laravel, Python, schema, runtime, or documentation boundaries.
+5. Define shared IDs, statuses, payloads and ownership before parallel work.
+6. Keep each patch focused; do not mix transport cleanup, feature work, dependency churn and broad refactors.
+7. Update ADRs only for new durable decisions. Update phase status only for evidence-backed implementation milestones or newly confirmed debt.
+8. Run targeted checks while developing and the final relevant checks after the last material patch.
+
+For delegation, handoff, evidence and interruption recovery, use:
+
+- [`docs/governance/agent-workflow.md`](../governance/agent-workflow.md)
+- [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md)
+
+Do not restate their full contracts in task prompts or committed phase notes.
+
+## Current migration priority
+
+Use the implementation plan and phase status for current detail. Unless the task explicitly narrows scope, prefer this order:
+
+1. Prove Laravel actor-job parity for every producer, CLI-overlap action and recovery state, including actual full-reindex behavior.
+2. Provide automatic 600-second reconciliation through the Laravel-owned runtime path.
+3. Prevent dual dispatch and make Laravel queues the exclusive transport.
+4. Remove Absurd dependencies, schema, configuration, workers, recovery bridge and obsolete tests.
+5. Validate clean-install Docker runtime and end-to-end recovery without Absurd or `worker_jobs`.
+6. Remove or mark remaining stale transport documentation.
+
+## Validation and completion
+
+Use [`docs/agent/CHECKS.md`](../agent/CHECKS.md) to select checks. A completion claim must satisfy [`docs/agent/DEFINITION_OF_DONE.md`](../agent/DEFINITION_OF_DONE.md) and the result-state/freshness rules in [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
+
+Final handoff must remain compact and identify:
+
+- changed files and purpose;
+- current validation states, commands, counts, warnings and evidence freshness;
+- skipped or incomplete coverage and why;
+- architecture, migration, operational or trust-boundary impact;
+- unresolved work and the next safe step;
+- commit and push state.

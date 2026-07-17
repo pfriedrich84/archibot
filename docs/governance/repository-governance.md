@@ -14,8 +14,8 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 ## Source of truth
 
 - Agent operating contract: `AGENTS.md`, with modular instructions in `docs/agent/`.
-- Active target and sequencing: `docs/implementation-plan-security-architecture-hardening.md`.
-- Historical event-driven plan/prompt: `docs/implementation-plan-event-driven-archibot.md` and `docs/prompts/pi-dev-event-driven-migration.md`; their supersession notices defer to later ADRs and the active plan.
+- Active security, ownership and delivery sequence: `docs/implementation-plan-security-architecture-hardening.md`.
+- Event-driven migration detail: `docs/implementation-plan-event-driven-archibot.md` and conditional router `docs/prompts/pi-dev-event-driven-migration.md`, subordinate to later ADRs and the active hardening plan.
 - Architecture details: `docs/architecture/`.
 - ADRs: `docs/decisions/`.
 - Current phase status: `docs/implementation-notes/event-driven-phase-status.md` when present.
@@ -38,7 +38,7 @@ Use small logical commits by layer where possible:
 
 Temporary direct-main mode is active as of 2026-06-05: agents and maintainers may commit directly on `main` while branch protection is intentionally disabled for active development. This does not relax validation, safety, or review evidence requirements; run the relevant checks from `docs/agent/CHECKS.md` before each push when local tooling is available, classify current evidence under `docs/agent/CONTEXT_AND_EVIDENCE.md`, and record warnings, stale/incomplete coverage, and skipped checks in the handoff.
 
-Every change must be checked against `docs/governance/review-checklist.md`, accepted ADRs and the active hardening plan. Historical migration-prompt rules apply only where they do not conflict with those later sources.
+Every change must be checked against `docs/governance/review-checklist.md`, accepted ADRs and the active hardening plan. Changes to the event-driven migration, durable pipeline, queue transport, recovery, or superseded runtime paths must also use the conditional migration prompt where it does not conflict with later sources.
 
 Changes to CI, GitHub Actions, Dependabot configuration, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, AI-provider routing, or committed Graphify artifacts must also be checked against `docs/governance/trust-boundaries.md`.
 
