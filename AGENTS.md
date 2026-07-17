@@ -10,18 +10,21 @@ This file is the canonical starting point for agents. Within repository guidance
 
 ## Read first
 
-Before editing, read the applicable files in this order:
+Start with this file. Before editing, read [`docs/agent/RULES.md`](docs/agent/RULES.md). Then load only the guidance needed for the current task:
 
-1. [`docs/agent/RULES.md`](docs/agent/RULES.md) — non-negotiable project rules and domain invariants.
-2. [`docs/agent/CONSTRAINTS.md`](docs/agent/CONSTRAINTS.md) — deployment, runtime, data, and compatibility constraints.
-3. [`docs/agent/PROJECT.md`](docs/agent/PROJECT.md) — project context, architecture notes, and important implementation details.
-4. [`docs/agent/CODING.md`](docs/agent/CODING.md) — coding conventions and implementation guidance.
-5. [`docs/agent/CHECKS.md`](docs/agent/CHECKS.md) — validation commands to run before finishing code changes.
-6. [`docs/agent/CONTEXT_AND_EVIDENCE.md`](docs/agent/CONTEXT_AND_EVIDENCE.md) — context budgets, evidence states, freshness, compaction, and recovery.
-7. [`docs/agent/TOOLING.md`](docs/agent/TOOLING.md) — approved MCP/tooling policy for coding agents.
-8. [`docs/agent/SAFETY.md`](docs/agent/SAFETY.md) — safe/unsafe operations for agents.
-9. [`docs/agent/DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) — completion criteria for implementation tasks.
-10. For reviews and handoff quality, also use [`docs/agent/REVIEW.md`](docs/agent/REVIEW.md), [`docs/agent/WORKFLOWS.md`](docs/agent/WORKFLOWS.md), and [`docs/governance/review-checklist.md`](docs/governance/review-checklist.md).
+| Task trigger | Read before acting |
+| --- | --- |
+| Implementation or architecture orientation | [`PROJECT.md`](docs/agent/PROJECT.md) |
+| Domain terminology or trust classification | [`CONTEXT.md`](CONTEXT.md) |
+| Runtime, deployment, data, or compatibility | [`CONSTRAINTS.md`](docs/agent/CONSTRAINTS.md) |
+| Source or test changes | [`CODING.md`](docs/agent/CODING.md) |
+| Validation or completion claim | [`CHECKS.md`](docs/agent/CHECKS.md) and [`DEFINITION_OF_DONE.md`](docs/agent/DEFINITION_OF_DONE.md) |
+| Long, delegated, review-heavy, or interruption-prone work | [`CONTEXT_AND_EVIDENCE.md`](docs/agent/CONTEXT_AND_EVIDENCE.md) |
+| MCP, network, package registry, or external documentation use | [`TOOLING.md`](docs/agent/TOOLING.md) |
+| Destructive operations, secrets, private data, or runtime state | [`SAFETY.md`](docs/agent/SAFETY.md) |
+| Review, handoff, or multi-step workflow | [`REVIEW.md`](docs/agent/REVIEW.md), [`WORKFLOWS.md`](docs/agent/WORKFLOWS.md), and the [review checklist](docs/governance/review-checklist.md) |
+
+Read focused sections first and expand only around unresolved questions, warnings, failures, or changed behavior. Do not preload every linked document or raw artifact. Context savings never justify skipping applicable rules or omitting evidence.
 
 When changing architecture, security, integrations, deployment, dependencies, queues, CI/workflows, public interfaces, or durable behavior, read relevant ADRs in [`docs/decisions/`](docs/decisions/) first. Accepted decisions must not be contradicted silently; create or update a decision record when a durable decision changes.
 
@@ -43,39 +46,23 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 
 ## Non-negotiable architecture summary
 
-- Paperless webhooks are the primary trigger; polling remains every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic.
-- Use `/api/webhooks/paperless` or `/webhook` for Paperless webhooks; removed legacy webhook routes must not be reintroduced or extended.
-- Webhook enqueue failures after durable delivery persistence should return non-2xx so Paperless retries.
-- Laravel database queues are the event-driven transport. Queued jobs invoke fixed, allowlisted Python actor commands while PostgreSQL pipeline tables remain the durable source of truth.
-- Document processing must never start before the embedding index is complete.
-- Only documents without the configured inbox tag are trusted classification context.
-- Event-driven document processing must preserve existing `auto_commit_confidence` behavior while keeping manual review and permission safeguards intact.
-- Progress, retry, recovery, audit, and pipeline state must be durable in PostgreSQL.
-- Only admins may control jobs via Laravel actions guarded by `is_admin()`. Non-admin users may work on review suggestions only when they have Paperless rights to change the corresponding document.
-- Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks; explicit user-selected force reprocess always creates a new pipeline run.
-- Use the existing Laravel dashboard as the operations console. Extend it rather than creating a separate UI.
-- CLI commands must behave exactly like corresponding Laravel UI actions: same backend, config source, durable state, progress semantics, storage target, and side effects.
-- Reset is PostgreSQL/Laravel-owned: keep `archibot reset`, but it must delegate to `php artisan archibot:reset` and must never silently reset only legacy SQLite state.
-- Do not extend the legacy Laravel-subprocess/Python-CLI worker path.
-- Laravel `worker_jobs` is a temporary stabilization layer; do not add permanent architecture only to `worker_jobs`.
-- New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, and Python actor logic reached through Laravel queued actor jobs.
+- Paperless webhooks are primary; 600-second polling is reconciliation and uses the same start/dedupe/lock path. Only `/api/webhooks/paperless` and `/webhook` are supported, and enqueue failure after persistence returns non-2xx for retry.
+- Laravel database queues invoke fixed, allowlisted Python actor commands. PostgreSQL pipeline tables are the durable source of truth for pipeline, progress, retry, recovery, and audit state.
+- Processing waits for a complete embedding index. Only documents without the inbox tag are trusted classification context.
+- Preserve manual review, permissions, and configured `auto_commit_confidence`. Job control is admin-only; non-admin review actions require Paperless document rights.
+- Reprocessing remains available through relevant webhooks and the admin UI; explicit force reprocess creates a new pipeline run. Extend the Laravel operations dashboard rather than creating another UI.
+- CLI and UI use the same backend, configuration, durable state, progress, storage, authorization assumptions, and side effects. `archibot reset` delegates to `php artisan archibot:reset`.
+- Do not extend the legacy subprocess/Python-CLI worker path or add permanent behavior only to temporary `worker_jobs`. Target durable pipeline tables and Python actors reached through Laravel queued actor jobs.
 
 ## Canonical project docs
 
-- [`docs/prompts/pi-dev-event-driven-migration.md`](docs/prompts/pi-dev-event-driven-migration.md) — governing migration prompt for the event-driven architecture.
-- [`docs/implementation-plan-event-driven-archibot.md`](docs/implementation-plan-event-driven-archibot.md) — target architecture and migration plan.
-- [`docs/architecture/job-control-model.md`](docs/architecture/job-control-model.md) — current temporary job-control model and migration rules.
-- [`docs/architecture/`](docs/architecture/) — detailed architecture rules for webhooks, polling, progress, retries, observability, and authorization.
-- [`docs/decisions/`](docs/decisions/) — accepted architecture decisions.
-- [`docs/governance/repository-governance.md`](docs/governance/repository-governance.md) — documentation topology, source-of-truth map, review discipline, and direct-main status.
-- [`docs/governance/agent-workflow.md`](docs/governance/agent-workflow.md) — subagent coordination, shared-contract, and milestone guidance.
-- [`docs/governance/trust-boundaries.md`](docs/governance/trust-boundaries.md) — runtime, CI, tool, and integration trust boundaries.
-- [`docs/governance/release-governance.md`](docs/governance/release-governance.md) — release, rollback, and provenance expectations.
-- [`docs/developer/architecture.md`](docs/developer/architecture.md) — current architecture and data flow.
-- [`docs/user/workflow.md`](docs/user/workflow.md) — review, approval, and whitelist workflow.
-- [`docs/user/configuration.md`](docs/user/configuration.md) — environment and runtime configuration.
-- [`docs/user/installation.md`](docs/user/installation.md) — Docker-first installation and local development.
-- [`.graphify/GRAPH_REPORT.md`](.graphify/GRAPH_REPORT.md) — committed knowledge-graph summary for orientation; use `.graphify/graph.json` through Graphify tools rather than reading raw JSON manually.
+Load the narrowest relevant source of truth:
+
+- Migration scope and architecture: [governing prompt](docs/prompts/pi-dev-event-driven-migration.md), [implementation plan](docs/implementation-plan-event-driven-archibot.md), [architecture details](docs/architecture/), and [accepted ADRs](docs/decisions/).
+- Current implementation: [developer architecture](docs/developer/architecture.md) and [temporary job-control model](docs/architecture/job-control-model.md).
+- Governance: [repository topology](docs/governance/repository-governance.md), [agent workflow](docs/governance/agent-workflow.md), [trust boundaries](docs/governance/trust-boundaries.md), and [release governance](docs/governance/release-governance.md).
+- User behavior: [workflow](docs/user/workflow.md), [configuration](docs/user/configuration.md), and [installation](docs/user/installation.md).
+- Graph orientation: [Graphify report](.graphify/GRAPH_REPORT.md); query `.graphify/graph.json` through Graphify tools instead of reading raw JSON manually.
 
 ## Validation and completion evidence
 

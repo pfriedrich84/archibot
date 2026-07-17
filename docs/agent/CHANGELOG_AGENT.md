@@ -1,5 +1,10 @@
 # Agent Governance Changelog
 
+## 2026-07-17
+
+- Replaced the broad startup reading list with task-triggered context routing so agents load only applicable governance and project documents.
+- Condensed duplicated architecture and source-of-truth lists in `AGENTS.md` while preserving links to canonical detail.
+
 ## 2026-07-14
 
 - Added a canonical context and evidence discipline covering active context, revision-bound evidence, safe raw artifacts, explicit result states, freshness, truncation, delegation, compaction, and interruption recovery.
