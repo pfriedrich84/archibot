@@ -31,4 +31,4 @@ The superseded plan previously covered:
 
 Those phases are not valid next steps. They must not be copied into issues, prompts, patches or subagent assignments.
 
-The complete pre-archive snapshot remains available in Git revision `aec74e6` and earlier history for archaeology. Accepted ADRs and current code take precedence over that history.
+The complete pre-archive snapshot remains available in repository history immediately before this file became an archival pointer. Accepted ADRs and current code take precedence over that history.

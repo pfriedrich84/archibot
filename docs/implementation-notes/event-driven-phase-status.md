@@ -3,7 +3,7 @@
 ## Evidence identity
 
 - Status date: 2026-07-17
-- Implementation baseline inspected: `aec74e60ac5c9c75c6e67baac303a9d9b9f8f215`
+- Implementation baseline inspected: the repository tree at the commit containing this status file
 - Scope: repository-file inspection of queue transport, actor runners, durable models, runtime configuration and migration docs
 - Runtime/live-service validation: not performed for this status refresh
 

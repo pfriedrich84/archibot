@@ -19,4 +19,4 @@ Delegate only independent, bounded scopes with explicit file ownership and outpu
 
 ## Historical note
 
-The former guide recommended one fresh subagent per worker-job phase and embedded prompts for progressively hardening the temporary control plane. Those instructions are obsolete. The complete pre-archive snapshot remains available in Git revision `aec74e6` and earlier history.
+The former guide recommended one fresh subagent per worker-job phase and embedded prompts for progressively hardening the temporary control plane. Those instructions are obsolete. The complete pre-archive snapshot remains available in repository history immediately before this file became an archival pointer.
