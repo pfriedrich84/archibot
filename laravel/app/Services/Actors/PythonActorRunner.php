@@ -52,7 +52,7 @@ class PythonActorRunner
             ],
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
-                if (! in_array($command->status, [Command::STATUS_FAILED, Command::STATUS_FAILED_PERMANENT], true)) {
+                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
                     $command->forceFill([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
@@ -128,10 +128,20 @@ class PythonActorRunner
             ],
             onFailure: function (string $error) use ($delivery): void {
                 $delivery->refresh();
-                if (! in_array($delivery->status, [WebhookDelivery::STATUS_FAILED, WebhookDelivery::STATUS_FAILED_PERMANENT], true)) {
+                if (in_array($delivery->status, [WebhookDelivery::STATUS_RECEIVED, WebhookDelivery::STATUS_QUEUED, WebhookDelivery::STATUS_RUNNING], true)) {
                     $delivery->forceFill([
                         'status' => WebhookDelivery::STATUS_FAILED,
                         'error' => $error,
+                    ])->save();
+                }
+            },
+            onSuccess: function () use ($delivery): void {
+                $delivery->refresh();
+                if ($delivery->status === WebhookDelivery::STATUS_RUNNING) {
+                    $delivery->forceFill([
+                        'status' => WebhookDelivery::STATUS_PROCESSED,
+                        'processed_at' => now(),
+                        'error' => null,
                     ])->save();
                 }
             },
@@ -163,7 +173,7 @@ class PythonActorRunner
             ],
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
-                if (! in_array($command->status, [Command::STATUS_FAILED, Command::STATUS_FAILED_PERMANENT], true)) {
+                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
                     $command->forceFill([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
@@ -172,11 +182,21 @@ class PythonActorRunner
                 }
 
                 $reviewSuggestionId = $command->payload['review_suggestion_id'] ?? null;
-                if (is_int($reviewSuggestionId)) {
+                if ($command->status === Command::STATUS_FAILED && is_int($reviewSuggestionId)) {
                     ReviewSuggestion::query()
                         ->whereKey($reviewSuggestionId)
                         ->where('commit_status', ReviewSuggestion::COMMIT_STATUS_QUEUED)
                         ->update(['commit_status' => ReviewSuggestion::COMMIT_STATUS_FAILED]);
+                }
+            },
+            onSuccess: function () use ($command): void {
+                $command->refresh();
+                if ($command->status === Command::STATUS_RUNNING) {
+                    $command->forceFill([
+                        'status' => Command::STATUS_SUCCEEDED,
+                        'error' => null,
+                        'finished_at' => now(),
+                    ])->save();
                 }
             },
         );
@@ -200,7 +220,7 @@ class PythonActorRunner
             arguments: $arguments,
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
-                if (! in_array($command->status, [Command::STATUS_FAILED, Command::STATUS_FAILED_PERMANENT], true)) {
+                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
                     $command->forceFill([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
@@ -239,17 +259,26 @@ class PythonActorRunner
             ],
             onFailure: function (string $error) use ($pipelineRun): void {
                 $pipelineRun->refresh();
-                if (! in_array($pipelineRun->status, [
-                    PipelineRun::STATUS_FAILED,
-                    PipelineRun::STATUS_FAILED_PERMANENT,
-                    PipelineRun::STATUS_RETRYING,
-                    PipelineRun::STATUS_CANCELLED,
-                    PipelineRun::STATUS_BLOCKED,
+                if (in_array($pipelineRun->status, [
+                    PipelineRun::STATUS_PENDING,
+                    PipelineRun::STATUS_QUEUED,
+                    PipelineRun::STATUS_RUNNING,
                 ], true)) {
                     $pipelineRun->forceFill([
                         'status' => PipelineRun::STATUS_FAILED,
                         'error_type' => 'actor_process_failed',
                         'error' => $error,
+                        'finished_at' => now(),
+                    ])->save();
+                }
+            },
+            onSuccess: function () use ($pipelineRun): void {
+                $pipelineRun->refresh();
+                if ($pipelineRun->status === PipelineRun::STATUS_RUNNING) {
+                    $pipelineRun->forceFill([
+                        'status' => PipelineRun::STATUS_SUCCEEDED,
+                        'error_type' => null,
+                        'error' => null,
                         'finished_at' => now(),
                     ])->save();
                 }

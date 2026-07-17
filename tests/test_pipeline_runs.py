@@ -126,6 +126,15 @@ def test_load_document_pipeline_run_returns_document_fields(monkeypatch):
     )
 
 
+def test_cancel_check_treats_already_cancelled_run_as_terminal(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pipeline_runs, "engine", lambda: FakeEngine(calls))
+    monkeypatch.setattr(pipeline_runs, "sql_text", lambda statement: statement)
+
+    assert pipeline_runs.is_pipeline_run_cancel_requested(42) is True
+    assert "status IN ('cancel_requested', 'cancelled')" in calls[0][0]
+
+
 def test_mark_pipeline_run_cancelled_finalizes_cancel_request(monkeypatch):
     calls = []
     monkeypatch.setattr(pipeline_runs, "engine", lambda: FakeEngine(calls))

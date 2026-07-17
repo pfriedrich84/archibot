@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use LogicException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +33,14 @@ class AppServiceProvider extends ServiceProvider
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);
+
+        if (config('queue.default') !== 'database') {
+            throw new LogicException('Archibot requires QUEUE_CONNECTION=database for atomic durable dispatch.');
+        }
+        if ((int) config('queue.connections.database.retry_after')
+            <= (int) config('archibot_workers.queue_worker_timeout')) {
+            throw new LogicException('DB_QUEUE_RETRY_AFTER must exceed QUEUE_WORKER_TIMEOUT.');
+        }
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),

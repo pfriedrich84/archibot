@@ -9,6 +9,7 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
+use App\Services\Pipeline\DocumentPipelineStarter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -335,7 +336,7 @@ class PaperlessEventWebhookTest extends TestCase
             ]);
 
         $delivery = WebhookDelivery::query()->firstOrFail();
-        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->status);
+        $this->assertSame(WebhookDelivery::STATUS_RECEIVED, $delivery->status);
         $this->assertDatabaseCount('pipeline_runs', 0);
         $event = PipelineEvent::query()
             ->where('event_type', 'webhook.enqueue_deferred')
@@ -346,6 +347,67 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame(RuntimeException::class, $event->payload['exception_class']);
         $this->assertStringNotContainsString('top-secret', json_encode($event->payload));
         $this->assertStringNotContainsString('secret-token', json_encode($event->payload));
+    }
+
+    public function test_duplicate_non_process_delivery_retries_initial_enqueue_failure(): void
+    {
+        $this->markEmbeddingIndexComplete();
+        $pushes = 0;
+        Queue::shouldReceive('push')->twice()->andReturnUsing(function () use (&$pushes): void {
+            $pushes++;
+            if ($pushes === 1) {
+                throw new RuntimeException('queue temporarily unavailable');
+            }
+        });
+        $payload = [
+            'event' => 'document_updated',
+            'document_id' => 47,
+            'modified' => '2026-05-08T15:01:00Z',
+        ];
+
+        $this->postJson(route('api.webhooks.paperless'), $payload)
+            ->assertStatus(503)
+            ->assertJson(['status' => 'enqueue_failed', 'duplicate' => false]);
+        $delivery = WebhookDelivery::query()->firstOrFail();
+        $this->assertSame(WebhookDelivery::STATUS_RECEIVED, $delivery->status);
+
+        $this->postJson(route('api.webhooks.paperless'), $payload)
+            ->assertOk()
+            ->assertJson(['status' => 'duplicate', 'duplicate' => true]);
+
+        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->fresh()->status);
+        $this->assertSame(1, PipelineEvent::query()->where('event_type', 'webhook.enqueue_requested')->count());
+    }
+
+    public function test_duplicate_process_delivery_retries_pipeline_start_after_initial_failure(): void
+    {
+        $this->markEmbeddingIndexComplete();
+        $payload = [
+            'event' => 'document_created',
+            'document_id' => 46,
+            'modified' => '2026-05-08T15:00:00Z',
+        ];
+        $starter = $this->mock(DocumentPipelineStarter::class);
+        $starter->shouldReceive('start')->once()->andThrow(new RuntimeException('database interrupted'));
+
+        $this->postJson(route('api.webhooks.paperless'), $payload)
+            ->assertStatus(503)
+            ->assertJson(['status' => 'pipeline_start_failed', 'duplicate' => false]);
+        $delivery = WebhookDelivery::query()->firstOrFail();
+        $this->assertSame(WebhookDelivery::STATUS_RECEIVED, $delivery->status);
+        $this->assertDatabaseCount('pipeline_runs', 0);
+
+        $this->app->instance(DocumentPipelineStarter::class, new DocumentPipelineStarter);
+        app('router')->getRoutes()->getByName('api.webhooks.paperless')->flushController();
+        $this->postJson(route('api.webhooks.paperless'), $payload)
+            ->assertOk()
+            ->assertJson(['duplicate' => true, 'pipeline_outcome' => 'created']);
+
+        $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->fresh()->status);
+        $this->assertDatabaseHas('pipeline_runs', [
+            'webhook_delivery_id' => $delivery->id,
+            'status' => PipelineRun::STATUS_QUEUED,
+        ]);
     }
 
     public function test_event_webhook_queues_embedding_refresh_through_laravel_actor_job(): void

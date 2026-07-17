@@ -232,13 +232,13 @@ def list_cancel_requested_pipeline_run_ids(limit: int = 100) -> list[int]:
 
 
 def is_pipeline_run_cancel_requested(pipeline_run_id: int) -> bool:
-    """Return True when an admin requested cancellation for a run."""
+    """Return True when a run is cancellation-requested or already cancelled."""
     statement = sql_text(
         """
         SELECT 1
         FROM pipeline_runs
         WHERE id = :pipeline_run_id
-          AND status = 'cancel_requested'
+          AND status IN ('cancel_requested', 'cancelled')
         LIMIT 1
         """
     )
@@ -331,6 +331,7 @@ def mark_pipeline_run_retrying(
             error = :retry_reason,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
+          AND status NOT IN ('cancel_requested', 'cancelled')
         """
     )
     with engine().begin() as connection:
@@ -370,6 +371,7 @@ def mark_pipeline_run_status(
             finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'blocked') THEN CURRENT_TIMESTAMP ELSE finished_at END,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
+          AND status NOT IN ('cancel_requested', 'cancelled')
         """
     )
     with engine().begin() as connection:

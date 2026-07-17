@@ -39,7 +39,8 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Paperless document webhook | `WebhookDelivery` + `PipelineRun(type=document)` | same document actor transport | Webhook Deliveries, Pipeline Runs, Operations Log |
 | Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
 | Entity approval sync | `Command(type=sync_entity_approval)` | sync entity approval actor | Entity approval status, Operations Log |
-| Durable recovery scan | `php artisan archibot:recovery-scan` | redispatches safe pending commands/runs/webhooks through actor jobs | Pipeline/command/webhook events |
+| Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check creates one durable poll command and dispatches its Laravel actor job | Operations Log, command events |
+| Durable recovery scan | `php artisan archibot:recovery-scan` | recovers source-linked actor attempts, cancellations, and safe pending/stale commands/runs/webhooks through Laravel actor jobs | Pipeline/command/webhook/actor events |
 | Reset | `php artisan archibot:reset` | Laravel/PostgreSQL-owned destructive reset | CLI output; reset remains outside GUI |
 
 ## State machines

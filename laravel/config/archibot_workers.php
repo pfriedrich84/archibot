@@ -2,6 +2,7 @@
 
 return [
     'python_binary' => env('ARCHIBOT_PYTHON_BINARY', 'python'),
+    'queue_worker_timeout' => (int) env('QUEUE_WORKER_TIMEOUT', 21600),
     'stale_cancelling_minutes' => (int) env('ARCHIBOT_STALE_CANCELLING_MINUTES', 30),
     'lease_seconds' => (int) env('ARCHIBOT_WORKER_LEASE_SECONDS', 300),
     'heartbeat_seconds' => (int) env('ARCHIBOT_WORKER_HEARTBEAT_SECONDS', 15),

@@ -51,7 +51,7 @@ Confirmed allowlisted flows:
 - entity approval sync;
 - Paperless webhook handling.
 
-Laravel producers and recovery services dispatch small jobs containing one allowlisted actor name and one durable record ID. Python loads command/run/delivery options from PostgreSQL before processing.
+Laravel producers and recovery services dispatch small jobs containing one allowlisted actor name and one durable record ID. Python loads command/run/delivery options from PostgreSQL before processing. Actor Executions now carry nullable source links to the originating Command, Pipeline Run, or Webhook Delivery so recovery decisions are source-scoped.
 
 ### Retired worker-job model
 
@@ -61,56 +61,49 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 - operations history uses commands, pipeline runs/events/items, actor executions, webhook deliveries and audit logs;
 - old worker-job state is historical only and must not be reintroduced.
 
+## Confirmed Laravel runtime cutover
+
+- `laravel/routes/console.php` registers a one-minute due-check; `POLL_INTERVAL_SECONDS` still controls the actual reconciliation interval and `0` disables it.
+- Supervisor starts `laravel-queue-worker`, `laravel-scheduler`, and `laravel-durable-recovery`; it no longer starts `app.event_worker` or an Absurd recovery bridge.
+- Scheduled polls skip active or recently completed scheduled poll Commands and dispatch through `RunPythonActorJob::pollReconciliation`.
+- Laravel Recovery handles source-linked stale/retryable Actor Executions with bounded attempts, safe cancellation finalization, stale running Commands, Entity Approval sync, and fresh webhook dispatch suppression.
+- Python auto-commit creates a durable pending `review_commit` Command. Laravel Recovery, not an Absurd `.send(...)` call, owns dispatch.
+
 ## Confirmed transition debt
 
-The exclusive Laravel transport cutover is **not complete**. Absurd remains executable in the runtime and dependency graph:
+Absurd is no longer a supervised runtime owner, but cleanup remains:
 
-- `app/absurd_queue.py` and Absurd-decorated actor wrappers;
-- `app/event_worker.py` worker and recovery commands;
+- `app/absurd_queue.py`, `app/event_worker.py`, and Absurd-decorated compatibility wrappers;
 - `absurd-sdk` in Python dependency files and Docker installation;
-- `ABSURD_DATABASE_URL` configuration and examples;
-- vendored `laravel/database/sql/absurd.sql` and its install migration;
-- `event-queue-workers` and `event-recovery-bridge` supervisor programs;
-- Absurd-specific tests and documentation references.
+- `ABSURD_DATABASE_URL`, queue-prefix compatibility, vendored SQL, and the install migration;
+- Absurd-specific tests and historical documentation references.
 
-Because Laravel recovery and Absurd recovery paths coexist, dual-dispatch behavior has not been ruled out by this documentation-only review. Do not describe the runtime as Laravel-only until parity, exclusive ownership and cleanup are validated.
-
-Automatic 600-second polling has no Laravel scheduler definition in `laravel/routes/console.php` or application scheduling code, and Supervisor does not run Laravel `schedule:work`. The existing Absurd/event-worker path owns periodic behavior. A Laravel-owned schedule must be implemented and validated before the Absurd scheduler is removed.
-
-Laravel-native recovery is also incomplete. Current inspection did not find recovery handling for `sync_entity_approval`, stale running actor executions, `cancel_requested` finalization, or every failed/retrying actor path. Those cases must reach parity before Laravel recovery becomes the exclusive owner.
+The runtime still needs a clean-install/live-service proof after these changes. Full Reindex behavior, two CLI parity gaps, and finite actor/process timeout policy also remain open.
 
 ## Next safe milestones
 
-1. **Transport inventory and parity proof**
-   - Map every producer to one `RunPythonActorJob` factory and one allowlisted `app.actor_runner` command.
-   - Add or confirm focused dispatch, runner, state-transition and recovery tests for all eight flows.
-   - Complete full reindex behavior, CLI/UI backend parity, and the missing Laravel recovery cases identified above.
+1. **Runtime and recovery proof**
+   - Run focused Laravel/Python suites plus a clean-install Docker smoke with PostgreSQL.
+   - Verify scheduled poll due/disabled/overlap behavior, restart recovery, source-linked retries, cancellation, and no supervised Absurd process.
+   - Verify a durable record cannot be launched through both transports.
 
-2. **Laravel-owned reconciliation schedule**
-   - Add a single automatic 600-second Laravel schedule/command path.
-   - Prove it creates durable poll-reconciliation work and uses the same document start/attach service as webhooks.
-
-3. **Exclusive transport cutover**
-   - Disable/remove Absurd dispatch and recovery ownership.
-   - Prove pending/retrying work is redispatched only by Laravel-native recovery.
-   - Verify no durable record can be launched through both transports.
-
-4. **Absurd cleanup**
+2. **Absurd cleanup**
    - Remove SDK/config/schema/migration/supervisor/code/test remnants in a focused patch after parity.
    - Keep Python processing actors and the fixed Laravel-to-Python command boundary.
 
-5. **Runtime proof and documentation sweep**
+3. **Remaining parity and documentation sweep**
    - Run clean-install Docker, queue worker, webhook, polling, restart/recovery and operations UI smoke checks without Absurd.
    - Update remaining active user/developer/operations docs and generated graph artifacts.
 
-## Validation state for this status
+## Validation requirements for this milestone
 
-Historical test totals were removed because they were not revision-bound to the current implementation patch and could not support a current `PASS` claim.
+Required repository evidence:
 
-For this documentation refresh:
+- focused Python actor/auto-commit/source-link tests;
+- Laravel schedule, recovery, retry, cancellation, migration and actor-job tests;
+- Supervisor regression proof that no Absurd worker/recovery program starts;
+- Markdown links, Python/Laravel lint and full relevant CI checks.
 
-- repository transport inspection: `PASS_WITH_WARNINGS` — Laravel actor transport and retired `worker_jobs` state were confirmed; live runtime behavior was not exercised;
-- exclusive Laravel cutover: `FAIL` — executable Absurd runtime paths remain;
-- automatic Laravel-owned 600-second reconciliation: `FAIL` — static inspection confirms no Laravel schedule or `schedule:work` runtime, while periodic behavior remains on the superseded event-worker path.
+A clean-install Docker/PostgreSQL/Paperless smoke remains external runtime evidence. Until it is run, end-to-end scheduler timing, restart behavior and dual-dispatch exclusion remain `INCONCLUSIVE` at live-service level even when repository tests pass.
 
-Before an implementation milestone is marked complete, run the relevant checks from [`docs/agent/CHECKS.md`](../agent/CHECKS.md) and record current, revision-bound evidence under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
+Use the checks from [`docs/agent/CHECKS.md`](../agent/CHECKS.md) and record current, revision-bound results under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).

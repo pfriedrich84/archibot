@@ -204,6 +204,86 @@ def test_document_actor_schedules_retry_for_transient_failure(monkeypatch):
     assert events[-1][0] == ("actor.retry_scheduled",)
 
 
+def test_document_actor_cancellation_during_external_failure_suppresses_retry(monkeypatch):
+    retries = []
+    finishes = []
+    cancelled = []
+    items = []
+    cancellation_checks = 0
+
+    monkeypatch.setattr(
+        document,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=22, actor_name=kwargs["actor_name"], started_monotonic=0
+        ),
+    )
+    monkeypatch.setattr(
+        document,
+        "load_document_pipeline_run",
+        lambda pipeline_run_id: DocumentPipelineRunRecord(
+            id=pipeline_run_id,
+            status="queued",
+            paperless_document_id=42,
+            paperless_modified=None,
+            content_hash=None,
+            retry_count=0,
+            max_retries=5,
+        ),
+    )
+    monkeypatch.setattr(document, "mark_pipeline_run_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
+
+    def cancellation_requested(pipeline_run_id):
+        nonlocal cancellation_checks
+        cancellation_checks += 1
+        return cancellation_checks >= 3
+
+    monkeypatch.setattr(document, "is_pipeline_run_cancel_requested", cancellation_requested)
+    monkeypatch.setattr(
+        document,
+        "start_pipeline_item",
+        lambda **kwargs: PipelineItemRecord(id=9, status="running"),
+    )
+    monkeypatch.setattr(
+        document,
+        "finish_pipeline_item",
+        lambda *args, **kwargs: items.append((args, kwargs)),
+    )
+
+    class FakeCoroutine:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        document, "_fetch_paperless_document", lambda paperless_document_id: FakeCoroutine()
+    )
+    monkeypatch.setattr(
+        document, "run_async", lambda coroutine: (_ for _ in ()).throw(TimeoutError("slow"))
+    )
+    monkeypatch.setattr(
+        document,
+        "mark_pipeline_run_cancelled",
+        lambda pipeline_run_id: cancelled.append(pipeline_run_id),
+    )
+    monkeypatch.setattr(
+        document,
+        "mark_pipeline_run_retrying",
+        lambda *args, **kwargs: retries.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
+    )
+    monkeypatch.setattr(document, "publish_pipeline_event", lambda *args, **kwargs: None)
+
+    document._handle_document_pipeline_impl(123)
+
+    assert cancelled == [123]
+    assert retries == []
+    assert items[-1][1]["status"] == "skipped"
+    assert finishes[-1][1]["status"] == "cancelled"
+
+
 def test_document_actor_fails_when_run_is_missing(monkeypatch):
     finishes = []
     events = []
@@ -364,9 +444,9 @@ def test_document_actor_classification_uses_pgvector_context(monkeypatch):
     assert outcome.context_documents == [context_doc]
 
 
-def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
+def test_document_actor_auto_commit_creates_durable_commit_command(monkeypatch):
     events = []
-    queued = []
+    commands = []
     accepted = []
 
     monkeypatch.setattr(document.settings, "auto_commit_confidence", 80)
@@ -438,23 +518,22 @@ def test_document_actor_auto_commit_queues_commit_actor(monkeypatch):
         "mark_review_suggestion_auto_accepted",
         lambda suggestion_id, **kwargs: accepted.append((suggestion_id, kwargs)) or (True, []),
     )
-
-    import app.jobs.recovery as recovery
-
     monkeypatch.setattr(
-        recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id)
+        document,
+        "ensure_review_commit_command",
+        lambda suggestion_id: commands.append(suggestion_id) or 91,
     )
 
     document._handle_document_pipeline_impl(123)
 
     assert accepted == [(77, {"reason": "auto_commit_confidence", "confidence": 88})]
-    assert queued == [77]
-    assert any(event[0][0] == "document.auto_commit.queued" for event in events)
+    assert commands == [77]
+    assert any(event[0][0] == "document.auto_commit.requested" for event in events)
 
 
 def test_document_actor_auto_commit_skips_unresolved_entities(monkeypatch):
     events = []
-    queued = []
+    commands = []
 
     monkeypatch.setattr(document.settings, "auto_commit_confidence", 80)
     monkeypatch.setattr(
@@ -523,16 +602,15 @@ def test_document_actor_auto_commit_skips_unresolved_entities(monkeypatch):
         "mark_review_suggestion_auto_accepted",
         lambda suggestion_id, **kwargs: (False, ["correspondent"]),
     )
-
-    import app.jobs.recovery as recovery
-
     monkeypatch.setattr(
-        recovery, "enqueue_review_commit", lambda suggestion_id: queued.append(suggestion_id)
+        document,
+        "ensure_review_commit_command",
+        lambda suggestion_id: commands.append(suggestion_id) or 91,
     )
 
     document._handle_document_pipeline_impl(123)
 
-    assert queued == []
+    assert commands == []
     assert any(event[0][0] == "document.auto_commit.skipped" for event in events)
 
 

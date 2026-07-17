@@ -21,8 +21,14 @@ from app.actors.embedding import _build_initial_embedding_index_impl
 from app.actors.maintenance import _reconcile_inbox_documents_impl, _reindex_ocr_documents_impl
 from app.actors.review import _commit_review_suggestion_impl
 from app.actors.webhook import _handle_paperless_webhook_impl
+from app.jobs.actor_execution import (
+    finish_actor_execution,
+    schedule_actor_execution_retry,
+    start_actor_execution,
+)
 from app.jobs.commands import CommandRecord, load_command, mark_command_status
 from app.jobs.database import engine
+from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 
 log = structlog.get_logger(__name__)
 
@@ -112,7 +118,7 @@ def run_embedding_index_build_command(command_id: int) -> None:
         limit=limit,
     )
     try:
-        _build_initial_embedding_index_impl(limit=limit)
+        _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
     except Exception as exc:
         mark_command_status(command.id, "failed", _exception_summary(exc))
         log.warning(
@@ -155,7 +161,7 @@ def run_poll_reconciliation_command(command_id: int) -> None:
         force=force,
     )
     try:
-        _reconcile_inbox_documents_impl(limit=limit, force=force)
+        _reconcile_inbox_documents_impl(limit=limit, force=force, command_id=command.id)
     except Exception as exc:
         mark_command_status(command.id, "failed", _exception_summary(exc))
         raise
@@ -170,7 +176,7 @@ def run_reindex_command(command_id: int) -> None:
     mark_command_status(command.id, "running")
     log.info("reindex actor command started", command_id=command.id, limit=limit)
     try:
-        _build_initial_embedding_index_impl(limit=limit)
+        _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
     except Exception as exc:
         mark_command_status(command.id, "failed", _exception_summary(exc))
         raise
@@ -220,6 +226,11 @@ def run_sync_entity_approval_command(command_id: int) -> None:
             ) from exc
 
     entity_approval_id = command.payload.get("entity_approval_id")
+    actor_execution = start_actor_execution(
+        actor_name=SYNC_ENTITY_APPROVAL_COMMAND_TYPE,
+        command_id=command.id,
+        queue_name="laravel.database",
+    )
     mark_command_status(command.id, "running")
     log.info(
         "entity approval sync actor command started",
@@ -231,11 +242,34 @@ def run_sync_entity_approval_command(command_id: int) -> None:
         init_db()
         asyncio.run(cmd_sync_entity_approval(action, entity_type, name, paperless_id))
     except Exception as exc:
-        mark_command_status(command.id, "failed", _exception_summary(exc))
+        error = _exception_summary(exc)
+        retry_class = classify_exception(exc)
+        retryable = should_retry(retry_class, attempt=actor_execution.attempt, max_attempts=5)
+        mark_command_status(
+            command.id,
+            "failed" if retryable else "failed_permanent",
+            error,
+        )
         _mark_entity_approval_sync_status(entity_approval_id, "failed")
+        if retryable:
+            schedule_actor_execution_retry(
+                actor_execution,
+                retry_class=retry_class.value,
+                retry_reason=type(exc).__name__,
+                backoff_seconds=retry_backoff_seconds(actor_execution.attempt),
+                error_message=error,
+            )
+        else:
+            finish_actor_execution(
+                actor_execution,
+                status="failed_permanent",
+                error_type=retry_class.value,
+                error_message=error,
+            )
         raise
     mark_command_status(command.id, "succeeded")
     _mark_entity_approval_sync_status(entity_approval_id, "synced")
+    finish_actor_execution(actor_execution, status="succeeded")
     log.info("entity approval sync actor command succeeded", command_id=command.id)
 
 

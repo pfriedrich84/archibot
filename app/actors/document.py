@@ -41,6 +41,7 @@ from app.jobs.progress import (
 )
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.review_suggestions import (
+    ensure_review_commit_command,
     mark_review_suggestion_auto_accepted,
     store_review_suggestion,
 )
@@ -296,6 +297,25 @@ class DocumentPipelineCancelled(Exception):
     """Raised internally when cancellation is observed between phases."""
 
 
+def _finish_actor_if_cancelled(
+    pipeline_run_id: int,
+    actor_execution,
+    current_item: PipelineItemRecord | None = None,
+) -> bool:
+    try:
+        _ensure_not_cancelled(pipeline_run_id, current_item)
+    except DocumentPipelineCancelled as exc:
+        finish_actor_execution(
+            actor_execution,
+            status="cancelled",
+            error_type="cancelled",
+            error_message=str(exc),
+        )
+        return True
+
+    return False
+
+
 def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
     """Handle one document pipeline run through durable event-driven steps."""
     started = time.monotonic()
@@ -341,6 +361,7 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                 error_type="embedding_index_not_ready",
                 error="Waiting for embedding index to complete.",
             )
+            _ensure_not_cancelled(pipeline_run_id)
             finish_actor_execution(
                 actor_execution,
                 status="blocked",
@@ -362,6 +383,7 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             phase="paperless_fetch",
             message="Fetching document from Paperless.",
         )
+        _ensure_not_cancelled(pipeline_run_id)
         publish_pipeline_event(
             types.DOCUMENT_ACTOR_READY,
             pipeline_run_id=pipeline_run_id,
@@ -536,20 +558,25 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                 confidence=result.confidence,
             )
             if accepted:
-                from app.jobs.recovery import enqueue_review_commit
-
-                enqueue_review_commit(suggestion.id)
+                commit_command_id = ensure_review_commit_command(suggestion.id)
                 finish_pipeline_item(current_item.id, status="succeeded")
                 final_phase = "auto_commit"
-                final_message = "Document classification was queued for automatic commit."
+                final_message = (
+                    "Document classification created a durable automatic commit command."
+                )
                 publish_pipeline_event(
-                    types.DOCUMENT_AUTO_COMMIT_QUEUED,
+                    types.DOCUMENT_AUTO_COMMIT_REQUESTED,
                     pipeline_run_id=pipeline_run_id,
                     paperless_document_id=run.paperless_document_id,
-                    message="Review suggestion auto-accepted and commit actor queued.",
+                    message=(
+                        "Review suggestion auto-accepted; Laravel recovery will dispatch its "
+                        "durable commit command."
+                    ),
                     payload={
                         "review_suggestion_id": suggestion.id,
+                        "command_id": commit_command_id,
                         "confidence": result.confidence,
+                        "transport_owner": "laravel_recovery",
                     },
                 )
             else:
@@ -575,12 +602,14 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                 current_item=f"review_suggestion:{suggestion.id}",
             )
 
+        _ensure_not_cancelled(pipeline_run_id)
         mark_pipeline_run_status(
             pipeline_run_id,
             status="succeeded",
             phase=final_phase,
             message=final_message,
         )
+        _ensure_not_cancelled(pipeline_run_id)
         finish_actor_execution(actor_execution, status="succeeded")
     except DocumentPipelineCancelled as exc:
         finish_actor_execution(
@@ -591,9 +620,12 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
         )
         return
     except Exception as exc:
+        if _finish_actor_if_cancelled(pipeline_run_id, actor_execution, current_item):
+            return
         if current_item is not None:
             try:
                 finish_pipeline_item(current_item.id, status="failed", error=str(exc)[:1000])
+                current_item = None
             except Exception as item_exc:  # pragma: no cover - preserve original failure
                 log.warning("failed to mark pipeline item failed", error=str(item_exc))
         retry_class = classify_exception(exc)
@@ -610,6 +642,8 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                 phase="document_actor",
                 message=message,
             )
+            if _finish_actor_if_cancelled(pipeline_run_id, actor_execution):
+                return
             finish_actor_execution(
                 actor_execution,
                 status="retrying",
@@ -638,6 +672,8 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             error_type=retry_class.value,
             error=str(exc)[:1000],
         )
+        if _finish_actor_if_cancelled(pipeline_run_id, actor_execution):
+            return
         finish_actor_execution(
             actor_execution,
             status="failed",

@@ -14,12 +14,15 @@ class ActorExecutionHandle:
     id: int | None
     actor_name: str
     started_monotonic: float
+    attempt: int = 1
 
 
 @dataclass(frozen=True)
 class StaleActorExecutionRecord:
     id: int
     pipeline_run_id: int | None
+    command_id: int | None
+    webhook_delivery_id: int | None
     paperless_document_id: int | None
     actor_name: str
     attempt: int
@@ -42,6 +45,8 @@ def start_actor_execution(
     actor_name: str,
     paperless_document_id: int | None = None,
     pipeline_run_id: int | None = None,
+    command_id: int | None = None,
+    webhook_delivery_id: int | None = None,
     message_id: str | None = None,
     queue_name: str | None = None,
     max_attempts: int = 5,
@@ -49,8 +54,20 @@ def start_actor_execution(
     """Insert a durable running actor execution row and return its handle."""
     statement = sql_text(
         """
+        WITH next_attempt AS (
+            SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt
+            FROM actor_executions
+            WHERE actor_name = :actor_name
+              AND (
+                    (CAST(:pipeline_run_id AS BIGINT) IS NOT NULL AND pipeline_run_id = CAST(:pipeline_run_id AS BIGINT))
+                 OR (CAST(:command_id AS BIGINT) IS NOT NULL AND command_id = CAST(:command_id AS BIGINT))
+                 OR (CAST(:webhook_delivery_id AS BIGINT) IS NOT NULL AND webhook_delivery_id = CAST(:webhook_delivery_id AS BIGINT))
+              )
+        )
         INSERT INTO actor_executions (
             pipeline_run_id,
+            command_id,
+            webhook_delivery_id,
             paperless_document_id,
             actor_name,
             message_id,
@@ -63,22 +80,24 @@ def start_actor_execution(
             progress_updated_at,
             created_at,
             updated_at
-        ) VALUES (
+        ) SELECT
             :pipeline_run_id,
+            :command_id,
+            :webhook_delivery_id,
             :paperless_document_id,
             :actor_name,
             :message_id,
             :queue_name,
             'running',
-            1,
+            next_attempt.attempt,
             :max_attempts,
             :worker_id,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
-        )
-        RETURNING id
+        FROM next_attempt
+        RETURNING id, attempt
         """
     )
     with engine().begin() as connection:
@@ -87,6 +106,8 @@ def start_actor_execution(
                 statement,
                 {
                     "pipeline_run_id": pipeline_run_id,
+                    "command_id": command_id,
+                    "webhook_delivery_id": webhook_delivery_id,
                     "paperless_document_id": paperless_document_id,
                     "actor_name": actor_name,
                     "message_id": message_id,
@@ -103,6 +124,7 @@ def start_actor_execution(
         id=None if row is None else int(row["id"]),
         actor_name=actor_name,
         started_monotonic=time.monotonic(),
+        attempt=1 if row is None else int(row["attempt"]),
     )
 
 
@@ -199,6 +221,8 @@ def list_stale_running_actor_executions(
         """
         SELECT id,
                pipeline_run_id,
+               command_id,
+               webhook_delivery_id,
                paperless_document_id,
                actor_name,
                attempt,
@@ -229,6 +253,10 @@ def list_stale_running_actor_executions(
                 pipeline_run_id=None
                 if row["pipeline_run_id"] is None
                 else int(row["pipeline_run_id"]),
+                command_id=None if row["command_id"] is None else int(row["command_id"]),
+                webhook_delivery_id=None
+                if row["webhook_delivery_id"] is None
+                else int(row["webhook_delivery_id"]),
                 paperless_document_id=None
                 if row["paperless_document_id"] is None
                 else int(row["paperless_document_id"]),

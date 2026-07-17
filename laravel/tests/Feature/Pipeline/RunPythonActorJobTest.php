@@ -251,6 +251,54 @@ PHP);
         }
     }
 
+    public function test_duplicate_queued_jobs_claim_command_only_once(): void
+    {
+        $capturePath = tempnam(storage_path('framework/testing'), 'archibot-actor-args-');
+        $capturePathLiteral = var_export($capturePath, true);
+        $script = $this->writeActorStub(<<<PHP
+file_put_contents({$capturePathLiteral}, "run\n", FILE_APPEND);
+PHP);
+        Config::set('archibot.python_binary', $script);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => [],
+        ]);
+        $first = RunPythonActorJob::reindex($command->id);
+        $duplicate = RunPythonActorJob::reindex($command->id);
+
+        $first->handle(app(PythonActorRunner::class));
+        $duplicate->handle(app(PythonActorRunner::class));
+
+        $this->assertSame("run\n", file_get_contents($capturePath));
+        $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
+        @unlink($capturePath);
+        @unlink($script);
+    }
+
+    public function test_queued_job_does_not_replay_terminal_command(): void
+    {
+        $capturePath = tempnam(storage_path('framework/testing'), 'archibot-actor-args-');
+        $capturePathLiteral = var_export($capturePath, true);
+        $script = $this->writeActorStub(<<<PHP
+file_put_contents({$capturePathLiteral}, json_encode(\$argv));
+PHP);
+        Config::set('archibot.python_binary', $script);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_REVIEW_COMMIT,
+            'status' => Command::STATUS_SUCCEEDED,
+            'payload' => ['review_suggestion_id' => 88],
+            'finished_at' => now(),
+        ]);
+
+        RunPythonActorJob::reviewCommit($command->id)->handle(app(PythonActorRunner::class));
+
+        $this->assertSame('', (string) file_get_contents($capturePath));
+        $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
+        @unlink($capturePath);
+        @unlink($script);
+    }
+
     public function test_document_pipeline_actor_job_marks_run_failed_when_process_fails_before_python_state_update(): void
     {
         $script = $this->writeActorStub(<<<'PHP'

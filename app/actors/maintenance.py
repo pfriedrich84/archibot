@@ -40,11 +40,17 @@ def _modified_value(document: object) -> str | None:
     return None if modified is None else str(modified)
 
 
-def _reconcile_inbox_documents_impl(limit: int | None = None, *, force: bool = False) -> None:
+def _reconcile_inbox_documents_impl(
+    limit: int | None = None, *, force: bool = False, command_id: int | None = None
+) -> None:
     """Poll Paperless inbox as reconciliation and use the shared pipeline start."""
     started = time.monotonic()
     actor_name = "reconcile_inbox_documents"
-    actor_execution = start_actor_execution(actor_name=actor_name, queue_name=queue_name("io"))
+    actor_execution = start_actor_execution(
+        actor_name=actor_name,
+        command_id=command_id,
+        queue_name=queue_name("io"),
+    )
     log.info(
         "poll reconciliation actor started",
         event_type=types.ACTOR_STARTED,
@@ -163,7 +169,7 @@ def _reconcile_inbox_documents_impl(limit: int | None = None, *, force: bool = F
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
         retry_class = classify_exception(exc)
-        attempt = 1
+        attempt = actor_execution.attempt
         max_attempts = 5
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)
@@ -211,7 +217,9 @@ def _reindex_ocr_documents_impl(
     started = time.monotonic()
     actor_name = "reindex_ocr"
     actor_execution = start_actor_execution(
-        actor_name=actor_name, queue_name=queue_name("blocking")
+        actor_name=actor_name,
+        command_id=command_id,
+        queue_name=queue_name("blocking"),
     )
     mode = effective_ocr_mode()
     log.info(
@@ -284,7 +292,7 @@ def _reindex_ocr_documents_impl(
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
         retry_class = classify_exception(exc)
-        attempt = 1
+        attempt = actor_execution.attempt
         max_attempts = 5
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)
