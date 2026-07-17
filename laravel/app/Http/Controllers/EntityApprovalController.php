@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EntityApproval;
@@ -46,11 +45,10 @@ class EntityApprovalController extends Controller
 
         abort_unless($entityApproval->status === EntityApproval::STATUS_PENDING, 409);
 
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        $client = new PaperlessClient($paperlessUrl);
+        $client = new PaperlessClient;
         $paperlessId = match ($entityApproval->type) {
             EntityApproval::TYPE_TAG => $client->createTag($token, $entityApproval->name),
             EntityApproval::TYPE_CORRESPONDENT => $client->createCorrespondent($token, $entityApproval->name),

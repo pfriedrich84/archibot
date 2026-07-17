@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\OcrReview;
 use App\Services\Paperless\PaperlessClient;
@@ -138,12 +137,11 @@ class OcrReviewController extends Controller
 
     private function paperless(Request $request): PaperlessClient
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
 
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        return app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+        return app(PaperlessClient::class);
     }
 
     private function authorizedLocator(Request $request, int $ocrReviewId, bool $change): OcrReview

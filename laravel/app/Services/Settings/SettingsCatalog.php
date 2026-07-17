@@ -3,6 +3,7 @@
 namespace App\Services\Settings;
 
 use App\Models\AppSetting;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -43,9 +44,11 @@ class SettingsCatalog
                     'has_value' => $stored !== null && $stored->value !== null && $stored->value !== '',
                     'value' => $sensitive
                         ? ''
-                        : (($definition['read_only'] ?? false)
-                            ? (string) ($definition['default'] ?? '')
-                            : AppSetting::getValue($key, (string) ($definition['default'] ?? ''))),
+                        : ($key === 'paperless.url'
+                            ? app(CanonicalPaperlessOrigin::class)->url()
+                            : (($definition['read_only'] ?? false)
+                                ? (string) ($definition['default'] ?? '')
+                                : AppSetting::getValue($key, (string) ($definition['default'] ?? '')))),
                     'help' => $definition['help'] ?? null,
                     'min' => $definition['min'] ?? null,
                     'max' => $definition['max'] ?? null,

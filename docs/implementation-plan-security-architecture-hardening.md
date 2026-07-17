@@ -2,7 +2,7 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG), 0.2 (confidence auto-commit) and 0.3 (local-only OCR with live Paperless permissions) are implemented; remaining milestones are pending.
+Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG), 0.2 (confidence auto-commit), 0.3 (local-only OCR with live Paperless permissions), 0.4 (webhook authentication), and 0.6 (first-run setup hardening) are implemented; remaining milestones are pending.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
@@ -166,6 +166,8 @@ Acceptance:
 
 ### 0.6 Harden first-run setup
 
+Status: implemented. Deployment `PAPERLESS_URL` is the immutable bootstrap origin across Laravel and managed Python runtime configuration; setup requires Paperless `is_superuser`, defers AI-provider editing until after claim, bounds public inputs and decoded responses (with a separate finite preview limit), and enforces the request/network controls below. Regression coverage maps to every acceptance item.
+
 Scope:
 
 - require the canonical Paperless origin from deployment configuration and treat it as immutable during bootstrap;
@@ -181,11 +183,12 @@ Scope:
 Acceptance:
 
 - tests prove submitted, stored-database and admin-settings Paperless URL overrides are ignored/rejected across setup, login and Python export;
-- staff-only users cannot complete setup;
+- staff-only users cannot complete setup; explicit `is_superuser: false` is authoritative, while a missing field exhausts documented compatibility fallbacks and then fails closed;
 - redirect chains cannot escape the pinned origin;
-- repeated authentication/model discovery is throttled;
+- response sinks bound actual retained/decoded bytes for compressed and chunked responses, verified through Guzzle against raw gzip and chunk-framed loopback responses, while document previews use a separate, finite preview bound;
+- repeated authentication/model discovery is throttled, and public setup/tag credential and input lengths are bounded before network access;
 - setup still completes against the configured Paperless URL;
-- documentation states that deployment configuration owns the initial Paperless destination.
+- documentation states that deployment configuration owns the initial Paperless destination and documents the response/input limits.
 
 Residual accepted risk: this plan does not add a separate bootstrap token. The pinned Paperless destination and live superuser verification are the bootstrap trust anchors.
 

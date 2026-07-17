@@ -22,27 +22,13 @@ Paperless-NGX's documented/frontend-backed profile source is `GET /api/ui_settin
 }
 ```
 
-`currentUser()` therefore checks `/api/ui_settings/` first and parses admin flags from that payload. Upstream Paperless-NGX currently emits Django-style `user.is_staff` and `user.is_superuser` there; ArchiBot also accepts `user.is_admin` for deployments or adapters that expose that name. Older experimental fallbacks remain in place: `/api/users/me/`, then `/api/users/?username=...` if `/users/me/` is unavailable or omits admin flags.
+`currentUser()` checks `/api/ui_settings/` first. An explicit boolean `is_superuser` value there is authoritative, including `false`. ArchiBot consults the compatibility endpoint `/api/users/me/` only after a successful `ui_settings` response that omits the field or an explicit `404 Not Found`. Authentication/authorization failures, rate limits, oversized or malformed responses, connection/timeout failures, and server errors fail closed without profile fallback. An explicit `is_superuser` value from `/api/users/me/` is likewise authoritative. `/api/users/?username=...` is used only when `/api/users/me/` returns `404` or successfully omits the field. If every available profile successfully omits `is_superuser`, ArchiBot fails closed with non-admin status.
 
-## Admin detection helper
+## Superuser detection
 
-Admin/superuser detection is centralized in:
+ArchiBot derives its local `is_admin` value exclusively from Paperless's documented boolean `is_superuser` field. `is_staff`, `is_admin`, `admin`, group membership, broad UI-settings permissions, and similarly named adapter fields do not grant ArchiBot administration and cannot claim a new instance. The parsing is centralized in `App\Services\Paperless\PaperlessUser::fromPayload()`.
 
-```php
-App\Services\Paperless\PaperlessUser::isAdminPayload(array $payload): bool
-```
-
-Reuse this helper for future Paperless profile payloads instead of duplicating field checks. It currently accepts these common Paperless/Django-style flags when truthy:
-
-- `is_superuser`
-- `is_staff`
-- `is_admin`
-- `admin`
-- `superuser`
-
-As a fallback, permission arrays named `permissions` or `user_permissions` are treated as administrative when they contain Paperless/Django permission strings such as `auth.*` or `paperless.*`.
-
-Setup still requires an admin/superuser profile. Normal login does not require admin; the detected value only controls ArchiBot admin UI access.
+Setup requires a live Paperless profile with `is_superuser: true` from the deployment-pinned Paperless origin. Normal login does not require superuser status; the documented field only controls ArchiBot admin UI access.
 
 ## Review suggestion visibility and action permission checks
 

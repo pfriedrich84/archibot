@@ -10,6 +10,7 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\SetupState;
 use App\Models\WebhookDelivery;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use App\Services\Paperless\PaperlessClient;
 use App\Support\ActiveOperationsSnapshot;
 use App\Support\EmbeddingIndexSnapshot;
@@ -21,7 +22,7 @@ class DashboardController extends Controller
 {
     public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots, ActiveOperationsSnapshot $activeOperations): Response
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
+        $paperlessUrl = app(CanonicalPaperlessOrigin::class)->url();
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $paperlessAvailable = null;
         $paperlessError = null;
@@ -32,7 +33,7 @@ class DashboardController extends Controller
 
         if ($paperlessUrl && $request->user()->paperless_token) {
             try {
-                $client = app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+                $client = app(PaperlessClient::class);
                 $paperlessAvailable = $client->ping($request->user()->paperless_token);
 
                 if ($paperlessAvailable && $inboxTagId > 0) {

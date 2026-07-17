@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AppSetting;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
@@ -57,7 +57,13 @@ class HealthCheckController extends Controller
 
     private function paperlessConfigCheck(): string
     {
-        return filled(AppSetting::getValue('paperless.url')) ? 'ok' : 'missing';
+        try {
+            app(CanonicalPaperlessOrigin::class)->url();
+
+            return 'ok';
+        } catch (Throwable) {
+            return 'missing';
+        }
     }
 
     private function pythonRuntimeCheck(): string

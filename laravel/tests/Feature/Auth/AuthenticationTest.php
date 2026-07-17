@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\AppSetting;
 use App\Models\SetupState;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,6 +24,31 @@ class AuthenticationTest extends TestCase
                 ->component('auth/Login')
                 ->where('paperlessUrl', 'https://paperless.test')
             );
+    }
+
+    public function test_login_ignores_stored_paperless_url_override(): void
+    {
+        $this->markSetupComplete();
+        AppSetting::put('paperless.url', 'https://stored-override.test');
+        Http::fake([
+            'https://paperless.test/api/token/' => Http::response(['token' => 'fresh-paperless-token']),
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'user' => [
+                    'id' => 42,
+                    'username' => 'paperless-user',
+                    'is_superuser' => false,
+                ],
+            ]),
+            'https://paperless.test/api/users/*' => Http::response(['results' => []]),
+        ]);
+
+        $this->post(route('login.store'), [
+            'username' => 'paperless-user',
+            'password' => 'paperless-password',
+        ])->assertRedirect(route('dashboard', absolute: false));
+
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://paperless.test/'));
+        Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://stored-override.test/'));
     }
 
     public function test_users_authenticate_against_paperless_using_the_login_screen(): void

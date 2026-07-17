@@ -24,7 +24,7 @@ oder selbst gebaut.
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
-# → Docker-/AI-Provider-Werte eintragen; Paperless-Verbindung wird im Setup-Wizard konfiguriert
+# → PAPERLESS_URL auf den vertrauten Paperless-Origin setzen; weitere Provider-Werte optional
 
 # 2. Starten (zieht automatisch ghcr.io/pfriedrich84/archibot:latest)
 docker compose up -d
@@ -47,7 +47,7 @@ cd archibot
 
 # 2. .env anlegen
 cp .env.example .env
-# → Docker-/AI-Provider-Werte eintragen; Paperless-Verbindung wird im Setup-Wizard konfiguriert
+# → PAPERLESS_URL auf den vertrauten Paperless-Origin setzen; weitere Provider-Werte optional
 
 # 3. Bauen und starten
 docker compose up -d --build
@@ -61,10 +61,10 @@ open http://localhost:8088
 Beim ersten Start wird automatisch der Laravel Setup-Wizard angezeigt (`/setup`).
 Er fuehrt durch:
 
-1. **Paperless-Verbindung** — URL eintragen und mit Paperless-Benutzername/-Passwort eines Superusers verifizieren
-2. **Direkte Anmeldung** — ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt; danach erfolgt die GUI-Anmeldung mit Paperless-Zugangsdaten
-3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; Wizard-Werte gewinnen bei Konflikten
-4. **Admin-Settings** — AI-Provider/Ollama, Inbox-Tag, Klassifikation, Review, Worker, MCP und Audit-Retention werden in `/admin/settings` gepflegt
+1. **Paperless-Verbindung** — den aus Deployment-`PAPERLESS_URL` gepinnten Origin read-only pruefen und mit Benutzername/Passwort eines echten Paperless-Superusers verifizieren; Setup kann kein anderes Ziel waehlen
+2. **Tags und direkte Anmeldung** — Inbox-, optionales Processed- und OCR-Requested-Tag anhand lesbarer Namen waehlen; ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt
+3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; ein alter `paperless.url`-Wert bleibt nur Migrationsdatum und kann den Deployment-Origin nicht ueberschreiben
+4. **Post-Claim Admin-Settings** — nach erfolgreichem Claim wird direkt `/admin/settings/ai-provider` geoeffnet. Dort bleiben AI-Provider-Endpunkte und Discovery sowie Klassifikations-, Embedding-, OCR-, Review-, Worker-, MCP-, GUI- und Audit-Einstellungen editierbar; der Paperless-Origin bleibt read-only
 5. **Maintenance und Operations Log** — Poll/Reindex/Einzeldokument-Verarbeitung starten ueber Laravel Maintenance; `/operations-log` zeigt durable Commands, Pipeline Runs, Actor Executions, Webhooks und Audit-Logs.
 
 Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung und MCP aktiv.

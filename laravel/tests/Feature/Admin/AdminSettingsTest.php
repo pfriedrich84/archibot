@@ -83,13 +83,12 @@ class AdminSettingsTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
 
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
-            'paperless_url' => 'https://paperless-updated.test',
             'embedding_hybrid_search_weight' => '0.7',
             'audit_retention_days' => 14,
         ]);
 
         $response->assertRedirect();
-        $this->assertSame('https://paperless-updated.test', AppSetting::getValue('paperless.url'));
+        $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
         $this->assertSame('0.7', AppSetting::getValue('embedding.hybrid_search_weight'));
         $this->assertSame('14', AppSetting::getValue('audit.retention_days'));
         $this->assertDatabaseHas('audit_logs', [
@@ -97,6 +96,24 @@ class AdminSettingsTest extends TestCase
             'event' => 'admin_settings.updated',
             'target_type' => 'app_settings',
         ]);
+    }
+
+    public function test_admin_paperless_url_override_is_rejected_and_stored_value_is_unchanged(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        AppSetting::put('paperless.url', 'https://legacy-stored.test');
+
+        $this->actingAs($admin)->patch(route('admin.settings.update'), [
+            'paperless_url' => 'https://attacker.test',
+        ])->assertSessionHasErrors('paperless_url');
+
+        $this->assertSame('https://legacy-stored.test', AppSetting::getValue('paperless.url'));
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('groups.0.settings.0.value', 'https://paperless.test')
+                ->where('groups.0.settings.0.read_only', true)
+            );
     }
 
     public function test_admin_can_clear_boolean_settings_when_checkbox_is_unchecked(): void
@@ -149,7 +166,6 @@ class AdminSettingsTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         AppSetting::put('classification.auto_commit_confidence', '100');
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
-            'paperless_url' => 'https://paperless.test',
             'gui_base_url' => 'https://archibot.example',
             'classification_auto_commit_confidence' => '95',
             'classification_enable_judge_verification' => '1',
@@ -258,6 +274,39 @@ class AdminSettingsTest extends TestCase
             ->assertJsonPath('items.1', 'openai/gpt-4o-mini');
 
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-token'));
+    }
+
+    public function test_ai_model_discovery_does_not_follow_redirects_to_another_origin(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        Http::fake([
+            'http://ollama.test:11434/api/tags' => Http::response('', 302, [
+                'Location' => 'https://attacker.test/models',
+            ]),
+            'https://attacker.test/*' => Http::response(['models' => [['name' => 'escaped']]]),
+        ]);
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
+            'llm_provider' => 'ollama',
+            'ollama_url' => 'http://ollama.test:11434',
+        ])->assertUnprocessable();
+
+        Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://attacker.test/'));
+    }
+
+    public function test_repeated_ai_model_discovery_attempts_are_throttled(): void
+    {
+        config(['archibot.model_discovery_rate_limit_per_minute' => 2]);
+        $admin = User::factory()->create(['is_admin' => true]);
+        Http::fake(['*ollama.test:11434/api/tags' => Http::response([], 503)]);
+        $payload = [
+            'llm_provider' => 'ollama',
+            'ollama_url' => 'http://ollama.test:11434',
+        ];
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertUnprocessable();
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertUnprocessable();
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertTooManyRequests();
     }
 
     public function test_admin_can_update_and_reset_active_prompt_overrides(): void

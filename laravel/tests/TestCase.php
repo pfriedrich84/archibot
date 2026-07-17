@@ -20,6 +20,7 @@ abstract class TestCase extends BaseTestCase
         $runtimeConfigPath = storage_path('framework/testing/config.env');
         @unlink($runtimeConfigPath);
         config([
+            'archibot.paperless_url' => 'https://paperless.test',
             'archibot.testing_setup_complete' => $this->completeSetupByDefault,
             'archibot_settings.import_paths' => [$runtimeConfigPath],
         ]);

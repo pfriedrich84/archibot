@@ -2,6 +2,7 @@
 
 namespace App\Services\Ollama;
 
+use App\Services\Http\ResponseSizeGuard;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -19,9 +20,17 @@ class OllamaClient
     public function models(): array
     {
         $provider = strtolower(trim($this->provider));
-        $request = Http::baseUrl(rtrim($this->baseUrl, '/'))
+        $baseUrl = $this->validatedBaseUrl();
+        $maxBytes = 2097152;
+        $request = Http::baseUrl($baseUrl)
             ->acceptJson()
-            ->timeout(10);
+            ->connectTimeout(5)
+            ->timeout(10)
+            ->withoutRedirecting()
+            ->withOptions([
+                'decode_content' => true,
+                'sink' => new ResponseSizeGuard($maxBytes, 'AI provider'),
+            ]);
 
         if ($provider === 'openai_compatible' && filled($this->apiKey)) {
             $request = $request->withToken($this->apiKey);
@@ -51,5 +60,24 @@ class OllamaClient
             ->sort(SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
+    }
+
+    private function validatedBaseUrl(): string
+    {
+        $url = rtrim(trim($this->baseUrl), '/');
+        $parts = parse_url($url);
+
+        if (! is_array($parts)
+            || ! isset($parts['scheme'], $parts['host'])
+            || ! in_array(strtolower($parts['scheme']), ['http', 'https'], true)
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
+        ) {
+            throw new RuntimeException('AI provider URL must be http(s) without credentials, query, or fragment.');
+        }
+
+        return $url;
     }
 }

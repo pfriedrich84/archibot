@@ -83,7 +83,8 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
-# → optional Werte eintragen; alternativ im Setup-Wizard konfigurieren
+# → PAPERLESS_URL zwingend auf den vertrauten Paperless-Origin setzen;
+#   der Setup-Wizard zeigt dieses Ziel read-only und verifiziert einen Superuser
 # → für OpenAI-kompatible Provider: LLM_PROVIDER=openai_compatible,
 #   OPENAI_BASE_URL/OLLAMA_URL inklusive /v1 setzen und Modell-Aliasse eintragen
 

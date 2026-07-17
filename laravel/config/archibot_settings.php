@@ -13,7 +13,8 @@ return [
             'type' => 'url',
             'default' => '',
             'required' => true,
-            'help' => 'Single global Paperless-NGX server for this ArchiBot instance.',
+            'read_only' => true,
+            'help' => 'Pinned by the deployment PAPERLESS_URL. Stored or submitted overrides are not used.',
         ],
         'paperless.inbox_tag_id' => [
             'legacy' => 'paperless_inbox_tag_id',

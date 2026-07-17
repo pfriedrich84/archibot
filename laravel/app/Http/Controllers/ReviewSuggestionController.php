@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineEvent;
@@ -231,12 +230,11 @@ class ReviewSuggestionController extends Controller
     public function preview(Request $request, ReviewSuggestion $reviewSuggestion)
     {
         $this->assertCanViewSuggestion($request, $reviewSuggestion);
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
 
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        $client = new PaperlessClient($paperlessUrl);
+        $client = new PaperlessClient;
 
         try {
             $preview = $client->documentPreview($token, $reviewSuggestion->paperless_document_id);
@@ -367,14 +365,13 @@ class ReviewSuggestionController extends Controller
      */
     private function entityOptions(Request $request): array
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()?->paperless_token;
 
-        if (! $paperlessUrl || ! $token) {
+        if (! $token) {
             return ['correspondents' => [], 'documentTypes' => [], 'storagePaths' => []];
         }
 
-        $client = new PaperlessClient($paperlessUrl);
+        $client = new PaperlessClient;
 
         try {
             return [

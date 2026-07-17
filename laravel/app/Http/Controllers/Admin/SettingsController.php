@@ -97,6 +97,12 @@ class SettingsController extends Controller
     {
         $this->authorizeAdmin($request);
 
+        if ($request->has('paperless_url')) {
+            throw ValidationException::withMessages([
+                'paperless_url' => 'PAPERLESS_URL is deployment-managed and cannot be changed in admin settings.',
+            ]);
+        }
+
         $definitions = $catalog->definitions();
         $isWritable = fn (string $key): bool => array_key_exists($key, $definitions)
             && ! (bool) ($definitions[$key]['read_only'] ?? false);
@@ -308,15 +314,14 @@ class SettingsController extends Controller
     /** @return array<int, array{id: int, label: string}> */
     private function paperlessTagOptions(Request $request): array
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()?->paperless_token;
 
-        if (! $paperlessUrl || ! $token) {
+        if (! $token) {
             return [];
         }
 
         try {
-            return collect(app(PaperlessClient::class, ['baseUrl' => $paperlessUrl])->tags($token))
+            return collect(app(PaperlessClient::class)->tags($token))
                 ->map(fn (array $tag): array => [
                     'id' => (int) $tag['id'],
                     'label' => sprintf('%s (#%s)', $tag['name'] ?? 'Unnamed tag', $tag['id']),

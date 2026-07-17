@@ -16,6 +16,12 @@ class EmbeddingsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
+    }
+
     public function test_embeddings_page_uses_pgvector_embedding_status_not_python_database(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.example');

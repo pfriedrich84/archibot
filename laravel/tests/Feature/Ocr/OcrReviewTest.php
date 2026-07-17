@@ -21,6 +21,7 @@ class OcrReviewTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::preventStrayRequests();
     }

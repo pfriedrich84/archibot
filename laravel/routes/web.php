@@ -29,9 +29,12 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
-    Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])->name('setup.paperless-tags');
-    Route::post('/setup/ollama-models', [SetupController::class, 'ollamaModels'])->name('setup.ollama-models');
-    Route::post('/setup', [SetupController::class, 'store'])->name('setup.store');
+    Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])
+        ->middleware('throttle:setup-paperless')
+        ->name('setup.paperless-tags');
+    Route::post('/setup', [SetupController::class, 'store'])
+        ->middleware('throttle:setup-paperless')
+        ->name('setup.store');
 
     Route::middleware('guest')->group(function () {
         Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -101,7 +104,9 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
 
         Route::get('admin/settings/{section?}', [SettingsController::class, 'edit'])->name('admin.settings.edit');
-        Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])->name('admin.settings.ai-models');
+        Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])
+            ->middleware('throttle:model-discovery')
+            ->name('admin.settings.ai-models');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
         Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');

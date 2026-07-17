@@ -14,18 +14,27 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 3. Legacy `{DATA_DIR}/config.env` — nur fuer den einmaligen Import beim Setup
 4. Defaults — in Laravel/Python hinterlegt
 
+Ausnahme: `PAPERLESS_URL` ist ein Deployment-Trust-Anchor und hat immer Vorrang vor PostgreSQL und Legacy-Dateien. Setup, Tag-Laden, Login, Admin-Ansicht, alle Laravel-Paperless-Clients und der Python-Runtime-Export verwenden exakt diesen normalisierten Origin. Die Setup-/Admin-UI zeigt ihn read-only; gesendete Overrides werden abgelehnt.
+
 ## Paperless-NGX
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `PAPERLESS_URL` | — | Basis-URL, z.B. `http://paperless:8000` |
+| `PAPERLESS_URL` | — | Zwingender, deployment-eigener Origin, z.B. `http://paperless:8000`. Nur `http(s)://host[:port]`, ohne Credentials, Pfad, Query oder Fragment. Aenderungen erfordern ein bewusstes Deployment-Update und Neustart. |
+| `PAPERLESS_HTTP_TIMEOUT_SECONDS` | `10` | Laravel Connect-/Request-Timeout fuer Paperless-Aufrufe; Connect-Timeout ist maximal 5 Sekunden. |
+| `PAPERLESS_HTTP_MAX_RESPONSE_BYTES` | `2097152` | Maximale tatsaechlich gepufferte/dekodierte Paperless-JSON-Responsegroesse fuer Laravel-Aufrufe; gilt auch ohne `Content-Length` sowie fuer komprimierte/chunked Antworten. |
+| `PAPERLESS_HTTP_MAX_PREVIEW_BYTES` | `52428800` | Separates Limit fuer tatsaechlich gepufferte/dekodierte Dokumentvorschauen. Das groessere, weiterhin endliche Limit verhindert, dass regulaere PDF-Previews am kleineren JSON-Limit scheitern. |
+| `SETUP_RATE_LIMIT_PER_MINUTE` | `5` | Gemeinsames Limit pro Benutzername/IP fuer Setup-Abschluss und Tag-Verifikation; auch ungueltige Versuche zaehlen. |
+| `MODEL_DISCOVERY_RATE_LIMIT_PER_MINUTE` | `10` | Limit pro angemeldetem Admin fuer AI-Modell-Discovery. |
 | `PAPERLESS_INBOX_TAG_ID` | — | ID des Tags `Posteingang`; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag-ID, die nach Commit gesetzt wird; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |
 
 ## AI Provider / Ollama (allgemein)
 
-ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werden Ollama-kompatible Provider und OpenAI-kompatible `/v1`-APIs. Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
+ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werden Ollama-kompatible Provider und OpenAI-kompatible `/v1`-APIs. Die oeffentlichen Setup- und Tag-Verifikationsfelder sind serverseitig begrenzt (Paperless-URL 2048, Benutzername 150, Passwort/Webhook-Secret 1024 und Reset-Token 255 Zeichen; Tag-IDs muessen positive 32-Bit-Integer sein).
+
+Editierbare AI-Provider-Endpunkte und Modell-Discovery werden erst nach abgeschlossenem Setup in der authentifizierten Admin-Settings-UI angeboten; der oeffentliche Bootstrap nimmt keine frei waehlbaren Provider-Ziele an. Manuelle Modelleingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
 
 Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. ein lokaler OpenAI-kompatibler Embedding-Endpoint plus ein separater OpenAI-kompatibler Judge-Endpoint. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
 
@@ -205,6 +214,12 @@ Diese Werte sind bewusst runtime-/deployment-only und werden nicht ueber `/admin
 | `DATA_DIR` | `/data` | Persistentes Datenverzeichnis (DB, Config) |
 | `LOG_LEVEL` | `INFO` | Log-Level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
+## Upgrade bestehender Installationen: gepinnter Paperless-Origin
+
+Vor dem Upgrade muss `PAPERLESS_URL` im Deployment explizit auf den bereits vertrauten Paperless-Origin gesetzt werden. Fehlt der Wert oder enthaelt er Credentials, Pfad, Query oder Fragment, schlagen Setup und Paperless-Verbindungen geschlossen fehl; ArchiBot faellt nicht auf einen gespeicherten Wert zurueck.
+
+Ein bestehender PostgreSQL-Wert `paperless.url` oder `PAPERLESS_URL` in `/data/config.env` wird als Legacy-Migrationsdatum beibehalten, aber nicht mehr als Ziel verwendet. Die Admin-UI zeigt den Deployment-Origin read-only. Jeder verwaltete Python-Runtime-Export ersetzt einen alten Datei-/DB-/Call-Site-Wert durch den Deployment-Origin. Bei einem bewusst geaenderten Paperless-Ziel: Paperless-Workflows pausieren, `PAPERLESS_URL` im Deployment aendern, Container neu starten, Erreichbarkeit und Superuser-Login pruefen und erst dann Workflows fortsetzen. Ein unbeabsichtigter Zielwechsel sollte durch Zuruecksetzen der Deployment-Variable und Neustart zurueckgerollt werden, nicht durch Datenbank-Edits.
+
 ## Settings-UI
 
-Admin-Settings liegen in der Laravel-Oberflaeche unter `/admin/settings`; per-user MCP Tokens unter `/settings/mcp-tokens`. Secrets werden maskiert und write-only gespeichert. Aenderungen werden in der Laravel-Datenbank auditiert.
+Admin-Settings liegen in der Laravel-Oberflaeche unter `/admin/settings`; per-user MCP Tokens unter `/settings/mcp-tokens`. Secrets werden maskiert und write-only gespeichert. Aenderungen werden in der Laravel-Datenbank auditiert. `paperless.url` ist die read-only Ausnahme und wird vom Deployment bestimmt.

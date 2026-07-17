@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\SetupState;
 use App\Models\User;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessUnavailableException;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -61,14 +61,12 @@ class FortifyServiceProvider extends ServiceProvider
 
             $username = (string) $request->input('username');
             $password = (string) $request->input('password');
-            $paperlessUrl = AppSetting::getValue('paperless.url');
-
-            if ($username === '' || $password === '' || ! $paperlessUrl) {
+            if ($username === '' || $password === '') {
                 return null;
             }
 
             try {
-                $client = new PaperlessClient($paperlessUrl);
+                $client = new PaperlessClient;
                 $token = $client->createToken($username, $password);
                 $paperlessUser = $client->currentUser($token, $username);
             } catch (PaperlessUnavailableException) {
@@ -87,7 +85,7 @@ class FortifyServiceProvider extends ServiceProvider
                     'name' => $paperlessUser->displayName,
                     'email' => $email,
                     'paperless_user_id' => $paperlessUser->id,
-                    'is_admin' => $paperlessUser->isAdmin,
+                    'is_admin' => $paperlessUser->isSuperuser,
                     'paperless_token' => $token,
                     'paperless_profile_refreshed_at' => now(),
                     'password' => Hash::make(Str::random(64)),
@@ -103,7 +101,7 @@ class FortifyServiceProvider extends ServiceProvider
                 'metadata' => [
                     'paperless_username' => $paperlessUser->username,
                     'paperless_user_id' => $paperlessUser->id,
-                    'is_admin' => $paperlessUser->isAdmin,
+                    'is_admin' => $paperlessUser->isSuperuser,
                 ],
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
@@ -121,7 +119,7 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => false,
             'canRegister' => false,
-            'paperlessUrl' => AppSetting::getValue('paperless.url', ''),
+            'paperlessUrl' => app(CanonicalPaperlessOrigin::class)->url(),
             'status' => $request->session()->get('status'),
         ]));
 
@@ -137,5 +135,16 @@ class FortifyServiceProvider extends ServiceProvider
 
             return Limit::perMinute(5)->by($throttleKey);
         });
+
+        RateLimiter::for('setup-paperless', function (Request $request) {
+            $identityHash = hash('sha256', Str::lower((string) $request->input('username', '')));
+
+            return Limit::perMinute(max(1, (int) config('archibot.setup_rate_limit_per_minute', 5)))
+                ->by($identityHash.'|'.$request->ip());
+        });
+
+        RateLimiter::for('model-discovery', fn (Request $request) => Limit::perMinute(
+            max(1, (int) config('archibot.model_discovery_rate_limit_per_minute', 10)),
+        )->by((string) ($request->user()?->id ?? $request->ip())));
     }
 }

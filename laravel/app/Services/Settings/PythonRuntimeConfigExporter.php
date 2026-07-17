@@ -4,6 +4,7 @@ namespace App\Services\Settings;
 
 use App\Models\AppSetting;
 use App\Models\User;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use RuntimeException;
 
 class PythonRuntimeConfigExporter
@@ -118,6 +119,10 @@ class PythonRuntimeConfigExporter
             ],
             $overrides,
         );
+
+        // Deployment PAPERLESS_URL is the bootstrap trust anchor. Legacy files,
+        // PostgreSQL values, and call-site overrides cannot change it.
+        $values['PAPERLESS_URL'] = app(CanonicalPaperlessOrigin::class)->url();
 
         // ADR-0018: neither PostgreSQL nor setup/import overrides may authorize writes.
         $values['AUTO_COMMIT_CONFIDENCE'] = '0';

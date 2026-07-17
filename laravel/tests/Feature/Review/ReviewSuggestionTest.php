@@ -19,6 +19,12 @@ class ReviewSuggestionTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
+    }
+
     public function test_authenticated_users_can_view_pending_review_queue(): void
     {
         $user = User::factory()->create(['is_admin' => true]);
