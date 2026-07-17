@@ -56,16 +56,15 @@ class MaintenanceController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        $limit = 100;
-        $summary = [
-            'webhook_deliveries_redispatched' => $recovery->recoverQueuedWebhookDeliveries($limit),
-            'document_pipeline_runs_redispatched' => $recovery->recoverDocumentPipelineRuns($limit),
-            'commands_redispatched' => $recovery->recoverPendingCommands($limit),
-        ];
+        $summary = $recovery->runRecoveryScan(100);
 
         $this->audit($request, 'maintenance.pipeline_recovery_requested', 'pipeline_recovery', 'scan', $summary);
 
-        return back()->with('status', 'Durable pipeline recovery completed.');
+        $message = isset($summary['scan_skipped_locked'])
+            ? 'Durable pipeline recovery skipped because another scan is active.'
+            : 'Durable pipeline recovery completed.';
+
+        return back()->with('status', $message);
     }
 
     public function startDocumentPipeline(Request $request, DocumentPipelineStarter $pipelineStarter): RedirectResponse

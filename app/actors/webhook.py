@@ -13,7 +13,11 @@ from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.jobs.actor_execution import (
+    finish_actor_execution,
+    schedule_actor_execution_retry,
+    start_actor_execution,
+)
 from app.jobs.context import worker_id
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
@@ -25,6 +29,7 @@ from app.jobs.document_embeddings import (
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_start import start_or_attach_document_pipeline
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
+from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.webhook_delivery import load_webhook_delivery, mark_webhook_delivery_status
 from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
 from app.pipeline.trusted_context import is_trusted_document
@@ -201,6 +206,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
 
         actor_execution = start_actor_execution(
             actor_name=actor_name,
+            webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
             queue_name=queue_name("webhook"),
         )
@@ -345,20 +351,53 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
                 deleted_rows=deleted,
             )
     except Exception as exc:
-        mark_webhook_delivery_status(webhook_delivery_id, "failed", type(exc).__name__)
+        retry_class = classify_exception(exc)
+        attempt = 1 if actor_execution is None else actor_execution.attempt
+        retryable = should_retry(retry_class, attempt=attempt, max_attempts=5)
+        mark_webhook_delivery_status(
+            webhook_delivery_id,
+            "failed" if retryable else "failed_permanent",
+            retry_class.value,
+        )
         if actor_execution is not None:
-            finish_actor_execution(
-                actor_execution,
-                status="failed",
-                error_type=type(exc).__name__,
-                error_message=str(exc)[:1000],
-            )
+            if retryable:
+                backoff_seconds = retry_backoff_seconds(attempt)
+                schedule_actor_execution_retry(
+                    actor_execution,
+                    retry_class=retry_class.value,
+                    retry_reason=type(exc).__name__,
+                    backoff_seconds=backoff_seconds,
+                    error_message=str(exc)[:1000],
+                )
+                publish_pipeline_event(
+                    types.ACTOR_RETRY_SCHEDULED,
+                    webhook_delivery_id=webhook_delivery_id,
+                    level="warning",
+                    message="Webhook actor retry scheduled for Laravel recovery.",
+                    payload={
+                        "actor_name": actor_name,
+                        "retry_class": retry_class.value,
+                        "retry_reason": type(exc).__name__,
+                        "backoff_seconds": backoff_seconds,
+                    },
+                )
+            else:
+                finish_actor_execution(
+                    actor_execution,
+                    status="failed_permanent",
+                    error_type=retry_class.value,
+                    error_message=str(exc)[:1000],
+                )
         publish_pipeline_event(
             types.ACTOR_FAILED,
             webhook_delivery_id=webhook_delivery_id,
             level="error",
             message="Webhook actor failed before completing the requested webhook action.",
-            payload={"actor_name": actor_name, "error_type": type(exc).__name__},
+            payload={
+                "actor_name": actor_name,
+                "error_type": retry_class.value,
+                "retryable": retryable,
+            },
         )
         raise
 

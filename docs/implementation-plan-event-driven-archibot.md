@@ -138,30 +138,25 @@ Laravel-native Recovery scannt durable Records und redispatcht sichere pending/r
 Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md). Zusammengefasst:
 
 - PostgreSQL/pgvector, Webhook Ingestion und durable Pipeline-Tabellen sind vorhanden.
-- Laravel Database Queue, `RunPythonActorJob`, der allowlisted PHP Runner und `app.actor_runner` sind fuer die zentralen Actor-Flows implementiert; Full-Reindex-, CLI-Paritaets- und Recovery-Luecken bleiben offen.
+- Laravel Database Queue, `RunPythonActorJob`, der allowlisted PHP Runner und `app.actor_runner` sind fuer die zentralen Actor-Flows implementiert.
+- Laravel `schedule:work` prueft jede Minute, ob die konfigurierte 600-Sekunden-Reconciliation faellig ist, und erzeugt einen deduplizierten durable Poll Command.
+- Actor Executions sind mit Command, Pipeline Run oder Webhook Delivery verknuepft; Laravel Recovery behandelt stale/rertryable Attempts, Cancellation und Entity Sync ueber diese Quelle.
+- Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Auto-Commit erzeugt einen pending `review_commit` Command statt direkt an Absurd zu senden.
 - `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
-- Absurd-bezogene Runtime-, Dependency-, Schema-, Supervisor- und Testreste existieren noch. Solange sie aktiv startbar sind, ist der exklusive Laravel-Transport-Cutover nicht abgeschlossen.
-- Automatische 600-Sekunden-Reconciliation muss nach Entfernung des Absurd-Schedulers ueber den Laravel-eigenen Runtimepfad nachgewiesen werden.
+- Absurd-Code, SDK, Konfiguration, Schema und Tests bleiben als nicht gestartetes Cleanup-Delta. Full-Reindex-, CLI-Paritaets- und Runtime-Timeout-Luecken bleiben offen.
 
 ## Verbleibende Migration
 
-### 1. Laravel-Transportparitaet verifizieren
+### 1. Laravel-Transport und Recovery im Runtimepfad verifizieren
 
-- Fuer jeden Actor-Flow Producer, durable ID, Laravel Job Factory, Python Runner Command, Statusuebergang und Recovery-Pfad inventarisieren.
-- Webhook, Embedding Build, Document Pipeline, Review Commit, Poll Reconciliation, Reindex, OCR Reindex und Entity Sync mit fokussierten Tests abdecken.
-- Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
-- GUI-ueberlappende CLI-Aktionen und alle Recovery-Zustaende auf denselben Laravel-/PostgreSQL-Backendpfad bringen.
-- Sicherstellen, dass kein produktiver Flow fuer Dispatch oder Scheduling ausschliesslich Absurd benoetigt.
-
-### 2. Laravel als einzigen Transport aktivieren
-
-- Laravel-native Recovery als alleinigen Redispatch-Pfad verwenden.
-- Automatische 600-Sekunden-Reconciliation ueber einen klar dokumentierten Laravel Scheduler/Command-Pfad ausfuehren.
-- Dual Dispatch ausschliessen, damit ein durable Record nicht gleichzeitig durch Laravel und Absurd gestartet werden kann.
+- Webhook, Embedding Build, Document Pipeline, Review Commit, Poll Reconciliation, Reindex, OCR Reindex und Entity Sync mit fokussierten Tests und Docker-Smokes abdecken.
+- PostgreSQL-Restart, stale Actor Recovery, bounded Attempts, Cancellation und Scheduler-Dedupe live pruefen.
 - Laravel Queue Worker, Timeout, Retry und Failure-Verhalten im Docker-Runtimepfad pruefen.
 - Endliche, begruendete Actor-/Process-Timeouts, Heartbeats und kooperative Cancellation definieren und testen; `timeout = 0` und unbeschraenkte Child Processes sind kein abgeschlossenes Runtime-Modell.
+- Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
+- Verbleibende GUI-ueberlappende CLI-Aktionen auf denselben Laravel-/PostgreSQL-Backendpfad bringen.
 
-### 3. Absurd-Reste entfernen
+### 2. Absurd-Reste entfernen
 
 Nach nachgewiesener Paritaet in einem fokussierten Cleanup-Patch entfernen:
 
@@ -174,7 +169,7 @@ Nach nachgewiesener Paritaet in einem fokussierten Cleanup-Patch entfernen:
 
 Der Cleanup darf Python Processing Actors nicht entfernen; nur der superseded Transport und seine Kompatibilitaet verschwinden.
 
-### 4. Runtime- und End-to-End-Nachweis
+### 3. Runtime- und End-to-End-Nachweis
 
 - Clean Install mit PostgreSQL, Laravel Queue und pgvector.
 - Webhook -> durable Delivery -> Laravel Queue -> Python Actor -> Pipeline/Review Result.
@@ -183,7 +178,7 @@ Der Cleanup darf Python Processing Actors nicht entfernen; nur der superseded Tr
 - Embedding Gate, Reprocess, Retry, Cancel und Berechtigungen.
 - Docker Health/Readiness und Operations UI ohne Absurd oder `worker_jobs`.
 
-### 5. Dokumentationsabschluss
+### 4. Dokumentationsabschluss
 
 Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governance-Dokumente auf Laravel-only Transport pruefen. Historische Absurd- oder `worker_jobs`-Erklaerungen muessen als superseded/retired markiert oder entfernt sein.
 
@@ -192,7 +187,7 @@ Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governa
 | Risiko | Gegenmassnahme |
 | --- | --- |
 | Dual Dispatch erzeugt doppelte Verarbeitung | Ein Transport-Owner pro Flow, durable Dedupe Keys, fokussierte Dispatch-Tests |
-| Reconciliation faellt beim Absurd-Cleanup aus | Laravel Scheduler vor Cleanup implementieren und mit Zeit-/Dispatch-Test belegen |
+| Reconciliation regressiert beim Absurd-Cleanup | Laravel Scheduler-/Due-/Dedupe-Tests und Docker-Smoke als Cleanup-Gate behalten |
 | Queue Payload wird zur zweiten State Source | Nur IDs transportieren; Optionen aus PostgreSQL laden |
 | Langer Python Actor blockiert Worker | Timeouts, Heartbeats, Cancel und Recovery gegen reale Laufzeiten pruefen |
 | Webhooks gehen bei Dispatch-Fehler verloren | Erst persistieren, Fehler durable markieren, non-2xx fuer Paperless Retry |

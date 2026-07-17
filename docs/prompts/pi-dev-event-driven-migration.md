@@ -75,12 +75,11 @@ Do not restate their full contracts in task prompts or committed phase notes.
 
 Use the implementation plan and phase status for current detail. Unless the task explicitly narrows scope, prefer this order:
 
-1. Prove Laravel actor-job parity for every producer, CLI-overlap action and recovery state, including actual full-reindex behavior.
-2. Provide automatic 600-second reconciliation through the Laravel-owned runtime path.
-3. Prevent dual dispatch and make Laravel queues the exclusive transport.
-4. Remove Absurd dependencies, schema, configuration, workers, recovery bridge and obsolete tests.
-5. Validate clean-install Docker runtime and end-to-end recovery without Absurd or `worker_jobs`.
-6. Remove or mark remaining stale transport documentation.
+1. Validate the Laravel-only supervised runtime: scheduled 600-second reconciliation, source-linked recovery, cancellation, bounded retry attempts and auto-commit command handoff.
+2. Complete actual full-reindex and remaining CLI/UI backend parity.
+3. Remove Absurd dependencies, schema, configuration, compatibility wrappers and obsolete tests now that Supervisor no longer starts Absurd workers or recovery.
+4. Validate clean-install Docker runtime and end-to-end recovery without Absurd or `worker_jobs`.
+5. Remove or mark remaining stale transport documentation.
 
 ## Validation and completion
 

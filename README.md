@@ -135,6 +135,7 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 | **[Webhooks](./docs/user/webhooks.md)** | Sofortige Verarbeitung statt Polling |
 | **[Paperless-Auth](./docs/user/paperless-auth.md)** | Anmeldung, Token-Kontext und Sicherheitsmodell |
 | **[Agent Instructions](./AGENTS.md)** | Tool-neutrale Hinweise fuer Coding-Agents |
+| **[Security Policy](./SECURITY.md)** | Private Meldung von Sicherheitsluecken und Support-Grenzen |
 
 ## Entwicklung & Repository-Hinweise
 

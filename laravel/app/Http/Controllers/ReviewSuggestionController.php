@@ -323,8 +323,8 @@ class ReviewSuggestionController extends Controller
                 'commit_command_id' => $command->id,
             ])->save();
 
-            dispatch(RunPythonActorJob::reviewCommit($command->id));
             $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            dispatch(RunPythonActorJob::reviewCommit($command->id));
 
             PipelineEvent::query()->create([
                 'command_id' => $command->id,

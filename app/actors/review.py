@@ -48,7 +48,11 @@ def _commit_review_suggestion_impl(
 ) -> None:
     started = time.monotonic()
     actor_name = "commit_review_suggestion"
-    actor_execution = start_actor_execution(actor_name=actor_name, queue_name=queue_name("io"))
+    actor_execution = start_actor_execution(
+        actor_name=actor_name,
+        command_id=command_id,
+        queue_name=queue_name("io"),
+    )
     log.info(
         "review commit actor started",
         event_type=types.ACTOR_STARTED,
@@ -127,7 +131,7 @@ def _commit_review_suggestion_impl(
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
         retry_class = classify_exception(exc)
-        attempt = 1
+        attempt = actor_execution.attempt
         max_attempts = 5
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)

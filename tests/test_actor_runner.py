@@ -26,12 +26,12 @@ def test_build_embedding_index_uses_command_payload_limit(monkeypatch):
     monkeypatch.setattr(
         actor_runner,
         "_build_initial_embedding_index_impl",
-        lambda *, limit=None: builds.append(limit),
+        lambda *, limit=None, command_id=None: builds.append((limit, command_id)),
     )
 
     actor_runner.run_embedding_index_build_command(66)
 
-    assert builds == [12]
+    assert builds == [(12, 66)]
     assert statuses == [(66, "running"), (66, "succeeded")]
 
 
@@ -52,12 +52,12 @@ def test_build_embedding_index_accepts_missing_limit(monkeypatch):
     monkeypatch.setattr(
         actor_runner,
         "_build_initial_embedding_index_impl",
-        lambda *, limit=None: builds.append(limit),
+        lambda *, limit=None, command_id=None: builds.append((limit, command_id)),
     )
 
     actor_runner.run_embedding_index_build_command(66)
 
-    assert builds == [None]
+    assert builds == [(None, 66)]
 
 
 def test_build_embedding_index_rejects_wrong_command_type(monkeypatch):
@@ -96,7 +96,7 @@ def test_build_embedding_index_marks_failed_and_reraises(monkeypatch):
     )
     monkeypatch.setattr(actor_runner, "mark_command_status", lambda *args: statuses.append(args))
 
-    def fail(*, limit=None):
+    def fail(*, limit=None, command_id=None):
         raise RuntimeError("provider down")
 
     monkeypatch.setattr(actor_runner, "_build_initial_embedding_index_impl", fail)
@@ -169,12 +169,14 @@ def test_run_poll_reconciliation_uses_command_payload_limit_and_force(monkeypatc
     monkeypatch.setattr(
         actor_runner,
         "_reconcile_inbox_documents_impl",
-        lambda *, limit=None, force=False: calls.append((limit, force)),
+        lambda *, limit=None, force=False, command_id=None: calls.append(
+            (limit, force, command_id)
+        ),
     )
 
     actor_runner.run_poll_reconciliation_command(44)
 
-    assert calls == [(3, True)]
+    assert calls == [(3, True, 44)]
     assert statuses == [(44, "running"), (44, "succeeded")]
 
 
@@ -196,12 +198,12 @@ def test_run_reindex_uses_embedding_rebuild_actor(monkeypatch):
     monkeypatch.setattr(
         actor_runner,
         "_build_initial_embedding_index_impl",
-        lambda *, limit=None: calls.append(limit),
+        lambda *, limit=None, command_id=None: calls.append((limit, command_id)),
     )
 
     actor_runner.run_reindex_command(45)
 
-    assert calls == [None]
+    assert calls == [(None, 45)]
     assert statuses == [(45, "running"), (45, "succeeded")]
 
 
