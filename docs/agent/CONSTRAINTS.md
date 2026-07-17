@@ -11,7 +11,7 @@ Evidence-based constraints for ArchiBot changes.
 
 ## Local-first AI constraints
 
-- LLM, embedding, OCR correction, judge, and RAG behavior are designed around local Ollama or OpenAI-compatible provider models.
+- LLM classification, embeddings, OCR correction, and judge behavior are designed around local Ollama or OpenAI-compatible provider models. Chat/RAG is disabled pending Issue #221.
 - OpenAI-compatible embedding requests must explicitly send `encoding_format: "float"`; never rely on client defaults that might serialize `encoding_format: null`.
 - Avoid introducing cloud AI dependencies or telemetry without explicit maintainer approval.
 - Model choices should remain configurable; do not hard-code a model unless it is already a documented default.

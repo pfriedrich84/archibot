@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.config import settings
-from app.mcp_tools import _auth, _deps, classify, documents
+from app.mcp_tools import _auth, _deps, classify, documents, resources
 from app.models import ClassificationResult, PaperlessDocument
 
 
@@ -25,10 +25,18 @@ def make_ctx(headers: dict[str, str] | None = None, arguments: dict[str, str] | 
 class CapturingMcp:
     def __init__(self) -> None:
         self.tools = {}
+        self.resources = {}
 
     def tool(self, name: str, **kwargs):
         def decorator(func):
             self.tools[name] = func
+            return func
+
+        return decorator
+
+    def resource(self, uri: str, **kwargs):
+        def decorator(func):
+            self.resources[uri] = func
             return func
 
         return decorator
@@ -222,28 +230,21 @@ def test_laravel_write_permission_rejects_read_only_token(monkeypatch):
         _auth.require_mcp_write(make_ctx(headers={"x-api-key": "abmcp_readonly"}))
 
 
-@pytest.mark.asyncio
-async def test_mcp_get_document_uses_laravel_scoped_paperless_client(monkeypatch):
-    enable_laravel_mcp_auth(monkeypatch)
-    scoped_paperless = SimpleNamespace(
-        get_document=AsyncMock(
-            return_value=PaperlessDocument(id=123, title="Scoped", content="secret", tags=[9])
-        )
-    )
-
-    def make_scoped_client(base_url: str | None = None, token: str | None = None):
-        assert base_url == "https://paperless.example"
-        assert token == "paperless-user-token"
-        return scoped_paperless
-
-    monkeypatch.setattr(_deps, "PaperlessClient", make_scoped_client)
+def test_mcp_global_document_retrieval_tools_are_not_registered(monkeypatch):
+    monkeypatch.setattr(settings, "mcp_enable_write", False)
     mcp = CapturingMcp()
+
     documents.register(mcp)
+    classify.register(mcp)
+    resources.register(mcp)
 
-    result = await mcp.tools["get_document"](123, ctx=make_laravel_ctx())
-
-    assert '"id": 123' in result
-    scoped_paperless.get_document.assert_awaited_once_with(123)
+    assert "search_documents" not in mcp.tools
+    assert "search_documents_hybrid" not in mcp.tools
+    assert "get_document" not in mcp.tools
+    assert "find_similar_documents" not in mcp.tools
+    assert "list_inbox" in mcp.tools
+    assert "classify_document" in mcp.tools
+    assert set(mcp.resources) == {"paperless://suggestions/pending", "paperless://stats"}
 
 
 @pytest.mark.asyncio

@@ -380,26 +380,6 @@ def get_stats_snapshot() -> dict[str, Any]:
     }
 
 
-def get_chat_snapshot(limit: int = 8) -> dict[str, Any]:
-    from app.chat import list_chat_sessions
-
-    with db.get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT details, occurred_at
-            FROM audit_log
-            WHERE action IN ('commit', 'retry', 'reject')
-            ORDER BY occurred_at DESC, id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return {
-        "sessions": list_chat_sessions(limit=limit),
-        "recent_activity": [dict(row) for row in rows],
-    }
-
-
 def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
     now = datetime.now(tz=UTC)
     with db.get_conn() as conn:
@@ -519,7 +499,6 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
                 "embedding": settings.provider_id_for_role("embedding"),
                 "ocr": settings.provider_id_for_role("ocr"),
                 "judge": settings.provider_id_for_role("judge"),
-                "chat": settings.provider_id_for_role("chat"),
             },
             "ocr_mode": settings.ocr_mode,
             "poll_interval_seconds": settings.poll_interval_seconds,
@@ -560,7 +539,6 @@ def get_system_status(app: Any) -> dict[str, Any]:
                     "embedding": settings.provider_id_for_role("embedding"),
                     "ocr": settings.provider_id_for_role("ocr"),
                     "judge": settings.provider_id_for_role("judge"),
-                    "chat": settings.provider_id_for_role("chat"),
                 },
                 "url": settings.ollama_url,
                 "model": settings.ollama_model,

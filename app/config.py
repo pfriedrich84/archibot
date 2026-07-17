@@ -41,7 +41,6 @@ class Settings(BaseSettings):
     embedding_provider: str = ""
     ocr_provider: str = ""
     judge_provider: str = ""
-    chat_provider: str = ""
     ollama_model: str = Field(
         default="gemma4:e4b",
         validation_alias=AliasChoices("CLASSIFICATION_MODEL", "OLLAMA_MODEL"),
@@ -252,7 +251,6 @@ class Settings(BaseSettings):
             "embedding": self.embedding_provider,
             "ocr": self.ocr_provider,
             "judge": self.judge_provider,
-            "chat": self.chat_provider,
         }
         provider_id = (role_map.get(role, "") or "").strip() or "default"
         return provider_id if provider_id in self.ai_provider_profiles_resolved else "default"
@@ -562,12 +560,6 @@ FIELD_META: dict[str, dict[str, Any]] = {
         "Judge Provider ID",
         restart="component",
         help="Provider profile ID for judge verification. Empty/default uses the main provider.",
-    ),
-    "chat_provider": _fm(
-        "AI Provider",
-        "Chat/RAG Provider ID",
-        restart="component",
-        help="Provider profile ID for conversational chat/RAG. Empty/default uses the main provider.",
     ),
     "ollama_timeout_seconds": _fm(
         "AI Provider",

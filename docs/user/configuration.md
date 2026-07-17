@@ -2,6 +2,8 @@
 
 Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend.
 
+> **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
+
 > Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
 > (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
 > internen App-Defaults.
@@ -37,10 +39,9 @@ Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche 
 | `EMBEDDING_PROVIDER` | — | Provider-Profil-ID fuer Embeddings; leer = Default |
 | `OCR_PROVIDER` | — | Provider-Profil-ID fuer OCR Text/Vision; leer = Default |
 | `JUDGE_PROVIDER` | — | Provider-Profil-ID fuer Judge-Verifikation; leer = Default |
-| `CHAT_PROVIDER` | — | Provider-Profil-ID fuer Chat/RAG; leer = Default |
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
-| `OLLAMA_CHAT_RETRIES` | `2` | Max. Retries fuer Chat/OCR/Klassifikation bei transienten Fehlern (429/5xx/Timeouts) |
-| `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Basis-Delay in Sekunden fuer exponentiellen Chat-Backoff |
+| `OLLAMA_CHAT_RETRIES` | `2` | Historisch benannter Wert fuer maximale Retries strukturierter OCR-/Klassifikationsaufrufe bei transienten Fehlern (429/5xx/Timeouts); aktiviert keinen Chat. |
+| `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Historisch benannter Basis-Delay fuer den exponentiellen Backoff strukturierter OCR-/Klassifikationsaufrufe; aktiviert keinen Chat. |
 | `OLLAMA_MODEL_SWAP_DELAY` / `OLLAMA_MODEL_SWAP_DELAY_SECONDS` | `8.0` | Wartezeit nach Model-Unload, damit Ollama-kompatible Runtimes freie VRAM korrekt erkennen; nur bei Providern genutzt, die Model-Unload unterstuetzen. `_SECONDS` ist ein Legacy-Alias. |
 
 Beispiel fuer mehrere Provider:
@@ -123,7 +124,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `CLASSIFICATION_MODEL` / `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`). `CLASSIFICATION_MODEL` ist der bevorzugte Name. |
-| `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation, Judge und Chat/RAG (Tokens). Separate `CHAT_CONTEXT_WINDOW`/`JUDGE_CONTEXT_WINDOW` sind derzeit keine Runtime-Settings. |
+| `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation und Judge (Tokens). `CHAT_CONTEXT_WINDOW` ist keine Runtime-Setting; Chat/RAG ist deaktiviert. `JUDGE_CONTEXT_WINDOW` ist derzeit ebenfalls keine Runtime-Setting. |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
 | `AUTO_COMMIT_CONFIDENCE` | `0` | Nur `0` ist waehrend des ausstehenden Security-Hardenings zulaessig. Die aktuelle Runtime kann Werte 1–100 noch als automatische Commit-Schwelle interpretieren; ADR-0018 verbietet diese Nutzung bis zur sicheren Neugestaltung. |

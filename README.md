@@ -6,7 +6,7 @@
 
 > **Hinweis:** ArchiBot ist aktuell in aktiver Entwicklung. Es gibt noch keinen stabilen Release.
 >
-> **Security-Hardening ausstehend:** Vor Abschluss von [Hardening-Meilenstein 0](./docs/implementation-plan-security-architecture-hardening.md) ist ArchiBot nicht fuer einen oeffentlichen oder nicht voll vertrauenswuerdigen Multi-User-Betrieb freigegeben. Chat/RAG hat noch keine dokumentweise Berechtigungsfilterung. ADR-0018 verlangt ausserdem die Abschaltung des Confidence-basierten Auto-Commit; bis Meilenstein 0.2 ausgeliefert ist, kann ein veralteter effektiver Python-Export konfigurierte Schwellenwerte weiterhin ausfuehren, selbst wenn Env oder UI `0` anzeigen. Es gibt deshalb keine verlaessliche reine Einstellungsminderung: Bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+> **Security-Hardening ausstehend:** Vor Abschluss von [Hardening-Meilenstein 0](./docs/implementation-plan-security-architecture-hardening.md) ist ArchiBot nicht fuer einen oeffentlichen oder nicht voll vertrauenswuerdigen Multi-User-Betrieb freigegeben. Chat/RAG ist fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. ADR-0018 verlangt ausserdem die Abschaltung des Confidence-basierten Auto-Commit; bis Meilenstein 0.2 ausgeliefert ist, kann ein veralteter effektiver Python-Export konfigurierte Schwellenwerte weiterhin ausfuehren, selbst wenn Env oder UI `0` anzeigen. Es gibt deshalb keine verlaessliche reine Einstellungsminderung: Bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
@@ -31,7 +31,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 - ⏱️ Robuste AI-Provider-Requests: Default-Timeout ist auf 600s ausgelegt (insb. fuer langsamere OCR/vision-Laeufe)
 - 🗄️ PostgreSQL-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
-- 💬 RAG Chat: Fragen zu deinen Dokumenten stellen — über die Laravel-Oberfläche und Python/MCP-Runtime
+- 🔒 Chat/RAG ist vollständig deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track
 - 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
 - 🚀 Laravel/Svelte Setup-Wizard: Geführtes Onboarding beim ersten Start (`/setup`) mit direkter Paperless-NGX-Anmeldung
 - 📥 Inbox-View: Posteingang mit Dokumenten-Karten (`/inbox`)

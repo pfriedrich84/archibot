@@ -3,6 +3,8 @@
 So funktioniert die Klassifikation von der Dokumenterfassung bis zum Commit
 in Paperless-NGX.
 
+> **Chat/RAG ist deaktiviert:** Weder UI noch Web/API, Python-CLI oder MCP bieten einen Chat- oder globalen Retrieval-Pfad. Vorhandene Chat-Daten bleiben gespeichert, werden aber nicht angezeigt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
+
 ## Ablauf
 
 ```

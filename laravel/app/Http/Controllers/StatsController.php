@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActorExecution;
-use App\Models\ChatSession;
 use App\Models\Command;
 use App\Models\EntityApproval;
 use App\Models\OcrReview;
@@ -43,9 +42,6 @@ class StatsController extends Controller
             'actorStatusCounts' => $this->countsBy(ActorExecution::class, 'status'),
             'actorNameMatrix' => $this->matrixCounts(ActorExecution::class, 'actor_name', 'status'),
             'dailyActivity' => $this->dailyActivity(),
-            'chat' => [
-                'sessions' => ChatSession::query()->count(),
-            ],
             'python' => $legacyPythonState->stats(),
         ]);
     }

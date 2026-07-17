@@ -195,33 +195,56 @@ class AdminSettingsTest extends TestCase
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-token'));
     }
 
-    public function test_admin_can_update_and_reset_prompt_overrides(): void
+    public function test_admin_can_update_and_reset_active_prompt_overrides(): void
     {
         config(['archibot.data_dir' => storage_path('framework/testing/prompts')]);
         File::deleteDirectory(config('archibot.data_dir'));
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
-            ->patch(route('admin.settings.prompts.update', 'chat'), [
-                'content' => 'Custom chat prompt',
+            ->patch(route('admin.settings.prompts.update', 'classify'), [
+                'content' => 'Custom classification prompt',
             ])
             ->assertRedirect();
 
-        $this->assertSame('Custom chat prompt', File::get(config('archibot.data_dir').'/chat_system.txt'));
+        $this->assertSame('Custom classification prompt', File::get(config('archibot.data_dir').'/classify_system.txt'));
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'admin_prompt.updated',
-            'target_id' => 'chat',
+            'target_id' => 'classify',
         ]);
 
         $this->actingAs($admin)
-            ->delete(route('admin.settings.prompts.reset', 'chat'))
+            ->delete(route('admin.settings.prompts.reset', 'classify'))
             ->assertRedirect();
 
-        $this->assertFalse(File::exists(config('archibot.data_dir').'/chat_system.txt'));
+        $this->assertFalse(File::exists(config('archibot.data_dir').'/classify_system.txt'));
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'admin_prompt.reset',
-            'target_id' => 'chat',
+            'target_id' => 'classify',
         ]);
+    }
+
+    public function test_chat_prompt_is_not_exposed_by_admin_settings(): void
+    {
+        config(['archibot.data_dir' => storage_path('framework/testing/prompts')]);
+        File::deleteDirectory(config('archibot.data_dir'));
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'prompts']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('prompts', fn ($prompts) => collect($prompts)->doesntContain('key', 'chat'))
+            );
+
+        $this->actingAs($admin)
+            ->patch(route('admin.settings.prompts.update', 'chat'), ['content' => 'Disabled'])
+            ->assertNotFound();
+        $this->actingAs($admin)
+            ->delete(route('admin.settings.prompts.reset', 'chat'))
+            ->assertNotFound();
+
+        $this->assertFalse(File::exists(config('archibot.data_dir').'/chat_system.txt'));
     }
 
     public function test_hybrid_search_weight_must_be_between_zero_and_one(): void

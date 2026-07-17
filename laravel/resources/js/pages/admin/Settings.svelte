@@ -215,6 +215,20 @@
         description="Manage global ArchiBot settings. Only Paperless superusers can access this page. Secrets are write-only after saving."
     />
 
+    <aside
+        class="max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+    >
+        <strong>Chat/RAG is disabled for every user.</strong>
+        Its page, routes, provider setting, prompt editor, and global MCP retrieval
+        tools are unavailable.
+        <a
+            class="underline"
+            href="https://github.com/pfriedrich84/archibot/issues/221"
+            >Issue #221</a
+        >
+        is the only redesign and re-enable track.
+    </aside>
+
     <nav class="flex flex-wrap gap-2" aria-label="Admin settings sections">
         {#each sections as section (section.slug)}
             <a

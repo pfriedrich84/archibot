@@ -107,14 +107,6 @@ return [
             'default' => '',
             'help' => 'Provider profile ID for judge verification. Cloud providers may receive document text.',
         ],
-        'llm.chat_provider' => [
-            'legacy' => 'chat_provider',
-            'group' => 'AI Provider',
-            'label' => 'Chat/RAG provider ID',
-            'type' => 'text',
-            'default' => '',
-            'help' => 'Provider profile ID for conversational chat/RAG.',
-        ],
         'ollama.timeout_seconds' => [
             'legacy' => 'ollama_timeout_seconds',
             'group' => 'AI Provider',

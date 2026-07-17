@@ -16,7 +16,7 @@ Suggested metadata includes title, date, correspondent, document type, storage p
 - **Python queue-backed actors** own document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
 - **PostgreSQL + pgvector** are the durable source of truth for state, progress, retries, events, audit data and embedding similarity search.
 - **Laravel database queues** provide the event-driven transport; there is no separate broker service in the target path. Laravel queued jobs invoke fixed Python actor commands while PostgreSQL pipeline tables remain the durable source of truth.
-- **Ollama-compatible and OpenAI-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings and judge passes. Existing RAG Chat is an unsafe transitional surface that hardening milestone 0.1 disables pending Issue #221.
+- **Ollama-compatible and OpenAI-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings and judge passes. Chat/RAG is disabled; Issue #221 is the only redesign and possible re-enable track.
 
 ## Classification model
 
