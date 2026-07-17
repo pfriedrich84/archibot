@@ -500,68 +500,6 @@ class AiProviderClient:
         )
 
     # ---------------------------------------------------------------
-    # Chat (plain text, for conversational RAG)
-    # ---------------------------------------------------------------
-    async def chat(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        model: str | None = None,
-        temperature: float = 0.3,
-    ) -> str:
-        """Call the configured AI provider chat endpoint and return the plain-text response.
-
-        Unlike ``chat_json()``, this does **not** set ``format="json"`` and
-        returns the raw assistant message content.  Designed for conversational
-        RAG where the response is natural language.
-
-        *messages* is the full conversation: system, prior turns, and the
-        current user message.
-        """
-        retries_raw = getattr(settings, "ollama_chat_retries", 1)
-        base_delay_raw = getattr(settings, "ollama_chat_retry_base_delay", 1.0)
-        retries = retries_raw if isinstance(retries_raw, int) else 1
-        base_delay = float(base_delay_raw) if isinstance(base_delay_raw, int | float) else 1.0
-
-        provider = self._provider_for_role("chat")
-        if self._provider_type(provider) == "openai_compatible":
-            payload = {
-                "model": model or self.model,
-                "stream": False,
-                "temperature": temperature,
-                "messages": messages,
-            }
-            data = await self._openai_chat_completion_with_retries(
-                payload,
-                retry_count=retries,
-                base_delay=base_delay,
-                log_label="openai-compatible plain chat",
-                provider=provider,
-            )
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if not content:
-                raise ValueError("OpenAI-compatible provider returned empty content")
-            return content
-
-        payload = {
-            "model": model or self.model,
-            "stream": False,
-            "options": {"temperature": temperature, "num_ctx": settings.ollama_num_ctx},
-            "messages": messages,
-        }
-        data = await self._post_chat_with_retry(
-            payload,
-            retry_count=retries,
-            base_delay=base_delay,
-            log_label="ollama plain chat",
-            provider=provider,
-        )
-        content = data.get("message", {}).get("content", "")
-        if not content:
-            raise ValueError("Ollama returned empty content")
-        return content
-
-    # ---------------------------------------------------------------
     # Embeddings
     # ---------------------------------------------------------------
     @staticmethod
@@ -612,34 +550,6 @@ class AiProviderClient:
     def _backoff_delay(base_delay: float, attempt: int) -> float:
         """Exponential backoff with jitter for retry attempt ``attempt``."""
         return base_delay * (2**attempt) + random.uniform(0, 0.5)
-
-    async def _post_chat_with_retry(
-        self,
-        payload: dict[str, Any],
-        *,
-        retry_count: int,
-        base_delay: float,
-        log_label: str,
-        provider: dict[str, str] | None = None,
-    ) -> dict[str, Any]:
-        """POST /api/chat with retry handling for transient errors."""
-        for attempt in range(1 + retry_count):
-            try:
-                r = await self._client_for_provider(provider).post("/api/chat", json=payload)
-                r.raise_for_status()
-                return r.json()
-            except Exception as exc:
-                if attempt < retry_count and self._is_retryable(exc):
-                    delay = self._backoff_delay(base_delay, attempt)
-                    log.warning(
-                        f"{log_label} request failed, retrying",
-                        attempt=attempt + 1,
-                        delay_s=round(delay, 2),
-                        error=_exc_to_str(exc),
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                raise
 
     @staticmethod
     def _parse_json_content(content: str, *, source: str) -> dict[str, Any]:

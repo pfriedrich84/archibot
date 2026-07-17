@@ -22,7 +22,6 @@
         actorStatusCounts,
         actorNameMatrix,
         dailyActivity,
-        chat,
         python,
     }: {
         review: Record<string, number>;
@@ -38,7 +37,6 @@
         actorStatusCounts: Record<string, number>;
         actorNameMatrix: Record<string, Record<string, number>>;
         dailyActivity: Array<Record<string, number | string>>;
-        chat: Record<string, number>;
         python: {
             available: boolean;
             totals?: Record<string, number>;
@@ -52,7 +50,6 @@
     const groups = $derived([
         { title: 'Review', values: review },
         { title: 'Entity approvals', values: entities },
-        { title: 'Chat/RAG', values: chat },
     ]);
 
     const distributionGroups = $derived([

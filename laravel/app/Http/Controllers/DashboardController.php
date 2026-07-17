@@ -251,7 +251,6 @@ class DashboardController extends Controller
             'embedding' => $this->settingValue('llm.embedding_provider'),
             'ocr' => $this->settingValue('llm.ocr_provider'),
             'judge' => $this->settingValue('llm.judge_provider'),
-            'chat' => $this->settingValue('llm.chat_provider'),
         ])
             ->filter(fn (?string $provider): bool => filled($provider))
             ->map(fn (string $provider, string $role): array => [

@@ -1,4 +1,4 @@
-"""MCP server exposing Paperless-NGX operations and AI classification tools."""
+"""MCP server exposing scoped Paperless-NGX workflow and classification tools."""
 
 from __future__ import annotations
 
@@ -70,10 +70,10 @@ async def lifespan(server: FastMCP) -> AsyncIterator[Deps]:
 mcp = FastMCP(
     name="archibot",
     instructions=(
-        "MCP server for Paperless-NGX document management and AI classification. "
-        "Use tools to search and browse documents, list entities (tags, correspondents, "
-        "document types), run AI classification on inbox documents, review suggestions, "
-        "and manage tag proposals."
+        "MCP server for scoped Paperless-NGX workflows and AI classification. "
+        "Chat/RAG and global document retrieval are disabled pending Issue #221. "
+        "Use tools to list inbox documents and entities, run AI classification on inbox "
+        "documents, review suggestions, and manage tag proposals."
     ),
     lifespan=lifespan,
     host=settings.mcp_host,

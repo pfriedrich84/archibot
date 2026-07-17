@@ -13,7 +13,7 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
 ┌────────────────┐    ┌─────────────────────────────────┐    ┌──────────────┐
 │ Paperless-NGX  │◀──▶│   ArchiBot App                  │◀──▶│ AI Provider   │
 │                │    │   Laravel/Svelte + Python       │    │ AI Provider   │
-│ - Dokumente    │    │   Workers/MCP                   │    │ - Chat (LLM) │
+│ - Dokumente    │    │   Workers/MCP                   │    │ - LLM calls  │
 │ - Metadaten    │    │   Port 8088  (GUI/API)           │    │ - Embeddings │
 │ - Tags         │    │   Port 3001  (MCP, optional)     │    │              │
 └────────────────┘    └─────────────────────────────────┘    └──────────────┘
@@ -25,6 +25,10 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
                   │  (persistent volume)  │ │ database drv │
                   └──────────────────────┘ └──────────────┘
 ```
+
+## Chat/RAG-Containment
+
+Chat/RAG ist fuer Admins und Nicht-Admins deaktiviert. Laravel registriert weder Seite noch API-Routen und besitzt keinen Python-Bridge-Service; die Python-CLI registriert kein `chat-ask`; MCP registriert weder globale Suche/Volltext-Retrieval noch aehnlichkeitsbasierte Retrieval-Tools. Bestehende `chat_sessions`- und `chat_messages`-Zeilen sowie ihre Migration bleiben zur sicheren Datenerhaltung bestehen, werden aber nicht exponiert. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer Redesign und moegliches Re-enable.
 
 ## Dokument-Lebenszyklus
 
@@ -169,6 +173,7 @@ Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitu
 
 | Tabelle | Zweck |
 |---|---|
+| `chat_sessions`, `chat_messages` | Erhaltene historische Chat-Daten; normale Produkt- und Chat-Oberflaechen lesen, zeigen oder loeschen diese Zeilen nicht. Nur der ausdruecklich bestaetigte vollstaendige Operator-Reset (`archibot reset` / `php artisan archibot:reset`) bleibt destruktiv und leert sie. |
 | `review_suggestions` | Dauerhafte Review-Vorschlaege; ihre Existenz ist zugleich der Klassifikationsmarker fuer automatische Polls |
 | `processed_documents` | Legacy-Python-Pollstatus; nicht Source of Truth fuer den event-driven Pfad |
 | `suggestions` | Legacy-LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |

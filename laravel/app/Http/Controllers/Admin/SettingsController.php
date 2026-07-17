@@ -354,7 +354,6 @@ class SettingsController extends Controller
             ['key' => 'ocr_correction', 'filename' => 'ocr_correction_system.txt', 'label' => 'OCR text correction', 'description' => 'System prompt for text-only OCR correction.'],
             ['key' => 'ocr_vision_light', 'filename' => 'ocr_vision_light_system.txt', 'label' => 'OCR vision light', 'description' => 'System prompt for fast vision OCR checks.'],
             ['key' => 'ocr_vision_full', 'filename' => 'ocr_vision_full_system.txt', 'label' => 'OCR vision full', 'description' => 'System prompt for page-by-page vision OCR correction.'],
-            ['key' => 'chat', 'filename' => 'chat_system.txt', 'label' => 'RAG Chat', 'description' => 'System prompt for questions about Paperless documents.'],
         ];
     }
 

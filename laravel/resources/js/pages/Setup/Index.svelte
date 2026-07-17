@@ -201,7 +201,13 @@
         <p class="text-sm text-muted-foreground">
             Connect Paperless-NGX, choose the Paperless tags ArchiBot should
             use, then connect your local AI provider and select installed
-            models.
+            models. Chat/RAG is disabled for every user; only
+            <a
+                class="underline"
+                href="https://github.com/pfriedrich84/archibot/issues/221"
+                >Issue #221</a
+            >
+            tracks an authorization-safe redesign and possible re-enable.
         </p>
     </div>
 

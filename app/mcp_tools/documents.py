@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from app.config import settings
 from app.db import get_conn
 from app.mcp_tools._auth import check_api_key, require_mcp_write
-from app.mcp_tools._deps import get_deps, get_paperless
+from app.mcp_tools._deps import get_paperless
 
 log = structlog.get_logger(__name__)
 
@@ -34,91 +34,6 @@ def register(mcp: FastMCP) -> None:
     # ------------------------------------------------------------------
     # Always registered (read-only)
     # ------------------------------------------------------------------
-    @mcp.tool(
-        name="search_documents",
-        description=(
-            "Full-text search across all Paperless-NGX documents. "
-            "Supports optional filters by tag names, correspondent, and document type."
-        ),
-        annotations=_RO,
-    )
-    async def search_documents(
-        query: str,
-        tags: list[str] | None = None,
-        correspondent: str | None = None,
-        document_type: str | None = None,
-        ctx: Context = None,
-    ) -> str:
-        check_api_key(ctx)
-        paperless = get_paperless(ctx)
-        docs = await paperless.search_documents(
-            query=query, tags=tags, correspondent=correspondent, document_type=document_type
-        )
-        return json.dumps([_doc_summary(d) for d in docs], ensure_ascii=False, default=str)
-
-    @mcp.tool(
-        name="search_documents_hybrid",
-        description=(
-            "Semantic + keyword hybrid search across indexed documents. "
-            "Uses PostgreSQL/pgvector embedding similarity over trusted "
-            "documents and supports optional metadata filters."
-        ),
-        annotations=_RO,
-    )
-    async def search_documents_hybrid(
-        query: str,
-        limit: int = 10,
-        correspondent_id: int | None = None,
-        document_type_id: int | None = None,
-        date_from: str | None = None,
-        date_to: str | None = None,
-        ctx: Context = None,
-    ) -> str:
-        check_api_key(ctx)
-        deps = get_deps(ctx)
-
-        from app.pipeline.context_builder import find_similar_by_query_text_filtered
-
-        results = await find_similar_by_query_text_filtered(
-            query,
-            get_paperless(ctx),
-            deps.ollama,
-            limit=limit,
-            correspondent_id=correspondent_id,
-            doctype_id=document_type_id,
-            date_from=date_from,
-            date_to=date_to,
-        )
-
-        docs = []
-        for sim in results:
-            d = sim.document
-            summary = _doc_summary(d)
-            summary["distance"] = round(sim.distance, 4)
-            summary["content_preview"] = (d.content or "")[:500]
-            docs.append(summary)
-
-        return json.dumps(docs, ensure_ascii=False, default=str)
-
-    @mcp.tool(
-        name="get_document",
-        description=(
-            "Get full details of a single document including its text content. "
-            "Content is truncated to keep responses manageable."
-        ),
-        annotations=_RO,
-    )
-    async def get_document(document_id: int, ctx: Context = None) -> str:
-        check_api_key(ctx)
-        paperless = get_paperless(ctx)
-        doc = await paperless.get_document(document_id)
-        content = doc.content or ""
-        if len(content) > settings.max_doc_chars:
-            content = content[: settings.max_doc_chars] + "\n...[truncated]"
-        result = _doc_summary(doc)
-        result["content"] = content
-        return json.dumps(result, ensure_ascii=False, default=str)
-
     @mcp.tool(
         name="list_inbox",
         description="List all documents currently in the Paperless-NGX inbox (unprocessed).",

@@ -3,7 +3,6 @@
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\MaintenanceController;
 use App\Http\Controllers\Admin\SettingsController;
-use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingIndexController;
 use App\Http\Controllers\EmbeddingsController;
@@ -51,12 +50,6 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
 
         Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
-
-        Route::get('chat', [ChatController::class, 'page'])->name('chat.page');
-        Route::get('api/v1/chat', [ChatController::class, 'index'])->name('chat.index');
-        Route::post('api/v1/chat/ask', [ChatController::class, 'ask'])->name('chat.ask');
-        Route::get('api/v1/chat/sessions/{session}', [ChatController::class, 'show'])->name('chat.show');
-        Route::delete('api/v1/chat/sessions/{session}', [ChatController::class, 'destroy'])->name('chat.destroy');
 
         Route::get('{segment}', [EntityApprovalController::class, 'index'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])

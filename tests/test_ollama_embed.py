@@ -530,27 +530,8 @@ async def test_chat_json_retries_on_transient_500(client: OllamaClient):
     mock_sleep.assert_called_once()
 
 
-async def test_chat_retries_on_connect_error(client: OllamaClient):
-    """Plain chat retries on transient transport errors."""
-    client._client.post = AsyncMock(
-        side_effect=[
-            httpx.ConnectError("connection refused"),
-            _make_chat_response("ok"),
-        ]
-    )
-
-    with (
-        patch("app.ai_provider.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        patch("app.ai_provider.client.settings") as mock_settings,
-    ):
-        mock_settings.ollama_num_ctx = 4096
-        mock_settings.ollama_chat_retries = 1
-        mock_settings.ollama_chat_retry_base_delay = 0.01
-        result = await client.chat(messages=[{"role": "user", "content": "hi"}])
-
-    assert result == "ok"
-    assert client._client.post.call_count == 2
-    mock_sleep.assert_called_once()
+def test_conversational_chat_provider_entry_point_is_absent():
+    assert not hasattr(OllamaClient, "chat")
 
 
 async def test_chat_vision_json_passes_default_num_ctx(client: OllamaClient):

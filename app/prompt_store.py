@@ -49,12 +49,6 @@ PROMPT_SPECS: tuple[PromptSpec, ...] = (
         "OCR Vision full",
         "System-Prompt für seitenweise Vision-OCR-Korrektur.",
     ),
-    PromptSpec(
-        "chat",
-        "chat_system.txt",
-        "RAG Chat",
-        "System-Prompt für Fragen zu Paperless-Dokumenten.",
-    ),
 )
 
 _PROMPTS_BY_KEY = {spec.key: spec for spec in PROMPT_SPECS}

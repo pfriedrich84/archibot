@@ -43,7 +43,7 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 - Embeddings: page still reads legacy Python SQLite metadata; final state should use PostgreSQL/pgvector and pipeline-run state.
 - Stats: detailed phase timing/error-rate analytics remain deferred to pipeline events or a later explicit decision.
 - Errors: acknowledgement/assignment/export workflow is not implemented; current page focuses on diagnostics and existing retry/dismiss navigation.
-- Chat: recent activity remains empty compared with legacy audit-derived activity.
+- Chat/RAG is disabled for every user; historical chat rows remain stored but are not exposed. Issue #221 is the only redesign/re-enable track.
 - Settings: deployment-only settings remain intentionally outside Laravel settings.
 - Audit Logs: latest-100 view lacks filters/export/detail view.
 - Maintenance: destructive reset is intentionally excluded from GUI parity and remains operator-only CLI functionality.

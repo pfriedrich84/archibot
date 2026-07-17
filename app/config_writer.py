@@ -165,7 +165,6 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         "embedding_provider",
         "ocr_provider",
         "judge_provider",
-        "chat_provider",
         "ollama_model",
         "ollama_embed_model",
         "ollama_embed_dim",

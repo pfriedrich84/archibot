@@ -60,14 +60,6 @@ class AiProviderGateway(Protocol):
         role: str = "ocr",
     ) -> dict[str, Any]: ...
 
-    async def chat(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        model: str | None = None,
-        temperature: float = 0.3,
-    ) -> str: ...
-
     async def list_models(self) -> list[str]: ...
 
     async def model_available(self, name: str) -> bool: ...

@@ -96,7 +96,7 @@ docker exec archibot archibot reset --yes --include-config
 | Verbindung | Richtung | Beschreibung |
 |---|---|---|
 | ArchiBot App → Paperless | HTTP | API-Zugriff (Dokumente, Metadaten) |
-| ArchiBot App → AI-Provider | HTTP | LLM-Inference (Chat, Embedding) via Ollama oder OpenAI-kompatiblem Endpoint |
+| ArchiBot App → AI-Provider | HTTP | Strukturierte LLM-Klassifikation/OCR/Judge und Embeddings via Ollama oder OpenAI-kompatiblem Endpoint; Chat/RAG ist deaktiviert ([Issue #221](https://github.com/pfriedrich84/archibot/issues/221)) |
 | ArchiBot App → PostgreSQL | TCP 5432 | App-State, pgvector Embeddings, Pipeline-/Audit-Tabellen |
 | Browser → ArchiBot App | HTTP | Web-GUI (Port 8088) |
 | Paperless → ArchiBot App | HTTP | Webhook (optional, Port 8088) |

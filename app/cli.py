@@ -501,20 +501,6 @@ async def cmd_commit_review(
     return result
 
 
-async def cmd_chat_ask(question: str, history: list[dict[str, Any]]) -> dict[str, object]:
-    """Answer one Laravel-persistent Chat/RAG turn from serialized history."""
-    from app.chat import ask_stateless
-
-    paperless = PaperlessClient()
-    ollama = create_ai_provider()
-    try:
-        result = await ask_stateless(question, history, paperless, ollama)
-        return {"answer": result.answer, "sources": result.sources}
-    finally:
-        await paperless.aclose()
-        await ollama.aclose()
-
-
 def _laravel_artisan_path() -> Path | None:
     """Return the Laravel artisan path used for PostgreSQL-owned CLI actions."""
     candidates = [
@@ -655,10 +641,6 @@ COMMANDS = {
     "sync-entity-approval": (
         "Synchronize a Laravel entity approval decision into the Python worker DB",
         cmd_sync_entity_approval,
-    ),
-    "chat-ask": (
-        "Answer one stateless Chat/RAG request from a JSON contract",
-        cmd_chat_ask,
     ),
     "reset": ("Reset via Laravel/PostgreSQL (--yes required)", None),
 }
@@ -908,12 +890,6 @@ def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _chat_contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
-    """Return Chat/RAG payload from either worker-style or direct chat bridge input."""
-    payload = _contract_payload(input_payload)
-    return payload if payload else input_payload
-
-
 def _contract_document_id(input_payload: dict[str, object]) -> int | None:
     payload = _contract_payload(input_payload)
     raw = payload.get("paperless_document_id") or payload.get("document_id")
@@ -1127,15 +1103,6 @@ def main() -> None:
                 output_payload["result"] = asyncio.run(
                     cmd_func(*_contract_entity_approval(input_payload))
                 )
-            elif cmd_name == "chat-ask":
-                payload = _chat_contract_payload(input_payload)
-                question = payload.get("question")
-                history = payload.get("history", [])
-                if not isinstance(question, str) or not question.strip():
-                    raise ValueError("Chat contract requires a non-empty question")
-                if not isinstance(history, list):
-                    raise ValueError("Chat contract history must be a list")
-                output_payload.update(asyncio.run(cmd_func(question.strip(), history)))
             else:
                 asyncio.run(cmd_func())
             _write_worker_output(output_path, output_payload)

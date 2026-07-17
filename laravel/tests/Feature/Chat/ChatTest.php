@@ -4,191 +4,81 @@ namespace Tests\Feature\Chat;
 
 use App\Models\ChatSession;
 use App\Models\User;
-use App\Services\Chat\ChatRagResult;
-use App\Services\Chat\PythonChatRag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Inertia\Testing\AssertableInertia as Assert;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class ChatTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_authenticated_users_can_open_chat_page(): void
+    public function test_chat_routes_are_not_registered_for_non_admins_and_execute_nothing(): void
     {
-        $user = User::factory()->create();
-
-        $this->actingAs($user)
-            ->get(route('chat.page'))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('chat/Index')
-                ->has('initialPayload.sessions')
-                ->has('initialPayload.recent_activity')
-                ->where('endpoints.index', '/api/v1/chat')
-                ->where('endpoints.ask', '/api/v1/chat/ask')
-                ->where('endpoints.session', '/api/v1/chat/sessions/__SESSION__')
-            );
+        $this->assertChatIsUnavailableFor(User::factory()->create(['is_admin' => false]));
     }
 
-    public function test_asking_question_persists_laravel_session_and_messages(): void
+    public function test_chat_routes_are_not_registered_for_admins_and_execute_nothing(): void
     {
-        $user = User::factory()->create();
-        $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
-        {
-            public array $history = [];
-
-            public function ask(string $question, array $history): ChatRagResult
-            {
-                $this->history = $history;
-
-                return new ChatRagResult('Die Antwort.', [
-                    ['id' => 42, 'title' => 'Invoice May', 'distance' => 0.123],
-                ]);
-            }
-        });
-
-        $response = $this->actingAs($user)
-            ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
-            ->assertOk()
-            ->assertJsonPath('answer', 'Die Antwort.')
-            ->assertJsonPath('sources.0.title', 'Invoice May');
-
-        $sessionId = $response->json('session_id');
-        $this->assertNotEmpty($sessionId);
-
-        $this->assertDatabaseHas('chat_sessions', [
-            'id' => $sessionId,
-            'user_id' => $user->id,
-            'origin' => 'web',
-        ]);
-        $this->assertDatabaseHas('chat_messages', [
-            'chat_session_id' => $sessionId,
-            'role' => 'user',
-            'content' => 'Was steht in der Rechnung?',
-        ]);
-        $this->assertDatabaseHas('chat_messages', [
-            'chat_session_id' => $sessionId,
-            'role' => 'assistant',
-            'content' => 'Die Antwort.',
-        ]);
+        $this->assertChatIsUnavailableFor(User::factory()->create(['is_admin' => true]));
     }
 
-    public function test_chat_session_list_show_and_delete_are_scoped_to_user(): void
+    public function test_existing_chat_rows_are_preserved_but_not_exposed(): void
     {
-        $user = User::factory()->create();
-        $otherUser = User::factory()->create();
+        $owner = User::factory()->create();
         $session = ChatSession::query()->create([
-            'id' => 'session123456789',
-            'user_id' => $user->id,
+            'id' => 'preserved-session',
+            'user_id' => $owner->id,
             'origin' => 'web',
-            'title' => 'Question',
-            'preview' => 'Answer',
+            'title' => 'Preserved title',
+            'preview' => 'Preserved preview',
             'last_active_at' => now(),
         ]);
-        $session->messages()->create(['role' => 'user', 'content' => 'Question']);
-        $session->messages()->create(['role' => 'assistant', 'content' => 'Answer', 'sources' => []]);
-
-        $this->actingAs($user)
-            ->getJson(route('chat.index'))
-            ->assertOk()
-            ->assertJsonPath('sessions.0.id', $session->id)
-            ->assertJsonPath('sessions.0.message_count', 2);
-
-        $this->actingAs($user)
-            ->getJson(route('chat.show', $session->id))
-            ->assertOk()
-            ->assertJsonPath('messages.1.content', 'Answer');
-
-        $this->actingAs($otherUser)
-            ->getJson(route('chat.show', $session->id))
-            ->assertNotFound();
-
-        $this->actingAs($user)
-            ->deleteJson(route('chat.destroy', $session->id))
-            ->assertOk()
-            ->assertJsonPath('deleted', true);
-
-        $this->assertDatabaseMissing('chat_sessions', ['id' => $session->id]);
-    }
-
-    public function test_chat_session_can_be_deleted_with_method_spoofed_post(): void
-    {
-        $user = User::factory()->create();
-        $session = ChatSession::query()->create([
-            'id' => 'session123456789',
-            'user_id' => $user->id,
-            'origin' => 'web',
-            'title' => 'Question',
-            'preview' => 'Answer',
-            'last_active_at' => now(),
-        ]);
-        $session->messages()->create(['role' => 'assistant', 'content' => 'Answer', 'sources' => []]);
-
-        $this->actingAs($user)
-            ->postJson(route('chat.destroy', $session->id), ['_method' => 'DELETE'])
-            ->assertOk()
-            ->assertJsonPath('deleted', true);
-
-        $this->assertDatabaseMissing('chat_sessions', ['id' => $session->id]);
-        $this->assertDatabaseMissing('chat_messages', ['chat_session_id' => $session->id]);
-    }
-
-    public function test_chat_backend_failure_returns_error_without_fake_assistant_message(): void
-    {
-        $user = User::factory()->create(['is_admin' => true]);
-        $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
-        {
-            public function ask(string $question, array $history): ChatRagResult
-            {
-                throw new \RuntimeException('connection refused');
-            }
-        });
-
-        $response = $this->actingAs($user)
-            ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
-            ->assertStatus(502)
-            ->assertJsonPath('message', 'Chat backend failed. Please check the AI provider and Paperless configuration.')
-            ->assertJsonPath('detail', 'connection refused');
-
-        $sessionId = $response->json('session_id');
-        $this->assertNotEmpty($sessionId);
-        $this->assertDatabaseHas('chat_messages', [
-            'chat_session_id' => $sessionId,
+        $message = $session->messages()->create([
             'role' => 'user',
-            'content' => 'Was steht in der Rechnung?',
+            'content' => 'Synthetic retained chat content',
+            'sources' => [],
         ]);
-        $this->assertDatabaseMissing('chat_messages', [
-            'chat_session_id' => $sessionId,
-            'role' => 'assistant',
-            'content' => 'Fehler bei der Verarbeitung. Bitte später erneut versuchen.',
+
+        $this->actingAs($owner)->get('/chat')->assertNotFound();
+        $this->actingAs($owner)->getJson("/api/v1/chat/sessions/{$session->id}")
+            ->assertNotFound()
+            ->assertDontSee('Synthetic retained chat content');
+
+        $this->assertDatabaseHas('chat_sessions', ['id' => $session->id]);
+        $this->assertDatabaseHas('chat_messages', [
+            'id' => $message->id,
+            'chat_session_id' => $session->id,
+            'content' => 'Synthetic retained chat content',
         ]);
     }
 
-    public function test_chat_backend_diagnostics_are_hidden_from_non_admins(): void
+    private function assertChatIsUnavailableFor(User $user): void
     {
-        config(['app.debug' => false]);
-        $user = User::factory()->create(['is_admin' => false]);
-        $this->app->instance(PythonChatRag::class, new class extends PythonChatRag
-        {
-            public function ask(string $question, array $history): ChatRagResult
-            {
-                throw new \RuntimeException('provider detail');
-            }
-        });
+        Process::fake();
+        Http::fake();
 
-        $this->actingAs($user)
-            ->postJson(route('chat.ask'), ['question' => 'Was steht in der Rechnung?'])
-            ->assertStatus(502)
-            ->assertJsonMissingPath('detail');
-    }
+        foreach (['chat.page', 'chat.index', 'chat.ask', 'chat.show', 'chat.destroy'] as $name) {
+            $this->assertFalse(Route::has($name), "Route {$name} must not be registered.");
+        }
 
-    public function test_empty_question_is_rejected(): void
-    {
-        $user = User::factory()->create();
+        $requests = [
+            fn (): TestResponse => $this->actingAs($user)->get('/chat'),
+            fn (): TestResponse => $this->actingAs($user)->getJson('/api/v1/chat'),
+            fn (): TestResponse => $this->actingAs($user)->postJson('/api/v1/chat/ask', [
+                'question' => 'Synthetic question',
+            ]),
+            fn (): TestResponse => $this->actingAs($user)->getJson('/api/v1/chat/sessions/missing'),
+            fn (): TestResponse => $this->actingAs($user)->deleteJson('/api/v1/chat/sessions/missing'),
+        ];
 
-        $this->actingAs($user)
-            ->postJson(route('chat.ask'), ['question' => '   '])
-            ->assertStatus(422);
+        foreach ($requests as $request) {
+            $request()->assertNotFound();
+        }
+
+        Process::assertNothingRan();
+        Http::assertNothingSent();
     }
 }

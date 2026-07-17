@@ -28,6 +28,7 @@ MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
 
 ## Sicherheitskonzept
 
+- **Chat/RAG und globales Retrieval deaktiviert.** MCP registriert keine globale Dokumentensuche, keinen Volltext-Dokumentabruf und keine frei aufrufbare Aehnlichkeitssuche. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
 - **Read-Only als Default.** Schreibende Tools nur bei `MCP_ENABLE_WRITE=true`.
 - **API-Key-Auth:** `MCP_API_KEY` sichert alle Tool-Calls ab (empfohlen bei SSE-Transport).
 - **Rate-Limit:** `MCP_CLASSIFY_RATE_LIMIT` begrenzt KI-Klassifikationen pro Stunde (Default: 10).
@@ -39,9 +40,9 @@ MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
 
 | Kategorie | Tools |
 |---|---|
-| Dokumente | `search_documents`, `get_document`, `list_inbox` |
+| Dokumente | `list_inbox` (Metadaten des berechtigungsgebundenen Paperless-Inbox-Pfads; kein globales Retrieval) |
 | Entities | `list_correspondents`, `list_document_types`, `list_tags`, `list_storage_paths` |
-| KI | `classify_document` (rate-limited), `find_similar_documents` |
+| KI | `classify_document` (rate-limited und Inbox-gated; kein allgemeiner Chat-/Retrieval-Aufruf) |
 | Suggestions | `list_suggestions`, `get_suggestion` |
 | Tags | `list_tag_proposals`, `list_blacklisted_tags` |
 | System | `get_status` |
