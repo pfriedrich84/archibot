@@ -245,7 +245,7 @@ Potential future trace spans:
 
 ```text
 webhook request
-start_or_attach_document_pipeline
+laravel_document_pipeline_start
 fetch_document
 correct_ocr
 embed_document

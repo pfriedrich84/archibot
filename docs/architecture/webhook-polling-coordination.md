@@ -70,18 +70,15 @@ pipeline.force_reprocess.requested
 
 ## Shared Start Seam
 
-Webhook and polling code must not each implement separate pipeline-start logic.
-
-Current cross-runtime adapters for this Pipeline Run start interface are:
+Webhook and polling must not implement separate Pipeline Start decisions. ADR-0017 makes this Laravel Module the sole owner:
 
 ```text
-Laravel: App\Services\Pipeline\DocumentPipelineStarter::start(...)
-Python:  app.jobs.pipeline_start.start_or_attach_document_pipeline(...)
+App\Services\Pipeline\DocumentPipelineStarter::start(...)
 ```
 
-Both adapters must satisfy the same interface: compute the same dedupe key, enforce the embedding readiness gate, coalesce through durable PostgreSQL state, and emit the canonical Pipeline Run events. The shared contract vectors live in `tests/fixtures/pipeline_start_contract.json` and are exercised by both PHP and Python tests.
+The current Python `app.jobs.pipeline_start.start_or_attach_document_pipeline(...)` is transitional code scheduled for deletion. New work must not extend it. Python polling persists/reports durable candidates; a Laravel consumer invokes the starter, which computes the dedupe key, enforces the embedding readiness gate, coalesces through durable PostgreSQL state, emits canonical events and dispatches newly created runs.
 
-Deletion target: future work should remove duplicated start implementation by moving callers toward durable Command / Pipeline Run / Laravel queued actor job seams with fixed Python actor commands, not by deepening Worker Job or broad subprocess paths.
+Existing cross-runtime contract vectors remain migration evidence until every caller reaches Laravel. The hardening plan requires equivalent timestamp normalization and crash/replay tests before deleting the Python path.
 
 Responsibilities:
 
@@ -171,8 +168,8 @@ Webhooks should:
 
 ```text
 Webhook receives document #123
-Poll discovers document #123 at same time
-Both call start_or_attach_document_pipeline(...)
+Poll persists candidate for document #123 at the same time
+Both reach Laravel DocumentPipelineStarter::start(...)
 Only one creates the unique pipeline run
 Other source attaches/coalesces through the unique constraint and emits an event
 ```

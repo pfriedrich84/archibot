@@ -49,7 +49,7 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 - Laravel database queues are the event-driven transport. Queued jobs invoke fixed, allowlisted Python actor commands while PostgreSQL pipeline tables remain the durable source of truth.
 - Document processing must never start before the embedding index is complete.
 - Only documents without the configured inbox tag are trusted classification context.
-- Event-driven document processing must preserve existing `auto_commit_confidence` behavior while keeping manual review and permission safeguards intact.
+- Model-reported confidence must not authorize Paperless writes. ADR-0018 requires `auto_commit_confidence` to be disabled until deterministic eligibility gates, adversarial tests and explicit product/security approval permit re-enabling it. Implementation is pending; do not extend the current behavior, and treat containment milestone 0.2 as required before relying on manual-review-only runtime behavior.
 - Progress, retry, recovery, audit, and pipeline state must be durable in PostgreSQL.
 - Only admins may control jobs via Laravel actions guarded by `is_admin()`. Non-admin users may work on review suggestions only when they have Paperless rights to change the corresponding document.
 - Per-document reprocess must be possible manually through an admin Laravel button and automatically through relevant webhooks; explicit user-selected force reprocess always creates a new pipeline run.
@@ -62,8 +62,9 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 
 ## Canonical project docs
 
-- [`docs/prompts/pi-dev-event-driven-migration.md`](docs/prompts/pi-dev-event-driven-migration.md) — governing migration prompt for the event-driven architecture.
-- [`docs/implementation-plan-event-driven-archibot.md`](docs/implementation-plan-event-driven-archibot.md) — target architecture and migration plan.
+- [`docs/prompts/pi-dev-event-driven-migration.md`](docs/prompts/pi-dev-event-driven-migration.md) — historical migration prompt; follow its explicit supersession notice and never let stale phases override ADR-0017, ADR-0018 or the hardening plan.
+- [`docs/implementation-plan-event-driven-archibot.md`](docs/implementation-plan-event-driven-archibot.md) — original migration plan; ADR-0015, ADR-0017, ADR-0018 and the hardening plan supersede its stale transport, runtime-ownership, backend and write-authorization guidance.
+- [`docs/implementation-plan-security-architecture-hardening.md`](docs/implementation-plan-security-architecture-hardening.md) — accepted security containment, single-runtime-ownership, backend-retirement and UX hardening sequence.
 - [`docs/architecture/job-control-model.md`](docs/architecture/job-control-model.md) — current temporary job-control model and migration rules.
 - [`docs/architecture/`](docs/architecture/) — detailed architecture rules for webhooks, polling, progress, retries, observability, and authorization.
 - [`docs/decisions/`](docs/decisions/) — accepted architecture decisions.

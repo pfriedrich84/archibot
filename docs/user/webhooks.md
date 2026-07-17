@@ -27,7 +27,7 @@ ArchiBot unterscheidet Paperless-Events automatisch:
 
 - Paperless-NGX >= 2.0
 - Der ArchiBot-Container muss fuer Paperless erreichbar sein (gleiches Docker-Netzwerk oder Netzwerk-Route)
-- Optional, aber empfohlen: ein Webhook-Secret fuer Authentifizierung
+- Erforderlich: ein nicht leeres Webhook-Secret fuer Authentifizierung. Bis Hardening-Meilenstein 0.4 implementiert ist, akzeptiert die aktuelle Runtime bei leerem Secret weiterhin Requests; exponiere den Endpoint deshalb nicht in ein nicht vertrauenswuerdiges Netzwerk.
 
 ## 1. ArchiBot konfigurieren
 
@@ -36,11 +36,11 @@ Empfohlen: In ArchiBot als globale Admin-Einstellung `webhook.secret` unter `/ad
 Alternativ fuer Deployment-/Bootstrap-Kompatibilitaet in der `.env`:
 
 ```env
-# Webhook-Secret (empfohlen). Leerer String = keine Authentifizierung.
+# Webhook-Secret (erforderlich; zufaellig und instanzspezifisch erzeugen).
 WEBHOOK_SECRET=mein-geheimer-webhook-token
 ```
 
-Fuer den event-driven Endpoint kann auch `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die globale Admin-Einstellung hat Vorrang vor den Deployment-Umgebungsvariablen. Die Authentifizierung greift nur, wenn ein Secret gesetzt ist.
+Fuer den event-driven Endpoint kann auch `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die globale Admin-Einstellung hat Vorrang vor den Deployment-Umgebungsvariablen. Zielverhalten nach Meilenstein 0.4: Fehlt das effektive Secret, lehnt ArchiBot jeden Webhook ab. Der aktuelle Fail-open-Zwischenstand darf nicht als optionaler Betriebsmodus genutzt werden.
 
 ## 2. Paperless-NGX konfigurieren
 
@@ -62,7 +62,7 @@ Du kannst in Paperless einen Workflow mit mehreren Triggern oder zwei Workflows 
 - **Webhook-Payload als JSON senden:** AN
 - **Dokument einbeziehen:** AUS (Paperless haengt sonst die Datei als Multipart-Anhang an; ArchiBot holt das Dokument selbst per API)
 - **Webhook-Parameter:** mindestens `document_url` mit Wert `{{ doc_url }}`; empfohlen zusaetzlich `event` passend zum Workflow-Trigger
-- **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (wenn konfiguriert)
+- **Webhook-Kopfzeilen:** `X-Webhook-Secret: <WEBHOOK_SECRET>` (erforderlich)
 
 Paperless-NGX Workflow-Webhooks senden nicht automatisch eine ArchiBot-kompatible Dokument-ID. Die Workflow-Webhook-Parameter werden mit Paperless' Workflow-Platzhaltern gerendert. In aktuellen Paperless-NGX-Versionen gibt es keinen nackten `{{ id }}`-Platzhalter; verfuegbar ist aber `{{ doc_url }}` mit der Dokument-URL. ArchiBot kann daraus die Dokument-ID lesen.
 
@@ -149,7 +149,7 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 | Header | Wert | Pflicht? |
 |---|---|---|
 | `Content-Type` | `application/json` | Ja |
-| `X-Webhook-Secret` | Wert der globalen ArchiBot-Einstellung `webhook.secret`, sonst `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Nur wenn ein Secret gesetzt ist |
+| `X-Webhook-Secret` | Wert der globalen ArchiBot-Einstellung `webhook.secret`, sonst `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Erforderlich; fehlendes effektives Secret muss nach Meilenstein 0.4 fail-closed sein |
 
 **Body** (Workflow-Format oder Legacy-Format):
 

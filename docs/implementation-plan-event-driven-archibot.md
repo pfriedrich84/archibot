@@ -4,7 +4,7 @@
 
 Archibot soll konsequent von einer gemischten CLI-/Subprocess-/Scheduler-Architektur zu einer event-driven Pipeline weiterentwickelt werden.
 
-> **Transport update:** ADR-0015 supersedes the original Absurd queue target in this plan. New implementation work uses Laravel database queues as transport and fixed, allowlisted Python actor commands for execution. PostgreSQL pipeline tables remain the durable source of truth. The migration order starts with embedding builds, then document pipeline execution.
+> **Supersession notice:** This document is historical where it conflicts with later decisions. ADR-0015 replaces its Absurd transport target; ADR-0017 replaces parallel SQLite/Absurd ownership and duplicate Pipeline Start with one Laravel/PostgreSQL orchestration model; ADR-0018 replaces unchanged model-confidence auto-commit with a required suspension. New work follows [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) for containment, runtime ownership, backend retirement and write authorization.
 
 Die künftige Architektur trennt klar zwischen UI, dauerhafter Datenhaltung, Webhook/Event-Ingestion, Message Transport und Python Processing:
 

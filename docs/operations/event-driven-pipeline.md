@@ -47,7 +47,7 @@ RunPythonActorJob::webhookDelivery($deliveryId)
 RunPythonActorJob::reviewCommit($commandId)
 ```
 
-The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries, auto-commit behavior and progress remain Python-owned and PostgreSQL-backed. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
+The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries and progress remain Python-owned and PostgreSQL-backed. The current actor can still auto-commit from confidence, but ADR-0018 rejects that behavior and no document classification/processing is safe until containment milestone 0.2 disables it in code. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
 
 ## Database migrations
 
@@ -72,7 +72,7 @@ The event-driven state tables are owned by PostgreSQL and include:
 
 PostgreSQL is the source of truth for progress, retries, audit and recovery state. Laravel database queues are the event-driven transport; queue payloads must remain small references to durable database rows.
 
-ADR-0015 supersedes the previous Absurd queue target. During migration some Absurd compatibility files may remain until equivalent Laravel queued actor jobs are tested, but new event-driven work should target Laravel queues and fixed Python actor commands.
+ADR-0015 supersedes the previous Absurd queue target, and ADR-0017 requires complete removal after parity migration. Current Absurd files are transitional inventory only; they must not receive new behavior. New work targets Laravel queues and fixed Python actor commands according to the hardening plan.
 
 ## Paperless webhook setup
 
@@ -82,7 +82,7 @@ Configure Paperless to send document events to:
 POST /api/webhooks/paperless
 ```
 
-If `PAPERLESS_WEBHOOK_SECRET` is configured, Paperless or the reverse proxy must send:
+Hardening milestone 0.4 requires `PAPERLESS_WEBHOOK_SECRET` (or the canonical persisted equivalent). Paperless or the reverse proxy must send:
 
 ```text
 X-Webhook-Secret: <secret>
@@ -90,7 +90,7 @@ X-Webhook-Secret: <secret>
 
 Webhook ingestion is intentionally lightweight:
 
-1. validate the optional secret and payload shape;
+1. require and validate the secret and payload shape, failing closed when no effective secret exists;
 2. persist raw and normalized delivery data in `webhook_deliveries`;
 3. compute a dedupe key;
 4. record pipeline events;
@@ -222,7 +222,7 @@ Live integration smoke checklist:
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
 5. Start Laravel and the Laravel queue worker. During migration, legacy Absurd worker/recovery processes may remain only for flows not yet migrated.
-6. Configure Paperless webhook to `POST /api/webhooks/paperless` with `X-Webhook-Secret` if configured.
+6. Configure a non-empty secret on both sides, then point Paperless to `POST /api/webhooks/paperless` with `X-Webhook-Secret`. Until milestone 0.4 lands, do not expose the current fail-open endpoint to an untrusted network.
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.
 9. Run or wait for the Laravel queue worker to consume the queued actor job.

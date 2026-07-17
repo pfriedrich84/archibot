@@ -1,8 +1,8 @@
 # Pi.dev Subagent Orchestration for Archibot
 
-This guide complements `docs/implementation-plan-laravel-job-control.md`.
+This guide's old phase examples are historical. For new work it complements `docs/implementation-plan-security-architecture-hardening.md`; ADR-0017 supersedes Worker Job/Absurd ownership references below.
 
-Use it to keep Pi.dev/Codex focused while working through the Laravel job-control reliability plan.
+Use it only for general orchestration discipline, applying the active hardening plan's PR sequence and ownership rules.
 
 ## Core Rule
 
@@ -21,7 +21,7 @@ Archibot crosses several domains:
 - Queue/process reliability
 - Recovery and cancellation semantics
 - Tests and Docker runtime
-- Event-driven migration with commands, pipeline runs, events, Absurd and Absurd
+- Event-driven migration with commands, Pipeline Runs, Laravel Database Queues and fixed Python actor commands
 
 A single long-running agent will likely lose context, mix layers, over-refactor Python, or skip tests. Fresh subagents reduce that risk.
 
@@ -29,15 +29,15 @@ A single long-running agent will likely lose context, mix layers, over-refactor 
 
 The main agent must:
 
-1. Read `docs/implementation-plan-laravel-job-control.md`.
-2. Choose the next phase to execute.
+1. Read `docs/implementation-plan-security-architecture-hardening.md` and its accepted ADRs.
+2. Choose the next dependency-ordered milestone/PR slice to execute.
 3. Start a fresh subagent for that phase.
 4. Give the subagent a narrow scope and relevant files only.
 5. Review the resulting diff.
 6. Run or validate tests.
-7. Commit using the commit message specified in the plan.
+7. Commit with a concise Conventional Commits-style subject after current validation passes.
 8. Decide whether to continue, split the phase, or stop for review.
-9. Keep the repository moving toward `docs/implementation-plan-event-driven-archibot.md`.
+9. Keep the repository moving toward the active hardening plan and ADR-0017 ownership model.
 
 The orchestrator must prevent scope drift. If a subagent starts rewriting unrelated Python processing, changing unrelated UI, or jumping ahead to later phases, stop and re-scope.
 

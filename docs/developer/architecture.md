@@ -146,6 +146,8 @@ Timing wird separat unter `phase='judge'` in `phase_timing` erfasst.
 
 ### 7. Auto-Commit
 
+> **Security-Hardening ausstehend:** ADR-0018 verlangt, diesen Confidence-basierten Schreibpfad abzuschalten. Bis Meilenstein 0.2 implementiert ist, bildet der folgende Absatz noch das aktuelle Runtime-Verhalten ab; ein veralteter effektiver Python-Export kann trotz Env/UI-Wert `0` aktiv bleiben. Es gibt keine verlaessliche reine Einstellungsminderung, daher darf bis Meilenstein 0.2 keine Dokumentklassifikation/-verarbeitung laufen.
+
 Wenn `AUTO_COMMIT_CONFIDENCE > 0` und das LLM eine Confidence >= diesem Wert meldet, wird der Vorschlag ohne manuellen Review direkt committed. Bei aktivem Judge zaehlt die finale (ggf. korrigierte) Confidence.
 
 Akzeptierte Review-Suggestions erzeugen einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.

@@ -1,8 +1,10 @@
 # Archibot Implementation Plan: Laravel Job Control & Product Reliability
 
-## Purpose
+> **Historical plan — do not execute:** Worker Jobs and Absurd targets in this document are superseded by ADR-0016, ADR-0017 and [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md). The file remains only as migration history and current-code provenance.
 
-This plan is the step-by-step working document for Pi.dev/Codex. It should be followed in order without needing a new prompt for every slice.
+## Historical purpose
+
+This plan was the step-by-step working document for the earlier Laravel job-control migration. It must not be used as current implementation instruction.
 
 Archibot's Python processing core was already useful before Laravel was introduced. The current product risk is the Laravel-side control plane: job creation, status tracking, recovery, retries, cancellation, UI parity and operational reliability.
 
@@ -1203,19 +1205,5 @@ Use this order unless a phase must be split into smaller commits:
 Use this as the first agent instruction:
 
 ```md
-Work through `docs/implementation-plan-laravel-job-control.md` step by step.
-
-Start with Phase 1 only.
-
-After each phase:
-1. Run the relevant tests.
-2. Commit with the commit message specified in the plan.
-3. Continue with the next phase only if tests pass.
-4. If a phase is too large, split it into smaller commits but keep the phase goal intact.
-5. Do not rewrite the Python processing core.
-6. Keep the Laravel UI as the product surface.
-7. Add or update tests for each reliability change.
-8. Keep the repository moving toward the event-driven architecture documented in `docs/implementation-plan-event-driven-archibot.md`.
-
-Begin with Phase 1: Centralize Worker Job Dispatch.
+Do not execute this historical plan. Follow `docs/implementation-plan-security-architecture-hardening.md` and accepted ADRs instead.
 ```

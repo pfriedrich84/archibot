@@ -2,20 +2,24 @@
 
 ## Current target
 
-Migrate Archibot toward the event-driven target architecture described in `docs/implementation-plan-event-driven-archibot.md` and governed by `docs/prompts/pi-dev-event-driven-migration.md`.
+Execute [`docs/implementation-plan-security-architecture-hardening.md`](../implementation-plan-security-architecture-hardening.md), governed by ADR-0017 and ADR-0018. Security containment milestone 0 is the next work; backend/runtime migration follows its dependency order. The older event-driven plan and prompt are historical where they conflict with these decisions.
 
-## Non-negotiable contracts
+The detailed phase list below is a historical implementation inventory. It identifies transitional code that exists today; it is not authorization to extend SQLite, Absurd, duplicate Pipeline Start or model-confidence auto-commit.
+
+## Transitional contracts
+
+These describe the current event-driven slice. ADR-0017 supersedes the Absurd queue names and duplicate Python start helper as removal targets; ADR-0019 narrows admin-only job control for authorized per-document review decisions.
 
 - Trigger sources: `webhook`, `poll`, `manual`, `retry`, `reindex`.
 - Webhook endpoint: `POST /api/webhooks/paperless`.
 - Poll interval default for the target architecture: `600` seconds.
 - Queue prefix env: `ARCHIBOT_QUEUE_PREFIX`, default `archibot`.
 - Initial queues: `archibot.webhook`, `archibot.io`, `archibot.llm`, `archibot.embedding`, `archibot.blocking`.
-- Shared document pipeline helper name: `start_or_attach_document_pipeline(...)`.
+- Transitional Python start helper: `start_or_attach_document_pipeline(...)`; Laravel becomes sole Pipeline Start owner and this helper is deleted under ADR-0017.
 - Embedding readiness helper name: `ensure_embedding_index_ready()`.
-- Job-control authorization: Laravel boundary checks `is_admin()` before mutation.
+- Operational job-control authorization: Laravel checks `is_admin()` before mutation; authorized per-document review decisions follow ADR-0019.
 
-## Phase progress
+## Historical phase progress and current transitional inventory
 
 - Phase 0 governance: implemented, needs final review before commit.
   - `AGENTS.md` points agents to the event-driven migration rules.
@@ -30,7 +34,7 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Tables/models exist for webhook deliveries, commands, pipeline runs/events/items, actor executions, embedding index state, LLM calls and document embeddings.
   - Progress, retry, trigger, dedupe, reprocess and observability fields are represented in the migration.
 - Phase 3 webhook ingestion: implemented as persisted ingestion, no synchronous heavy work.
-  - `POST /api/webhooks/paperless` validates the optional secret, extracts document id/modified time, computes a dedupe key, persists raw/normalized payloads and records received/duplicate events.
+  - `POST /api/webhooks/paperless` currently validates a secret only when configured; this fail-open transitional behavior is an open risk and milestone 0.4 makes the secret mandatory.
   - Feature tests cover persistence, dedupe, secret validation and malformed payload rejection.
 - Phase 4 Absurd foundation: partially implemented.
   - Absurd broker config, queue naming, actor/event/job package skeletons and webhook actor exist.
@@ -67,9 +71,11 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
   - Recovery enqueue helpers now restore command bridges and document pipeline runs to discoverable `pending` state if broker `.send(...)` fails after a queued transition.
   - Full end-to-end enqueue proof against live Absurd/PostgreSQL is still open.
 
-## Current validation
+## Historical validation
 
-- `ruff check app/ tests/`: passing.
+The results below are `STALE` for the current hardening plan and must not be used as completion evidence. New milestones record revision-bound evidence under `docs/agent/CONTEXT_AND_EVIDENCE.md`.
+
+- `ruff check app/ tests/`: historically passing.
 - `ruff format --check app/ tests/`: passing.
 - `pytest tests/ -q`: passing, 487 passed / 1 skipped.
 - Targeted recovery enqueue-failure validation: `ruff check app/jobs/recovery.py tests/test_recovery.py` and `pytest tests/test_recovery.py -q` passing, 20 tests.
@@ -84,10 +90,10 @@ Migrate Archibot toward the event-driven target architecture described in `docs/
 
 ## Open implementation notes
 
-- Python currently has `app/db.py`, so the target `app/db/` package cannot be introduced without a later module migration. New PostgreSQL/Absurd code remains additive for now.
+- Python currently has `app/db.py`, so a future package migration needs an explicit rename sequence. ADR-0017 forbids new SQLite/Absurd functionality; the hardening plan migrates callers and then deletes those paths.
 - Removed legacy Laravel webhook routes must not be extended or reintroduced for the new architecture. The target endpoint is `/api/webhooks/paperless` with `/webhook` as a simple alias.
-- Laravel webhook ingestion persists durable delivery state, starts or coalesces a durable `pipeline_runs` row, and optionally attempts fixed direct enqueue when `ARCHIBOT_WEBHOOK_DIRECT_ENQUEUE=true`. Recovery scan and entrypoint remain the durable fallback from queued `webhook_deliveries` to Absurd actors; the next safe milestone is a live Docker/Absurd/PostgreSQL smoke check.
+- Laravel webhook ingestion currently persists durable delivery state and transitional Absurd recovery remains present. The next safe work is hardening-plan milestone 0.4 (required secret), followed by ADR-0017 migration/removal; a new Absurd smoke milestone is not a target.
 - `ensure_embedding_index_ready()` now reads durable index status and fails closed unless it is `complete`. Blocked document runs are persisted and recoverable. The initial embedding build actor now indexes only trusted Paperless documents without the configured inbox tag into PostgreSQL/pgvector, records metadata for context search, and marks builds `complete`; live Paperless/Ollama/PostgreSQL smoke testing is still needed.
-- Pending document runs now reach a document actor and perform read-only Paperless fetch, local-only OCR correction, pgvector trusted-context lookup, LLM classification, optional judge verification, idempotent Laravel review suggestion persistence linked to `pipeline_runs`, and auto-commit queueing through the event-driven commit actor when `auto_commit_confidence` matches. Commit only uses reviewed existing IDs and preserves existing Paperless storage paths.
-- Manual admin reprocess now creates durable pending runs for recovery/Absurd pickup. Automatic webhook-triggered reprocess metadata is wired for Paperless change/update events; live webhook payload verification is still needed.
-- Polling reconciliation is wired through the event worker and maintenance actor; live Paperless/Absurd/PostgreSQL smoke testing is still needed outside this environment.
+- Pending document runs currently reach a document actor and can auto-commit when `auto_commit_confidence` matches. ADR-0018 rejects that write authorization. Because a stale effective Python export can retain a nonzero threshold, no document classification/processing is considered safe until containment milestone 0.2 disables the path in code.
+- Manual admin reprocess currently creates durable pending runs with transitional recovery/Absurd pickup. ADR-0017 requires Laravel-only transport and Pipeline Start ownership after containment.
+- Polling reconciliation currently includes the transitional Python/Absurd path. The hardening plan defines its durable candidate handoff to Laravel before Python Pipeline Start and Absurd are deleted.

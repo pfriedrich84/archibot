@@ -1,6 +1,6 @@
 # pi.dev Prompt: Event-driven Archibot Migration
 
-Use this prompt as the central instruction set for pi.dev/Codex when starting the event-driven Archibot migration.
+This prompt is historical where it conflicts with later accepted decisions. ADR-0017 makes Laravel the sole Pipeline Start owner, removes SQLite/Absurd, and gives Python domain lifecycle ownership; ADR-0018 requires auto-commit suspension. New work follows [`../implementation-plan-security-architecture-hardening.md`](../implementation-plan-security-architecture-hardening.md). Stale phase instructions below must not override those sources.
 
 Repository:
 
@@ -320,7 +320,7 @@ POST /api/webhooks/paperless
 
 The endpoint must:
 
-- validate webhook secret/header if configured
+- require and validate the webhook secret/header; reject every request when the effective secret is absent (ADR hardening milestone 0.4)
 - validate payload shape
 - persist raw payload in `webhook_deliveries`
 - compute a webhook dedupe key
@@ -370,7 +370,7 @@ Add:
 - structured logging context
 - durable progress helper
 - embedding readiness gate helper
-- shared `start_or_attach_document_pipeline(...)`
+- Laravel-owned `App\\Services\\Pipeline\\DocumentPipelineStarter::start(...)` as the sole Pipeline Start seam
 - recovery scan
 - retry classification
 
@@ -517,13 +517,13 @@ Behavior:
 
 ### Webhook + Polling Coordination
 
-Create a shared pipeline start service/function:
+Use Laravel's sole Pipeline Start owner:
 
 ```text
-start_or_attach_document_pipeline(trigger_source, paperless_document_id, paperless_modified, content_hash?)
+App\\Services\\Pipeline\\DocumentPipelineStarter::start(...)
 ```
 
-It must handle:
+Python discovery/processing must not implement a second start decision. The Laravel Module must handle:
 
 - embedding gate
 - document lock
@@ -538,7 +538,7 @@ Keep automatic polling every 600 seconds.
 
 Polling is reconciliation/fallback, not a separate competing processing path.
 
-Polling and webhooks must both go through `start_or_attach_document_pipeline(...)` or the same equivalent service.
+Polling and webhooks must both reach Laravel `DocumentPipelineStarter::start(...)`. Python polling persists/reports durable candidates for Laravel consumption; it must not create/coalesce Pipeline Runs directly.
 
 ### Retry and Recovery
 
@@ -577,7 +577,7 @@ Webhook-triggered reprocess requirements:
 - no user-session `is_admin()` because this is not a user action
 - webhook security still applies
 - persist and dedupe webhook delivery
-- use shared pipeline-start/dedupe/lock logic
+- use Laravel-owned Pipeline Start/dedupe/coalescing logic under ADR-0017
 - set `trigger_source = webhook`
 - link `webhook_delivery_id`
 - do not duplicate runs for duplicate deliveries or unchanged document state

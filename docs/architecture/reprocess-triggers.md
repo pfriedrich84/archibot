@@ -61,11 +61,13 @@ Webhook-triggered processing must not force duplicate full runs for duplicate we
 
 ## Shared Pipeline Start
 
-Both manual and webhook-triggered reprocess must call the same shared pipeline-start logic:
+Both manual and webhook-triggered reprocess must call Laravel's sole Pipeline Start owner under ADR-0017:
 
 ```text
-start_or_attach_document_pipeline(trigger_source, paperless_document_id, paperless_modified, content_hash?)
+App\Services\Pipeline\DocumentPipelineStarter::start(...)
 ```
+
+The transitional Python start helper must not receive new callers and is deleted after poll/webhook migration parity.
 
 Responsibilities:
 
