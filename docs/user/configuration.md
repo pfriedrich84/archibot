@@ -133,7 +133,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `POLL_INTERVAL_SECONDS` | `0` | Sekunden zwischen Inbox-Polls (`0` = automatisches Polling deaktiviert) |
+| `POLL_INTERVAL_SECONDS` | `600` | Sekunden zwischen automatischen Inbox-Reconciliation-Laeufen; Webhooks bleiben der primaere Trigger (`0` deaktiviert die Reconciliation) |
 | `ABSURD_DATABASE_URL` | — | Legacy migration-only Absurd queue URL. ADR-0015 supersedes this target; new event-driven work uses Laravel database queues. Keep only while unmigrated legacy Absurd flows remain. |
 
 ## Laravel/Svelte GUI

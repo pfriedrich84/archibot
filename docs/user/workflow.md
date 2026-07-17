@@ -41,8 +41,8 @@ und entweder als Review sichtbar oder automatisch committet.
 
 ### 1. Dokument wird erkannt
 
-Die Pipeline kann die Paperless-Inbox periodisch reconciliieren, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche und ist in `/operations-log` nachvollziehbar.
-Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam in der Worker-Job-Historie mit Status, Fortschritt und Logs.
+Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Zusaetzlich reconciliert die Pipeline die Paperless-Inbox automatisch alle `600` Sekunden (`POLL_INTERVAL_SECONDS`), damit verlorene oder verspaetete Webhooks repariert werden. Manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
+Webhook-, Reconciliation- und UI-Starts erscheinen gemeinsam in `/operations-log` als durable Commands, Pipeline Runs, Events und Actor Executions mit Status, Fortschritt und Logs.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.
 Bereits verarbeitete Dokumente (gleicher `updated_at`-Timestamp) werden uebersprungen. Ein laufender `process_document` Job sperrt seine Paperless-Dokument-ID, damit kein anderer aktiver Job dieselbe ID parallel verarbeitet. Reindex-Jobs sind exklusiv; andere Jobs warten, bis der Reindex abgeschlossen oder abgebrochen ist.
@@ -98,7 +98,7 @@ werden muessen:
 
 Innerhalb jeder Phase wird nach jedem Dokument persistiert. Ein Absturz in
 Dokument 12/19 verliert also nicht die Ergebnisse der ersten 11 Dokumente.
-Die Worker-Job-Anzeige zeigt den aktuellen Phasenfortschritt, z. B.
+Die durable Pipeline-/Actor-Statusanzeige zeigt den aktuellen Phasenfortschritt, z. B.
 `Embedding 4/19` oder `Judge 2/7`.
 
 #### Judge-Verifikation (optional)

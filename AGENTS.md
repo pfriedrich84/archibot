@@ -52,14 +52,14 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 - Preserve manual review, permissions, and configured `auto_commit_confidence`. Job control is admin-only; non-admin review actions require Paperless document rights.
 - Reprocessing remains available through relevant webhooks and the admin UI; explicit force reprocess creates a new pipeline run. Extend the Laravel operations dashboard rather than creating another UI.
 - CLI and UI use the same backend, configuration, durable state, progress, storage, authorization assumptions, and side effects. `archibot reset` delegates to `php artisan archibot:reset`.
-- Do not extend the legacy subprocess/Python-CLI worker path or add permanent behavior only to temporary `worker_jobs`. Target durable pipeline tables and Python actors reached through Laravel queued actor jobs.
+- Do not extend the legacy broad subprocess/Python-CLI worker path, reintroduce retired `worker_jobs`, or add new behavior to the superseded Absurd transport. Target durable pipeline tables and Python actors reached through Laravel queued actor jobs.
 
 ## Canonical project docs
 
 Load the narrowest relevant source of truth:
 
-- Migration scope and architecture: [governing prompt](docs/prompts/pi-dev-event-driven-migration.md), [implementation plan](docs/implementation-plan-event-driven-archibot.md), [architecture details](docs/architecture/), and [accepted ADRs](docs/decisions/).
-- Current implementation: [developer architecture](docs/developer/architecture.md) and [temporary job-control model](docs/architecture/job-control-model.md).
+- Migration scope and architecture: [conditional migration task router](docs/prompts/pi-dev-event-driven-migration.md), [implementation plan](docs/implementation-plan-event-driven-archibot.md), [architecture details](docs/architecture/), and [accepted ADRs](docs/decisions/).
+- Current implementation: [developer architecture](docs/developer/architecture.md) and [job-control model](docs/architecture/job-control-model.md).
 - Governance: [repository topology](docs/governance/repository-governance.md), [agent workflow](docs/governance/agent-workflow.md), [trust boundaries](docs/governance/trust-boundaries.md), and [release governance](docs/governance/release-governance.md).
 - User behavior: [workflow](docs/user/workflow.md), [configuration](docs/user/configuration.md), and [installation](docs/user/installation.md).
 - Graph orientation: [Graphify report](.graphify/GRAPH_REPORT.md); query `.graphify/graph.json` through Graphify tools instead of reading raw JSON manually.

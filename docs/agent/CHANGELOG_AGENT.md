@@ -4,6 +4,10 @@
 
 - Replaced the broad startup reading list with task-triggered context routing so agents load only applicable governance and project documents.
 - Condensed duplicated architecture and source-of-truth lists in `AGENTS.md` while preserving links to canonical detail.
+- Replaced the stale Absurd-centered migration plan and phase status with the active Laravel queue target, verified transition debt, and remaining cutover sequence.
+- Reduced the migration prompt to a conditional task router and aligned the agent workflow so unrelated coding tasks do not preload migration documentation.
+- Aligned the root architecture summary with ADR-0016 retirement of `worker_jobs`.
+- Marked the old Laravel job-control plan and subagent phase guide as historical, redirected active references, and corrected user-facing polling/operations terminology.
 
 ## 2026-07-14
 

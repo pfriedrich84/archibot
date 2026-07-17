@@ -15,7 +15,7 @@ Archibot is being migrated to an event-driven architecture using Paperless webho
 
 - Agent operating contract: `AGENTS.md`, with modular instructions in `docs/agent/`.
 - Target architecture: `docs/implementation-plan-event-driven-archibot.md`.
-- Non-negotiable migration prompt: `docs/prompts/pi-dev-event-driven-migration.md`.
+- Conditional migration task router and constraints: `docs/prompts/pi-dev-event-driven-migration.md`.
 - Architecture details: `docs/architecture/`.
 - ADRs: `docs/decisions/`.
 - Current phase status: `docs/implementation-notes/event-driven-phase-status.md` when present.
@@ -38,7 +38,7 @@ Use small logical commits by layer where possible:
 
 Temporary direct-main mode is active as of 2026-06-05: agents and maintainers may commit directly on `main` while branch protection is intentionally disabled for active development. This does not relax validation, safety, or review evidence requirements; run the relevant checks from `docs/agent/CHECKS.md` before each push when local tooling is available, classify current evidence under `docs/agent/CONTEXT_AND_EVIDENCE.md`, and record warnings, stale/incomplete coverage, and skipped checks in the handoff.
 
-Every change must be checked against `docs/governance/review-checklist.md` and the non-negotiable architecture rules in the migration prompt.
+Every change must be checked against `docs/governance/review-checklist.md`. Changes to the event-driven migration, durable pipeline, queue transport, recovery, or superseded runtime paths must also be checked against the architecture rules in the conditional migration prompt.
 
 Changes to CI, GitHub Actions, Dependabot configuration, Docker images, MCP servers, external providers, package registries, secrets, runtime data stores, AI-provider routing, or committed Graphify artifacts must also be checked against `docs/governance/trust-boundaries.md`.
 
