@@ -15,7 +15,6 @@
         reviewJudgeCounts,
         entities,
         entityApprovalMatrix,
-        ocrReviewStatusCounts,
         webhookStatusCounts,
         pipelineRunStatusCounts,
         pipelineRunTypeMatrix,
@@ -30,7 +29,6 @@
         reviewJudgeCounts: Record<string, number>;
         entities: Record<string, number>;
         entityApprovalMatrix: Record<string, Record<string, number>>;
-        ocrReviewStatusCounts: Record<string, number>;
         webhookStatusCounts: Record<string, number>;
         pipelineRunStatusCounts: Record<string, number>;
         pipelineRunTypeMatrix: Record<string, Record<string, number>>;
@@ -56,7 +54,6 @@
         { title: 'Review status', values: reviewStatusCounts },
         { title: 'Review confidence', values: reviewConfidenceDistribution },
         { title: 'Judge verdicts', values: reviewJudgeCounts },
-        { title: 'OCR review status', values: ocrReviewStatusCounts },
         { title: 'Webhook delivery status', values: webhookStatusCounts },
         { title: 'Pipeline run status', values: pipelineRunStatusCounts },
         { title: 'Actor execution status', values: actorStatusCounts },

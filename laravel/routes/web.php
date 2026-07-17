@@ -79,7 +79,6 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::get('ocr-reviews/{ocrReview}', [OcrReviewController::class, 'show'])->name('ocr-reviews.show');
         Route::post('ocr-reviews/{ocrReview}/approve', [OcrReviewController::class, 'approve'])->name('ocr-reviews.approve');
         Route::post('ocr-reviews/{ocrReview}/reject', [OcrReviewController::class, 'reject'])->name('ocr-reviews.reject');
-        Route::post('ocr-reviews/{ocrReview}/restore', [OcrReviewController::class, 'restore'])->name('ocr-reviews.restore');
 
         Route::get('stats', StatsController::class)->name('stats.index');
         Route::get('errors', ErrorsController::class)->name('errors.index');

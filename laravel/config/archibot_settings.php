@@ -173,15 +173,6 @@ return [
             'type' => 'number',
             'default' => '12288',
         ],
-        'ocr.auto_write_back' => [
-            'legacy' => null,
-            'group' => 'OCR',
-            'label' => 'Automatically write approved OCR text to Paperless',
-            'type' => 'bool',
-            'default' => '0',
-            'help' => 'Danger: when enabled, ArchiBot writes generated OCR text to Paperless immediately after creating an OCR review. Original content is still preserved for restore. This is global for now and should become Paperless-account scoped before multi-user deployments.',
-        ],
-
         'embedding.model' => [
             'legacy' => 'ollama_embed_model',
             'group' => 'Embedding',

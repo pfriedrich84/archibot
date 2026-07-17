@@ -116,6 +116,8 @@ Fuer noch nicht markierte Dokumente koordinieren Poll und Webhook weiterhin uebe
 
 Nur aktiv, wenn `OCR_MODE` auf `text`, `vision_light` oder `vision_full` gesetzt ist. Heuristik prueft ob der Text typische OCR-Artefakte enthaelt (viele `?`, einzelne Buchstaben-Woerter). Falls ja, wird der Text via LLM korrigiert — nur im Speicher, Paperless wird nicht veraendert. Bei `reindex-ocr --force` wird diese Clean-Text-Heuristik fuer `text` und `vision_light` bewusst umgangen; ein gesetzter `OCR_REQUESTED_TAG_ID` bleibt weiterhin bindend.
 
+Die Laravel-OCR-Review-Oberfläche unter `/ocr-reviews` ist davon getrennt ein lokales Snapshot-Modul. Sie lädt zunächst nur lokale Review-/Paperless-IDs, prüft live mit dem Token des angemeldeten Nutzers die Paperless-Sichtberechtigung und paginiert erst danach. Detailinhalte werden erst nach erfolgreicher Prüfung geladen. Store, lokale Freigabe und Ablehnung prüfen unmittelbar vor der Mutation live die Paperless-Änderungsberechtigung. ArchiBot-Adminstatus ist kein Bypass; Authentifizierungs- und API-Fehler schließen den Zugriff. Laravel besitzt keinen Helper und keine OCR-Route mehr, die Paperless-Dokumentinhalt per PATCH schreibt oder wiederherstellt. Historische OCR-Statusfelder und Snapshots bleiben zur Retention lesbar.
+
 ### 3. Kontext-Suche
 
 - Berechnet Embedding des Zieldokuments via konfiguriertem AI-Provider (`qwen3-embedding:4b` bzw. Provider-Alias wie `qwen3-embedding-4b-local`, Dim via `OLLAMA_EMBED_DIM`/Auto)

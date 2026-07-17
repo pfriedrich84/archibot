@@ -157,17 +157,6 @@ class PaperlessClient
         return $content;
     }
 
-    public function updateDocumentContent(string $token, int $documentId, string $content): void
-    {
-        $response = $this->request($token)->patch("/api/documents/{$documentId}/", [
-            'content' => $content,
-        ]);
-
-        if (! $response->successful()) {
-            throw new RuntimeException('Could not update Paperless document content.');
-        }
-    }
-
     public function documentPreview(string $token, int $documentId): Response
     {
         return $this->request($token)

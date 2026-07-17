@@ -2,7 +2,7 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG) and 0.2 (confidence auto-commit) are implemented; remaining milestones are pending.
+Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG), 0.2 (confidence auto-commit) and 0.3 (local-only OCR with live Paperless permissions) are implemented; remaining milestones are pending.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 

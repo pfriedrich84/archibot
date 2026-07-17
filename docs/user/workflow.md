@@ -79,6 +79,12 @@ Das LLM liefert strukturiertes JSON mit:
 - Nicht-Admins sehen Vorschlaege nur, wenn ihr gespeicherter Paperless-Token Zugriff auf das konkrete Paperless-Dokument nachweist
 - Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist
 
+#### OCR-Review (`/ocr-reviews`)
+
+OCR-Reviews speichern Original-, Korrektur- und gegebenenfalls freigegebene Text-Snapshots ausschließlich lokal in ArchiBot. Eine Freigabe oder Ablehnung ist eine lokale Entscheidung; sie schreibt keinen Dokumentinhalt nach Paperless und bietet weder Restore noch Retry eines früheren Write-backs. Vor Listen- und Detailanzeige prüft ArchiBot die aktuelle Paperless-Sichtberechtigung, vor Erstellen, Freigeben oder Ablehnen die aktuelle Änderungsberechtigung. Das gilt auch für ArchiBot-Admins; bei Paperless- oder Authentifizierungsfehlern wird der Zugriff verweigert. Bestehende historische OCR-Zeilen und Snapshots bleiben erhalten.
+
+[Issue #222](https://github.com/pfriedrich84/archibot/issues/222) untersucht Paperless-v3-OCR-Kompatibilität, darf diese lokale-only Grenze aber nicht umgehen.
+
 #### Confidence Auto-Commit (deaktiviert)
 
 ADR-0018 setzt den effektiven Schwellenwert fest auf `0`. Alte Werte aus Environment,

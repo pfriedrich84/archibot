@@ -88,6 +88,8 @@ Dann z.B. `EMBEDDING_PROVIDER=local-embeddings` und `JUDGE_PROVIDER=local-judge`
 
 `reindex-ocr --force` bzw. der Force-Button ignoriert den OCR-Cache und umgeht die Clean-Text-Heuristik fuer `text` und `vision_light`, damit OCR nach Modell- oder Promptwechseln wirklich neu erzeugt wird.
 
+OCR-Korrekturen und lokale Freigaben bleiben ausschließlich in ArchiBot. Es gibt keine Auto-write-, Write-back-, Restore- oder Retry-Einstellung für Paperless-Dokumentinhalt. Ein eventuell noch gespeicherter PostgreSQL-Wert `ocr.auto_write_back` wird nicht im Settings-Katalog angeboten, nicht exportiert und nicht ausgeführt; ein veralteter `OCR_AUTO_WRITE_BACK`-Eintrag wird beim nächsten verwalteten Runtime-Export entfernt.
+
 Wenn `OCR_REQUESTED_TAG_ID` gesetzt ist, laeuft bzw. wiederholt sich OCR nur fuer Dokumente, die diesen Tag aktuell tragen. Die restliche Pipeline (Embedding/Klassifikation) laeuft bei nicht passenden Dokumenten weiter.
 
 **Graceful Degradation:** `vision_full` → `vision_light` → `text` → `off`.

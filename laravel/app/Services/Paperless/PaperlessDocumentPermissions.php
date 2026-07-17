@@ -5,17 +5,12 @@ namespace App\Services\Paperless;
 use App\Models\AppSetting;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Http\Client\ConnectionException;
 use Throwable;
 
 class PaperlessDocumentPermissions
 {
     public function canViewDocument(User $user, int $paperlessDocumentId): bool
     {
-        if ((bool) $user->is_admin) {
-            return true;
-        }
-
         $context = $this->paperlessContext($user);
         if ($context === null) {
             return false;
@@ -26,17 +21,13 @@ class PaperlessDocumentPermissions
                 ->document($context['token'], $paperlessDocumentId);
 
             return true;
-        } catch (ConnectionException|Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }
 
     public function canChangeDocument(User $user, int $paperlessDocumentId): bool
     {
-        if ((bool) $user->is_admin) {
-            return true;
-        }
-
         $context = $this->paperlessContext($user);
         if ($context === null) {
             return false;
@@ -45,7 +36,7 @@ class PaperlessDocumentPermissions
         try {
             return app(PaperlessClient::class, ['baseUrl' => $context['paperless_url']])
                 ->canChangeDocument($context['token'], $paperlessDocumentId);
-        } catch (ConnectionException|Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }

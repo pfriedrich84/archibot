@@ -20,7 +20,6 @@
         id: number;
         paperless_document_id: number;
         status: string;
-        write_back_error: string | null;
         created_at: string | null;
     };
 
@@ -29,11 +28,7 @@
         total: number;
     };
 
-    let {
-        reviews,
-        autoWriteBackEnabled,
-    }: { reviews: Paginator<OcrReview>; autoWriteBackEnabled: boolean } =
-        $props();
+    let { reviews }: { reviews: Paginator<OcrReview> } = $props();
 </script>
 
 <AppHead title="OCR reviews" />
@@ -41,23 +36,14 @@
 <div class="space-y-6">
     <Heading
         title="OCR reviews"
-        description="Review OCR text before replacing Paperless document content. Paperless reprocessing can also regenerate OCR content if needed."
+        description="Review OCR correction snapshots stored locally in ArchiBot. These corrections never replace Paperless document content."
     />
-
-    {#if autoWriteBackEnabled}
-        <div
-            class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
-        >
-            Automatic OCR write-back is enabled globally. Newly created OCR
-            reviews will immediately replace Paperless document content after
-            preserving the original for restore. This should be scoped per
-            Paperless account before multi-user use.
-        </div>
-    {/if}
 
     <div class="rounded-xl border">
         <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            {reviews.total} OCR review{reviews.total === 1 ? '' : 's'}
+            {reviews.total} accessible OCR review{reviews.total === 1
+                ? ''
+                : 's'}
         </div>
 
         {#each reviews.data as review (review.id)}
@@ -73,9 +59,6 @@
                         Status: {review.status} · Created {formatDateTime(
                             review.created_at,
                         )}
-                        {#if review.write_back_error}
-                            · Last write-back failed
-                        {/if}
                     </p>
                 </div>
 
@@ -92,7 +75,7 @@
             </div>
         {:else}
             <div class="p-8 text-center text-muted-foreground">
-                No OCR reviews have been created yet.
+                No accessible OCR reviews are available.
             </div>
         {/each}
     </div>
