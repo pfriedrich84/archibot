@@ -20,6 +20,10 @@ ghcr.io/pfriedrich84/archibot:latest
 | `v0.1.0`, `v0.1` | Versionierte Releases |
 | `sha-<hash>` | Spezifischer Commit |
 
+## Upgrade-Hinweis fuer bestehende Webhooks
+
+Bestehende Installationen, die Webhooks bisher ohne Shared Secret betrieben haben, muessen Paperless und ArchiBot koordiniert migrieren. Pausiere die Paperless-Workflows vor dem Upgrade, konfiguriere denselben generierten Wert auf beiden Seiten, teste bei pausiertem Workflow und aktiviere ihn erst danach. Plane ein begrenztes Wartungs-/Rollbackfenster; ein Rollback darf den alten Endpoint nicht offen ins Netz stellen. Die vollstaendige Reihenfolge mit Test und Rollback steht unter [Upgrade bestehender Installationen ohne Secret](./webhooks.md#upgrade-bestehender-installationen-ohne-secret).
+
 ## Deployment via Dockhand
 
 Fuer Dockhand-basierte Setups (z.B. Homelab mit zentraler Stack-Verwaltung):

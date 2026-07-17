@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
-use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
@@ -27,11 +26,6 @@ class PaperlessEventWebhookController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $authError = $this->verifySecret($request);
-        if ($authError !== null) {
-            return $authError;
-        }
-
         $payload = $this->payload($request);
         $normalizedPayload = $this->webhookNormalizer->normalize($payload);
         $documentId = $normalizedPayload['paperless_document_id'];
@@ -253,21 +247,6 @@ class PaperlessEventWebhookController extends Controller
                 'blocked_reason' => $startResult->blockedReason,
             ],
         ]);
-    }
-
-    private function verifySecret(Request $request): ?JsonResponse
-    {
-        $configuredSecret = (string) (AppSetting::getValue('webhook.secret') ?: config('archibot.paperless_webhook_secret', ''));
-        if ($configuredSecret === '') {
-            return null;
-        }
-
-        $providedSecret = (string) $request->headers->get('X-Webhook-Secret', '');
-        if ($providedSecret === '' || ! hash_equals($configuredSecret, $providedSecret)) {
-            return response()->json(['detail' => 'Invalid webhook secret'], 403);
-        }
-
-        return null;
     }
 
     /**

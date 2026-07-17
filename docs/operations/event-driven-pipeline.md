@@ -90,7 +90,7 @@ Configure Paperless to send document events to:
 POST /api/webhooks/paperless
 ```
 
-Hardening milestone 0.4 requires `PAPERLESS_WEBHOOK_SECRET` (or the canonical persisted equivalent). Paperless or the reverse proxy must send:
+Webhook ingress requires a non-empty `PAPERLESS_WEBHOOK_SECRET` (or the encrypted global `webhook.secret`, which takes precedence). Paperless or the reverse proxy must send:
 
 ```text
 X-Webhook-Secret: <secret>
@@ -98,8 +98,8 @@ X-Webhook-Secret: <secret>
 
 Webhook ingestion is intentionally lightweight:
 
-1. require and validate the secret and payload shape, failing closed when no effective secret exists;
-2. persist raw and normalized delivery data in `webhook_deliveries`;
+1. reject declared or actual bodies above `PAPERLESS_WEBHOOK_MAX_BYTES` (default 262144), validate the effective secret with constant-time comparison, and apply the shared per-client limiter for both aliases before entering the controller;
+2. persist redacted raw and normalized delivery data in `webhook_deliveries`;
 3. compute a dedupe key;
 4. record pipeline events;
 5. dispatch the appropriate Laravel queued actor job;
@@ -235,7 +235,7 @@ Live integration smoke checklist:
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
 5. Start Laravel, the Laravel queue worker, `schedule:work`, and Laravel-native recovery; verify no Absurd worker/recovery process starts.
-6. Configure a non-empty secret on both sides, then point Paperless to `POST /api/webhooks/paperless` with `X-Webhook-Secret`. Until milestone 0.4 lands, do not expose the current fail-open endpoint to an untrusted network.
+6. Configure a non-empty secret on both sides, then point Paperless to `POST /api/webhooks/paperless` with `X-Webhook-Secret`. Missing configuration and missing/wrong headers fail closed without a Delivery. Use the rotation and rollback order in the [webhook runbook](../user/webhooks.md#secret-sicher-rotieren).
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.
 9. Run or wait for the Laravel queue worker to consume the queued actor job.

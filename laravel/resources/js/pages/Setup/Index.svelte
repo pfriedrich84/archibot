@@ -32,18 +32,21 @@
         paperlessUrl = '',
         llmProvider = 'ollama',
         ollamaUrl = 'http://ollama:11434',
+        deploymentWebhookSecretConfigured = false,
         defaults = {},
     }: {
         requiresResetToken: boolean;
         paperlessUrl?: string;
         llmProvider?: string;
         ollamaUrl?: string;
+        deploymentWebhookSecretConfigured?: boolean;
         defaults?: SetupDefaults;
     } = $props();
 
     let paperless_url = $state((() => paperlessUrl)());
     let username = $state('');
     let password = $state('');
+    let webhook_secret = $state('');
     let llm_provider = $state((() => llmProvider)());
     let ollama_url = $state((() => ollamaUrl)());
     let openai_api_key = $state('');
@@ -214,7 +217,7 @@
     <Form
         action="/setup"
         method="post"
-        resetOnSuccess={['password', 'setup_token']}
+        resetOnSuccess={['password', 'webhook_secret', 'setup_token']}
         novalidate
         class="grid gap-6 rounded-xl border bg-card p-6 shadow-sm"
     >
@@ -320,6 +323,32 @@
                         />
                         <InputError message={errors.password} />
                     </div>
+                </div>
+
+                <div class="grid gap-2">
+                    <Label for="webhook_secret">Webhook shared secret</Label>
+                    <PasswordInput
+                        id="webhook_secret"
+                        name="webhook_secret"
+                        required={!deploymentWebhookSecretConfigured}
+                        minlength="32"
+                        value={webhook_secret}
+                        oninput={(event) =>
+                            (webhook_secret = event.currentTarget.value)}
+                        autocomplete="new-password"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        {#if deploymentWebhookSecretConfigured}
+                            A deployment secret is configured. Leave this blank
+                            to use it.
+                        {:else}
+                            Required. Generate at least 32 random bytes, save it
+                            here, and use the same value in Paperless's <code
+                                >X-Webhook-Secret</code
+                            > header.
+                        {/if}
+                    </p>
+                    <InputError message={errors.webhook_secret} />
                 </div>
 
                 <div class="flex flex-wrap items-center gap-3">

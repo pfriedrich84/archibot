@@ -91,7 +91,7 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
 | **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → `RunPythonActorJob::pollReconciliation(<command-id>)` → festes Python-Actor-Kommando | Ja, ueberspringt mit Log |
-| **Webhook** | POST von Paperless nach Consume | Laravel speichert `webhook_deliveries`; fuer Create/Process-Events startet es `pipeline_runs` und queued `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, fuer Refresh/Delete-Events queued es `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)` | Ja, Delivery bleibt durable/Run wird blockiert |
+| **Webhook** | POST von Paperless nach Consume | Laravel-Middleware erzwingt vor Controller/Persistenz Roh-Body-Limit, gemeinsames per-Client Rate-Limit fuer beide Aliase und ein nicht leeres effektives Secret (verschluesselte globale Einstellung vor Deployment-Konfiguration) mit `hash_equals`; danach speichert Laravel redigierte `webhook_deliveries`. Create/Process-Events starten `pipeline_runs` und queuen `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, Refresh/Delete-Events queuen `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)`. | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
 | **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py`; Ziel ist Delegation an Laravel durable Commands fuer produktive Operator-Aktionen | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
 

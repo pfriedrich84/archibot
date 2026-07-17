@@ -27,7 +27,7 @@ ArchiBot unterscheidet Paperless-Events automatisch:
 
 - Paperless-NGX >= 2.0
 - Der ArchiBot-Container muss fuer Paperless erreichbar sein (gleiches Docker-Netzwerk oder Netzwerk-Route)
-- Erforderlich: ein nicht leeres Webhook-Secret fuer Authentifizierung. Bis Hardening-Meilenstein 0.4 implementiert ist, akzeptiert die aktuelle Runtime bei leerem Secret weiterhin Requests; exponiere den Endpoint deshalb nicht in ein nicht vertrauenswuerdiges Netzwerk.
+- Erforderlich: ein nicht leeres, instanzspezifisches Webhook-Secret fuer Authentifizierung. Ohne effektives Secret lehnt ArchiBot jeden Webhook fail-closed ab.
 
 ## 1. ArchiBot konfigurieren
 
@@ -35,12 +35,25 @@ Empfohlen: In ArchiBot als globale Admin-Einstellung `webhook.secret` unter `/ad
 
 Alternativ fuer Deployment-/Bootstrap-Kompatibilitaet in der `.env`:
 
-```env
-# Webhook-Secret (erforderlich; zufaellig und instanzspezifisch erzeugen).
-WEBHOOK_SECRET=mein-geheimer-webhook-token
+```bash
+# Ausgabe direkt in einen geschuetzten Passwortmanager uebernehmen, nicht ins Shell-Log kopieren.
+openssl rand -hex 32
 ```
 
-Fuer den event-driven Endpoint kann auch `PAPERLESS_WEBHOOK_SECRET` gesetzt werden. Die globale Admin-Einstellung hat Vorrang vor den Deployment-Umgebungsvariablen. Zielverhalten nach Meilenstein 0.4: Fehlt das effektive Secret, lehnt ArchiBot jeden Webhook ab. Der aktuelle Fail-open-Zwischenstand darf nicht als optionaler Betriebsmodus genutzt werden.
+```env
+# Webhook-Secret (erforderlich; durch den zufaellig erzeugten Wert ersetzen).
+PAPERLESS_WEBHOOK_SECRET=<generate-a-unique-random-secret>
+PAPERLESS_WEBHOOK_MAX_BYTES=262144
+PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE=60
+```
+
+`WEBHOOK_SECRET` bleibt ein Deployment-Fallback, falls `PAPERLESS_WEBHOOK_SECRET` nicht gesetzt ist. Eine nicht leere globale Admin-Einstellung `webhook.secret` hat Vorrang. Ein leerer gespeicherter Wert ueberschreibt eine gueltige Deployment-Konfiguration nicht. Fehlt das effektive Secret oder fehlt/stimmt der `X-Webhook-Secret` Header nicht, wird vor Payload-Parsing und Persistenz mit `403` abgelehnt.
+
+ArchiBot prueft zusaetzlich den deklarierten und den tatsaechlichen Roh-Body vor dem Parsing. Der sichere Default ist 262144 Bytes; der Middleware-Reader liest hoechstens Limit plus ein Byte und spult den Stream vor dem Controller sicher zurueck. Groessere oder nicht sicher les-/rueckspulbare Requests erhalten `413`, auch bei fehlendem oder falschem `Content-Length`. Danach zaehlt jeder Ingressversuch — auch mit fehlendem/falschem Secret oder aktivem Development-Bypass — auf ein stabiles, gehashtes Client-IP-Limit. Standardmaessig sind es 60 Requests pro Minute ueber beide Aliase gemeinsam; `429` enthaelt `Retry-After` und wird nicht persistiert.
+
+Setze vorgelagerte Limits als Defense-in-depth ebenfalls: begrenze den Request-Body fuer genau diese beiden Pfade im Reverse Proxy/Webserver und richte PHPs `post_max_size` passend zum Betriebsbedarf ein. Das vorgelagerte Limit sollte nicht groesser als noetig sein und mit `PAPERLESS_WEBHOOK_MAX_BYTES` abgestimmt werden; beachte, dass ein kleineres Proxy-/PHP-Limit seine eigene `413`-Antwort ausloesen kann. Diese Grenzen ersetzen das ArchiBot-Limit nicht, weil Deployments Proxies umgehen oder anders konfigurieren koennen.
+
+Nur fuer isolierte lokale Entwicklung kann `PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS=true` gesetzt werden. Der Bypass funktioniert ausschliesslich bei `APP_ENV=local` oder `development`, ist standardmaessig aus und bleibt in `production` sowie `testing` trotz Flag geschlossen. Bei aktivem Bypass erscheinen eine Startup-Warnung im Log und eine Warnung in den Admin-Einstellungen. Er ist kein produktiver Betriebsmodus.
 
 ## 2. Paperless-NGX konfigurieren
 
@@ -149,7 +162,7 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 | Header | Wert | Pflicht? |
 |---|---|---|
 | `Content-Type` | `application/json` | Ja |
-| `X-Webhook-Secret` | Wert der globalen ArchiBot-Einstellung `webhook.secret`, sonst `WEBHOOK_SECRET` oder `PAPERLESS_WEBHOOK_SECRET` | Erforderlich; fehlendes effektives Secret muss nach Meilenstein 0.4 fail-closed sein |
+| `X-Webhook-Secret` | Wert der globalen ArchiBot-Einstellung `webhook.secret`, sonst `PAPERLESS_WEBHOOK_SECRET` oder `WEBHOOK_SECRET` | Erforderlich; fehlendes effektives Secret und fehlender/falscher Header werden fail-closed abgelehnt |
 
 **Body** (Workflow-Format oder Legacy-Format):
 
@@ -170,7 +183,9 @@ Empfaengt Paperless-Dokumentereignisse, speichert sie in `webhook_deliveries`, d
 | Status | Bedeutung |
 |---|---|
 | `200` | Webhook-Delivery wurde gespeichert oder als Duplikat erkannt |
-| `403` | Webhook-Secret ungueltig |
+| `403` | Effektives Webhook-Secret fehlt oder Header ist ungueltig |
+| `413` | Deklarierter oder tatsaechlicher Request-Body ueberschreitet das Limit |
+| `429` | Client-Rate-Limit fuer beide Webhook-Aliase ist erschoepft |
 | `422` | Body ungueltig (fehlende/falsche `document_id`) |
 | `5xx` | Delivery wurde ggf. gespeichert, aber die nachgelagerte Einreihung ist fehlgeschlagen; Paperless soll den Webhook erneut versuchen |
 
@@ -203,6 +218,31 @@ Das Webhook-Secret stimmt nicht ueberein. Pruefen:
 - `webhook.secret` in ArchiBot `/admin/settings` bzw. `WEBHOOK_SECRET` / `PAPERLESS_WEBHOOK_SECRET` in der ArchiBot `.env`
 - `X-Webhook-Secret` Header in den Workflow-Kopfzeilen
 - Keine Leerzeichen oder Zeilenumbrueche im Secret
+
+### Upgrade bestehender Installationen ohne Secret
+
+Der Wechsel von einer aelteren, bereits eingerichteten Installation ohne Webhook-Secret ist eine koordinierte Migration. Nach dem Upgrade oeffnet ein fehlender Wert den Endpoint nicht mehr, sondern liefert absichtlich `403`.
+
+1. Plane vor dem Upgrade ein begrenztes Wartungs- und Rollbackfenster und pausiere die Paperless-Webhook-Workflows. Lasse die 600-Sekunden-Reconciliation als Auffangnetz aktiv.
+2. Erzeuge ein instanzspezifisches Secret und hinterlege es geschuetzt. Trage denselben Wert fuer ArchiBot (`PAPERLESS_WEBHOOK_SECRET` vor dem Rollout oder danach `webhook.secret` in den Admin-Einstellungen) und fuer den Paperless-Header `X-Webhook-Secret` vor, ohne ihn in Tickets oder Logs zu kopieren.
+3. Rolle ArchiBot mit dem konfigurierten Secret aus. Der Setup-Wizard bleibt bei noch nicht eingerichteten Installationen gesperrt, bis ein generierter Wert eingegeben wurde; bekannte Beispiel-Platzhalter gelten als fehlend.
+4. Sende bei weiterhin pausiertem produktivem Workflow einen synthetischen Test. Verifiziere `200` und genau eine Delivery; ein falscher Header muss `403` ohne Delivery ergeben.
+5. Aktiviere den aktualisierten Paperless-Workflow und beobachte `403`, `413`, `429` und `5xx`, bevor du das Wartungsfenster schliesst.
+6. Begrenzter Rollback: pausiere Paperless erneut und rolle nur innerhalb des geplanten Fensters Anwendung und Konfiguration gemeinsam auf die vorige Version zurueck. Stelle niemals den alten fail-open Betrieb oeffentlich bereit; halte den Endpoint waehrend des Rollbacks per Netzwerkregel geschlossen und verlasse dich voruebergehend auf Poll-Reconciliation. Wiederhole nach erneutem Rollout den synthetischen Test.
+
+### Secret sicher rotieren
+
+Plane ein kurzes Wartungs- und Rollbackfenster, weil ArchiBot absichtlich nur ein effektives Secret gleichzeitig akzeptiert:
+
+1. Erzeuge den neuen Wert und bewahre den bisherigen Wert bis zum Abschluss im Passwortmanager auf.
+2. Pausiere den Paperless-Workflow oder plane ein kurzes Fenster, in dem Polling verpasste Ereignisse abfaengt.
+3. Setze zuerst das neue Secret in ArchiBot (`webhook.secret` oder Deployment-Konfiguration) und starte bei Deployment-Aenderungen ArchiBot neu.
+4. Sende einen synthetischen Test-Webhook mit dem neuen Header; pruefe `200` und genau eine neue Webhook Delivery. Pruefe ausserdem, dass der alte Wert `403` liefert und keine Delivery erzeugt.
+5. Aktualisiere unmittelbar danach den Paperless-Workflow und reaktiviere ihn. Beobachte `403`, `413`, `429` und `5xx` waehrend des begrenzten Fensters.
+6. Rollback-Reihenfolge: Paperless kurz pausieren, in ArchiBot den bisherigen Wert wiederherstellen, einen Test mit dem bisherigen Wert ausfuehren, dann Paperless auf den bisherigen Header zurueckstellen und reaktivieren.
+7. Nach erfolgreichem Ablauf den alten Wert widerrufen/loeschen und das Wartungsfenster schliessen. Verpasste Ereignisse werden durch die 600-Sekunden-Reconciliation nachgeholt.
+
+Gib weder alten noch neuen Wert in Logs, Responses, Tickets oder Screenshots aus.
 
 ### Leerer Payload
 

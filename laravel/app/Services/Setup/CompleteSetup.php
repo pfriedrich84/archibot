@@ -42,6 +42,9 @@ class CompleteSetup
             $importedKeys = app(LegacySettingsImporter::class)->importMissing();
 
             AppSetting::put('paperless.url', $paperlessUrl);
+            if (trim((string) ($data['webhook_secret'] ?? '')) !== '') {
+                AppSetting::put('webhook.secret', (string) $data['webhook_secret'], true);
+            }
             AppSetting::put('paperless.inbox_tag_id', (string) $data['paperless_inbox_tag_id']);
             AppSetting::put('paperless.processed_tag_id', (string) ($data['paperless_processed_tag_id'] ?? ''));
             AppSetting::put('ocr.requested_tag_id', (string) ($data['ocr_requested_tag_id'] ?? ''));

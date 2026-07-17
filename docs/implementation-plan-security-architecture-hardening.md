@@ -130,6 +130,8 @@ Migration/rollback: retain existing OCR rows; remove obsolete state only after c
 
 ### 0.4 Require webhook authentication
 
+Status: implemented. Both supported aliases fail closed before parsing/persistence and retain existing durable dedupe/retry behavior after successful authentication.
+
 Scope:
 
 - generate or require a secret during setup/deployment;

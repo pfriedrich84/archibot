@@ -166,11 +166,16 @@ Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Poste
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 
-## Webhook (optional)
+## Webhook (erforderlich fuer Webhook-Ingress)
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `WEBHOOK_SECRET` | — | Erforderliches Shared Secret fuer `POST /api/webhooks/paperless` oder den Alias `POST /webhook`. Bis Hardening-Meilenstein 0.4 muss der aktuelle Fail-open-Zwischenstand durch vertrauenswuerdige Netzwerkisolation abgesichert werden. Siehe [Webhook-Doku](./webhooks.md). |
+| `PAPERLESS_WEBHOOK_SECRET` | — | Erforderliches instanzspezifisches Shared Secret fuer `POST /api/webhooks/paperless` und `POST /webhook`, sofern Setup nicht die verschluesselte globale Einstellung `webhook.secret` speichert. Die globale Einstellung hat Vorrang; `WEBHOOK_SECRET` ist ein Deployment-Fallback. Leere effektive Konfiguration schliesst beide Endpoints. |
+| `PAPERLESS_WEBHOOK_MAX_BYTES` | `262144` | Maximale deklarierte und tatsaechliche Roh-Body-Groesse vor Parsing/Persistenz. |
+| `PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE` | `60` | Gemeinsames per-Client Minutenlimit fuer beide Aliase vor Persistenz. |
+| `PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS` | `false` | Gefaehrlicher expliziter Bypass nur fuer isoliertes `local`/`development`; `production` und `testing` bleiben trotz Flag geschlossen und aktive lokale Nutzung wird in Startup-Log/Admin-UI gewarnt. |
+
+Siehe [Webhook-Doku und Rotations-Runbook](./webhooks.md).
 
 ## MCP Server (optional)
 
