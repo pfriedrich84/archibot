@@ -101,11 +101,15 @@ Polling should:
 
 - run as reconciliation, not as the only main processing path;
 - skip documents that have an active processing run;
-- skip documents whose latest content state already has a completed run;
-- enqueue processing only for missing, stale or failed states that are safe to retry;
+- treat the existence of a durable Review Suggestion as the Classification Marker that the Inbox Document has already completed classification;
+- skip an Inbox Document with a Classification Marker even when its Paperless `modified` value changed after review or metadata commit;
+- enqueue processing only for documents without a Classification Marker or for failed states that are safe to retry;
+- let explicit forced polls and manual force reprocess bypass the poll-only Classification Marker and create force-new Pipeline Runs, while leaving webhook action policy unaffected;
 - emit events for skipped/coalesced/queued documents;
 - respect the embedding readiness gate;
 - respect reindex/global locks.
+
+The Classification Marker is deliberately based on durable ArchiBot output rather than Paperless `modified`. ArchiBot review commits change Paperless metadata and therefore its modified timestamp; using that timestamp alone causes a committed Inbox Document to look new again when `KEEP_INBOX_TAG=true`. A rejected Review Suggestion also remains a valid marker because rejection means the classification was handled, not that polling should repeat it.
 
 Recommended poll interval setting:
 
@@ -136,7 +140,7 @@ What gets easier:
 
 - Webhooks provide quick processing.
 - Polling still protects against missed webhook events.
-- Duplicate processing is avoided by a shared lock/dedupe model.
+- Duplicate processing is avoided by a shared lock/dedupe model and a durable Classification Marker for completed classification.
 - Operational behavior remains familiar because the 600-second poll continues.
 
 What gets harder:

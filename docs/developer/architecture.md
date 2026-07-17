@@ -104,7 +104,9 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 
 ### 1. Idempotenz-Check
 
-Prueft in `processed_documents` ob das Dokument bei diesem `updated_at`-Timestamp schon erfolgreich verarbeitet wurde. Dokumente mit Status `error` werden erneut versucht.
+Der event-driven Poll laedt vor dem Pipeline-Start die dauerhaften Klassifikationsmarker aus PostgreSQL: Sobald fuer ein Paperless-Dokument ein `review_suggestions`-Eintrag existiert, ist die Klassifikation mindestens einmal erfolgreich abgeschlossen. Solche Inbox-Dokumente werden bei automatischen Polls unabhaengig von spaeteren Paperless-`modified`-Aenderungen uebersprungen. Das verhindert erneute LLM-Klassifikation nach Review/Commit, wenn `KEEP_INBOX_TAG=true` ist.
+
+Fuer noch nicht markierte Dokumente koordinieren Poll und Webhook weiterhin ueber den gemeinsamen `pipeline_runs.pipeline_dedupe_key`. Explizite Force-Polls und manuelles Force-Reprocess umgehen den poll-spezifischen Marker und erzeugen neue Pipeline Runs; die Webhook-Action-Policy bleibt unberuehrt. `processed_documents` ist nur noch Idempotenzzustand des nicht automatisch gestarteten Legacy-Python-Pollpfads und darf fuer neue event-driven Funktionalitaet nicht erweitert werden.
 
 ### 2. OCR-Korrektur (optional)
 
@@ -165,8 +167,9 @@ Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitu
 
 | Tabelle | Zweck |
 |---|---|
-| `processed_documents` | Verarbeitungsstatus pro Dokument (Idempotenz) |
-| `suggestions` | LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
+| `review_suggestions` | Dauerhafte Review-Vorschlaege; ihre Existenz ist zugleich der Klassifikationsmarker fuer automatische Polls |
+| `processed_documents` | Legacy-Python-Pollstatus; nicht Source of Truth fuer den event-driven Pfad |
+| `suggestions` | Legacy-LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
 | `document_embeddings` | PostgreSQL/pgvector Embeddings mit Metadaten und `trusted_for_context` fuer Klassifikationskontext |
 | `tag_whitelist` | Staging fuer unbekannte Tags (name, times_seen, approved) |
 | `tag_blacklist` | Abgelehnte Tags — werden bei zukuenftigen Vorschlaegen ignoriert |

@@ -20,6 +20,10 @@ _Avoid_: reviewed document when only inbox-tag absence is meant
 An ArchiBot proposal for Paperless metadata that must pass the configured review and permission flow before Paperless is changed.
 _Avoid_: automatic update
 
+**Classification Marker**:
+The durable existence of a **Review Suggestion** for a **Paperless Document**, proving that classification completed at least once. Automatic polling skips an **Inbox Document** with this marker even when Paperless metadata changed; explicit force reprocess remains available.
+_Avoid_: Paperless modified timestamp
+
 **Pipeline Run**:
 A durable PostgreSQL record tracking one event-driven processing attempt for a **Paperless Document**.
 _Avoid_: worker job when referring to the target event-driven pipeline
@@ -39,6 +43,7 @@ _Avoid_: webhook event when referring to the durable PostgreSQL receipt
 - A **Trusted Document** may be embedded and used as classification context.
 - An **Inbox Document** must not be used as trusted classification context.
 - A **Pipeline Run** may produce one **Review Suggestion** for a **Paperless Document**.
+- A **Review Suggestion** is the **Classification Marker** that prevents automatic polling from repeatedly classifying the same **Inbox Document**.
 - A **Webhook Delivery** may create or link to one **Pipeline Run** for a **Paperless Document**.
 - A **Worker Job** is temporary migration infrastructure and must not become the permanent **Pipeline Run** model.
 

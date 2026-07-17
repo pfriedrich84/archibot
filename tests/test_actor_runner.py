@@ -151,7 +151,7 @@ def test_main_build_embedding_index_invokes_command(monkeypatch):
     assert calls == [66]
 
 
-def test_run_poll_reconciliation_uses_command_payload_limit(monkeypatch):
+def test_run_poll_reconciliation_uses_command_payload_limit_and_force(monkeypatch):
     statuses = []
     calls = []
 
@@ -162,17 +162,19 @@ def test_run_poll_reconciliation_uses_command_payload_limit(monkeypatch):
             id=command_id,
             type="poll_reconciliation",
             status="pending",
-            payload={"limit": "3"},
+            payload={"limit": "3", "force": True},
         ),
     )
     monkeypatch.setattr(actor_runner, "mark_command_status", lambda *args: statuses.append(args))
     monkeypatch.setattr(
-        actor_runner, "_reconcile_inbox_documents_impl", lambda *, limit=None: calls.append(limit)
+        actor_runner,
+        "_reconcile_inbox_documents_impl",
+        lambda *, limit=None, force=False: calls.append((limit, force)),
     )
 
     actor_runner.run_poll_reconciliation_command(44)
 
-    assert calls == [3]
+    assert calls == [(3, True)]
     assert statuses == [(44, "running"), (44, "succeeded")]
 
 

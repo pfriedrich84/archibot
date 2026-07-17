@@ -144,13 +144,16 @@ Webhook delivery dedupe prevents duplicate deliveries. Pipeline dedupe prevents 
 Polling should:
 
 - run automatically every 600 seconds by default
-- discover recent or stale documents
+- discover Inbox Documents as reconciliation candidates
+- load Classification Markers in one durable PostgreSQL query before starting document pipelines
+- skip every Inbox Document that already has a Review Suggestion, regardless of Review Suggestion status or later Paperless metadata changes
 - respect embedding readiness gate
-- skip or coalesce if an active run exists
-- skip if the latest content state already completed successfully
-- enqueue only missing/stale/retryable document pipelines
-- emit events for skipped/coalesced/queued documents
+- coalesce if an unmarked document already has an active run for the same content state
+- enqueue only unmarked or retryable document pipelines
+- emit `poll.document.skipped_already_classified` for marker skips and summary counts for skipped/coalesced/started documents
 - not bypass document locks
+
+The Review Suggestion is the Classification Marker because it is persisted only after classification succeeds. Paperless `modified` remains part of pipeline-run dedupe for races and unmarked documents, but it is not the poll completion marker: an ArchiBot commit changes Paperless metadata and can change `modified` while `KEEP_INBOX_TAG=true`. Explicit forced polls and manual force reprocess bypass this poll-only marker and create force-new Pipeline Runs; webhook action policy is unaffected.
 
 ## Webhook Behavior
 
@@ -200,8 +203,11 @@ Minimum tests:
 - webhook and poll for same document create only one active run
 - poll skips document already running from webhook
 - webhook attaches to document already running from poll
-- completed latest content state is skipped by poll
-- new modified timestamp creates a new pipeline run for creation/consume events
+- a Review Suggestion marks an Inbox Document as classified and later polls skip it even after Paperless `modified` changes
+- rejected and committed Review Suggestions remain valid Classification Markers
+- an explicit forced poll bypasses Classification Markers and creates force-new Pipeline Runs
+- unmarked documents with the same content state still coalesce through the shared pipeline-start seam
+- new modified timestamp creates a new pipeline run for creation/consume webhook events
 - lock conflict does not fail the pipeline permanently
 - embedding gate blocks both webhook and poll processing
 - polling interval default remains 600 seconds

@@ -16,6 +16,11 @@ class FakeResult:
     def first(self):
         return self.row
 
+    def all(self):
+        if self.row is None:
+            return []
+        return self.row if isinstance(self.row, list) else [self.row]
+
 
 class FakeConnection:
     def __init__(self, calls):
@@ -38,6 +43,29 @@ class FakeEngine:
 
     def begin(self):
         return FakeConnection(self.calls)
+
+
+def test_classified_document_ids_returns_durable_review_markers(monkeypatch):
+    calls = []
+    rows = [[{"paperless_document_id": 42}, {"paperless_document_id": 44}]]
+    monkeypatch.setattr(review_suggestions, "engine", lambda: SequenceEngine(calls, rows))
+    monkeypatch.setattr(review_suggestions, "sql_text", lambda statement: statement)
+
+    marked = review_suggestions.classified_document_ids([44, 42, 42, 43])
+
+    assert marked == {42, 44}
+    assert "SELECT DISTINCT paperless_document_id" in calls[0][0]
+    assert calls[0][1] == {"paperless_document_ids": [42, 43, 44]}
+
+
+def test_classified_document_ids_skips_database_for_empty_input(monkeypatch):
+    monkeypatch.setattr(
+        review_suggestions,
+        "engine",
+        lambda: (_ for _ in ()).throw(AssertionError("database should not be queried")),
+    )
+
+    assert review_suggestions.classified_document_ids([]) == set()
 
 
 def test_store_review_suggestion_inserts_pending_laravel_review(monkeypatch):

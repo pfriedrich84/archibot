@@ -146,10 +146,16 @@ def run_poll_reconciliation_command(command_id: int) -> None:
     """Run polling reconciliation from the durable command payload."""
     command = _load_typed_command(command_id, POLL_RECONCILIATION_COMMAND_TYPE)
     limit = _payload_limit(command)
+    force = _payload_bool(command, "force")
     mark_command_status(command.id, "running")
-    log.info("poll reconciliation actor command started", command_id=command.id, limit=limit)
+    log.info(
+        "poll reconciliation actor command started",
+        command_id=command.id,
+        limit=limit,
+        force=force,
+    )
     try:
-        _reconcile_inbox_documents_impl(limit=limit)
+        _reconcile_inbox_documents_impl(limit=limit, force=force)
     except Exception as exc:
         mark_command_status(command.id, "failed", _exception_summary(exc))
         raise

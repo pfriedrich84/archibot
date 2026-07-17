@@ -41,11 +41,10 @@ und entweder als Review sichtbar oder automatisch committet.
 
 ### 1. Dokument wird erkannt
 
-Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Zusaetzlich reconciliert die Pipeline die Paperless-Inbox automatisch alle `600` Sekunden (`POLL_INTERVAL_SECONDS`), damit verlorene oder verspaetete Webhooks repariert werden. Manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
+Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist, reconciliert die Pipeline die Inbox automatisch; Default sind `600` Sekunden. Polling repariert verpasste Events, und manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
 Webhook-, Reconciliation- und UI-Starts erscheinen gemeinsam in `/operations-log` als durable Commands, Pipeline Runs, Events und Actor Executions mit Status, Fortschritt und Logs.
 
-Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.
-Bereits verarbeitete Dokumente (gleicher `updated_at`-Timestamp) werden uebersprungen. Ein laufender `process_document` Job sperrt seine Paperless-Dokument-ID, damit kein anderer aktiver Job dieselbe ID parallel verarbeitet. Reindex-Jobs sind exklusiv; andere Jobs warten, bis der Reindex abgeschlossen oder abgebrochen ist.
+Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) sind Poll-Kandidaten. Sobald ArchiBot nach erfolgreicher Klassifikation einen Review-Vorschlag gespeichert hat, dient dieser als dauerhafter Klassifikationsmarker. Weitere automatische Polls ueberspringen das Inbox-Dokument auch dann, wenn ein Review oder Commit den Paperless-`modified`-Zeitstempel geaendert hat und `KEEP_INBOX_TAG=true` ist. Ein abgelehnter Vorschlag bleibt ebenfalls markiert; fuer eine gewollte neue Klassifikation stehen der explizite Force-Poll und das manuelle Force-Reprocess zur Verfuegung. Parallel eintreffende Webhooks und Polls werden zusaetzlich ueber den gemeinsamen Pipeline-Dedupe-Key zusammengefuehrt.
 
 ### 2. Kontext-basierte Klassifikation
 
