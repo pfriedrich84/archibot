@@ -159,7 +159,7 @@ Webhook security must be handled separately:
 
 - internal network only
 - reverse proxy ACLs
-- global shared secret header if available (`webhook.secret` app setting, with deployment env fallback)
+- required global shared secret header (`webhook.secret` app setting, with deployment env fallback); fail closed when no effective secret exists
 - request validation
 - durable webhook delivery persistence
 

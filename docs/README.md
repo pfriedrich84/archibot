@@ -21,7 +21,8 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 
 ## Event-driven Migration
 
-- [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — Zielarchitektur und Migrationsplan.
+- [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — historischer Migrationsplan; ADR-0015, ADR-0017, ADR-0018 und der Hardening-Plan ersetzen veraltete Transport-, Runtime-Ownership-, Backend- und Write-Authorization-Vorgaben.
+- [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) — akzeptierte Security-, Runtime-Ownership-, Backend-Retirement- und UX-Hardening-Reihenfolge.
 - [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization.
 - [`decisions/`](decisions/) — akzeptierte Architekturentscheidungen.
 - [`governance/repository-governance.md`](governance/repository-governance.md) — Repository-Governance fuer den Umbau.

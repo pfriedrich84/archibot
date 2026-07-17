@@ -49,7 +49,7 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 - Paperless webhooks are primary; 600-second polling is reconciliation and uses the same start/dedupe/lock path. Only `/api/webhooks/paperless` and `/webhook` are supported, and enqueue failure after persistence returns non-2xx for retry.
 - Laravel database queues invoke fixed, allowlisted Python actor commands. PostgreSQL pipeline tables are the durable source of truth for pipeline, progress, retry, recovery, and audit state.
 - Processing waits for a complete embedding index. Only documents without the inbox tag are trusted classification context.
-- Preserve manual review, permissions, and configured `auto_commit_confidence`. Job control is admin-only; non-admin review actions require Paperless document rights.
+- Preserve manual review and permissions. ADR-0018 requires model-confidence auto-commit to be disabled; implementation is pending, so do not extend current `auto_commit_confidence` behavior or treat processing as contained before milestone 0.2. Operational job control is admin-only; authorized review actions follow ADR-0019.
 - Reprocessing remains available through relevant webhooks and the admin UI; explicit force reprocess creates a new pipeline run. Extend the Laravel operations dashboard rather than creating another UI.
 - CLI and UI use the same backend, configuration, durable state, progress, storage, authorization assumptions, and side effects. `archibot reset` delegates to `php artisan archibot:reset`.
 - Do not extend the legacy broad subprocess/Python-CLI worker path, reintroduce retired `worker_jobs`, or add new behavior to the superseded Absurd transport. Target durable pipeline tables and Python actors reached through Laravel queued actor jobs.
@@ -58,7 +58,8 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 
 Load the narrowest relevant source of truth:
 
-- Migration scope and architecture: [conditional migration task router](docs/prompts/pi-dev-event-driven-migration.md), [implementation plan](docs/implementation-plan-event-driven-archibot.md), [architecture details](docs/architecture/), and [accepted ADRs](docs/decisions/).
+- Active security/ownership sequencing: [hardening implementation plan](docs/implementation-plan-security-architecture-hardening.md) and [accepted ADRs](docs/decisions/), especially ADR-0017, ADR-0018 and ADR-0019.
+- Event-driven migration detail: [conditional migration task router](docs/prompts/pi-dev-event-driven-migration.md), [event-driven plan](docs/implementation-plan-event-driven-archibot.md), and [architecture details](docs/architecture/); these remain subordinate to later ADRs and the hardening plan.
 - Current implementation: [developer architecture](docs/developer/architecture.md) and [job-control model](docs/architecture/job-control-model.md).
 - Governance: [repository topology](docs/governance/repository-governance.md), [agent workflow](docs/governance/agent-workflow.md), [trust boundaries](docs/governance/trust-boundaries.md), and [release governance](docs/governance/release-governance.md).
 - User behavior: [workflow](docs/user/workflow.md), [configuration](docs/user/configuration.md), and [installation](docs/user/installation.md).

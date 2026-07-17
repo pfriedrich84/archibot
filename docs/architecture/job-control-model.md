@@ -2,11 +2,20 @@
 
 ## Purpose
 
-This document records the current ArchiBot job-control model and the rules that prevent drift back to retired worker-job paths.
+This document records the current event-driven ArchiBot job-control slice and the rules that prevent drift back to retired worker-job paths. It does not claim that every productive CLI/MCP/runtime path has completed migration.
 
-`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active model is durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
+`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active event-driven slice uses durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
 
-## Current durable model
+Until the milestones in [the security and architecture hardening plan](../implementation-plan-security-architecture-hardening.md) are complete, known parallel productive paths remain:
+
+- legacy SQLite processing/search used by parts of Python CLI and MCP;
+- Absurd actor decorators, queue workers, recovery bridge, schema and dependencies;
+- Python Pipeline Start used by polling beside Laravel Pipeline Start;
+- lifecycle/retry transitions split between Python domain actors and Laravel transport handling.
+
+ADR-0017 makes the Laravel/PostgreSQL model below the sole target and requires deletion of those parallel paths after parity migration.
+
+## Current event-driven durable model
 
 ```text
 Maintenance UI / Dashboard / CLI / Paperless Webhook / Poll Scheduler

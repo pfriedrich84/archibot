@@ -82,6 +82,8 @@ Das LLM liefert strukturiertes JSON mit:
 
 #### Auto-Commit
 
+> **Security-Hinweis:** ADR-0018 verlangt die Abschaltung dieses Verhaltens. Bis Hardening-Meilenstein 0.2 implementiert ist, kann ein veralteter effektiver Python-Export konfigurierte Schwellenwerte weiterhin anwenden, selbst wenn Env oder UI `0` anzeigen. Es gibt keine verlaessliche reine Einstellungsminderung; bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+
 Wenn `AUTO_COMMIT_CONFIDENCE > 0` und der finale Confidence-Score darueber liegt,
 wird der Vorschlag automatisch committet — ohne manuelles Review. Im Inbox-Poll
 bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,

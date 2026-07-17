@@ -7,7 +7,7 @@
 - Scope: repository-file inspection of queue transport, actor runners, durable models, runtime configuration and migration docs
 - Runtime/live-service validation: not performed for this status refresh
 
-This file records current implementation state and migration debt. It is not a second architecture plan. Target sequencing lives in [`docs/implementation-plan-event-driven-archibot.md`](../implementation-plan-event-driven-archibot.md); accepted ADRs remain authoritative for their decisions.
+This file records current implementation state and migration debt. It is not a second architecture plan. Active sequencing lives in [`docs/implementation-plan-security-architecture-hardening.md`](../implementation-plan-security-architecture-hardening.md); the event-driven plan supplies subordinate migration detail and accepted ADRs remain authoritative.
 
 ## Current target
 
@@ -15,7 +15,9 @@ The active event transport is Laravel database queues invoking fixed, allowliste
 
 - [ADR-0015](../decisions/0015-use-laravel-database-queues-for-event-transport.md) supersedes Absurd for new implementation work.
 - [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md) retires `worker_jobs` for clean installs.
-- Paperless Webhooks remain primary; automatic polling remains 600-second reconciliation/fallback through the same pipeline-start logic.
+- [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) requires Laravel-only transport/Pipeline Start, PostgreSQL-only productive state and Python domain lifecycle ownership.
+- [ADR-0018](../decisions/0018-suspend-model-confidence-auto-commit.md) requires immediate auto-commit containment before processing is considered safe.
+- Paperless Webhooks remain primary; automatic polling remains 600-second reconciliation/fallback through Laravel-owned Pipeline Start.
 
 ## Confirmed implemented foundation
 
@@ -71,6 +73,8 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 
 ## Confirmed transition debt
 
+Security containment milestone 0 is not implemented. In particular, current Chat/RAG lacks per-document authorization, model-confidence auto-commit can remain active through stale effective Python configuration, OCR write-back exists, and webhook ingress fails open when no secret is configured. Per the active plan, no document classification/processing is considered safe until milestone 0.2 disables auto-commit in code.
+
 Absurd is no longer a supervised runtime owner, but cleanup remains:
 
 - `app/absurd_queue.py`, `app/event_worker.py`, and Absurd-decorated compatibility wrappers;
@@ -82,10 +86,16 @@ The runtime still needs a clean-install/live-service proof after these changes. 
 
 ## Next safe milestones
 
+0. **Security containment**
+   - Execute independent hardening-plan milestone 0 PRs: disable Chat/RAG, suspend auto-commit, remove/authorize OCR write-back, require webhook authentication, harden setup, and restrict/structure diagnostics.
+   - Do not begin redesign work or claim safe processing before the applicable containment slice lands.
+
 1. **Runtime and recovery proof**
+   - Map every producer to one `RunPythonActorJob` factory and one allowlisted `app.actor_runner` command.
    - Run focused Laravel/Python suites plus a clean-install Docker smoke with PostgreSQL.
    - Verify scheduled poll due/disabled/overlap behavior, restart recovery, source-linked retries, cancellation, and no supervised Absurd process.
    - Verify a durable record cannot be launched through both transports.
+   - Complete full reindex behavior, CLI/UI backend parity, and the missing Laravel recovery cases identified above.
 
 2. **Absurd cleanup**
    - Remove SDK/config/schema/migration/supervisor/code/test remnants in a focused patch after parity.

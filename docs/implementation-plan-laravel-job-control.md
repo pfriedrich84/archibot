@@ -8,16 +8,18 @@ The former plan hardened `worker_jobs` as a temporary Laravel control plane and 
 
 - [ADR-0015](decisions/0015-use-laravel-database-queues-for-event-transport.md) selects Laravel database queues plus fixed Python actor commands.
 - [ADR-0016](decisions/0016-clean-install-worker-jobs-retirement.md) retires `worker_jobs` for clean installs instead of preserving compatibility.
+- [ADR-0017](decisions/0017-single-durable-orchestration-and-execution-ownership.md) removes productive SQLite/Absurd and assigns sole runtime ownership.
 
 ## Active sources
 
 Use these documents for current work:
 
 1. Root [`AGENTS.md`](../AGENTS.md) for task routing and non-negotiable repository rules.
-2. [Event-driven implementation plan](implementation-plan-event-driven-archibot.md) for target architecture and remaining migration.
-3. [Event-driven phase status](implementation-notes/event-driven-phase-status.md) for the revisions and transition debt currently inspected.
-4. [Job-control model](architecture/job-control-model.md) for active durable actions, ownership and state machines.
-5. [Conditional migration task router](prompts/pi-dev-event-driven-migration.md) only for migration-related tasks.
+2. [Security and architecture hardening plan](implementation-plan-security-architecture-hardening.md) for active sequencing and containment.
+3. [Event-driven implementation plan](implementation-plan-event-driven-archibot.md) for subordinate migration detail.
+4. [Event-driven phase status](implementation-notes/event-driven-phase-status.md) for the revisions and transition debt currently inspected.
+5. [Job-control model](architecture/job-control-model.md) for active durable actions, ownership and state machines.
+6. [Conditional migration task router](prompts/pi-dev-event-driven-migration.md) only for migration-related tasks.
 
 ## Historical scope
 

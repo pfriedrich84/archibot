@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Retry ownership is clarified by [ADR-0017: Use One Durable Orchestration and Execution Ownership Model](0017-single-durable-orchestration-and-execution-ownership.md): Laravel retries transport/protocol failures, while Python/PostgreSQL owns domain retries.
 
 ## Context
 

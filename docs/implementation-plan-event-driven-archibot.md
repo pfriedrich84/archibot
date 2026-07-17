@@ -2,15 +2,16 @@
 
 ## Status und Geltungsbereich
 
-Dieses Dokument beschreibt die aktive Zielarchitektur und die verbleibende Migration. Es ist kein historisches Phasenprotokoll.
+Dieses Dokument beschreibt die event-driven Teilmigration. Die uebergeordnete Security-, Ownership- und Delivery-Reihenfolge steht in [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md); bei Konflikten gilt der neuere Hardening-Plan. Dieses Dokument ist kein historisches Phasenprotokoll.
 
 Bei Widerspruechen gilt diese Reihenfolge:
 
 1. [`AGENTS.md`](../AGENTS.md) fuer den Agenten-Arbeitsvertrag.
-2. Akzeptierte ADRs in [`docs/decisions/`](decisions/), insbesondere [ADR-0015](decisions/0015-use-laravel-database-queues-for-event-transport.md) und [ADR-0016](decisions/0016-clean-install-worker-jobs-retirement.md).
-3. Detailvertraege in [`docs/architecture/`](architecture/).
-4. Dieser Plan fuer Zielbild, Migrationsreihenfolge und Abschlusskriterien.
-5. [`docs/implementation-notes/event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md) fuer den revisionsgebundenen Ist-Stand.
+2. Akzeptierte ADRs in [`docs/decisions/`](decisions/), insbesondere ADR-0015, ADR-0016, [ADR-0017](decisions/0017-single-durable-orchestration-and-execution-ownership.md) und [ADR-0018](decisions/0018-suspend-model-confidence-auto-commit.md).
+3. Der [Hardening-Plan](implementation-plan-security-architecture-hardening.md) fuer Security-, Ownership- und PR-Reihenfolge.
+4. Detailvertraege in [`docs/architecture/`](architecture/).
+5. Dieser Plan fuer event-driven Zielbild und Migrationsdetails.
+6. [`docs/implementation-notes/event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md) fuer den revisionsgebundenen Ist-Stand.
 
 Die urspruengliche Absurd-Transportentscheidung ist durch ADR-0015 abgeloest. Historische Begruendung bleibt im als superseded markierten [ADR-0013](decisions/0013-use-absurd-postgresql-queue.md) und in der Git-Historie erhalten; sie ist keine Implementierungsanweisung.
 

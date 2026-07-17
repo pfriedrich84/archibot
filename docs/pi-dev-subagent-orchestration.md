@@ -11,9 +11,10 @@ This guide was written for the retired [`worker_jobs`/Absurd implementation plan
 Use:
 
 1. root [`AGENTS.md`](../AGENTS.md) for instruction precedence and task-specific reading;
-2. [`docs/governance/agent-workflow.md`](governance/agent-workflow.md) for shared contracts, delegation and milestone checks;
-3. the [conditional migration task router](prompts/pi-dev-event-driven-migration.md) only when changing migration, queue, pipeline, recovery or superseded runtime paths;
-4. [`docs/agent/CONTEXT_AND_EVIDENCE.md`](agent/CONTEXT_AND_EVIDENCE.md) for delegated evidence, handoff and recovery.
+2. [`docs/implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) for active containment, ownership and PR ordering;
+3. [`docs/governance/agent-workflow.md`](governance/agent-workflow.md) for shared contracts, delegation and milestone checks;
+4. the [conditional migration task router](prompts/pi-dev-event-driven-migration.md) only when changing migration, queue, pipeline, recovery or superseded runtime paths;
+5. [`docs/agent/CONTEXT_AND_EVIDENCE.md`](agent/CONTEXT_AND_EVIDENCE.md) for delegated evidence, handoff and recovery.
 
 Delegate only independent, bounded scopes with explicit file ownership and output contracts. Do not require a fixed number of subagents or preload an entire implementation plan when a focused source is sufficient.
 

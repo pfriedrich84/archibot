@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted for operational job controls. The review-commit clause is amended by [ADR-0019: Separate Review Decisions from Admin Job Control](0019-separate-review-decisions-from-admin-job-control.md).
 
 ## Context
 
@@ -54,7 +54,7 @@ The following actions require `is_admin()`:
 - start reindex
 - start reconciliation/poll manually
 - dismiss permanent webhook failure
-- commit review suggestion to Paperless
+- retry, cancel or otherwise administratively control a review-commit execution (ordinary authorized review acceptance follows ADR-0019)
 - sync entity approval
 - change worker/pipeline settings
 - change LLM provider/model used for processing
@@ -67,7 +67,7 @@ Webhook authorization must be handled separately through webhook security:
 
 - internal network restrictions
 - reverse proxy ACLs
-- shared secret header if available
+- required shared secret header; reject ingress when the effective secret is absent under hardening milestone 0.4
 - request validation
 
 Webhook ingestion may create pipeline work automatically, but manual user-triggered job control remains admin-only.

@@ -118,13 +118,15 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 ## Phase 3: Klassifikation
 
+> **Security-Hinweis:** ADR-0018 verlangt, Confidence-basiertes Auto-Commit abzuschalten. Bis Hardening-Meilenstein 0.2 ausgeliefert ist, kann ein veralteter effektiver Python-Export Werte groesser als `0` weiterhin ausfuehren, selbst wenn Env oder UI `0` anzeigen. Es gibt keine verlaessliche reine Einstellungsminderung; bis Meilenstein 0.2 darf keine Dokumentklassifikation/-verarbeitung gestartet werden.
+
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `CLASSIFICATION_MODEL` / `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`). `CLASSIFICATION_MODEL` ist der bevorzugte Name. |
 | `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation, Judge und Chat/RAG (Tokens). Separate `CHAT_CONTEXT_WINDOW`/`JUDGE_CONTEXT_WINDOW` sind derzeit keine Runtime-Settings. |
 | `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
-| `AUTO_COMMIT_CONFIDENCE` | `0` | 0 = immer manuell reviewen. Ab diesem finalen Score (1–100) automatisch committen. Im Inbox-Poll erfolgt der Commit pro Dokument, sobald Klassifikation/Judge fuer dieses Dokument abgeschlossen ist. |
+| `AUTO_COMMIT_CONFIDENCE` | `0` | Nur `0` ist waehrend des ausstehenden Security-Hardenings zulaessig. Die aktuelle Runtime kann Werte 1–100 noch als automatische Commit-Schwelle interpretieren; ADR-0018 verbietet diese Nutzung bis zur sicheren Neugestaltung. |
 | `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der Klassifikationen prueft und ggf. korrigiert. |
 | `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
 | `JUDGE_MODEL` / `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `CLASSIFICATION_MODEL`/`OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
@@ -165,7 +167,7 @@ Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `WEBHOOK_SECRET` | — | Shared Secret fuer `POST /api/webhooks/paperless` oder den Alias `POST /webhook`. Siehe [Webhook-Doku](./webhooks.md). |
+| `WEBHOOK_SECRET` | — | Erforderliches Shared Secret fuer `POST /api/webhooks/paperless` oder den Alias `POST /webhook`. Bis Hardening-Meilenstein 0.4 muss der aktuelle Fail-open-Zwischenstand durch vertrauenswuerdige Netzwerkisolation abgesichert werden. Siehe [Webhook-Doku](./webhooks.md). |
 
 ## MCP Server (optional)
 
