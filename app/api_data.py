@@ -502,7 +502,7 @@ def get_dashboard_snapshot(app: Any) -> dict[str, Any]:
             },
             "ocr_mode": settings.ocr_mode,
             "poll_interval_seconds": settings.poll_interval_seconds,
-            "auto_commit_confidence": settings.auto_commit_confidence,
+            "auto_commit_confidence": 0,
         },
         "recent_errors": get_recent_errors(limit=8),
     }
@@ -562,7 +562,7 @@ def get_settings_schema() -> dict[str, Any]:
     groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     for field_name, meta in FIELD_META.items():
         category = meta["category"]
-        value = getattr(settings, field_name, "")
+        value = 0 if field_name == "auto_commit_confidence" else getattr(settings, field_name, "")
         if category not in groups:
             groups[category] = []
         field = {
@@ -573,6 +573,7 @@ def get_settings_schema() -> dict[str, Any]:
             "restart": meta["restart"],
             "help": meta["help"],
             "sensitive": meta["sensitive"],
+            "read_only": meta["read_only"],
             "value": "" if meta["sensitive"] else value,
             "configured": bool(value) if meta["sensitive"] else None,
         }

@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Models\AppSetting;
 use App\Models\User;
+use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -101,9 +102,28 @@ class AdminSettingsTest extends TestCase
         $this->assertSame('0.8', AppSetting::getValue('embedding.hybrid_search_weight'));
     }
 
+    public function test_confidence_auto_commit_setting_is_read_only_and_explains_suspension(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        AppSetting::put('classification.auto_commit_confidence', '100');
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'classification-review']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('groups.0.settings', fn ($settings): bool => collect($settings)->contains(
+                    fn (array $setting): bool => $setting['key'] === 'classification.auto_commit_confidence'
+                        && $setting['read_only'] === true
+                        && $setting['value'] === '0'
+                        && str_contains($setting['help'], 'ADR-0018')
+                ))
+            );
+    }
+
     public function test_admin_can_update_mcp_runtime_settings(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
+        AppSetting::put('classification.auto_commit_confidence', '100');
         $response = $this->actingAs($admin)->patch(route('admin.settings.update'), [
             'paperless_url' => 'https://paperless.test',
             'gui_base_url' => 'https://archibot.example',
@@ -119,10 +139,12 @@ class AdminSettingsTest extends TestCase
 
         $response->assertRedirect();
         $this->assertSame('legacy-mcp-secret', AppSetting::getValue('mcp.api_key'));
+        $this->assertSame('100', AppSetting::getValue('classification.auto_commit_confidence'));
 
         $runtimeConfig = file_get_contents(config('archibot_settings.import_paths')[0]);
         $this->assertStringContainsString('GUI_BASE_URL=https://archibot.example', $runtimeConfig);
-        $this->assertStringContainsString('AUTO_COMMIT_CONFIDENCE=95', $runtimeConfig);
+        $this->assertStringContainsString('AUTO_COMMIT_CONFIDENCE=0', $runtimeConfig);
+        $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=95', $runtimeConfig);
         $this->assertStringContainsString('ENABLE_JUDGE_VERIFICATION=1', $runtimeConfig);
         $this->assertStringContainsString('JUDGE_CONFIDENCE_THRESHOLD=101', $runtimeConfig);
         $this->assertStringContainsString('MCP_API_KEY=legacy-mcp-secret', $runtimeConfig);
@@ -137,6 +159,25 @@ class AdminSettingsTest extends TestCase
             }
             $this->assertStringContainsString(strtoupper($definition['legacy']).'=', $runtimeConfig);
         }
+    }
+
+    public function test_runtime_export_forces_auto_commit_off_for_existing_file_database_and_override(): void
+    {
+        $path = config('archibot_settings.import_paths')[0];
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, "AUTO_COMMIT_CONFIDENCE=80\n");
+        AppSetting::put('classification.auto_commit_confidence', '100');
+
+        app(PythonRuntimeConfigExporter::class)->export([
+            'AUTO_COMMIT_CONFIDENCE' => '95',
+        ]);
+
+        $runtimeConfig = File::get($path);
+        $this->assertSame(1, substr_count($runtimeConfig, 'AUTO_COMMIT_CONFIDENCE='));
+        $this->assertStringContainsString('AUTO_COMMIT_CONFIDENCE=0', $runtimeConfig);
+        $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=80', $runtimeConfig);
+        $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=95', $runtimeConfig);
+        $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=100', $runtimeConfig);
     }
 
     public function test_admin_can_load_ai_models_for_default_provider(): void

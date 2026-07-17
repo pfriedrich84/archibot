@@ -120,7 +120,10 @@ naechsten automatischen Poll warten will.
 ### `process-doc` — Einzelnes Dokument verarbeiten
 
 Fuehrt die komplette Pipeline fuer genau ein Dokument aus (OCR-Korrektur,
-Embedding, Klassifikation und Vorschlag speichern). Die aktuelle Runtime kann bis zur Umsetzung von ADR-0018 weiterhin Auto-Commit nach Konfiguration ausfuehren; ein veralteter effektiver Python-Export kann trotz Env/UI-Wert `0` aktiv bleiben. Es gibt keine verlaessliche reine Einstellungsminderung. `process-doc` und andere Dokumentklassifikationspfade duerfen bis Meilenstein 0.2 nicht ausgefuehrt werden.
+Embedding, Klassifikation und pending Vorschlag speichern). ADR-0018 ist im
+Verarbeitungspfad umgesetzt: Confidence und Judge-Zustimmung koennen weder
+Annahme noch Paperless-PATCH ausloesen. Erst eine autorisierte manuelle Annahme
+queued den gemeinsamen `review_commit`-Pfad.
 
 ```bash
 # Ein Dokument verarbeiten

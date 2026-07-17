@@ -38,6 +38,7 @@
         options: string[];
         required: boolean;
         sensitive: boolean;
+        read_only: boolean;
         has_value: boolean;
         value: string;
         help: string | null;
@@ -227,6 +228,15 @@
             >Issue #221</a
         >
         is the only redesign and re-enable track.
+    </aside>
+
+    <aside
+        class="max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+    >
+        <strong>Confidence auto-commit is temporarily suspended.</strong>
+        Under ADR-0018, model or judge confidence cannot authorize Paperless writes.
+        The effective threshold is fixed at 0 and every classification remains pending
+        until an authorized user accepts it manually.
     </aside>
 
     <nav class="flex flex-wrap gap-2" aria-label="Admin settings sections">
@@ -497,6 +507,7 @@
                                         setting.has_value
                                             ? 'Current value saved — leave blank to keep'
                                             : undefined}
+                                        disabled={setting.read_only}
                                     />
                                 {/if}
 

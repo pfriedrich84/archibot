@@ -267,10 +267,11 @@ return [
         'classification.auto_commit_confidence' => [
             'legacy' => 'auto_commit_confidence',
             'group' => 'Classification / Review',
-            'label' => 'Auto-commit confidence',
+            'label' => 'Confidence auto-commit (suspended)',
             'type' => 'number',
             'default' => '0',
-            'help' => '0 means always review manually.',
+            'read_only' => true,
+            'help' => 'Effective value: 0. ADR-0018 temporarily suspends model-confidence writes; every classification requires manual review.',
         ],
         'classification.enable_judge_verification' => [
             'legacy' => 'enable_judge_verification',

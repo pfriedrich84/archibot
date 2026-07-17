@@ -6,7 +6,7 @@ Core rules for coding agents working on ArchiBot.
 
 - Keep ArchiBot single-container and Docker-first.
 - Do not overwrite existing Paperless storage paths.
-- Keep manual review as the target safety path. ADR-0018 requires model-confidence auto-commit to be disabled until deterministic eligibility gates, adversarial tests and explicit product/security approval permit re-enabling it. Implementation is pending; do not treat the current runtime as contained until milestone 0.2 lands.
+- Keep manual review as the target safety path. ADR-0018 model-confidence auto-commit containment is implemented: the effective threshold stays zero and model/judge output cannot accept, queue or write. Do not re-enable it until deterministic eligibility gates, adversarial tests and explicit product/security approval permit a separate safe-automation design.
 - Do not use inbox/unreviewed documents as trusted classification context. A document is trusted for classification context only when it does not have the configured inbox tag.
 - Do not create new Paperless tags, correspondents, or document types outside the approval/whitelist flow.
 - Non-admin users may accept, reject, or otherwise work on suggestions only when they have the right to change the corresponding Paperless document.

@@ -112,7 +112,9 @@ class Settings(BaseSettings):
         default=180,
         validation_alias=AliasChoices("EMBEDDING_DOCUMENT_TIMEOUT_SECONDS"),
     )
-    auto_commit_confidence: int = 0  # 0 = immer manuell reviewen
+    # Retained only to safely absorb legacy environment/runtime exports. ADR-0018
+    # requires the effective value to remain zero until separately approved safe automation exists.
+    auto_commit_confidence: int = 0
 
     # --- LLM-as-Judge verification (optional second pass) ---
     enable_judge_verification: bool = False
@@ -147,6 +149,12 @@ class Settings(BaseSettings):
     # --- State ---
     data_dir: str = "/data"
     log_level: str = "INFO"
+
+    @field_validator("auto_commit_confidence", mode="before")
+    @classmethod
+    def _disable_confidence_auto_commit(cls, _value: Any) -> int:
+        """Ignore every legacy confidence threshold under ADR-0018."""
+        return 0
 
     @field_validator("*", mode="before")
     @classmethod
@@ -328,6 +336,10 @@ def _apply_config_env_overrides() -> None:
         field_name = _CONFIG_ENV_ALIASES.get(field_name, field_name)
         raw = raw.strip()
 
+        if field_name == "auto_commit_confidence":
+            object.__setattr__(settings, field_name, 0)
+            continue
+
         if field_name not in Settings.model_fields:
             continue
 
@@ -454,6 +466,7 @@ def _fm(
     restart: str | None = None,
     help: str = "",
     sensitive: bool = False,
+    read_only: bool = False,
     min: float | None = None,
     max: float | None = None,
     step: float | None = None,
@@ -467,6 +480,7 @@ def _fm(
         "restart": restart,
         "help": help,
         "sensitive": sensitive,
+        "read_only": read_only,
     }
     if min is not None:
         meta["min"] = min
@@ -727,9 +741,12 @@ FIELD_META: dict[str, dict[str, Any]] = {
     ),
     "auto_commit_confidence": _fm(
         "Phase 3: Klassifikation",
-        "Auto-Commit Confidence",
+        "Confidence Auto-Commit (suspended)",
         "number",
-        help="0 = always review. Set to e.g. 85 to auto-commit high-confidence results",
+        help="Read-only effective value 0. ADR-0018 temporarily suspends model-confidence writes; every classification requires manual review.",
+        read_only=True,
+        min=0,
+        max=0,
     ),
     "enable_judge_verification": _fm(
         "Phase 3: Klassifikation",

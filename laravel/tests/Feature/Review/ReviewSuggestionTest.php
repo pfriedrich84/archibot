@@ -206,9 +206,10 @@ class ReviewSuggestionTest extends TestCase
             && $job->commandId === $command->id);
     }
 
-    public function test_accepting_event_driven_suggestion_marks_commit_queued_without_legacy_worker(): void
+    public function test_manual_acceptance_still_queues_reviewed_commit_while_confidence_auto_commit_is_suspended(): void
     {
         Queue::fake();
+        AppSetting::put('classification.auto_commit_confidence', '100');
         $user = User::factory()->create(['is_admin' => true]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 789,
@@ -225,7 +226,9 @@ class ReviewSuggestionTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertSame($command->id, $suggestion->commit_command_id);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $command->id);
+        $this->assertSame('100', AppSetting::getValue('classification.auto_commit_confidence'));
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
+            && $job->commandId === $command->id);
     }
 
     public function test_accepting_python_origin_suggestion_queues_durable_commit_command(): void

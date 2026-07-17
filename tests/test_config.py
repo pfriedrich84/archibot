@@ -65,6 +65,39 @@ def test_friendly_ai_env_aliases(monkeypatch, env_name, field_name, expected):
     assert getattr(cfg, field_name) == expected
 
 
+@pytest.mark.parametrize("configured", [1, 100, 999])
+def test_auto_commit_confidence_env_is_always_disabled(monkeypatch, configured):
+    from app.config import Settings
+
+    monkeypatch.setenv("AUTO_COMMIT_CONFIDENCE", str(configured))
+
+    assert Settings().auto_commit_confidence == 0
+
+
+def test_auto_commit_confidence_schema_is_read_only():
+    from app.config import FIELD_META
+
+    assert FIELD_META["auto_commit_confidence"]["read_only"] is True
+    assert FIELD_META["auto_commit_confidence"]["min"] == 0
+    assert FIELD_META["auto_commit_confidence"]["max"] == 0
+
+
+def test_auto_commit_confidence_runtime_export_is_always_disabled(tmp_path):
+    import app.config as config_module
+
+    (tmp_path / "config.env").write_text("AUTO_COMMIT_CONFIDENCE=100\n", encoding="utf-8")
+    original_data_dir = config_module.settings.data_dir
+    original_threshold = config_module.settings.auto_commit_confidence
+    object.__setattr__(config_module.settings, "data_dir", str(tmp_path))
+    object.__setattr__(config_module.settings, "auto_commit_confidence", 75)
+
+    config_module._apply_config_env_overrides()
+
+    assert config_module.settings.auto_commit_confidence == 0
+    object.__setattr__(config_module.settings, "data_dir", original_data_dir)
+    object.__setattr__(config_module.settings, "auto_commit_confidence", original_threshold)
+
+
 def test_empty_string_env_values_remain_empty_strings(monkeypatch):
     from app.config import Settings
 

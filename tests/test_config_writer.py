@@ -116,6 +116,20 @@ class TestSaveConfig:
         # Restore
         object.__setattr__(settings, "keep_inbox_tag", original)
 
+    def test_save_normalizes_stale_auto_commit_threshold_to_zero(self, tmp_path: Path, monkeypatch):
+        from app.config import settings
+        from app.config_writer import config_env_path, save_config
+
+        monkeypatch.setattr("app.config.settings.data_dir", str(tmp_path))
+        config_env_path().write_text("AUTO_COMMIT_CONFIDENCE=100\n", encoding="utf-8")
+        object.__setattr__(settings, "auto_commit_confidence", 100)
+
+        changed, _ = save_config({"auto_commit_confidence": 100})
+
+        assert changed == {"auto_commit_confidence": 0}
+        assert settings.auto_commit_confidence == 0
+        assert config_env_path().read_text(encoding="utf-8") == "AUTO_COMMIT_CONFIDENCE=0\n"
+
     def test_blank_sensitive_field_preserves_existing_secret(self, tmp_path: Path, monkeypatch):
         from app.config import settings
         from app.config_writer import config_env_path, save_config
