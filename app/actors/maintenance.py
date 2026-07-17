@@ -21,6 +21,7 @@ from app.jobs.actor_execution import (
 from app.jobs.pipeline_start import start_or_attach_document_pipeline
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.review_suggestions import classified_document_ids
 from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
 log = structlog.get_logger(__name__)
@@ -39,7 +40,7 @@ def _modified_value(document: object) -> str | None:
     return None if modified is None else str(modified)
 
 
-def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
+def _reconcile_inbox_documents_impl(limit: int | None = None, *, force: bool = False) -> None:
     """Poll Paperless inbox as reconciliation and use the shared pipeline start."""
     started = time.monotonic()
     actor_name = "reconcile_inbox_documents"
@@ -50,6 +51,7 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
         actor_name=actor_name,
         queue_name=queue_name("io"),
         limit=limit,
+        force=force,
     )
 
     if actor_execution.id is not None:
@@ -82,6 +84,14 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
             documents = documents[:limit]
 
         total = len(documents)
+        marked_document_ids = (
+            set()
+            if force
+            else classified_document_ids([int(document.id) for document in documents])
+        )
+        started_count = 0
+        coalesced_count = 0
+        skipped_count = 0
         if actor_execution.id is not None:
             update_actor_execution_progress(
                 actor_execution.id,
@@ -94,19 +104,47 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
             )
         for index, document in enumerate(documents, 1):
             document_id = int(document.id)
-            start_or_attach_document_pipeline(
-                trigger_source="poll",
-                paperless_document_id=document_id,
-                paperless_modified=_modified_value(document),
-            )
+            if document_id in marked_document_ids:
+                skipped_count += 1
+                progress_message = "Already classified Inbox Document skipped."
+                publish_pipeline_event(
+                    types.POLL_DOCUMENT_SKIPPED_ALREADY_CLASSIFIED,
+                    paperless_document_id=document_id,
+                    message=progress_message,
+                    payload={"marker": "review_suggestion"},
+                )
+            else:
+                force_options = (
+                    {
+                        "reprocess_requested": True,
+                        "reprocess_reason": "forced_poll_reconciliation",
+                        "reprocess_mode": "poll_force",
+                        "force_new_run": True,
+                    }
+                    if force
+                    else {}
+                )
+                result = start_or_attach_document_pipeline(
+                    trigger_source="poll",
+                    paperless_document_id=document_id,
+                    paperless_modified=_modified_value(document),
+                    **force_options,
+                )
+                if result.created:
+                    started_count += 1
+                    progress_message = "Polling reconciliation queued a document pipeline start."
+                else:
+                    coalesced_count += 1
+                    progress_message = "Polling reconciliation coalesced with an existing run."
             if actor_execution.id is not None:
                 update_actor_execution_progress(
                     actor_execution.id,
                     ProgressSnapshot(
                         total=total,
                         done=index,
+                        skipped=skipped_count,
                         phase="poll_reconciliation",
-                        message="Polling reconciliation queued document pipeline starts.",
+                        message=progress_message,
                     ),
                     current_item=f"paperless_document:{document_id}",
                 )
@@ -114,7 +152,13 @@ def _reconcile_inbox_documents_impl(limit: int | None = None) -> None:
         publish_pipeline_event(
             "poll.reconciliation.completed",
             message="Polling reconciliation completed.",
-            payload={"documents_seen": total},
+            payload={
+                "documents_seen": total,
+                "pipelines_started": started_count,
+                "pipelines_coalesced": coalesced_count,
+                "documents_skipped_already_classified": skipped_count,
+                "force": force,
+            },
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:

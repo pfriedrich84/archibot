@@ -41,11 +41,9 @@ und entweder als Review sichtbar oder automatisch committet.
 
 ### 1. Dokument wird erkannt
 
-Die Pipeline kann die Paperless-Inbox periodisch reconciliieren, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default ist `0`, also kein automatisches Polling; manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche und ist in `/operations-log` nachvollziehbar.
-Alternativ kann ein [Webhook](./webhooks.md) sofortige Verarbeitung ausloesen. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam in der Worker-Job-Historie mit Status, Fortschritt und Logs.
+Die Pipeline reconciliiert die Paperless-Inbox periodisch, wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist. Default sind `600` Sekunden. Ein [Webhook](./webhooks.md) kann die Verarbeitung sofort ausloesen; Polling bleibt der Fallback fuer verpasste Events. Scheduler-, Webhook- und UI-Starts erscheinen gemeinsam unter `/operations-log` mit Status, Fortschritt und Events.
 
-Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) werden verarbeitet.
-Bereits verarbeitete Dokumente (gleicher `updated_at`-Timestamp) werden uebersprungen. Ein laufender `process_document` Job sperrt seine Paperless-Dokument-ID, damit kein anderer aktiver Job dieselbe ID parallel verarbeitet. Reindex-Jobs sind exklusiv; andere Jobs warten, bis der Reindex abgeschlossen oder abgebrochen ist.
+Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) sind Poll-Kandidaten. Sobald ArchiBot nach erfolgreicher Klassifikation einen Review-Vorschlag gespeichert hat, dient dieser als dauerhafter Klassifikationsmarker. Weitere automatische Polls ueberspringen das Inbox-Dokument auch dann, wenn ein Review oder Commit den Paperless-`modified`-Zeitstempel geaendert hat und `KEEP_INBOX_TAG=true` ist. Ein abgelehnter Vorschlag bleibt ebenfalls markiert; fuer eine gewollte neue Klassifikation stehen der explizite Force-Poll und das manuelle Force-Reprocess zur Verfuegung. Parallel eintreffende Webhooks und Polls werden zusaetzlich ueber den gemeinsamen Pipeline-Dedupe-Key zusammengefuehrt.
 
 ### 2. Kontext-basierte Klassifikation
 
