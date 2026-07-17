@@ -191,12 +191,6 @@ class PipelineRecoveryDispatcher
             if ($this->reconcileActorExecutionToTerminalSource($execution)) {
                 return 'ignored';
             }
-            if ($execution->attempt >= $execution->max_attempts) {
-                $this->markActorExecutionPermanentFailure($execution, 'actor_retry_attempts_exhausted');
-
-                return 'failed_permanent';
-            }
-
             $run = $execution->pipeline_run_id === null
                 ? null
                 : PipelineRun::query()->find($execution->pipeline_run_id);
@@ -221,6 +215,11 @@ class PipelineRecoveryDispatcher
                 $this->markActorExecutionSuperseded($execution);
 
                 return 'ignored';
+            }
+            if ($execution->attempt >= $execution->max_attempts) {
+                $this->markActorExecutionPermanentFailure($execution, 'actor_retry_attempts_exhausted');
+
+                return 'failed_permanent';
             }
 
             if ($this->redispatchActorSource($execution)) {
