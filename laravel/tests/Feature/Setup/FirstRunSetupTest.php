@@ -57,6 +57,53 @@ class FirstRunSetupTest extends TestCase
         }
     }
 
+    public function test_composer_copied_environment_example_keeps_webhook_secret_empty(): void
+    {
+        $environmentExample = file_get_contents(base_path('.env.example'));
+        $composerConfig = file_get_contents(base_path('composer.json'));
+
+        $this->assertMatchesRegularExpression('/^PAPERLESS_WEBHOOK_SECRET=$/m', $environmentExample);
+        $this->assertStringNotContainsString('PAPERLESS_WEBHOOK_SECRET=<generate', $environmentExample);
+        $this->assertStringContainsString("copy('.env.example', '.env')", $composerConfig);
+    }
+
+    public function test_setup_requires_webhook_secret_when_deployment_has_none(): void
+    {
+        config(['archibot.paperless_webhook_secret' => '']);
+
+        $response = $this->post('/setup', $this->setupPayload(['webhook_secret' => '']));
+
+        $response->assertSessionHasErrors('webhook_secret');
+        $this->assertFalse(SetupState::current()->is_complete);
+    }
+
+    public function test_setup_treats_known_deployment_and_submitted_placeholders_as_missing(): void
+    {
+        config(['archibot.paperless_webhook_secret' => '<generate-a-unique-random-secret>']);
+
+        $this->get('/setup')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Setup/Index')
+            ->where('deploymentWebhookSecretConfigured', false)
+        );
+
+        $response = $this->post('/setup', $this->setupPayload([
+            'webhook_secret' => '<generate-a-unique-random-secret>',
+        ]));
+
+        $response->assertSessionHasErrors('webhook_secret');
+        $this->assertFalse(SetupState::current()->is_complete);
+    }
+
+    public function test_setup_reports_when_deployment_webhook_secret_is_configured(): void
+    {
+        config(['archibot.paperless_webhook_secret' => 'deployment-secret-with-at-least-32-chars']);
+
+        $this->get('/setup')->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Setup/Index')
+            ->where('deploymentWebhookSecretConfigured', true)
+        );
+    }
+
     public function test_setup_requires_paperless_admin_verification(): void
     {
         Http::fake([
@@ -102,6 +149,10 @@ class FirstRunSetupTest extends TestCase
         $this->assertAuthenticated();
         $this->assertTrue(SetupState::current()->is_complete);
         $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
+        $this->assertSame('synthetic-setup-webhook-secret-12345', AppSetting::getValue('webhook.secret'));
+        $storedWebhookSecret = AppSetting::query()->where('key', 'webhook.secret')->firstOrFail();
+        $this->assertTrue($storedWebhookSecret->encrypted);
+        $this->assertStringNotContainsString('synthetic-setup-webhook-secret-12345', (string) $storedWebhookSecret->value);
         $this->assertSame('1', AppSetting::getValue('paperless.inbox_tag_id'));
         $this->assertSame('2', AppSetting::getValue('paperless.processed_tag_id'));
         $this->assertSame('ollama', AppSetting::getValue('llm.provider'));
@@ -373,6 +424,7 @@ class FirstRunSetupTest extends TestCase
             'paperless_url' => 'https://paperless.test',
             'username' => 'admin',
             'password' => 'secret',
+            'webhook_secret' => 'synthetic-setup-webhook-secret-12345',
             'paperless_inbox_tag_id' => 1,
             'paperless_processed_tag_id' => 2,
             'ocr_requested_tag_id' => 3,

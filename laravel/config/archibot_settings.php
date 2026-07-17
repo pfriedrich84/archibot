@@ -327,7 +327,7 @@ return [
             'type' => 'password',
             'default' => '',
             'sensitive' => true,
-            'help' => 'Write-only after saving. Leave blank to keep the current value.',
+            'help' => 'Required for webhook ingress and write-only after saving. A stored value takes precedence over deployment configuration. Leave blank to keep the current value.',
         ],
         'webhook.log_raw_body' => [
             'legacy' => 'webhook_log_raw_body',

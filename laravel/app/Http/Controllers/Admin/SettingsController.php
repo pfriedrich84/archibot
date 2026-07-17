@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ValidatePaperlessWebhookRequest;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Services\Ollama\OllamaClient;
@@ -52,6 +53,7 @@ class SettingsController extends Controller
             'activeSection' => $activeSection,
             'prompts' => $activeSection === 'prompts' ? $this->promptPayloads() : [],
             'paperlessTagOptions' => $this->paperlessTagOptions($request),
+            'webhookDevelopmentBypassActive' => ValidatePaperlessWebhookRequest::developmentBypassIsActive(),
         ]);
     }
 

@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\ValidatePaperlessWebhookRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use LogicException;
@@ -25,6 +27,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configurePaperlessWebhookSecurity();
+    }
+
+    private function configurePaperlessWebhookSecurity(): void
+    {
+        if (ValidatePaperlessWebhookRequest::developmentBypassIsActive()) {
+            Log::warning('Paperless webhook authentication development bypass is active.', [
+                'environment' => app()->environment(),
+            ]);
+        }
     }
 
     /**

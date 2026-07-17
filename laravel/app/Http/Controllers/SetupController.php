@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\ValidatePaperlessWebhookRequest;
 use App\Models\AppSetting;
 use App\Models\SetupState;
 use App\Services\Ollama\OllamaClient;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Settings\LegacySettingsImporter;
 use App\Services\Setup\CompleteSetup;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -31,6 +33,9 @@ class SetupController extends Controller
             'paperlessUrl' => AppSetting::getValue('paperless.url', ''),
             'llmProvider' => AppSetting::getValue('llm.provider', 'ollama'),
             'ollamaUrl' => AppSetting::getValue('ollama.url', 'http://ollama:11434'),
+            'deploymentWebhookSecretConfigured' => ValidatePaperlessWebhookRequest::secretIsUsable(
+                config('archibot.paperless_webhook_secret', ''),
+            ),
             'defaults' => [
                 'inboxTagId' => AppSetting::getValue('paperless.inbox_tag_id', ''),
                 'processedTagId' => AppSetting::getValue('paperless.processed_tag_id', ''),
@@ -102,6 +107,16 @@ class SetupController extends Controller
             'paperless_url' => ['required', 'url'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
+            'webhook_secret' => [
+                ValidatePaperlessWebhookRequest::secretIsUsable(config('archibot.paperless_webhook_secret', '')) ? 'nullable' : 'required',
+                'string',
+                'min:32',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (! ValidatePaperlessWebhookRequest::secretIsUsable($value)) {
+                        $fail('The webhook secret must be a generated secret, not a placeholder.');
+                    }
+                },
+            ],
             'setup_token' => [$state->requiresResetToken() ? 'required' : 'nullable', 'string'],
             'paperless_inbox_tag_id' => ['required', 'integer', 'min:1'],
             'paperless_processed_tag_id' => ['nullable', 'integer', 'min:1'],

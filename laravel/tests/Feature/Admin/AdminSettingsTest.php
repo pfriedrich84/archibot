@@ -4,10 +4,13 @@ namespace Tests\Feature\Admin;
 
 use App\Models\AppSetting;
 use App\Models\User;
+use App\Providers\AppServiceProvider;
 use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -34,6 +37,27 @@ class AdminSettingsTest extends TestCase
                 ->where('groups.0.name', 'Paperless')
                 ->where('groups.0.settings.0.key', 'paperless.url')
                 ->where('groups.0.settings.0.value', 'https://paperless.test')
+            );
+    }
+
+    public function test_local_development_webhook_bypass_has_startup_log_and_ui_warning(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        Config::set('archibot.paperless_webhook_development_bypass', true);
+        $this->app->detectEnvironment(fn (): string => 'local');
+        Log::spy();
+
+        (new AppServiceProvider($this->app))->boot();
+
+        Log::shouldHaveReceived('warning')->once()->with(
+            'Paperless webhook authentication development bypass is active.',
+            ['environment' => 'local'],
+        );
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('webhookDevelopmentBypassActive', true)
             );
     }
 

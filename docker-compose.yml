@@ -25,7 +25,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}
       ABSURD_DATABASE_URL: ${ABSURD_DATABASE_URL:-${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}}
       ARCHIBOT_QUEUE_PREFIX: ${ARCHIBOT_QUEUE_PREFIX:-archibot}
+      # Required unless first-run setup stores the encrypted global webhook.secret setting.
       PAPERLESS_WEBHOOK_SECRET: ${PAPERLESS_WEBHOOK_SECRET:-}
+      PAPERLESS_WEBHOOK_MAX_BYTES: ${PAPERLESS_WEBHOOK_MAX_BYTES:-262144}
+      PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE: ${PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE:-60}
+      PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS: ${PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS:-false}
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
       CACHE_STORE: ${CACHE_STORE:-database}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}

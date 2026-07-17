@@ -82,12 +82,14 @@
         activeSection,
         prompts,
         paperlessTagOptions,
+        webhookDevelopmentBypassActive = false,
     }: {
         groups: SettingGroup[];
         sections: SettingsSection[];
         activeSection: string;
         prompts: Prompt[];
         paperlessTagOptions: PaperlessTagOption[];
+        webhookDevelopmentBypassActive?: boolean;
     } = $props();
 
     let aiModelProviderId = $state('default');
@@ -238,6 +240,21 @@
         The effective threshold is fixed at 0 and every classification remains pending
         until an authorized user accepts it manually.
     </aside>
+
+    {#if webhookDevelopmentBypassActive}
+        <aside
+            class="max-w-3xl rounded-xl border border-red-500/50 bg-red-500/10 p-4 text-sm"
+            role="alert"
+        >
+            <strong
+                >Development-only webhook authentication bypass is active.</strong
+            >
+            Webhook requests are accepted without a shared secret in this local/development
+            environment. Disable
+            <code>PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS</code> before using this instance
+            outside isolated development.
+        </aside>
+    {/if}
 
     <nav class="flex flex-wrap gap-2" aria-label="Admin settings sections">
         {#each sections as section (section.slug)}
