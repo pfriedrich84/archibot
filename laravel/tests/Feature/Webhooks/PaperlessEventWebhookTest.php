@@ -11,7 +11,6 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
@@ -37,12 +36,13 @@ class PaperlessEventWebhookTest extends TestCase
 
     public function test_webhook_security_runs_once_globally_without_route_throttle(): void
     {
-        $globalMiddleware = app(HttpKernel::class)->getMiddleware();
+        $bootstrap = file_get_contents(base_path('bootstrap/app.php'));
 
-        $this->assertSame(1, count(array_filter(
-            $globalMiddleware,
-            fn (string $middleware): bool => $middleware === ValidatePaperlessWebhookRequest::class,
-        )));
+        $this->assertIsString($bootstrap);
+        $this->assertSame(
+            1,
+            substr_count($bootstrap, '$middleware->prepend(ValidatePaperlessWebhookRequest::class);'),
+        );
 
         foreach (['webhook.paperless', 'api.webhooks.paperless'] as $routeName) {
             $routeMiddleware = app('router')->getRoutes()->getByName($routeName)->middleware();
