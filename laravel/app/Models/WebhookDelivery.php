@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'source',
@@ -28,6 +29,8 @@ class WebhookDelivery extends Model
 
     public const STATUS_QUEUED = 'queued';
 
+    public const STATUS_RUNNING = 'running';
+
     public const STATUS_BLOCKED = 'blocked';
 
     public const STATUS_PROCESSED = 'processed';
@@ -37,6 +40,11 @@ class WebhookDelivery extends Model
     public const STATUS_FAILED_PERMANENT = 'failed_permanent';
 
     public const STATUS_DISMISSED = 'dismissed';
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(PipelineEvent::class);
+    }
 
     protected function casts(): array
     {

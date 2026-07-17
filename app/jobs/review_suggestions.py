@@ -440,3 +440,120 @@ def mark_review_suggestion_auto_accepted(
             },
         )
     return True, []
+
+
+def ensure_review_commit_command(review_suggestion_id: int) -> int:
+    """Create one durable pending review-commit command for auto-commit.
+
+    Laravel recovery owns transport dispatch. The Python document actor only
+    persists the same command boundary used by manual review acceptance.
+    """
+    select_suggestion = sql_text(
+        """
+        SELECT id, paperless_document_id, commit_command_id
+        FROM review_suggestions
+        WHERE id = :review_suggestion_id
+        FOR UPDATE
+        """
+    )
+    insert_command = sql_text(
+        """
+        INSERT INTO commands (
+            type, status, payload, created_by_user_id, created_at, updated_at
+        ) VALUES (
+            'review_commit',
+            'pending',
+            CAST(:payload AS jsonb),
+            NULL,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+        RETURNING id
+        """
+    )
+    link_command = sql_text(
+        """
+        UPDATE review_suggestions
+        SET commit_status = 'queued',
+            commit_command_id = :command_id,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :review_suggestion_id
+        """
+    )
+    insert_event = sql_text(
+        """
+        INSERT INTO pipeline_events (
+            command_id,
+            paperless_document_id,
+            event_type,
+            level,
+            message,
+            payload,
+            created_at
+        ) VALUES (
+            :command_id,
+            :paperless_document_id,
+            'job_control.review_commit_requested',
+            'info',
+            'Auto-accepted review suggestion created a durable commit command for Laravel recovery.',
+            CAST(:event_payload AS jsonb),
+            CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    with engine().begin() as connection:
+        suggestion = (
+            connection.execute(
+                select_suggestion,
+                {"review_suggestion_id": review_suggestion_id},
+            )
+            .mappings()
+            .first()
+        )
+        if suggestion is None:
+            raise RuntimeError(f"Review suggestion {review_suggestion_id} was not found")
+        if suggestion["commit_command_id"] is not None:
+            return int(suggestion["commit_command_id"])
+
+        paperless_document_id = int(suggestion["paperless_document_id"])
+        command = (
+            connection.execute(
+                insert_command,
+                {
+                    "payload": _json(
+                        {
+                            "review_suggestion_id": review_suggestion_id,
+                            "paperless_document_id": paperless_document_id,
+                            "source": "auto_commit",
+                        }
+                    )
+                },
+            )
+            .mappings()
+            .one()
+        )
+        command_id = int(command["id"])
+        connection.execute(
+            link_command,
+            {
+                "command_id": command_id,
+                "review_suggestion_id": review_suggestion_id,
+            },
+        )
+        connection.execute(
+            insert_event,
+            {
+                "command_id": command_id,
+                "paperless_document_id": paperless_document_id,
+                "event_payload": _json(
+                    {
+                        "review_suggestion_id": review_suggestion_id,
+                        "actor_name": "commit_review_suggestion",
+                        "transport_owner": "laravel_recovery",
+                    }
+                ),
+            },
+        )
+
+    return command_id

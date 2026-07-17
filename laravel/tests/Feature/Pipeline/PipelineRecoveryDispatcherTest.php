@@ -13,12 +13,78 @@ use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class PipelineRecoveryDispatcherTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_recovery_scan_skips_when_another_scan_holds_the_lock(): void
+    {
+        Queue::fake();
+        $lock = Cache::lock('archibot:pipeline-recovery-scan', 60);
+        $this->assertTrue($lock->get());
+
+        try {
+            $this->assertSame(
+                ['scan_skipped_locked' => 1],
+                app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10),
+            );
+            Queue::assertNothingPushed();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public function test_redispatch_claim_rejects_sources_changed_after_recovery_selection(): void
+    {
+        Queue::fake();
+        $dispatcher = app(PipelineRecoveryDispatcher::class);
+
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_PENDING,
+        ]);
+        $selectedCommand = $command->replicate()->setRawAttributes($command->getAttributes(), true);
+        $selectedCommand->setAttribute($command->getKeyName(), $command->getKey());
+        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        $commandMethod = new \ReflectionMethod($dispatcher, 'redispatchCommand');
+        $this->assertFalse($commandMethod->invoke(
+            $dispatcher,
+            $selectedCommand,
+            'test.command',
+            'test command',
+        ));
+
+        $delivery = $this->webhookDelivery(['status' => WebhookDelivery::STATUS_RECEIVED]);
+        $selectedDelivery = $delivery->replicate()->setRawAttributes($delivery->getAttributes(), true);
+        $selectedDelivery->setAttribute($delivery->getKeyName(), $delivery->getKey());
+        $delivery->forceFill(['status' => WebhookDelivery::STATUS_QUEUED])->save();
+        $webhookMethod = new \ReflectionMethod($dispatcher, 'redispatchWebhookDelivery');
+        $this->assertFalse($webhookMethod->invoke(
+            $dispatcher,
+            $selectedDelivery,
+            'test.webhook',
+            'test webhook',
+        ));
+
+        $run = $this->pipelineRun(['status' => PipelineRun::STATUS_PENDING]);
+        $selectedRun = $run->replicate()->setRawAttributes($run->getAttributes(), true);
+        $selectedRun->setAttribute($run->getKeyName(), $run->getKey());
+        $run->forceFill(['status' => PipelineRun::STATUS_QUEUED])->save();
+        $runMethod = new \ReflectionMethod($dispatcher, 'redispatchDocumentRun');
+        $this->assertFalse($runMethod->invoke(
+            $dispatcher,
+            $selectedRun,
+            'test.run',
+            'test run',
+            'test progress',
+        ));
+
+        Queue::assertNothingPushed();
+    }
 
     public function test_recovery_scan_redispatches_queued_non_process_webhook_deliveries(): void
     {
@@ -70,6 +136,62 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertDatabaseCount('pipeline_events', 2);
     }
 
+    public function test_recovery_starts_stranded_process_webhook_pipeline(): void
+    {
+        Queue::fake();
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_RECEIVED,
+            'event_type' => 'document_created',
+            'normalized_payload' => [
+                'webhook_action' => 'process_document',
+                'paperless_modified' => '2026-05-08T12:00:00Z',
+            ],
+        ]);
+        $delivery->timestamps = false;
+        $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+
+        $result = app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10);
+
+        $run = PipelineRun::query()->firstOrFail();
+        $this->assertSame(1, $result['webhook_deliveries_redispatched']);
+        $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
+        $this->assertSame($delivery->id, $run->webhook_delivery_id);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE
+            && $job->commandId === $run->id);
+    }
+
+    public function test_recovery_reconciles_blocked_process_webhook_after_gate_release(): void
+    {
+        Queue::fake();
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_BLOCKED,
+            'event_type' => 'document_created',
+            'error' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+            'normalized_payload' => ['webhook_action' => 'process_document'],
+        ]);
+        $delivery->timestamps = false;
+        $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        $run = $this->pipelineRun([
+            'webhook_delivery_id' => $delivery->id,
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'error_type' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+            'error' => 'Embedding index is not ready.',
+        ]);
+
+        app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10);
+
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->fresh()->status);
+        $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->fresh()->status);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'recovery.process_webhook_reconciled',
+        ]);
+    }
+
     public function test_recovery_artisan_command_runs_laravel_native_webhook_redispatch(): void
     {
         Queue::fake();
@@ -81,7 +203,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
 
         $this->artisan('archibot:recovery-scan', ['--limit' => 5])
-            ->expectsOutput('Recovery scan complete. webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
+            ->expectsOutput('Recovery scan complete. actor_executions_stale=0 actor_executions_redispatched=0 actor_executions_failed_permanent=0 pipeline_runs_cancelled=0 webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
             ->assertSuccessful();
 
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $delivery->id);
@@ -352,6 +474,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'updated_at' => now()->subMinutes(6),
         ]);
         ActorExecution::query()->create([
+            'command_id' => $active->id,
             'actor_name' => PythonActorRunner::ACTOR_POLL_RECONCILIATION,
             'status' => ActorExecution::STATUS_RUNNING,
         ]);
@@ -398,6 +521,410 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'event_type' => 'recovery.command_failed_permanent',
             'paperless_document_id' => 71,
         ]);
+    }
+
+    public function test_recovery_scan_redispatches_sync_entity_approval_commands(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
+            'payload' => [
+                'action' => 'approve',
+                'type' => 'tag',
+                'name' => 'Invoices',
+                'paperless_id' => 12,
+            ],
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
+
+        $this->assertSame(1, $count);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL
+            && $job->commandId === $command->id);
+        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
+    }
+
+    public function test_recovery_scan_marks_invalid_sync_entity_command_permanently_failed(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
+            'payload' => ['action' => 'approve', 'type' => 'tag'],
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
+
+        $this->assertSame(0, $count);
+        Queue::assertNothingPushed();
+        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
+        $this->assertSame('missing_entity_sync_name', $command->fresh()->error);
+    }
+
+    public function test_recovery_redispatches_stale_running_actor_through_linked_command(): void
+    {
+        Queue::fake();
+        config(['archibot_workers.stale_running_minutes' => 10]);
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+            'updated_at' => now()->subMinutes(11),
+        ]);
+        $execution = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 1, 'redispatched' => 1, 'failed_permanent' => 0], $result);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_REINDEX
+            && $job->commandId === $command->id);
+        $this->assertSame(ActorExecution::STATUS_FAILED, $execution->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
+        $this->assertDatabaseHas('pipeline_events', [
+            'command_id' => $command->id,
+            'event_type' => 'recovery.actor_execution_redispatched',
+        ]);
+    }
+
+    public function test_recovery_marks_exhausted_stale_actor_and_source_permanently_failed(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+        ]);
+        $execution = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 5,
+            'max_attempts' => 5,
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 1], $result);
+        Queue::assertNothingPushed();
+        $this->assertSame(ActorExecution::STATUS_FAILED_PERMANENT, $execution->fresh()->status);
+        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
+    }
+
+    public function test_recovery_finalizes_cancel_requested_run_without_live_actor(): void
+    {
+        $run = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
+            'paperless_document_id' => 80,
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+        ActorExecution::query()->create([
+            'pipeline_run_id' => $run->id,
+            'paperless_document_id' => 80,
+            'actor_name' => PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE,
+            'status' => ActorExecution::STATUS_RETRYING,
+            'next_retry_at' => now()->addMinute(),
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->finalizeCancelRequestedRuns(limit: 10);
+
+        $this->assertSame(1, $count);
+        $this->assertSame(PipelineRun::STATUS_CANCELLED, $run->fresh()->status);
+        $this->assertDatabaseHas('actor_executions', [
+            'pipeline_run_id' => $run->id,
+            'status' => ActorExecution::STATUS_CANCELLED,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.cancelled',
+        ]);
+    }
+
+    public function test_webhook_recovery_waits_for_recent_enqueue_attempt_to_become_stale(): void
+    {
+        Queue::fake();
+        $delivery = $this->webhookDelivery();
+        PipelineEvent::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'webhook.enqueue_requested',
+            'level' => 'info',
+            'created_at' => now(),
+        ]);
+
+        $recovery = app(PipelineRecoveryDispatcher::class);
+        $this->assertSame(0, $recovery->recoverQueuedWebhookDeliveries(limit: 10));
+        Queue::assertNothingPushed();
+
+        $this->travel(6)->minutes();
+        $this->assertSame(1, $recovery->recoverQueuedWebhookDeliveries(limit: 10));
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+    }
+
+    public function test_recovery_does_not_redispatch_stale_timestamp_while_actor_process_is_alive(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+        ]);
+        $execution = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'worker_id' => $this->liveWorkerId(),
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+        Queue::assertNothingPushed();
+        $this->assertSame(ActorExecution::STATUS_RUNNING, $execution->fresh()->status);
+        $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
+    }
+
+    public function test_recovery_reconciles_stale_actor_to_terminal_source_without_replay(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_SUCCEEDED,
+        ]);
+        $execution = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+        Queue::assertNothingPushed();
+        $this->assertSame(ActorExecution::STATUS_SUCCEEDED, $execution->fresh()->status);
+        $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
+    }
+
+    public function test_retry_recovery_skips_old_execution_when_newer_attempt_is_active(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+        ]);
+        $old = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RETRYING,
+            'attempt' => 5,
+            'max_attempts' => 5,
+            'next_retry_at' => now()->subMinute(),
+            'last_retry_at' => now()->subMinutes(2),
+        ]);
+        ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 6,
+            'max_attempts' => 5,
+            'started_at' => now(),
+            'progress_updated_at' => now(),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+        $this->assertSame(ActorExecution::STATUS_SKIPPED, $old->fresh()->status);
+        $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_retry_recovery_retires_old_execution_after_atomic_source_dispatch(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_QUEUED,
+        ]);
+        $old = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RETRYING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'next_retry_at' => now()->subMinute(),
+            'last_retry_at' => now()->subMinutes(2),
+        ]);
+        PipelineEvent::query()->create([
+            'command_id' => $command->id,
+            'event_type' => 'recovery.actor_source_command_redispatched',
+            'level' => 'info',
+            'message' => 'Prior atomic dispatch committed before recovery process exit.',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+        $this->assertSame(ActorExecution::STATUS_SKIPPED, $old->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_recovery_redispatches_retryable_failed_webhook_without_actor_execution(): void
+    {
+        Queue::fake();
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_FAILED,
+            'error' => 'transient_network',
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverQueuedWebhookDeliveries(limit: 10);
+
+        $this->assertSame(1, $count);
+        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->fresh()->status);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK
+            && $job->commandId === $delivery->id);
+    }
+
+    public function test_recovery_redispatches_retryable_failed_webhook_from_actor_source_link(): void
+    {
+        Queue::fake();
+        $delivery = $this->webhookDelivery(['status' => WebhookDelivery::STATUS_FAILED]);
+        $execution = ActorExecution::query()->create([
+            'webhook_delivery_id' => $delivery->id,
+            'paperless_document_id' => $delivery->paperless_document_id,
+            'actor_name' => PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK,
+            'status' => ActorExecution::STATUS_RETRYING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'next_retry_at' => now()->subMinute(),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 1, 'failed_permanent' => 0], $result);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK
+            && $job->commandId === $delivery->id);
+        $this->assertSame(WebhookDelivery::STATUS_QUEUED, $delivery->fresh()->status);
+        $this->assertSame(ActorExecution::STATUS_FAILED, $execution->fresh()->status);
+    }
+
+    public function test_recovery_gives_a_new_actor_claim_time_to_register_execution_before_cancelling(): void
+    {
+        $run = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
+            'paperless_document_id' => 82,
+            'progress_updated_at' => now(),
+        ]);
+
+        $this->assertSame(0, app(PipelineRecoveryDispatcher::class)->finalizeCancelRequestedRuns(limit: 10));
+        $this->assertSame(PipelineRun::STATUS_CANCEL_REQUESTED, $run->fresh()->status);
+
+        $run->timestamps = false;
+        $run->forceFill(['progress_updated_at' => now()->subMinutes(11)])->save();
+        $this->assertSame(1, app(PipelineRecoveryDispatcher::class)->finalizeCancelRequestedRuns(limit: 10));
+        $this->assertSame(PipelineRun::STATUS_CANCELLED, $run->fresh()->status);
+    }
+
+    public function test_recovery_does_not_finalize_cancel_request_while_actor_is_alive(): void
+    {
+        $run = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
+            'paperless_document_id' => 81,
+        ]);
+        ActorExecution::query()->create([
+            'pipeline_run_id' => $run->id,
+            'paperless_document_id' => 81,
+            'actor_name' => PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'worker_id' => $this->liveWorkerId(),
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+        $count = app(PipelineRecoveryDispatcher::class)->finalizeCancelRequestedRuns(limit: 10);
+
+        $this->assertSame(0, $count);
+        $this->assertSame(PipelineRun::STATUS_CANCEL_REQUESTED, $run->fresh()->status);
+    }
+
+    public function test_recovery_gives_malformed_worker_identity_a_conservative_liveness_window(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_REINDEX,
+            'status' => Command::STATUS_RUNNING,
+        ]);
+        ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 1,
+            'max_attempts' => 5,
+            'worker_id' => 'malformed',
+            'started_at' => now()->subMinutes(30),
+            'progress_updated_at' => now()->subMinutes(30),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_recovery_treats_malformed_or_reused_worker_identity_as_stale(): void
+    {
+        Queue::fake();
+        foreach ([
+            ['malformed', 61],
+            [gethostname().':'.getmypid().':0', 11],
+        ] as [$workerId, $staleMinutes]) {
+            $command = $this->command([
+                'type' => Command::TYPE_REINDEX,
+                'status' => Command::STATUS_RUNNING,
+            ]);
+            ActorExecution::query()->create([
+                'command_id' => $command->id,
+                'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+                'status' => ActorExecution::STATUS_RUNNING,
+                'attempt' => 1,
+                'max_attempts' => 5,
+                'worker_id' => $workerId,
+                'started_at' => now()->subMinutes($staleMinutes),
+                'progress_updated_at' => now()->subMinutes($staleMinutes),
+            ]);
+        }
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(2, $result['stale']);
+    }
+
+    private function liveWorkerId(): string
+    {
+        $pid = getmypid();
+        $stat = file_get_contents("/proc/{$pid}/stat");
+        $this->assertNotFalse($stat);
+        $separator = strrpos($stat, ') ');
+        $this->assertNotFalse($separator);
+        $fields = preg_split('/\s+/', trim(substr($stat, $separator + 2)));
+        $this->assertArrayHasKey(19, $fields);
+
+        return gethostname().":{$pid}:{$fields[19]}";
     }
 
     private function command(array $overrides = []): Command

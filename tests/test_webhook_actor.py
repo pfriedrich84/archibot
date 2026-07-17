@@ -1,3 +1,5 @@
+import pytest
+
 from app.actors import webhook
 from app.jobs.actor_execution import ActorExecutionHandle
 from app.jobs.pipeline_start import PipelineStartResult
@@ -240,6 +242,93 @@ def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypat
     ]
     assert actor_finishes[0][1]["status"] == "failed"
     assert actor_finishes[0][1]["error_type"] == "invalid_webhook_action"
+
+
+def test_webhook_actor_schedules_transient_failure_for_laravel_recovery(monkeypatch):
+    events = []
+    statuses = []
+    retries = []
+    _capture_progress(monkeypatch)
+    monkeypatch.setattr(
+        webhook,
+        "load_webhook_delivery",
+        lambda webhook_delivery_id: WebhookDeliveryRecord(
+            id=webhook_delivery_id,
+            event_type="document.updated",
+            webhook_action="refresh_embedding",
+            paperless_document_id=7,
+            paperless_modified=None,
+            status="queued",
+            normalized_payload={},
+        ),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "start_actor_execution",
+        lambda **kwargs: ActorExecutionHandle(
+            id=102, actor_name=kwargs["actor_name"], started_monotonic=0, attempt=2
+        ),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "refresh_document_embedding",
+        lambda paperless_document_id: (_ for _ in ()).throw(TimeoutError("slow")),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "mark_webhook_delivery_status",
+        lambda *args: statuses.append(args),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "schedule_actor_execution_retry",
+        lambda *args, **kwargs: retries.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "publish_pipeline_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
+
+    with pytest.raises(TimeoutError, match="slow"):
+        webhook._handle_paperless_webhook_impl(655)
+
+    assert statuses == [(655, "failed", "transient_network")]
+    assert retries[0][1]["backoff_seconds"] == 120
+    assert any(event[0] == ("actor.retry_scheduled",) for event in events)
+
+
+def test_webhook_actor_leaves_pre_execution_transient_failure_recoverable(monkeypatch):
+    statuses = []
+    monkeypatch.setattr(
+        webhook,
+        "load_webhook_delivery",
+        lambda webhook_delivery_id: WebhookDeliveryRecord(
+            id=webhook_delivery_id,
+            event_type="document.updated",
+            webhook_action="refresh_embedding",
+            paperless_document_id=7,
+            paperless_modified=None,
+            status="queued",
+            normalized_payload={},
+        ),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "start_actor_execution",
+        lambda **kwargs: (_ for _ in ()).throw(TimeoutError("tracking unavailable")),
+    )
+    monkeypatch.setattr(
+        webhook,
+        "mark_webhook_delivery_status",
+        lambda *args: statuses.append(args),
+    )
+    monkeypatch.setattr(webhook, "publish_pipeline_event", lambda *args, **kwargs: None)
+
+    with pytest.raises(TimeoutError, match="tracking unavailable"):
+        webhook._handle_paperless_webhook_impl(656)
+
+    assert statuses == [(656, "failed", "transient_network")]
 
 
 def test_webhook_actor_emits_failure_event_for_missing_delivery(monkeypatch):

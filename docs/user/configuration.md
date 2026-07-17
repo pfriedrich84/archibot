@@ -135,8 +135,11 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `POLL_INTERVAL_SECONDS` | `600` | Sekunden zwischen automatischen Inbox-Reconciliation-Laeufen; Webhooks bleiben der primaere Trigger (`0` deaktiviert die Reconciliation). Bereits klassifizierte Inbox-Dokumente werden anhand ihres dauerhaften Review-Vorschlags uebersprungen. |
-| `ABSURD_DATABASE_URL` | — | Legacy migration-only Absurd queue URL. ADR-0015 supersedes this target; new event-driven work uses Laravel database queues. Keep only while unmigrated legacy Absurd flows remain. |
+| `POLL_INTERVAL_SECONDS` | `600` | Sekunden zwischen automatischen Inbox-Reconciliation-Laeufen; Webhooks bleiben der primaere Trigger (`0` deaktiviert die Reconciliation). Der Laravel Scheduler prueft jede Minute, ob der konfigurierte Abstand erreicht ist. Bereits klassifizierte Inbox-Dokumente werden anhand ihres dauerhaften Review-Vorschlags uebersprungen. |
+| `ARCHIBOT_RECOVERY_INTERVAL_SECONDS` | `30` | Sekunden zwischen Laravel-native Recovery-Scans fuer durable Commands, Runs, Webhooks und Actor Executions. |
+| `ARCHIBOT_STALE_QUEUED_MINUTES` | `5` | Ab wann queued Arbeit ohne aktiven Actor sicher erneut dispatcht werden darf. |
+| `ARCHIBOT_STALE_RUNNING_MINUTES` | `10` | Ab wann ein Actor ohne aktuellen Fortschritt als stale gilt und ueber seine durable Quelle recovered wird. |
+| `ABSURD_DATABASE_URL` | — | Nur noch migration-only Konfiguration bis zum separaten Absurd-Cleanup. Supervisor startet keinen Absurd Worker oder Recovery-Bridge mehr. |
 
 ## Laravel/Svelte GUI
 
@@ -151,7 +154,9 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `APP_URL` | — | Externe URL der ArchiBot-Instanz (z.B. `https://archibot.example`) |
 | `APP_KEY` | auto-generiert in `/data/laravel/app_key` | Laravel-App-Key fuer Sessions und verschluesselte Secrets |
 | `DB_DATABASE` | `archibot` | Laravel-App-Datenbankname |
-| `QUEUE_CONNECTION` | `database` | Laravel Queue Backend |
+| `QUEUE_CONNECTION` | `database` | Erforderliches Laravel Queue Backend; andere Backends werden beim Start abgelehnt. |
+| `QUEUE_WORKER_TIMEOUT` | `21600` | Maximale Laufzeit eines Laravel Actor-Jobs in Sekunden. |
+| `DB_QUEUE_RETRY_AFTER` | `21720` | Queue-Lease in Sekunden; muss groesser als das sechsstuendige Actor-Timeout bleiben. |
 | `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
 
 Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Posteingang` statt `124`). IDs bleiben nur interne technische Referenzen.

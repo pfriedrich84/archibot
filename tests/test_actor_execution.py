@@ -15,7 +15,7 @@ class FakeResult:
 class FakeConnection:
     def __init__(self, calls, row=None, rows=None):
         self.calls = calls
-        self.row = {"id": 123} if row is None else row
+        self.row = {"id": 123, "attempt": 2} if row is None else row
         self.rows = rows
 
     def __enter__(self):
@@ -66,7 +66,11 @@ def test_start_actor_execution_inserts_running_row(monkeypatch):
 
     assert handle.id == 123
     assert handle.actor_name == "handle_paperless_webhook"
+    assert handle.attempt == 2
     assert calls[0][1]["paperless_document_id"] == 42
+    assert calls[0][1]["command_id"] is None
+    assert calls[0][1]["webhook_delivery_id"] is None
+    assert "WITH next_attempt" in calls[0][0]
     assert calls[0][1]["queue_name"] == "archibot.webhook"
     assert calls[0][1]["worker_id"] == "worker-test"
 
@@ -133,6 +137,8 @@ def test_list_stale_running_actor_executions_returns_records(monkeypatch):
         {
             "id": 77,
             "pipeline_run_id": 88,
+            "command_id": None,
+            "webhook_delivery_id": None,
             "paperless_document_id": 42,
             "actor_name": "handle_document_pipeline",
             "attempt": 2,
@@ -151,6 +157,8 @@ def test_list_stale_running_actor_executions_returns_records(monkeypatch):
         actor_execution.StaleActorExecutionRecord(
             id=77,
             pipeline_run_id=88,
+            command_id=None,
+            webhook_delivery_id=None,
             paperless_document_id=42,
             actor_name="handle_document_pipeline",
             attempt=2,

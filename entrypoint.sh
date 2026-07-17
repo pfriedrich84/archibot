@@ -52,8 +52,8 @@ php artisan storage:link >/dev/null 2>&1 || true
 
 # Hand long-running processes to supervisord instead of backgrounding them with
 # bare ``&``. This keeps the single-container deployment model while making the
-# Laravel queue worker, Laravel recovery loop, Absurd queue worker, event
-# recovery bridge, optional MCP server, and web server independently restartable
+# Laravel queue worker, Laravel scheduler, Laravel recovery loop, optional MCP
+# server, and web server independently restartable
 # and visible in container logs.
 echo "Starting supervised ArchiBot processes"
 exec /usr/bin/supervisord -c /app/docker/supervisord.conf

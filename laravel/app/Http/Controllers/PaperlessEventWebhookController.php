@@ -6,12 +6,14 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\PipelineEvent;
+use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineStartResult;
 use App\Services\Webhooks\PaperlessWebhookNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -146,7 +148,11 @@ class PaperlessEventWebhookController extends Controller
         ]);
 
         $startResult = null;
-        if (! $duplicate) {
+        $retryDuplicate = $duplicate && (
+            ($webhookAction === 'process_document' && $this->shouldRetryProcessDelivery($delivery))
+            || ($webhookAction !== 'process_document' && $delivery->status === WebhookDelivery::STATUS_RECEIVED)
+        );
+        if (! $duplicate || $retryDuplicate) {
             if ($webhookAction === 'process_document') {
                 try {
                     $startResult = $this->pipelineStarter->start(
@@ -162,7 +168,7 @@ class PaperlessEventWebhookController extends Controller
                     return response()->json([
                         'status' => 'pipeline_start_failed',
                         'retry' => true,
-                        'duplicate' => false,
+                        'duplicate' => $duplicate,
                         'document_id' => $documentId,
                         'webhook_delivery_id' => $delivery->id,
                         'webhook_action' => $webhookAction,
@@ -175,7 +181,7 @@ class PaperlessEventWebhookController extends Controller
                 if ($enqueueResult['status'] === 'failed') {
                     return response()->json($this->responsePayload(
                         'enqueue_failed',
-                        false,
+                        $duplicate,
                         $documentId,
                         $delivery,
                         $startResult,
@@ -203,6 +209,19 @@ class PaperlessEventWebhookController extends Controller
             $startResult,
             ['webhook_action' => $webhookAction],
         ));
+    }
+
+    private function shouldRetryProcessDelivery(WebhookDelivery $delivery): bool
+    {
+        if (in_array($delivery->status, [
+            WebhookDelivery::STATUS_PROCESSED,
+            WebhookDelivery::STATUS_FAILED_PERMANENT,
+            WebhookDelivery::STATUS_DISMISSED,
+        ], true)) {
+            return false;
+        }
+
+        return ! PipelineRun::query()->where('webhook_delivery_id', $delivery->id)->exists();
     }
 
     private function markProcessDeliveryHandled(WebhookDelivery $delivery, PipelineStartResult $startResult): void
@@ -285,24 +304,32 @@ class PaperlessEventWebhookController extends Controller
     private function attemptWebhookActorDispatch(WebhookDelivery $delivery): array
     {
         try {
-            Queue::push(RunPythonActorJob::webhookDelivery($delivery->id));
+            DB::transaction(function () use ($delivery): void {
+                $delivery = WebhookDelivery::query()->lockForUpdate()->findOrFail($delivery->id);
+                if ($delivery->status !== WebhookDelivery::STATUS_RECEIVED) {
+                    return;
+                }
+
+                $delivery->forceFill(['status' => WebhookDelivery::STATUS_QUEUED])->save();
+                Queue::push(RunPythonActorJob::webhookDelivery($delivery->id));
+
+                PipelineEvent::query()->create([
+                    'webhook_delivery_id' => $delivery->id,
+                    'event_type' => 'webhook.enqueue_requested',
+                    'paperless_document_id' => $delivery->paperless_document_id,
+                    'level' => 'info',
+                    'message' => 'Webhook actor queued through the Laravel database queue; delivery remains queued until actor processing confirms it.',
+                    'payload' => [
+                        'status' => $delivery->status,
+                        'transport' => 'laravel_queue',
+                    ],
+                ]);
+            });
         } catch (\Throwable $exception) {
             $this->recordDeferredEnqueue($delivery, 'queue_dispatch_failed', null, $exception::class);
 
             return ['status' => 'failed'];
         }
-
-        PipelineEvent::query()->create([
-            'webhook_delivery_id' => $delivery->id,
-            'event_type' => 'webhook.enqueue_requested',
-            'paperless_document_id' => $delivery->paperless_document_id,
-            'level' => 'info',
-            'message' => 'Webhook actor queued through the Laravel database queue; delivery remains queued until actor processing confirms it.',
-            'payload' => [
-                'status' => $delivery->status,
-                'transport' => 'laravel_queue',
-            ],
-        ]);
 
         Log::info('paperless webhook actor queued', [
             'webhook_delivery_id' => $delivery->id,
@@ -314,52 +341,54 @@ class PaperlessEventWebhookController extends Controller
 
     private function queuePollReconciliationForEmptyWebhook(WebhookDelivery $delivery): Command
     {
-        $command = Command::query()->create([
-            'type' => Command::TYPE_POLL_RECONCILIATION,
-            'status' => Command::STATUS_PENDING,
-            'payload' => [
-                'trigger_source' => 'webhook_empty_payload',
-                'webhook_delivery_id' => $delivery->id,
-            ],
-            'created_by_user_id' => null,
-        ]);
+        return DB::transaction(function () use ($delivery): Command {
+            $command = Command::query()->create([
+                'type' => Command::TYPE_POLL_RECONCILIATION,
+                'status' => Command::STATUS_PENDING,
+                'payload' => [
+                    'trigger_source' => 'webhook_empty_payload',
+                    'webhook_delivery_id' => $delivery->id,
+                ],
+                'created_by_user_id' => null,
+            ]);
 
-        PipelineEvent::query()->create([
-            'webhook_delivery_id' => $delivery->id,
-            'command_id' => $command->id,
-            'event_type' => 'webhook.empty_payload_poll_requested',
-            'paperless_document_id' => null,
-            'level' => 'info',
-            'message' => 'Empty Paperless webhook payload accepted as a poll reconciliation hint.',
-            'payload' => [
+            PipelineEvent::query()->create([
                 'webhook_delivery_id' => $delivery->id,
                 'command_id' => $command->id,
-                'action' => Command::TYPE_POLL_RECONCILIATION,
-            ],
-        ]);
+                'event_type' => 'webhook.empty_payload_poll_requested',
+                'paperless_document_id' => null,
+                'level' => 'info',
+                'message' => 'Empty Paperless webhook payload accepted as a poll reconciliation hint.',
+                'payload' => [
+                    'webhook_delivery_id' => $delivery->id,
+                    'command_id' => $command->id,
+                    'action' => Command::TYPE_POLL_RECONCILIATION,
+                ],
+            ]);
 
-        dispatch(RunPythonActorJob::pollReconciliation($command->id));
-        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-        $delivery->forceFill([
-            'status' => WebhookDelivery::STATUS_PROCESSED,
-            'processed_at' => now(),
-        ])->save();
+            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            dispatch(RunPythonActorJob::pollReconciliation($command->id));
+            $delivery->forceFill([
+                'status' => WebhookDelivery::STATUS_PROCESSED,
+                'processed_at' => now(),
+            ])->save();
 
-        PipelineEvent::query()->create([
-            'webhook_delivery_id' => $delivery->id,
-            'command_id' => $command->id,
-            'event_type' => 'webhook.empty_payload_poll_queued',
-            'paperless_document_id' => null,
-            'level' => 'info',
-            'message' => 'Poll reconciliation queued from empty Paperless webhook payload.',
-            'payload' => [
+            PipelineEvent::query()->create([
                 'webhook_delivery_id' => $delivery->id,
                 'command_id' => $command->id,
-                'actor_name' => 'reconcile_inbox_documents',
-            ],
-        ]);
+                'event_type' => 'webhook.empty_payload_poll_queued',
+                'paperless_document_id' => null,
+                'level' => 'info',
+                'message' => 'Poll reconciliation queued from empty Paperless webhook payload.',
+                'payload' => [
+                    'webhook_delivery_id' => $delivery->id,
+                    'command_id' => $command->id,
+                    'actor_name' => 'reconcile_inbox_documents',
+                ],
+            ]);
 
-        return $command;
+            return $command;
+        });
     }
 
     private function recordEmptyWebhookPollFailure(WebhookDelivery $delivery, string $exceptionClass): void
@@ -416,7 +445,7 @@ class PaperlessEventWebhookController extends Controller
             'event_type' => 'webhook.enqueue_deferred',
             'paperless_document_id' => $delivery->paperless_document_id,
             'level' => 'warning',
-            'message' => 'Webhook actor queue dispatch failed; Paperless should retry and durable recovery can retry from queued delivery state.',
+            'message' => 'Webhook actor queue dispatch failed; Paperless should retry and durable recovery can retry the persisted delivery.',
             'payload' => array_filter([
                 'status' => $delivery->status,
                 'error_type' => $errorType,
@@ -480,7 +509,7 @@ class PaperlessEventWebhookController extends Controller
         string $payloadHash,
         array $payload,
         array $normalizedPayload,
-        string $status = WebhookDelivery::STATUS_QUEUED,
+        string $status = WebhookDelivery::STATUS_RECEIVED,
         ?string $error = null,
     ): array {
         $headers = collect($request->headers->all())
@@ -489,32 +518,35 @@ class PaperlessEventWebhookController extends Controller
                 : array_map('strval', $values))
             ->all();
 
-        $existing = WebhookDelivery::query()
-            ->where('source', 'paperless')
-            ->where('dedupe_key', $dedupeKey)
-            ->first();
+        return DB::transaction(function () use ($request, $eventType, $documentId, $dedupeKey, $payloadHash, $payload, $normalizedPayload, $headers, $status, $error): array {
+            $candidate = new WebhookDelivery;
+            $candidate->forceFill([
+                'source' => 'paperless',
+                'event_type' => $eventType,
+                'paperless_document_id' => $documentId,
+                'dedupe_key' => $dedupeKey,
+                'payload_hash' => $payloadHash,
+                'raw_payload' => $this->redactSensitivePayload($payload),
+                'normalized_payload' => $normalizedPayload,
+                'headers' => $headers,
+                'status' => $status,
+                'request_id' => (string) $request->headers->get('X-Request-Id', Str::uuid()->toString()),
+                'received_at' => now(),
+                'processed_at' => $status === WebhookDelivery::STATUS_FAILED_PERMANENT ? now() : null,
+                'error' => $error,
+            ]);
+            $candidate->setCreatedAt(now());
+            $candidate->setUpdatedAt(now());
+            $created = DB::table($candidate->getTable())->insertOrIgnore($candidate->getAttributes()) === 1;
 
-        if ($existing instanceof WebhookDelivery) {
-            return [$existing, true];
-        }
+            $delivery = WebhookDelivery::query()
+                ->where('source', 'paperless')
+                ->where('dedupe_key', $dedupeKey)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $delivery = WebhookDelivery::query()->create([
-            'source' => 'paperless',
-            'event_type' => $eventType,
-            'paperless_document_id' => $documentId,
-            'dedupe_key' => $dedupeKey,
-            'payload_hash' => $payloadHash,
-            'raw_payload' => $this->redactSensitivePayload($payload),
-            'normalized_payload' => $normalizedPayload,
-            'headers' => $headers,
-            'status' => $status,
-            'request_id' => (string) $request->headers->get('X-Request-Id', Str::uuid()->toString()),
-            'received_at' => now(),
-            'processed_at' => $status === WebhookDelivery::STATUS_FAILED_PERMANENT ? now() : null,
-            'error' => $error,
-        ]);
-
-        return [$delivery, false];
+            return [$delivery, ! $created];
+        });
     }
 
     /**

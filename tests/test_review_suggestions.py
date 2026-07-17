@@ -21,6 +21,11 @@ class FakeResult:
             return []
         return self.row if isinstance(self.row, list) else [self.row]
 
+    def one(self):
+        if self.row is None:
+            raise AssertionError("Expected one row")
+        return self.row
+
 
 class FakeConnection:
     def __init__(self, calls):
@@ -237,6 +242,37 @@ def test_mark_review_suggestion_auto_accepted_queues_only_when_resolved(monkeypa
     assert unresolved == []
     assert calls[1][1]["review_suggestion_id"] == 12
     assert "auto_commit" in calls[1][1]["auto_payload"]
+
+
+def test_ensure_review_commit_command_creates_and_links_pending_command(monkeypatch):
+    calls = []
+    rows = [
+        {"id": 12, "paperless_document_id": 42, "commit_command_id": None},
+        {"id": 91},
+        None,
+        None,
+    ]
+    monkeypatch.setattr(review_suggestions, "engine", lambda: SequenceEngine(calls, rows))
+    monkeypatch.setattr(review_suggestions, "sql_text", lambda statement: statement)
+
+    command_id = review_suggestions.ensure_review_commit_command(12)
+
+    assert command_id == 91
+    assert "FOR UPDATE" in calls[0][0]
+    assert '"review_suggestion_id": 12' in calls[1][1]["payload"]
+    assert '"source": "auto_commit"' in calls[1][1]["payload"]
+    assert calls[2][1] == {"command_id": 91, "review_suggestion_id": 12}
+    assert '"transport_owner": "laravel_recovery"' in calls[3][1]["event_payload"]
+
+
+def test_ensure_review_commit_command_reuses_existing_command(monkeypatch):
+    calls = []
+    rows = [{"id": 12, "paperless_document_id": 42, "commit_command_id": 77}]
+    monkeypatch.setattr(review_suggestions, "engine", lambda: SequenceEngine(calls, rows))
+    monkeypatch.setattr(review_suggestions, "sql_text", lambda statement: statement)
+
+    assert review_suggestions.ensure_review_commit_command(12) == 77
+    assert len(calls) == 1
 
 
 def test_mark_review_suggestion_auto_accepted_skips_unresolved(monkeypatch):

@@ -33,10 +33,11 @@ class ActiveOperationsSnapshot
                 ActorExecution::STATUS_RUNNING,
                 ActorExecution::STATUS_RETRYING,
             ])
-            ->whereNull('pipeline_run_id')
+            ->whereNotNull('command_id')
             ->latest('updated_at')
             ->get()
-            ->keyBy('actor_name');
+            ->unique('command_id')
+            ->keyBy('command_id');
 
         $commandItems = Command::query()
             ->whereIn('status', $commandStatuses)
@@ -45,7 +46,7 @@ class ActiveOperationsSnapshot
             ->get()
             ->map(fn (Command $command): array => $this->commandItem(
                 $command,
-                $actorProgress->get($this->commandActorName($command->type)),
+                $actorProgress->get($command->id),
             ));
 
         $pipelineItems = PipelineRun::query()
@@ -118,19 +119,6 @@ class ActiveOperationsSnapshot
             'updated_at' => $run->updated_at?->toISOString(),
             'href' => route('pipeline-runs.show', $run),
         ];
-    }
-
-    private function commandActorName(string $type): ?string
-    {
-        return match ($type) {
-            Command::TYPE_POLL_RECONCILIATION => 'poll_reconciliation',
-            Command::TYPE_REINDEX => 'reindex',
-            Command::TYPE_REINDEX_OCR => 'reindex_ocr',
-            Command::TYPE_EMBEDDING_INDEX_BUILD => 'build_embedding_index',
-            Command::TYPE_REVIEW_COMMIT => 'review_commit',
-            Command::TYPE_SYNC_ENTITY_APPROVAL => 'sync_entity_approval',
-            default => null,
-        };
     }
 
     private function commandLabel(Command $command): string

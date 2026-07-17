@@ -186,5 +186,5 @@ Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitu
 - **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Laravel Database Queues laufen ohne separaten Broker-Service
 - **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
 - **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings, Pipeline-State und Laravel Queue-State; `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel, startet Laravel Queue und optional den Python MCP-Server. Laravel-native Recovery laeuft ueber `php artisan archibot:recovery-scan`; Legacy Absurd Worker/Recovery bleiben nur waehrend der Migration fuer noch nicht migrierte Flows.
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel und startet Web-App, Laravel Queue Worker, `schedule:work`, Laravel-native Recovery sowie optional den Python MCP-Server. Supervisor startet keine Absurd Worker/Recovery-Prozesse mehr; verbleibender Absurd-Code und das Schema sind separates Cleanup-Delta.
 - **Netzwerk:** App-Container muss Paperless, PostgreSQL und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`

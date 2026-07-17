@@ -14,11 +14,16 @@ class RecoverPipelineActors extends Command
     public function handle(PipelineRecoveryDispatcher $recovery): int
     {
         $limit = max(1, (int) $this->option('limit'));
-        $webhookDeliveries = $recovery->recoverQueuedWebhookDeliveries($limit);
-        $pipelineRuns = $recovery->recoverDocumentPipelineRuns($limit);
-        $commands = $recovery->recoverPendingCommands($limit);
+        $summary = $recovery->runRecoveryScan($limit);
+        if (($summary['scan_skipped_locked'] ?? 0) === 1) {
+            $this->info('Recovery scan skipped because another scan owns the recovery lock.');
 
-        $this->info("Recovery scan complete. webhook_deliveries_redispatched={$webhookDeliveries} document_pipeline_runs_redispatched={$pipelineRuns} commands_redispatched={$commands}");
+            return self::SUCCESS;
+        }
+
+        $this->info(
+            "Recovery scan complete. actor_executions_stale={$summary['actor_executions_stale']} actor_executions_redispatched={$summary['actor_executions_redispatched']} actor_executions_failed_permanent={$summary['actor_executions_failed_permanent']} pipeline_runs_cancelled={$summary['pipeline_runs_cancelled']} webhook_deliveries_redispatched={$summary['webhook_deliveries_redispatched']} document_pipeline_runs_redispatched={$summary['document_pipeline_runs_redispatched']} commands_redispatched={$summary['commands_redispatched']}",
+        );
 
         return self::SUCCESS;
     }

@@ -23,6 +23,8 @@ def test_recover_stale_actor_executions_marks_and_requeues_document_runs(monkeyp
             StaleActorExecutionRecord(
                 id=7,
                 pipeline_run_id=21,
+                command_id=None,
+                webhook_delivery_id=None,
                 paperless_document_id=42,
                 actor_name="handle_document_pipeline",
                 attempt=1,
@@ -64,6 +66,8 @@ def test_recover_stale_actor_executions_marks_non_document_actor_without_requeue
             StaleActorExecutionRecord(
                 id=8,
                 pipeline_run_id=None,
+                command_id=None,
+                webhook_delivery_id=33,
                 paperless_document_id=42,
                 actor_name="handle_paperless_webhook",
                 attempt=1,

@@ -11,6 +11,7 @@ use App\Models\PipelineEvent;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -160,12 +161,19 @@ class EntityApprovalController extends Controller
             ],
         ]);
 
-        dispatch(RunPythonActorJob::syncEntityApproval($command->id));
-        $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+        DB::transaction(function () use ($command, $entityApproval): void {
+            $command = Command::query()->lockForUpdate()->findOrFail($command->id);
+            $entityApproval = EntityApproval::query()->lockForUpdate()->findOrFail($entityApproval->id);
+            if ($command->status !== Command::STATUS_PENDING) {
+                return;
+            }
 
-        $entityApproval->forceFill([
-            'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
-        ])->save();
+            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            $entityApproval->forceFill([
+                'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
+            ])->save();
+            dispatch(RunPythonActorJob::syncEntityApproval($command->id));
+        });
     }
 
     /** @param array<string, mixed> $metadata */

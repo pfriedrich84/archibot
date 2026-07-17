@@ -6,7 +6,6 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -59,31 +58,26 @@ class DocumentPipelineStarter
 
         /** @var array{run: PipelineRun, created: bool} $result */
         $result = DB::transaction(function () use ($attributes, $paperlessDocumentId, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
-            $existing = PipelineRun::query()
+            $candidate = new PipelineRun;
+            $candidate->forceFill($attributes);
+            $candidate->setCreatedAt(now());
+            $candidate->setUpdatedAt(now());
+            $created = DB::table($candidate->getTable())->insertOrIgnore($candidate->getAttributes()) === 1;
+
+            $run = PipelineRun::query()
                 ->where('paperless_document_id', $paperlessDocumentId)
                 ->where('pipeline_dedupe_key', $dedupeKey)
-                ->first();
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            if ($existing !== null) {
-                return [
-                    'run' => $this->coalesceExistingRun($existing, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId),
-                    'created' => false,
-                ];
+            if ($created) {
+                return ['run' => $run, 'created' => true];
             }
 
-            try {
-                return ['run' => PipelineRun::query()->create($attributes), 'created' => true];
-            } catch (QueryException) {
-                $run = PipelineRun::query()
-                    ->where('paperless_document_id', $paperlessDocumentId)
-                    ->where('pipeline_dedupe_key', $dedupeKey)
-                    ->firstOrFail();
-
-                return [
-                    'run' => $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId),
-                    'created' => false,
-                ];
-            }
+            return [
+                'run' => $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId),
+                'created' => false,
+            ];
         });
 
         $run = $result['run'];
@@ -94,14 +88,21 @@ class DocumentPipelineStarter
         $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason);
 
         if ($created && $gateOpen) {
-            dispatch(RunPythonActorJob::documentPipeline($run->id));
-            $run->forceFill([
-                'status' => PipelineRun::STATUS_QUEUED,
-                'progress_current_phase' => 'document_actor',
-                'progress_message' => 'Document actor queued through Laravel actor transport.',
-                'progress_updated_at' => now(),
-            ])->save();
-            $this->recordActorQueuedEvent($run);
+            DB::transaction(function () use ($run): void {
+                $run = PipelineRun::query()->lockForUpdate()->findOrFail($run->id);
+                if ($run->status !== PipelineRun::STATUS_PENDING) {
+                    return;
+                }
+
+                $run->forceFill([
+                    'status' => PipelineRun::STATUS_QUEUED,
+                    'progress_current_phase' => 'document_actor',
+                    'progress_message' => 'Document actor queued through Laravel actor transport.',
+                    'progress_updated_at' => now(),
+                ])->save();
+                dispatch(RunPythonActorJob::documentPipeline($run->id));
+                $this->recordActorQueuedEvent($run);
+            });
         }
 
         return new PipelineStartResult($run->refresh(), $outcome, $dedupeKey, $blockedReason, $created);

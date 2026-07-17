@@ -9,6 +9,7 @@ use App\Models\Command;
 use App\Models\PipelineRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -63,15 +64,35 @@ class MaintenanceTest extends TestCase
     {
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
-        ActorExecution::query()->create([
+        $execution = ActorExecution::query()->create([
             'actor_name' => 'test_actor',
             'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 5,
+            'max_attempts' => 5,
             'started_at' => now()->subMinutes(30),
+        ]);
+        $run = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
+            'scope' => 'single_document',
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 42,
+        ]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
+            'status' => Command::STATUS_PENDING,
+            'payload' => ['action' => 'approve', 'type' => 'tag', 'name' => 'Invoices'],
         ]);
 
         $this->actingAs($admin)
             ->post(route('admin.maintenance.recover-pipeline-actors'))
             ->assertRedirect();
+
+        $this->assertSame(ActorExecution::STATUS_FAILED_PERMANENT, $execution->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_CANCELLED, $run->fresh()->status);
+        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'sync_entity_approval'
+            && $job->commandId === $command->id);
 
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
@@ -79,6 +100,22 @@ class MaintenanceTest extends TestCase
             'target_type' => 'pipeline_recovery',
             'target_id' => 'scan',
         ]);
+    }
+
+    public function test_recovery_reports_when_another_scan_holds_the_lock(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $lock = Cache::lock('archibot:pipeline-recovery-scan', 60);
+        $this->assertTrue($lock->get());
+
+        try {
+            $this->actingAs($admin)
+                ->post(route('admin.maintenance.recover-pipeline-actors'))
+                ->assertRedirect()
+                ->assertSessionHas('status', 'Durable pipeline recovery skipped because another scan is active.');
+        } finally {
+            $lock->release();
+        }
     }
 
     public function test_maintenance_controls_route_all_productive_actions_to_commands(): void

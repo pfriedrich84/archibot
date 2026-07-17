@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/pfriedrich84/archibot/security/advisories/new
+    about: Do not post vulnerabilities, secrets, or private document data in public issues.
   - name: Documentation
     url: https://github.com/pfriedrich84/Archibot/tree/main/docs
     about: Check the user and developer documentation first.

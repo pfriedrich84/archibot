@@ -162,13 +162,16 @@ async def _build_pgvector_embeddings(
     return total, embedded_count, failed_count
 
 
-def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
+def _build_initial_embedding_index_impl(
+    limit: int | None = None, *, command_id: int | None = None
+) -> None:
     """Build the initial PostgreSQL/pgvector document embedding index."""
     limit = _coerce_limit(limit)
     started = time.monotonic()
     actor_name = "build_initial_embedding_index"
     actor_execution = start_actor_execution(
         actor_name=actor_name,
+        command_id=command_id,
         queue_name=queue_name("embedding"),
     )
     build = start_embedding_index_build(
@@ -259,7 +262,7 @@ def _build_initial_embedding_index_impl(limit: int | None = None) -> None:
         )
     except Exception as exc:
         retry_class = classify_exception(exc)
-        attempt = 1
+        attempt = actor_execution.attempt
         max_attempts = 5
         if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
             backoff_seconds = retry_backoff_seconds(attempt)
