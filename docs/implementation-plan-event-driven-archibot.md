@@ -1,1030 +1,220 @@
-# Implementation Plan: Event-driven Archibot
+# Implementierungsplan: Event-driven ArchiBot
+
+## Status und Geltungsbereich
+
+Dieses Dokument beschreibt die aktive Zielarchitektur und die verbleibende Migration. Es ist kein historisches Phasenprotokoll.
+
+Bei Widerspruechen gilt diese Reihenfolge:
+
+1. [`AGENTS.md`](../AGENTS.md) fuer den Agenten-Arbeitsvertrag.
+2. Akzeptierte ADRs in [`docs/decisions/`](decisions/), insbesondere [ADR-0015](decisions/0015-use-laravel-database-queues-for-event-transport.md) und [ADR-0016](decisions/0016-clean-install-worker-jobs-retirement.md).
+3. Detailvertraege in [`docs/architecture/`](architecture/).
+4. Dieser Plan fuer Zielbild, Migrationsreihenfolge und Abschlusskriterien.
+5. [`docs/implementation-notes/event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md) fuer den revisionsgebundenen Ist-Stand.
+
+Die urspruengliche Absurd-Transportentscheidung ist durch ADR-0015 abgeloest. Historische Begruendung bleibt im als superseded markierten [ADR-0013](decisions/0013-use-absurd-postgresql-queue.md) und in der Git-Historie erhalten; sie ist keine Implementierungsanweisung.
 
 ## Zielbild
 
-Archibot soll konsequent von einer gemischten CLI-/Subprocess-/Scheduler-Architektur zu einer event-driven Pipeline weiterentwickelt werden.
-
-> **Transport update:** ADR-0015 supersedes the original Absurd queue target in this plan. New implementation work uses Laravel database queues as transport and fixed, allowlisted Python actor commands for execution. PostgreSQL pipeline tables remain the durable source of truth. The migration order starts with embedding builds, then document pipeline execution.
-
-Die künftige Architektur trennt klar zwischen UI, dauerhafter Datenhaltung, Webhook/Event-Ingestion, Message Transport und Python Processing:
+ArchiBot wird als durable event-driven Pipeline betrieben:
 
 ```text
-Paperless Webhooks / Laravel UI / Scheduler
-  -> Laravel Webhook + Command API
-  -> PostgreSQL + pgvector als Source of Truth
+Paperless Webhooks / Laravel UI / 600-Sekunden-Reconciliation
+  -> Laravel Webhook-, Command- und Pipeline-Services
+  -> PostgreSQL + pgvector als fachliche Source of Truth
   -> Laravel Database Queue als Transport
-  -> feste Python Actor Commands als Pipeline Engine
-  -> Ollama-/OpenAI-kompatibler LLM Adapter
+  -> RunPythonActorJob mit kleinem Durable-ID-Payload
+  -> fester, allowlisted `python -m app.actor_runner`-Befehl
+  -> Python Processing Actors
+  -> Paperless / Ollama-kompatible / OpenAI-kompatible Provider
 ```
 
-**Paperless Webhooks sind der primäre Trigger für neue oder geänderte Dokumente.** Polling bleibt nur ein Fallback/Reconciliation-Mechanismus, nicht der Hauptpfad.
+Paperless Webhooks sind der primaere Trigger. Polling bleibt automatische Reconciliation und verwendet dieselbe Pipeline-Start-, Dedupe- und Lock-Logik. Laravel Queues transportieren Arbeit, enthalten aber nicht den fachlichen Zustand.
 
-Es wird **keine dauerhafte Kompatibilitätsstrategie** mit parallelem Legacy-Betrieb verfolgt. Die bisherige Subprocess-basierte Worker-Schicht wird gezielt ersetzt, nicht langfristig neben der neuen Architektur weitergeführt.
+## Nicht verhandelbare Architekturregeln
 
-## Architektur-Entscheidungen
+- PostgreSQL ist die durable Source of Truth fuer Commands, Pipeline Runs, Events, Items, Actor Executions, Webhook Deliveries, Review Suggestions, Audit und Embedding-Status.
+- Laravel Queue Jobs tragen nur einen allowlisted Actor-Namen und eine stabile durable ID. Actor-Optionen, beliebige Command-Strings oder allgemeine Python-Runner im Queue Payload sind verboten.
+- Document Processing startet erst bei `embedding_index_state.status = complete`.
+- Webhooks und Polling verwenden dieselbe Start-/Attach-/Dedupe-/Lock-Logik.
+- Webhook Requests validieren, normalisieren, persistieren und dispatchen nur; OCR, Embeddings, Klassifikation und LLM-Aufrufe laufen nicht synchron im HTTP Request.
+- Persistierte Webhook Deliveries bleiben bei Dispatch-Fehlern retrybar; wenn Paperless erneut zustellen soll, antwortet der Endpoint non-2xx.
+- Actor-Verarbeitung ist idempotent und Retry darf weder Outputs noch Fortschritt doppelt zaehlen.
+- Fortschritt, Retry, Recovery und Fehler sind aus PostgreSQL rekonstruierbar, nicht aus Logs oder In-Memory-Countern.
+- Nur Admins steuern Jobs und Pipelines. Python entscheidet keine Benutzerautorisierung.
+- Manuelle Review- und Berechtigungsgrenzen sowie konfiguriertes `auto_commit_confidence` bleiben erhalten.
+- `worker_jobs` ist nach ADR-0016 fuer Clean Installs entfernt und darf nicht als Kompatibilitaets- oder Parallelmodell zurueckkehren.
+- Die bestehende Laravel-Oberflaeche bleibt Operations Console; keine zweite Operations UI.
 
-### Primary Trigger: Webhooks
+Detailregeln stehen in:
 
-**Ziel:** Paperless Webhooks lösen die Archibot Pipeline aus.
+- [Webhook/Polling Coordination](architecture/webhook-polling-coordination.md)
+- [Embedding Readiness Gate](architecture/embedding-readiness-gate.md)
+- [Failure, Retry and Recovery](architecture/failure-retry-recovery.md)
+- [Progress Tracking](architecture/progress-tracking.md)
+- [Observability and Logging](architecture/observability-logging.md)
+- [Authorization and Job Control](architecture/authorization-job-control.md)
+- [Reprocess Triggers](architecture/reprocess-triggers.md)
+- [Current Job-Control Model](architecture/job-control-model.md)
 
-Begründung:
+## Komponenten- und Datenownership
 
-- Webhooks passen besser zu event-driven als periodisches Polling.
-- Neue oder geänderte Dokumente werden zeitnah verarbeitet.
-- Die Pipeline kann pro Dokument klein, idempotent und retrybar geschnitten werden.
-- Polling wird auf Reconciliation reduziert: verlorene Webhooks, manuelle Reparatur, Initialscan, Reindex.
+### Laravel
 
-Webhook-Ingestion darf **keine schwere Verarbeitung synchron im HTTP Request** durchführen. Der Webhook Request validiert, normalisiert, persistiert und enqueued nur.
+Laravel besitzt:
 
-### Message Broker
+- Webhook Ingestion und Payload-Normalisierung;
+- Admin-Autorisierung und UI-Aktionen;
+- Erzeugung und Dispatch von Commands und Pipeline Runs;
+- Laravel Database Queue und Recovery-Redispatch;
+- Operations-, Audit-, Progress- und Fehleransichten aus PostgreSQL.
 
-**Ziel:** Absurd/PostgreSQL
+Der Transportvertrag ist [`RunPythonActorJob`](../laravel/app/Jobs/RunPythonActorJob.php) -> [`PythonActorRunner`](../laravel/app/Services/Actors/PythonActorRunner.php) -> `python -m app.actor_runner`.
 
-Begründung:
+### Python
 
-- Passt besser zu event-driven Workflows als eine reine Job Queue.
-- Unterstützt saubere Queue-Trennung, Routing, Wiederaufnahme und Worker-Pipelines.
-- Absurd nutzt PostgreSQL direkt; es gibt keinen separaten Broker-Service.
+Python besitzt:
 
-### Fachliche Datenbank
+- Paperless- und AI-Provider-Aufrufe;
+- OCR Correction, Embeddings, Klassifikation und Review Suggestion Generation;
+- Review Commit und Maintenance Processing;
+- Actor-spezifische Idempotenz, Retry-Klassifikation und durable Statusupdates.
 
-**Ziel:** PostgreSQL + pgvector
+[`app/actor_runner.py`](../app/actor_runner.py) ist die feste CLI-Grenze fuer Laravel Queue Jobs. Optionen werden aus durable Records geladen; die Queue uebergibt nur den allowlisted Actor-Namen und die zugehoerige durable ID.
 
-Begründung:
+### PostgreSQL und pgvector
 
-- Gemeinsame robuste Datenbasis für Laravel und Python.
-- Geeignet für parallele Worker und dauerhaftes Retry-/Progress-Tracking.
-- pgvector ist der Standard für Embedding Search.
-- Sauberer Ort für Webhook Deliveries, Pipeline Runs, Events, Actor Executions, Reviews, Audit Log und LLM Usage.
+Aktive durable Records umfassen:
 
-### Python Job Framework
+- `commands`
+- `pipeline_runs`
+- `pipeline_events`
+- `pipeline_items`
+- `actor_executions`
+- `webhook_deliveries`
+- `review_suggestions`
+- `embedding_index_state`
+- `document_embeddings`
+- Audit- und LLM-Call-Daten
 
-**Ziel:** Absurd
+Status- und Feldvertraege gehoeren in die Architekturdocs und Migrationsdateien, nicht als zweite Schemaquelle in diesen Plan.
 
-Begründung:
+## Kernfluesse
 
-- Event-/Actor-Modell passt besser zum langfristigen Ziel als ein großer Worker-Job.
-- Jeder Pipeline-Schritt kann separat retrybar, beobachtbar und idempotent werden.
-- Queue-Trennung pro Workload wird möglich: IO, OCR, Embedding, Classification, Review, Maintenance.
-
-### LLM Routing
-
-**Ziel:** Ollama-/OpenAI-kompatibler Adapter
-
-Provider bleiben austauschbar und duerfen nicht hart in Pipeline-Actors verdrahtet sein.
+### Paperless Webhook
 
 ```text
-Actor -> app.llm.router -> provider adapter -> Ollama-compatible / OpenAI-compatible endpoint
+POST /api/webhooks/paperless oder /webhook
+  -> Security + Payload Validation
+  -> webhook_delivery persistieren und deduplizieren
+  -> Event/Run erzeugen oder an bestehenden Run anhaengen
+  -> Laravel Actor Job mit Delivery-/Run-ID dispatchen
+  -> Python Actor verarbeitet durable State
 ```
 
-## Zielarchitektur
+Mehrere Events fuer dasselbe Dokument werden ueber Dedupe, Document Lock und Coalescing kontrolliert. Relevant geaenderte Dokumente duerfen einen automatischen Reprocess ausloesen; unveraenderte oder doppelte Deliveries erzeugen keinen zweiten Run.
 
-```text
-archibot
-├── AGENTS.md
-├── docs/
-│   ├── implementation-plan-event-driven-archibot.md
-│   ├── architecture/
-│   ├── decisions/
-│   └── governance/
-│
-├── laravel/
-│   ├── Webhook Ingestion API
-│   ├── UI
-│   ├── Review Dashboard
-│   ├── Command API
-│   └── PostgreSQL access
-│
-├── app/
-│   ├── actors/
-│   │   ├── webhook.py
-│   │   ├── document.py
-│   │   ├── ocr.py
-│   │   ├── embedding.py
-│   │   ├── classification.py
-│   │   ├── review.py
-│   │   └── maintenance.py
-│   │
-│   ├── events/
-│   │   ├── types.py
-│   │   ├── publish.py
-│   │   └── handlers.py
-│   │
-│   ├── jobs/
-│   │   ├── context.py
-│   │   ├── progress.py
-│   │   ├── locks.py
-│   │   └── idempotency.py
-│   │
-│   ├── llm/
-│   │   ├── router.py
-│   │   ├── providers.py
-│   │   └── usage.py
-│   │
-│   └── db/
-│       ├── models.py
-│       └── session.py
-│
-├── PostgreSQL + pgvector
-└── Absurd/PostgreSQL
-```
+### Manuelle Aktionen
 
-Redis/Valkey kann später für Cache, Rate Limits oder spezielle Locking-Anforderungen ergänzt werden. Es ist aber kein Bestandteil des Kern-Zielbilds.
+Maintenance, Review, Entity Approval und Pipeline Controls schreiben zuerst durable Commands oder Runs. Danach dispatcht Laravel einen allowlisted Actor Job. CLI-Aktionen mit GUI-Entsprechung delegieren an denselben Laravel-Backendpfad.
 
-## Event-Eingänge
+Ein expliziter Force Reprocess:
 
-### 1. Paperless Webhook: Hauptpfad
+- ist admin-only;
+- erzeugt immer einen neuen Pipeline Run;
+- setzt den manuellen Trigger und Reprocess-Metadaten;
+- respektiert Embedding Gate und Document Lock.
 
-Der wichtigste Eingang ist ein Webhook von Paperless bei Dokumentereignissen.
+### Polling / Reconciliation
 
-Beispiele:
+Polling laeuft automatisch alle 600 Sekunden als Reparaturpfad. Es entdeckt fehlende oder stale Dokumentarbeit und ruft dieselbe Start-/Attach-Logik wie Webhooks auf. Ein separater konkurrierender Processing-Pfad ist nicht erlaubt.
 
-- Dokument wurde erstellt.
-- Dokument wurde geändert.
-- Dokument wurde konsumiert/importiert.
-- Tags, Titel, Dokumenttyp, Korrespondent oder Inhalt wurden geändert.
+### Retry und Recovery
 
-Webhook-Zielfluss:
+Laravel-native Recovery scannt durable Records und redispatcht sichere pending/retrying Arbeit. Queue-Zustand allein darf keine fachliche Recovery-Entscheidung treffen. Stale Actor Executions, Cancel Requests und einzelne fehlgeschlagene Pipeline Items bleiben durable und auditierbar.
 
-```text
-Paperless Webhook
-  -> Laravel Webhook Endpoint
-  -> validate + persist webhook_delivery
-  -> normalize to internal event
-  -> create pipeline_run if needed
-  -> enqueue Absurd actor
-  -> return HTTP 2xx quickly
-```
+## Aktueller Migrationsstand
 
-### 2. Laravel UI / Command API
+Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md). Zusammengefasst:
 
-Manuelle Aktionen bleiben möglich:
+- PostgreSQL/pgvector, Webhook Ingestion und durable Pipeline-Tabellen sind vorhanden.
+- Laravel Database Queue, `RunPythonActorJob`, der allowlisted PHP Runner und `app.actor_runner` sind fuer die zentralen Actor-Flows implementiert; Full-Reindex-, CLI-Paritaets- und Recovery-Luecken bleiben offen.
+- `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
+- Absurd-bezogene Runtime-, Dependency-, Schema-, Supervisor- und Testreste existieren noch. Solange sie aktiv startbar sind, ist der exklusive Laravel-Transport-Cutover nicht abgeschlossen.
+- Automatische 600-Sekunden-Reconciliation muss nach Entfernung des Absurd-Schedulers ueber den Laravel-eigenen Runtimepfad nachgewiesen werden.
 
-- Dokument neu verarbeiten.
-- Review committen.
-- Reindex starten.
-- Entity Approval synchronisieren.
+## Verbleibende Migration
 
-Diese Aktionen erzeugen Commands und dann Events/Messages.
+### 1. Laravel-Transportparitaet verifizieren
 
-### 3. Scheduler / Reconciliation
+- Fuer jeden Actor-Flow Producer, durable ID, Laravel Job Factory, Python Runner Command, Statusuebergang und Recovery-Pfad inventarisieren.
+- Webhook, Embedding Build, Document Pipeline, Review Commit, Poll Reconciliation, Reindex, OCR Reindex und Entity Sync mit fokussierten Tests abdecken.
+- Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
+- GUI-ueberlappende CLI-Aktionen und alle Recovery-Zustaende auf denselben Laravel-/PostgreSQL-Backendpfad bringen.
+- Sicherstellen, dass kein produktiver Flow fuer Dispatch oder Scheduling ausschliesslich Absurd benoetigt.
 
-Scheduler ist nur für Wartung und Reparatur zuständig:
+### 2. Laravel als einzigen Transport aktivieren
 
-- Verlorene Webhooks erkennen.
-- Hängende Pipeline Runs reparieren.
-- Nacht-/Wochen-Reindex starten.
-- Webhook Delivery Retrys ausführen.
+- Laravel-native Recovery als alleinigen Redispatch-Pfad verwenden.
+- Automatische 600-Sekunden-Reconciliation ueber einen klar dokumentierten Laravel Scheduler/Command-Pfad ausfuehren.
+- Dual Dispatch ausschliessen, damit ein durable Record nicht gleichzeitig durch Laravel und Absurd gestartet werden kann.
+- Laravel Queue Worker, Timeout, Retry und Failure-Verhalten im Docker-Runtimepfad pruefen.
+- Endliche, begruendete Actor-/Process-Timeouts, Heartbeats und kooperative Cancellation definieren und testen; `timeout = 0` und unbeschraenkte Child Processes sind kein abgeschlossenes Runtime-Modell.
 
-Polling ist **kein Haupttrigger** mehr.
+### 3. Absurd-Reste entfernen
 
-## Webhook Ingestion Design
+Nach nachgewiesener Paritaet in einem fokussierten Cleanup-Patch entfernen:
 
-### Laravel Webhook Endpoint
+- Absurd SDK und Dependency-Pins;
+- `ABSURD_DATABASE_URL` und Absurd-Konfiguration;
+- Absurd Queue Adapter, Event Worker und Actor-Wrapper-Abhaengigkeiten;
+- vendored Absurd SQL und Installationsmigration;
+- Absurd Supervisor Worker/Recovery Programs;
+- ausschliesslich Absurd-bezogene Tests und Dokumentation.
 
-Empfohlener Pfad:
+Der Cleanup darf Python Processing Actors nicht entfernen; nur der superseded Transport und seine Kompatibilitaet verschwinden.
 
-```text
-POST /api/webhooks/paperless
-```
+### 4. Runtime- und End-to-End-Nachweis
 
-Aufgaben:
+- Clean Install mit PostgreSQL, Laravel Queue und pgvector.
+- Webhook -> durable Delivery -> Laravel Queue -> Python Actor -> Pipeline/Review Result.
+- Restart/Recovery fuer pending und retrying Arbeit.
+- Automatische Polling-Reconciliation nach 600 Sekunden ueber denselben Pipeline-Startpfad.
+- Embedding Gate, Reprocess, Retry, Cancel und Berechtigungen.
+- Docker Health/Readiness und Operations UI ohne Absurd oder `worker_jobs`.
 
-- Authentizität prüfen, soweit Paperless/Webserver-Konfiguration das erlaubt.
-- Payload validieren.
-- Rohpayload in `webhook_deliveries` persistieren.
-- Dedupe-Key berechnen.
-- Interne Eventklasse bestimmen.
-- Schnelle Antwort liefern.
-- Keine LLM-, OCR-, Embedding- oder Paperless-heavy-Calls im Request durchführen.
+### 5. Dokumentationsabschluss
 
-### Webhook Security
+Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governance-Dokumente auf Laravel-only Transport pruefen. Historische Absurd- oder `worker_jobs`-Erklaerungen muessen als superseded/retired markiert oder entfernt sein.
 
-Wenn Paperless keine starke Signatur liefert, muss die Sicherheit über Infrastruktur und Shared Secret erfolgen:
+## Risiken und Gegenmassnahmen
 
-- Nur interne Netzwerkpfade erlauben.
-- Reverse Proxy ACLs nutzen.
-- Optional Header Secret verwenden, falls konfigurierbar.
-- Webhook Endpoint nicht öffentlich ohne Schutz betreiben.
-- Alle Payloads auditierbar speichern.
-
-### Webhook Dedupe
-
-Webhook Events können mehrfach zugestellt werden oder in kurzer Folge eintreffen.
-
-Mindest-Dedupe-Key:
-
-```text
-source + event_type + paperless_document_id + paperless_modified + payload_hash
-```
-
-Wenn Paperless keine stabile Event-ID liefert, wird ein eigener Hash über normalisierte Payload-Felder gebildet.
-
-### Webhook Debounce / Coalescing
-
-Mehrere Änderungen an demselben Dokument können kurz hintereinander kommen.
-
-Regel:
-
-- Webhook sofort persistieren.
-- Verarbeitung pro Dokument über Document Lock und Idempotency Key schützen.
-- Optional eine kurze Debounce-Verzögerung für `document.updated` einführen.
-- Die Pipeline verarbeitet den neuesten Paperless-Zustand, nicht blind jeden einzelnen Zwischenstand.
-
-### Webhook Failure Handling
-
-- Ungültige Payloads werden mit Fehlerstatus gespeichert.
-- Gültige, aber nicht verarbeitbare Payloads erzeugen ein `webhook.failed` Event.
-- Actor-Enqueue-Fehler müssen sichtbar sein und retrybar bleiben.
-- Webhook Delivery darf nicht verloren gehen, wenn Absurd/PostgreSQL kurz nicht erreichbar ist.
-
-## Repository Governance
-
-Der Umbau ist groß genug, dass Architektur, Agentenarbeit und Code-Änderungen explizit geführt werden müssen.
-
-### Governance-Ziele
-
-- Architekturentscheidungen nachvollziehbar machen.
-- Große Umbauten in reviewbare Schritte schneiden.
-- Python-, Laravel-, Datenbank- und Infrastruktur-Änderungen klar trennen.
-- Agenten wie pi.dev/Codex über stabile Repo-Regeln führen.
-- Keine dauerhaften Legacy-Pfade einschleppen.
-- Webhooks als primäre Eventquelle schützen.
-- Migration nicht über versteckte Seiteneffekte, sondern über dokumentierte Phasen durchführen.
-
-### Empfohlene Dokumentstruktur
-
-```text
-docs/
-├── implementation-plan-event-driven-archibot.md
-├── architecture/
-│   ├── event-driven-architecture.md
-│   ├── webhook-ingestion.md
-│   ├── data-model.md
-│   ├── actor-model.md
-│   └── llm-routing.md
-│
-├── decisions/
-│   ├── 0002-use-postgresql-pgvector.md
-│   ├── 0004-no-legacy-compatibility-mode.md
-│   ├── 0005-use-webhooks-as-primary-trigger.md
-│   └── 0013-use-absurd-postgresql-queue.md
-│
-└── governance/
-    ├── repository-governance.md
-    ├── agent-workflow.md
-    └── review-checklist.md
-```
-
-### AGENTS.md
-
-Das Repository soll eine zentrale `AGENTS.md` haben. Diese Datei ist der Einstiegspunkt für Coding Agents.
-
-Sie soll enthalten:
-
-- Zielbild der Architektur in wenigen Sätzen.
-- Hinweis: Paperless Webhooks sind der Haupttrigger.
-- Link auf diesen Implementation Plan.
-- Link auf Architektur- und Governance-Dokumente.
-- Regeln für Webhook-Ingestion, Python Actors, Laravel UI, DB-Migrationen und Tests.
-- Klare Anweisung: Keine neuen Legacy-Kompatibilitätsschichten ohne explizite Entscheidung.
-
-Empfohlene Kurzregel für `AGENTS.md`:
-
-```md
-Archibot is being migrated to an event-driven architecture using Paperless webhooks, Laravel database queues, PostgreSQL and pgvector.
-Paperless webhooks are the primary trigger for document processing; polling is only for reconciliation and maintenance.
-Do not extend the legacy Laravel-subprocess/Python-CLI worker path unless the task explicitly asks for a temporary removal step.
-Prefer small, reviewable changes that move the system toward the target architecture described in docs/implementation-plan-event-driven-archibot.md.
-```
-
-### ADR-Regel
-
-Jede größere Architekturentscheidung bekommt ein kurzes ADR unter `docs/decisions/`.
-
-Pflicht-ADRs für diesen Umbau:
-
-- `0002-use-postgresql-pgvector.md`
-- `0013-use-absurd-postgresql-queue.md`
-- `0004-no-legacy-compatibility-mode.md`
-- `0005-use-webhooks-as-primary-trigger.md`
-
-ADR Template:
-
-```md
-# ADR-NNNN: Title
-
-## Status
-
-Accepted | Proposed | Superseded
-
-## Context
-
-Why is this decision needed?
-
-## Decision
-
-What did we decide?
-
-## Consequences
-
-What gets easier?
-What gets harder?
-What must not be done anymore?
-```
-
-### Branch- und PR-Regeln
-
-Empfohlene Branch-Namen:
-
-```text
-arch/event-driven-foundation
-arch/postgres-pgvector
-arch/absurd-foundation
-arch/paperless-webhook-ingestion
-pipeline/process-document
-pipeline/inbox-reconciliation
-pipeline/reindex
-cleanup/remove-legacy-worker
-```
-
-Jeder PR soll enthalten:
-
-- Ziel und Scope.
-- Betroffene Schichten: Laravel, Python, DB, Infrastructure, Docs.
-- Migration/Breaking Changes.
-- Tests oder Smoke Commands.
-- Hinweis, ob alte Worker-Pfade entfernt oder ersetzt werden.
-- Falls Webhooks betroffen sind: Security, Dedupe, Retry und Idempotency-Verhalten.
-
-### Review-Checkliste
-
-Jede Änderung an der neuen Pipeline muss gegen diese Fragen geprüft werden:
-
-- Ist Webhook-Ingestion schnell und ohne schwere Verarbeitung im HTTP Request?
-- Wird jede Webhook Delivery persistiert?
-- Gibt es einen Dedupe-Key?
-- Ist der Actor idempotent?
-- Gibt es einen stabilen `pipeline_run_id`?
-- Gibt es einen Dedupe-Key für wiederholbare Outputs?
-- Werden Events in PostgreSQL persistiert?
-- Ist die Queue passend gewählt?
-- Sind Retry- und Failure-Regeln explizit?
-- Wird Laravel nicht mehr als Python-Prozess-Runner erweitert?
-- Entsteht keine neue dauerhafte Legacy-Kompatibilitätsschicht?
-- Gibt es Tests oder zumindest einen dokumentierten Smoke Test?
-
-### Ownership-Regeln
-
-```text
-Laravel:
-- Webhook Ingestion API
-- UI
-- Review Dashboard
-- Command API
-- Lesen/Schreiben von Commands, Pipeline Runs, Events, Review Suggestions
-
-Python:
-- Absurd actors
-- Paperless Integration
-- LLM Routing
-- Embeddings
-- Pipeline Events schreiben
-
-PostgreSQL:
-- Gemeinsame Source of Truth
-- Webhook Deliveries
-- Keine getrennten Python-/Laravel-Statuswelten
-
-Absurd/PostgreSQL:
-- Transport für Messages
-- Kein dauerhafter fachlicher Zustand
-```
-
-### Commit-Konvention
-
-```text
-docs:       Dokumentation, Governance, ADRs
-arch:       Architektur-/Strukturänderungen
-infra:      Docker, Absurd/PostgreSQL, PostgreSQL, Deployment
-webhook:    Webhook-Ingestion, Dedupe, Delivery Handling
-python:     Python Runtime, Actors, LLM, Pipeline
-laravel:    UI/API/Models/Migrations in Laravel
-pipeline:   konkrete Actor-Flows
-cleanup:    Entfernen alter Worker-/CLI-Pfade
-test:       Tests und Smoke Tests
-```
-
-## Begriffe
-
-### Webhook Delivery
-
-Eine einzelne empfangene HTTP-Zustellung von Paperless. Sie wird unverändert und normalisiert gespeichert, bevor daraus ein internes Event entsteht.
-
-### Command
-
-Ein expliziter Auftrag, meist aus Laravel/UI oder Scheduler.
-
-Beispiele:
-
-- `process_document`
-- `reindex_all`
-- `commit_review`
-- `sync_entity_approval`
-
-### Event
-
-Ein unveränderbarer Fakt, der in der Pipeline passiert ist.
-
-Beispiele:
-
-- `webhook.received`
-- `webhook.normalized`
-- `document.discovered`
-- `document.changed`
-- `document.fetched`
-- `ocr.corrected`
-- `embedding.created`
-- `classification.finished`
-- `review_suggestion.created`
-- `pipeline.failed`
-
-### Actor Execution
-
-Eine konkrete Ausführung eines Absurd actors.
-
-Beispiele:
-
-- `handle_paperless_webhook(delivery_id=123)`
-- `fetch_document(document_id=123)`
-- `correct_ocr(document_id=123)`
-- `embed_document(document_id=123)`
-- `classify_document(document_id=123)`
-
-### Pipeline Run
-
-Ein zusammenhängender Lauf über ein oder mehrere Dokumente.
-
-Beispiele:
-
-- Ein einzelnes Dokument durch Webhook neu verarbeiten.
-- Ein manuell neu gestartetes Dokument.
-- Reconciliation-Lauf über mehrere Dokumente.
-- Vollständiger Reindex.
-
-## Datenmodell-Ziel
-
-### `webhook_deliveries`
-
-Persistiert eingehende Paperless Webhook Deliveries.
-
-Wichtige Felder:
-
-- `id`
-- `source`
-- `event_type`
-- `paperless_document_id`
-- `dedupe_key`
-- `payload_hash`
-- `raw_payload`
-- `normalized_payload`
-- `headers`
-- `status`
-- `received_at`
-- `processed_at`
-- `error`
-
-Empfohlene Constraints:
-
-```text
-unique(source, dedupe_key)
-index(paperless_document_id)
-index(status, received_at)
-```
-
-### `commands`
-
-Speichert explizite Benutzer- oder Systemaufträge.
-
-Wichtige Felder:
-
-- `id`
-- `type`
-- `status`
-- `payload`
-- `created_by_user_id`
-- `created_at`
-- `started_at`
-- `finished_at`
-- `error`
-
-### `pipeline_runs`
-
-Speichert zusammenhängende Verarbeitungsläufe.
-
-Wichtige Felder:
-
-- `id`
-- `command_id`
-- `webhook_delivery_id`
-- `type`
-- `status`
-- `scope`
-- `paperless_document_id`
-- `started_at`
-- `finished_at`
-- `progress_done`
-- `progress_total`
-- `error`
-
-### `pipeline_events`
-
-Event Log für UI, Debugging und Audit.
-
-Wichtige Felder:
-
-- `id`
-- `pipeline_run_id`
-- `webhook_delivery_id`
-- `event_type`
-- `document_id`
-- `level`
-- `message`
-- `payload`
-- `created_at`
-
-### `actor_executions`
-
-Technische Ausführungshistorie für Absurd actors.
-
-Wichtige Felder:
-
-- `id`
-- `pipeline_run_id`
-- `actor_name`
-- `message_id`
-- `queue_name`
-- `status`
-- `attempt`
-- `started_at`
-- `finished_at`
-- `duration_ms`
-- `error`
-
-### `document_embeddings`
-
-Ablöse für pgvector.
-
-Wichtige Felder:
-
-- `id`
-- `paperless_document_id`
-- `content_hash`
-- `embedding_model`
-- `dimensions`
-- `embedding vector`
-- `created_at`
-
-Hinweis: pgvector-ANN-Indizes wie HNSW benötigen eine feste Vektordimension. Da ArchiBot die Embedding-Dimension pro Modell speichert, bleibt die Spalte in der Basismigration unbeschränkt. Dimensionsspezifische ANN-Indizes können später als partielle Expression-Indizes ergänzt werden, z. B. für 1024-dimensionale Modelle:
-
-```sql
-CREATE INDEX document_embeddings_embedding_1024_hnsw
-ON document_embeddings
-USING hnsw ((embedding::vector(1024)) vector_cosine_ops)
-WHERE dimensions = 1024;
-```
-
-### `llm_calls`
-
-Provider- und Kosten-/Fehlerhistorie.
-
-Wichtige Felder:
-
-- `id`
-- `pipeline_run_id`
-- `document_id`
-- `provider`
-- `model`
-- `purpose`
-- `input_tokens`
-- `output_tokens`
-- `duration_ms`
-- `status`
-- `error`
-- `created_at`
-
-## Queue-Modell
-
-Startvariante:
-
-```text
-archibot.webhook
-archibot.io
-archibot.llm
-archibot.embedding
-archibot.blocking
-```
-
-Spätere Erweiterung:
-
-```text
-archibot.paperless
-archibot.ocr
-archibot.classification
-archibot.review
-archibot.maintenance
-archibot.llm.local
-archibot.llm.remote
-```
-
-## Actor-Schnitt
-
-### Phase 1 Pipeline: Webhook zu Dokumentverarbeitung
-
-```text
-paperless_webhook_received
-  -> normalize_webhook_delivery
-  -> start_document_pipeline
-  -> fetch_document
-  -> correct_ocr
-  -> embed_document
-  -> classify_document
-  -> create_review_suggestion
-```
-
-### Phase 2 Pipeline: Manuelles einzelnes Dokument
-
-```text
-process_document_command
-  -> start_document_pipeline
-  -> fetch_document
-  -> correct_ocr
-  -> embed_document
-  -> classify_document
-  -> create_review_suggestion
-```
-
-### Phase 3 Pipeline: Reconciliation statt Inbox Poll als Haupttrigger
-
-```text
-reconcile_documents_command
-  -> discover_recent_or_unprocessed_documents
-  -> start_document_pipeline for each missing/stale document
-```
-
-### Phase 4 Pipeline: Reindex
-
-```text
-reindex_command
-  -> discover_all_documents
-  -> reindex_document for each document
-  -> rebuild_search_indexes
-```
-
-## Idempotenz-Regeln
-
-Jeder Actor muss idempotent sein.
-
-Mindestanforderungen:
-
-- Jede Webhook Delivery erhält einen stabilen `dedupe_key`.
-- Jeder Actor erhält `pipeline_run_id`.
-- Dokumentbezogene Actors erhalten `paperless_document_id`.
-- Dokumentbezogene Actors prüfen `content_hash` oder `modified` Timestamp.
-- Ein Actor darf denselben Output bei Retry nicht doppelt erzeugen.
-- Review Suggestions brauchen einen stabilen Dedupe-Key.
-
-Beispiel Dedupe-Key für Actor Outputs:
-
-```text
-paperless_document_id + content_hash + actor_name + model_version + prompt_version
-```
-
-## Locking-Regeln
-
-### Webhook Lock
-
-Mehrere Webhooks für dasselbe Dokument dürfen nicht parallele widersprüchliche Pipelines erzeugen.
-
-Lock-Key:
-
-```text
-archibot:webhook-document:{paperless_document_id}
-```
-
-### Reindex Lock
-
-Ein Reindex blockiert:
-
-- Webhook-getriggerte Dokumentverarbeitung
-- Manuelle Dokumentverarbeitung
-- Reconciliation
-- Embedding Rebuilds
-
-### Document Lock
-
-Ein Dokument darf nicht parallel mehrfach verarbeitet werden.
-
-Lock-Key:
-
-```text
-archibot:document:{paperless_document_id}
-```
-
-### LLM/Provider Rate Limits
-
-Ollama/local model:
-
-- Anfangs maximal 1 schwerer LLM Actor gleichzeitig.
-
-OpenAI-compatible Provider:
-
-- Rate Limit pro Provider.
-- Rate Limit pro Modell.
-- Retry mit Backoff bei 429, 5xx und Timeouts.
-
-## Laravel Integration
-
-Laravel soll im Zielmodell:
-
-- Paperless Webhooks empfangen.
-- Webhook Deliveries persistieren.
-- Commands erzeugen.
-- Pipeline Runs anzeigen.
-- Events anzeigen.
-- Review Suggestions verwalten.
-- PostgreSQL als gemeinsame Source of Truth nutzen.
-- Keine Python-Prozesse mehr direkt starten.
-- Keine separate Legacy-Worker-Schicht parallel pflegen.
-
-Der bestehende Subprocess-Runner und die `worker_jobs`-basierte Steuerung werden durch Webhook Deliveries, Commands, Pipeline Runs und Absurd actors ersetzt.
-
-## Migrationsplan
-
-### Phase 0: Vorbereitung und Governance
-
-- `AGENTS.md` als zentralen Agenten-Einstieg anlegen oder aktualisieren.
-- Governance-Dokumente unter `docs/governance/` anlegen.
-- ADRs unter `docs/decisions/` anlegen.
-- ADR `0005-use-webhooks-as-primary-trigger.md` anlegen.
-- Bestehende Worker-Flows dokumentieren.
-- Bestehende oder gewünschte Paperless Webhook Payloads dokumentieren.
-- Webhook Security- und Dedupe-Regeln dokumentieren.
-- Aktuelle CLI-Kommandos erfassen:
-  - `poll`
-  - `reindex`
-  - `reindex-ocr`
-  - `reindex-embed`
-  - `process-document`
-  - `commit-review`
-  - `sync-entity-approval`
-- Bestehende Progress-/Event-Ausgaben erfassen.
-- Bestehende Funktionalität durch Tests absichern, damit sie gezielt in Actors übertragen werden kann.
-
-### Phase 1: Infrastruktur ersetzen
-
-- Docker Compose um PostgreSQL und Absurd/PostgreSQL erweitern.
-- PostgreSQL als primäre Runtime-Datenbank ablösen.
-- Python Dependencies ergänzen:
-  - `absurd-sdk`
-  - `absurd-sdk`
-  - `sqlalchemy`
-  - `psycopg`
-  - `pgvector`
-- Laravel auf PostgreSQL vorbereiten.
-- Environment-Variablen dokumentieren.
-
-Beispiel `.env` Zielwerte:
-
-```env
-DATABASE_URL=postgresql+psycopg://archibot:archibot@postgres:5432/archibot
-ABSURD_DATABASE_URL=postgresql://archibot:archibot@postgres:5432/archibot
-ARCHIBOT_QUEUE_PREFIX=archibot
-PAPERLESS_WEBHOOK_SECRET=change-me
-LLM_PROVIDER=ollama
-LLM_BASE_URL=http://ollama:11434
-```
-
-### Phase 2: PostgreSQL Basismodell
-
-- Neue Tabellen für Webhook Deliveries, Commands, Pipeline Runs, Pipeline Events und Actor Executions anlegen.
-- Python DB Session Layer ergänzen.
-- Laravel Models/Migrations für dieselben Tabellen ergänzen oder eine klare Ownership definieren.
-- `worker_jobs` wird nicht als langfristige UI-/Audit-Quelle weiterentwickelt.
-
-### Phase 3: Webhook Ingestion Skeleton
-
-- Laravel Webhook Endpoint für Paperless anlegen.
-- Payload validieren und in `webhook_deliveries` speichern.
-- Dedupe-Key berechnen.
-- Dummy `webhook.received` / `webhook.normalized` Event schreiben.
-- Noch keine schwere Dokumentverarbeitung ausführen.
-- Tests für gültige, ungültige und doppelte Webhooks ergänzen.
-
-### Phase 4: Absurd Skeleton
-
-- `app/actors/` anlegen.
-- `app/actors/webhook.py` anlegen.
-- Broker-Konfiguration zentralisieren.
-- Worker-Bootstrap ergänzen.
-- Ersten Dummy Actor mit Event Logging implementieren.
-- Webhook Endpoint enqueued Dummy Actor.
-- Lokalen Worker Start dokumentieren.
-
-Beispiel:
-
-```bash
-python -m app.event_worker start-workers
-```
-
-oder, falls Absurd worker CLI verwendet wird:
-
-```bash
-python -m app.event_worker start-workers
-```
-
-### Phase 5: Webhook-getriggerte Dokumentverarbeitung ersetzen
-
-Zuerst `process_document` als Webhook-getriebene Pipeline bauen und den alten Prozesspfad dafür entfernen.
-
-Actors:
-
-- `normalize_webhook_delivery`
-- `start_document_pipeline`
-- `fetch_document`
-- `correct_ocr`
-- `embed_document`
-- `classify_document`
-- `create_review_suggestion`
-
-Akzeptanzkriterien:
-
-- Ein Paperless Webhook kann ein Dokument vollständig über Absurd verarbeiten.
-- Progress ist in PostgreSQL sichtbar.
-- Fehler werden als Events geschrieben.
-- Retry erzeugt keine doppelten Suggestions.
-- Laravel kann den Status anzeigen.
-- Doppelte Webhooks erzeugen keine doppelte Verarbeitung.
-- Der alte Subprocess-Pfad für diese Funktion ist entfernt oder deaktiviert, nicht parallel weitergeführt.
-
-### Phase 6: Reconciliation statt Inbox Poll als Hauptpfad
-
-- `poll_inbox` wird durch `reconcile_documents` ersetzt.
-- Reconciliation sucht fehlende/stale Dokumente, die keinen Webhook-Lauf bekommen haben.
-- Die eigentliche Verarbeitung läuft über die Dokument-Pipeline.
-- Alter Scheduler-/Subprocess-Pfad wird entfernt.
-
-Akzeptanzkriterien:
-
-- Reconciliation ist optional und reparierend, nicht Haupttrigger.
-- Einzelne Dokumentfehler stoppen nicht den gesamten Reconciliation-Lauf.
-- UI zeigt Gesamtfortschritt und Detailfehler.
-- Es gibt keinen periodischen Poll als primären Verarbeitungspfad mehr.
-
-### Phase 7: Reindex ersetzen
-
-- Reindex wird in Discover + viele Dokument-Actors + Abschlussphase geteilt.
-- Reindex Lock einführen.
-- Embedding Rebuild in pgvector schreiben.
-- Alter pgvector Reindex-Pfad wird entfernt.
-
-Akzeptanzkriterien:
-
-- Reindex ist abbrechbar oder pausierbar.
-- Einzelne Dokumentfehler führen zu `partially_failed`, nicht zu Totalabbruch.
-- Embedding Search läuft über pgvector.
-- Es gibt keinen aktiven pgvector Reindex-Pfad mehr.
-
-### Phase 8: LLM Router abstrahieren
-
-- `app.llm.router` einführen.
-- Ollama Client hinter Provider Interface legen.
-- OpenAI-kompatiblen Provider vorbereiten.
-- LLM Calls in `llm_calls` loggen.
-
-Akzeptanzkriterien:
-
-- Actors kennen keinen konkreten Provider.
-- Provider/Model ist konfigurierbar.
-- Fehler und Kosten/Token werden nachvollziehbar gespeichert.
-
-### Phase 9: Alte Worker-Schicht entfernen
-
-- Laravel Subprocess Runner entfernen.
-- Alte `app.cli` Worker-Kommandos entfernen oder auf reine Admin-/Debug-Kommandos ohne produktive Worker-Steuerung reduzieren.
-- APScheduler entfernen oder auf reine Reconciliation-/Maintenance-Command-Erzeugung reduzieren.
-- `worker_jobs` durch Webhook Deliveries, Commands, Pipeline Runs und Pipeline Events ersetzen.
-- Doku und AGENTS.md aktualisieren.
-
-## Risiken
-
-### Webhook-Ausfall oder verlorene Zustellung
-
-Wenn Paperless Webhooks nicht zugestellt werden, fehlen Pipeline-Läufe.
-
-Gegenmaßnahme:
-
-- Webhook Deliveries persistieren.
-- Reconciliation-Lauf für fehlende/stale Dokumente.
-- Monitoring auf ausbleibende Webhooks.
-- Manuelle Neuverarbeitung über Laravel UI.
-
-### Doppelte Webhooks / Doppelverarbeitung
-
-Mit Webhooks und Event-driven steigt das Risiko für doppelte Messages.
-
-Gegenmaßnahme:
-
-- Webhook Dedupe Keys.
-- Idempotency Keys.
-- Document Locks.
-- Unique Constraints für Suggestions und Actor Outputs.
-
-### Zu früher Big Bang
-
-PostgreSQL, Absurd, Webhooks und Pipeline-Umbau gleichzeitig ist riskant.
-
-Gegenmaßnahme:
-
-- Trotzdem kein dauerhafter Legacy-Pfad.
-- Umbau in Phasen.
-- Pro Phase alte Pfade entfernen, sobald der neue Pfad akzeptiert ist.
-- Tests und Smoke Commands pro Phase.
-
-### UI/Backend Drift
-
-Laravel und Python könnten unterschiedliche Statusmodelle entwickeln.
-
-Gegenmaßnahme:
-
-- Gemeinsame Statuswerte definieren.
-- Pipeline Events als Source of Truth für UI-Fortschritt.
-- Klare Tabellen-Ownership dokumentieren.
-
-### Agenten ändern zu viel auf einmal
-
-Coding Agents könnten mehrere Schichten gleichzeitig umbauen.
-
-Gegenmaßnahme:
-
-- AGENTS.md verweist auf Plan, Governance und Review-Checkliste.
-- PR-Scope klein halten.
-- Architekturänderungen brauchen ADR.
-- Kein neuer Legacy-Kompatibilitätsmodus ohne ADR und explizite User-Entscheidung.
+| Risiko | Gegenmassnahme |
+| --- | --- |
+| Dual Dispatch erzeugt doppelte Verarbeitung | Ein Transport-Owner pro Flow, durable Dedupe Keys, fokussierte Dispatch-Tests |
+| Reconciliation faellt beim Absurd-Cleanup aus | Laravel Scheduler vor Cleanup implementieren und mit Zeit-/Dispatch-Test belegen |
+| Queue Payload wird zur zweiten State Source | Nur IDs transportieren; Optionen aus PostgreSQL laden |
+| Langer Python Actor blockiert Worker | Timeouts, Heartbeats, Cancel und Recovery gegen reale Laufzeiten pruefen |
+| Webhooks gehen bei Dispatch-Fehler verloren | Erst persistieren, Fehler durable markieren, non-2xx fuer Paperless Retry |
+| Fortschritt driftet bei Retry | Aus `pipeline_items` und durable Outputs ableiten statt blind inkrementieren |
+| Docs beschreiben wieder superseded Transport | ADR-Link-, Markdown- und gezielte Drift-Checks in der Validierung |
 
 ## Definition of Done
 
-Der Umbau gilt als erfolgreich, wenn:
+Die Migration ist abgeschlossen, wenn:
 
-- Paperless Webhooks der primäre Trigger für Dokumentverarbeitung sind.
-- Webhook Deliveries persistiert, dedupliziert und auditierbar sind.
-- Python Jobs nicht mehr über Laravel Subprocess gestartet werden.
-- Dokumentverarbeitung event-driven über Absurd läuft.
-- PostgreSQL die gemeinsame Source of Truth ist.
-- Embedding Search über pgvector läuft.
-- Laravel Pipeline Runs, Events, Fehler und Review Suggestions anzeigen kann.
-- Retry und Cancel kontrolliert funktionieren.
-- OpenAI-kompatible/Ollama-kompatible Provider austauschbar über einen Adapter angebunden sind.
-- Polling nur noch als Reconciliation/Maintenance existiert.
-- Legacy Worker-Pfade entfernt sind.
-- Repository Governance dokumentiert ist.
-- AGENTS.md Coding Agents auf das Zielbild und die Regeln verpflichtet.
+- Laravel Database Queues der einzige produktive Event-Transport sind.
+- Kein Absurd SDK, Schema, Worker, Recovery-Prozess, Environment Contract oder aktiver Codepfad verbleibt.
+- `worker_jobs` nicht als Tabelle, Modell, Route, UI oder Backend-Kompatibilitaet existiert.
+- Webhooks primaer und automatische 600-Sekunden-Reconciliation reparierend ueber denselben Startpfad arbeiten.
+- Alle Queue Jobs nur allowlisted Actor-Namen und durable IDs verwenden.
+- PostgreSQL alle fachlichen Status-, Progress-, Retry-, Recovery- und Auditdaten traegt.
+- Embedding Gate, Idempotenz, Retry, Cancel, Reprocess und Berechtigungen getestet sind.
+- Actor-Laufzeiten durch dokumentierte Timeouts, Heartbeats, kooperative Cancellation und Recovery begrenzt beziehungsweise ueberwachbar sind.
+- Laravel Operations UI und CLI-Ueberlappungen denselben durable Backendpfad verwenden.
+- Docker Clean Install, Queue Worker, Recovery und relevante End-to-End-Smokes ohne superseded Runtime bestehen.
+- Aktive Dokumentation und ADR-Status widerspruchsfrei sind.
 
-## Empfohlene erste Umsetzung für pi.dev/Codex
+## Validierung
 
-```md
-Implement Phase 0-4 of the event-driven Archibot migration.
-
-Read `docs/implementation-plan-event-driven-archibot.md` first.
-
-Scope:
-- Add or update `AGENTS.md` as the central coding-agent entrypoint.
-- Add repository governance docs under `docs/governance/`.
-- Add ADRs under `docs/decisions/` for Absurd, PostgreSQL/pgvector, Absurd/PostgreSQL, no legacy compatibility mode, and Paperless webhooks as primary trigger.
-- Add PostgreSQL and Absurd/PostgreSQL to the local development stack.
-- Add Python dependencies for Absurd, PostgreSQL access and pgvector.
-- Add Laravel/PHP model and migration for webhook_deliveries.
-- Add database models or migrations for commands, pipeline_runs, pipeline_events and actor_executions.
-- Add a Paperless webhook endpoint that validates, persists and deduplicates webhook deliveries.
-- Add initial `app/events`, `app/jobs`, and `app/actors` package structure.
-- Add `app/actors/webhook.py` and a dummy actor for webhook processing.
-- Add a Absurd queue configuration.
-- Wire the webhook endpoint to enqueue the dummy actor.
-- Add documentation for configuring the Paperless webhook and starting the worker locally.
-
-Non-goals:
-- Do not migrate the full document processing pipeline yet.
-- Do not keep or design a parallel legacy compatibility mode.
-- Do not extend the existing Laravel-subprocess/Python-CLI worker path.
-- Do not do heavy processing synchronously inside the webhook HTTP request.
-
-Acceptance criteria:
-- Governance docs and ADRs exist.
-- AGENTS.md points coding agents to the implementation plan and governance rules.
-- New infrastructure can be started locally.
-- A Paperless webhook can be received, stored, deduplicated and acknowledged quickly.
-- A dummy webhook actor can be enqueued and processed.
-- Actor execution and event are persisted.
-- Tests or smoke commands document the new webhook path.
-- No new feature flag such as `ARCHIBOT_WORKER_BACKEND=legacy|absurd` is introduced.
-```
+Waehle die kleinsten relevanten Checks aus [`docs/agent/CHECKS.md`](agent/CHECKS.md) und fuehre den final relevanten Satz nach dem letzten materiellen Patch aus. Ergebnisstatus, Freshness und unvollstaendige Coverage folgen [`docs/agent/CONTEXT_AND_EVIDENCE.md`](agent/CONTEXT_AND_EVIDENCE.md).

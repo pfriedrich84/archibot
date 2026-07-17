@@ -2,10 +2,11 @@
 
 ## Before coding
 
-1. Read `AGENTS.md` and `docs/prompts/pi-dev-event-driven-migration.md`.
-2. Read the relevant architecture docs and ADRs.
-3. Update shared contracts or phase notes before splitting work across subagents.
-4. Identify file ownership to avoid overlapping edits.
+1. Start with `AGENTS.md` and follow its task-triggered reading order.
+2. Load `docs/prompts/pi-dev-event-driven-migration.md` only when the task changes the event-driven migration, durable pipeline, queue transport, recovery, or superseded runtime paths.
+3. Read only the architecture docs and ADRs routed for the affected area; expand when unresolved contracts, warnings or failures require it.
+4. Update shared contracts or phase notes before splitting cross-layer work across subagents.
+5. Identify file ownership to avoid overlapping edits.
 
 ## Shared contracts first
 
