@@ -157,64 +157,16 @@ async def test_embedding_failure_reports_document_failed_and_continues(
 
 
 @pytest.mark.asyncio
-async def test_reindex_embed_result_reports_failed_document_ids(
+async def test_reindex_embed_delegates_gate_transitions_to_laravel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_build_embeddings(
-        build_id: int, limit: int | None, actor_execution_id: int | None
-    ):
-        progress = indexer.get_reindex_progress()
-        progress.failed_document_ids = [7]
-        return (3, 2, 1)
-
-    monkeypatch.setattr(
-        cli,
-        "start_embedding_index_build",
-        lambda **kwargs: type("Build", (), {"id": 55, "already_running": False})(),
-    )
-    monkeypatch.setattr(cli, "finish_embedding_index_build", lambda *args, **kwargs: None)
-    monkeypatch.setattr(cli, "_build_pgvector_embeddings", fake_build_embeddings)
+    calls = []
+    monkeypatch.setattr(cli, "cmd_laravel_maintenance", lambda command: calls.append(command))
 
     result = await cli.cmd_reindex_embed(emit_progress=True, job_id="job-7")
 
-    assert result["indexed"] == 2
-    assert result["failed"] == 1
-    assert result["failed_document_ids"] == [7]
-    assert result["progress"]["failed"] == 1
-    assert result["progress"]["failed_document_ids"] == [7]
-
-
-@pytest.mark.asyncio
-async def test_reindex_embed_marks_build_failed_when_pgvector_build_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    finishes = []
-
-    async def fake_build_embeddings(
-        build_id: int, limit: int | None, actor_execution_id: int | None
-    ):
-        raise RuntimeError("ollama unavailable")
-
-    monkeypatch.setattr(
-        cli,
-        "start_embedding_index_build",
-        lambda **kwargs: type("Build", (), {"id": 56, "already_running": False})(),
-    )
-    monkeypatch.setattr(
-        cli,
-        "finish_embedding_index_build",
-        lambda *args, **kwargs: finishes.append((args, kwargs)),
-    )
-    monkeypatch.setattr(cli, "_build_pgvector_embeddings", fake_build_embeddings)
-
-    with pytest.raises(RuntimeError, match="ollama unavailable"):
-        await cli.cmd_reindex_embed(emit_progress=True, job_id="job-8")
-
-    assert finishes == [((56,), {"status": "failed", "error": "ollama unavailable"})]
-    progress = indexer.get_reindex_progress()
-    assert progress.running is False
-    assert progress.phase == "failed"
-    assert progress.error == "ollama unavailable"
+    assert calls == ["reindex_embed"]
+    assert result == {"queued": True, "owner": "laravel"}
 
 
 @pytest.mark.asyncio

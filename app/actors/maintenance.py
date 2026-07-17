@@ -18,7 +18,7 @@ from app.jobs.actor_execution import (
     schedule_actor_execution_retry,
     start_actor_execution,
 )
-from app.jobs.pipeline_start import start_or_attach_document_pipeline
+from app.jobs.poll_candidates import persist_poll_candidate
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.review_suggestions import classified_document_ids
@@ -72,6 +72,8 @@ def _reconcile_inbox_documents_impl(
         )
 
     try:
+        if command_id is None:
+            raise ValueError("Poll reconciliation requires a durable Laravel command id.")
         if settings.paperless_inbox_tag_id <= 0:
             message = (
                 "Polling reconciliation skipped because PAPERLESS_INBOX_TAG_ID is not configured."
@@ -95,8 +97,8 @@ def _reconcile_inbox_documents_impl(
             if force
             else classified_document_ids([int(document.id) for document in documents])
         )
-        started_count = 0
-        coalesced_count = 0
+        persisted_count = 0
+        replayed_count = 0
         skipped_count = 0
         if actor_execution.id is not None:
             update_actor_execution_progress(
@@ -110,38 +112,22 @@ def _reconcile_inbox_documents_impl(
             )
         for index, document in enumerate(documents, 1):
             document_id = int(document.id)
-            if document_id in marked_document_ids:
-                skipped_count += 1
-                progress_message = "Already classified Inbox Document skipped."
-                publish_pipeline_event(
-                    types.POLL_DOCUMENT_SKIPPED_ALREADY_CLASSIFIED,
-                    paperless_document_id=document_id,
-                    message=progress_message,
-                    payload={"marker": "review_suggestion"},
-                )
+            marked = document_id in marked_document_ids
+            result = persist_poll_candidate(
+                command_id=command_id,
+                paperless_document_id=document_id,
+                discovered_modified=_modified_value(document),
+                marker_disposition=("already_classified" if marked else "unclassified"),
+                force=force,
+            )
+            if result.created:
+                persisted_count += 1
+                progress_message = "Polling reconciliation persisted a Laravel start candidate."
             else:
-                force_options = (
-                    {
-                        "reprocess_requested": True,
-                        "reprocess_reason": "forced_poll_reconciliation",
-                        "reprocess_mode": "poll_force",
-                        "force_new_run": True,
-                    }
-                    if force
-                    else {}
-                )
-                result = start_or_attach_document_pipeline(
-                    trigger_source="poll",
-                    paperless_document_id=document_id,
-                    paperless_modified=_modified_value(document),
-                    **force_options,
-                )
-                if result.created:
-                    started_count += 1
-                    progress_message = "Polling reconciliation queued a document pipeline start."
-                else:
-                    coalesced_count += 1
-                    progress_message = "Polling reconciliation coalesced with an existing run."
+                replayed_count += 1
+                progress_message = "Polling reconciliation replay found an existing candidate."
+            if marked:
+                skipped_count += 1
             if actor_execution.id is not None:
                 update_actor_execution_progress(
                     actor_execution.id,
@@ -160,9 +146,9 @@ def _reconcile_inbox_documents_impl(
             message="Polling reconciliation completed.",
             payload={
                 "documents_seen": total,
-                "pipelines_started": started_count,
-                "pipelines_coalesced": coalesced_count,
-                "documents_skipped_already_classified": skipped_count,
+                "candidates_persisted": persisted_count,
+                "candidates_replayed": replayed_count,
+                "documents_marked_already_classified": skipped_count,
                 "force": force,
             },
         )

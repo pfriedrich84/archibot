@@ -197,7 +197,7 @@ Residual accepted risk: this plan does not add a separate bootstrap token. The p
 
 ## Milestone 1 — Establish final ownership seams
 
-### 1.1 Inventory callers and freeze legacy expansion
+### 1.1 Inventory callers and freeze legacy expansion — Implemented (Step 7)
 
 Produce a checked inventory for:
 
@@ -209,7 +209,7 @@ Produce a checked inventory for:
 
 For every caller, record its replacement and deletion milestone. Add tests that fail if new productive references to `classifier.db`, `processed_documents`, Absurd or duplicate Pipeline Start are introduced.
 
-### 1.2 Make Laravel the only Pipeline Start owner
+### 1.2 Make Laravel the only Pipeline Start owner — Implemented (Step 7)
 
 Scope:
 
@@ -218,7 +218,9 @@ Scope:
 - define a durable poll-candidate record or versioned result protocol containing candidate ID, Paperless Document ID, normalized modified/content state, Classification Marker disposition, trigger metadata and idempotency key;
 - make a Laravel consumer transaction claim/replay candidates, call `DocumentPipelineStarter`, record the outcome and dispatch only newly created runs;
 - keep one canonical timestamp/content-state normalization implementation;
-- atomically create/coalesce the run and dispatch the Laravel queued actor job;
+- under the shared fence, transactionally create/coalesce and commit the recoverable run, then perform fallible Laravel actor dispatch and a conditional `pending -> queued` transition so reindex/stale transitions cannot interleave and a fast worker's `running` state cannot be overwritten;
+- fence poll claims with UUID tokens and monotonic versions, and condition every terminal/retry write on the active lease;
+- retain candidate audit evidence with restrictive Command deletion semantics and documented export-first persistent-volume rollback limits;
 - return durable outcomes for created, coalesced, blocked and force-created states;
 - delete Python Pipeline Start only after all callers migrate.
 
@@ -227,8 +229,11 @@ Acceptance:
 - concurrent webhook/poll tests create one run;
 - `Z`, offsets and equivalent timestamps normalize identically;
 - explicit manual force reprocess and explicit forced poll create force-new runs, while ordinary starts and non-force retry retain attach/coalescing semantics;
-- enqueue failure leaves recoverable durable state;
+- enqueue is first attempted only after run creation commits; failure leaves a durable pending/recoverable run;
 - a crash before/after candidate persistence, claim, Pipeline Run creation or dispatch replays without duplicate classification;
+- a reclaimed candidate rejects stale-consumer completion/failure writes;
+- deterministic gate-transition and conditional queued-state tests prove stale/reindex ordering and prove post-dispatch bookkeeping cannot overwrite a fast worker's running state;
+- structural guards reject model/query-builder/raw-SQL Pipeline Run creation aliases outside the starter and freeze productive legacy references exactly;
 - no productive Python caller imports `app.jobs.pipeline_start` after deletion.
 
 ### 1.3 Introduce the Python execution-lifecycle Module

@@ -4,11 +4,13 @@ namespace Tests\Feature\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
 use App\Models\Command;
+use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
+use Mockery\MockInterface;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -61,6 +63,7 @@ PHP);
 
         Config::set('archibot.python_binary', $script);
 
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
         $pipelineRun = PipelineRun::query()->create([
             'type' => 'document',
             'status' => PipelineRun::STATUS_QUEUED,
@@ -85,6 +88,62 @@ PHP);
 
         @unlink($capturePath);
         @unlink($script);
+    }
+
+    public function test_queued_before_close_is_delegated_without_a_parent_lease_or_parent_readiness_mutation(): void
+    {
+        $run = $this->documentRun(PipelineRun::STATUS_QUEUED, 'queued-before-close');
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_BUILDING]);
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock) use ($run): void {
+            $mock->shouldReceive('runDocumentPipeline')->once()->withArgs(
+                fn (PipelineRun $argument): bool => $argument->is($run),
+            );
+        });
+
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->fresh()->status);
+    }
+
+    public function test_recovery_retry_is_delegated_to_the_child_owned_lease_protocol(): void
+    {
+        $run = $this->documentRun(PipelineRun::STATUS_RETRYING, 'recovery-retry');
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('runDocumentPipeline')->once();
+        });
+
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+
+        $this->assertSame(PipelineRun::STATUS_RETRYING, $run->fresh()->status);
+    }
+
+    public function test_manual_retry_is_delegated_without_laravel_claiming_the_python_lease(): void
+    {
+        $run = $this->documentRun(PipelineRun::STATUS_QUEUED, 'manual-retry');
+        $run->forceFill(['retry_mode' => 'manual', 'retry_reason' => 'manual_admin_retry'])->save();
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('runDocumentPipeline')->once();
+        });
+
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->fresh()->status);
+    }
+
+    public function test_embedding_build_is_delegated_without_parent_exclusive_lease_transfer(): void
+    {
+        $command = Command::query()->create([
+            'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => [],
+        ]);
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('runEmbeddingIndexBuild')->once();
+        });
+
+        RunPythonActorJob::embeddingIndexBuild($command->id)->handle($runner);
+
+        $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
     }
 
     public function test_poll_reconciliation_actor_job_runs_fixed_python_actor_command(): void
@@ -308,6 +367,7 @@ PHP);
 
         Config::set('archibot.python_binary', $script);
 
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
         $pipelineRun = PipelineRun::query()->create([
             'type' => 'document',
             'status' => PipelineRun::STATUS_QUEUED,
@@ -358,6 +418,19 @@ PHP);
             $this->assertSame('actor failed', $command->error);
             @unlink($script);
         }
+    }
+
+    private function documentRun(string $status, string $dedupeSuffix): PipelineRun
+    {
+        return PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => $status,
+            'scope' => 'single_document',
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 123,
+            'pipeline_dedupe_key' => "dedupe-{$dedupeSuffix}",
+            'coalesced_sources' => ['manual'],
+        ]);
     }
 
     private function writeActorStub(string $body): string

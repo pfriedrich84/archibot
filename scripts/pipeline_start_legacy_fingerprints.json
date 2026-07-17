@@ -1,0 +1,407 @@
+{
+  ".env.example": {
+    "a1e26c26e38be8beb614": 1
+  },
+  ".github/workflows/ci.yml": {
+    "c198d5fbc17d289f33d8": 1
+  },
+  "AGENTS.md": {
+    "1e385a10bc106670a9d5": 1
+  },
+  "Dockerfile": {
+    "b64912f3d05822bd8f2e": 1
+  },
+  "app/absurd_queue.py": {
+    "124988c38513381cb8f5": 1,
+    "258e34f40c4f1448ceb0": 1,
+    "287a345cfec2b6da286c": 1,
+    "3f6c6a64cc9a1994f5ac": 1,
+    "40bd4dcf37d56bc0f139": 1,
+    "43c171810da04fb2cc13": 1,
+    "4744d62145deaa57b441": 1,
+    "51e1cb3de947ccacfc59": 1,
+    "7dd54d59e929ecebe9d0": 1,
+    "8d295d8846a76c617a74": 1,
+    "9c938b7a7150ab3c88d4": 1,
+    "b1b2bfdd012aefc7a83f": 1,
+    "b4bcff1c7bcb56893279": 1,
+    "c0afa3bf93badc86741e": 2
+  },
+  "app/actor_runner.py": {
+    "cc87f0748c9e70e6b4cd": 1
+  },
+  "app/actors/__init__.py": {
+    "454c9941dc321228aa76": 1
+  },
+  "app/actors/document.py": {
+    "a64708f826dacca35125": 1,
+    "e7c01380aa2572d405df": 1
+  },
+  "app/actors/embedding.py": {
+    "a64708f826dacca35125": 1
+  },
+  "app/actors/maintenance.py": {
+    "608d7c1db94c1b1ef092": 1
+  },
+  "app/actors/review.py": {
+    "608d7c1db94c1b1ef092": 1
+  },
+  "app/actors/webhook.py": {
+    "608d7c1db94c1b1ef092": 1
+  },
+  "app/api_data.py": {
+    "0620ca432d3390d1eeb6": 1,
+    "07cb179d45c6404ea47f": 1,
+    "09e69b49f5a554b48722": 1,
+    "1be93e27d53d4b48a185": 2,
+    "233488ed718d27ca68a3": 2,
+    "459a0301e9fffe24d2e4": 1,
+    "6f9d1474a759adc4ca29": 2,
+    "894553e9fac27c51b590": 1,
+    "b582be32bbbefb6b0ee5": 1,
+    "b6df44ba70dadba36175": 1,
+    "bc62298a67b9a156c022": 1,
+    "e082af873416132d2043": 2
+  },
+  "app/cli.py": {
+    "04f91b5dd897a5da15e5": 1,
+    "1be93e27d53d4b48a185": 2,
+    "22f31e6ec1405689c1e2": 1,
+    "50b8fc82c988da789fa2": 1,
+    "5f68968662a060adde2c": 1,
+    "79fbb2755e617f8702c2": 1,
+    "91d19246ea1f1ff99638": 1,
+    "a329df5f77a5b9c61f44": 1,
+    "ad5372dcc617bff6a363": 1,
+    "cc87f0748c9e70e6b4cd": 1,
+    "ea892affe301719a4de3": 1,
+    "f67b78aaca2138ccf596": 7
+  },
+  "app/config.py": {
+    "4ea86bac1ee5c22c332f": 1,
+    "71e118dbf061a4f7ce83": 1,
+    "abf572fd72f7e83829f0": 1
+  },
+  "app/db.py": {
+    "018c869340a6896c7f81": 1,
+    "20e669d78f6401513a17": 1,
+    "323cb4c2a0e5dc4c29c1": 1,
+    "3dfc97f7c32d07ef2fec": 1,
+    "6707bb2c63de65ce5672": 1,
+    "71e118dbf061a4f7ce83": 3,
+    "7625a5feef334b6bdfe3": 1,
+    "840e58363c0c30843611": 1,
+    "847d305edd12f40b0edb": 1,
+    "b23d84b28970a0b62199": 1,
+    "b5ebffc5990584f0f7a6": 1,
+    "b6d9fec43531b194c653": 1,
+    "c2ad3aea540f4a644cd6": 1,
+    "ef65dea5234898eacb44": 1,
+    "ff32113a67878a547bbc": 1
+  },
+  "app/event_worker.py": {
+    "666a64ebc31ff86625cf": 1,
+    "74bb669f16b36cf5fd3a": 1,
+    "94669d5bb19dde649556": 1,
+    "9893529a8fd2bc17c6b9": 1,
+    "b7cdce1dfbe692a37b2a": 1,
+    "dbc95fda7eaa81052b7e": 1,
+    "e030bb927966ceee1678": 1,
+    "e1195ed4e475d1818260": 1,
+    "fbbf7d186179f10d7aad": 1
+  },
+  "app/indexer.py": {
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/job_events.py": {
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/jobs/__init__.py": {
+    "6996dc0fac0cf2873ede": 1
+  },
+  "app/jobs/recovery.py": {
+    "3ae15dd95d11df48f65c": 1,
+    "4d7e17ea4ef98bcb4faa": 1,
+    "6019cc91e204a7abbd0d": 1,
+    "ae20510ca8406bd3a313": 1,
+    "fce30f0868a332ab3dff": 1
+  },
+  "app/jobs/webhook_delivery.py": {
+    "918ce2bf8f8ca56c931b": 1
+  },
+  "app/mcp_server.py": {
+    "cc87f0748c9e70e6b4cd": 1
+  },
+  "app/mcp_tools/classify.py": {
+    "a46a80cd7006d89888b2": 1
+  },
+  "app/mcp_tools/correspondents.py": {
+    "672813f72bf95f0800f3": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/doctypes.py": {
+    "5765221d3efb4f6c17b8": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/documents.py": {
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/resources.py": {
+    "1be93e27d53d4b48a185": 1,
+    "8338979d4ef6249bc018": 1,
+    "eee9ec7a632877ca4af3": 1,
+    "f08f9154cde83b884a8f": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/suggestions.py": {
+    "3e45ad0c34d123c894ea": 1,
+    "3f091ce043e102cb51ca": 1,
+    "849aa39af2cc27432ba1": 1,
+    "8872117b244fab1f26a2": 1,
+    "89140de4f45d479c2e02": 1,
+    "a121f1f7e8f90a523ace": 1,
+    "b69247099659c55e727a": 1,
+    "ea892affe301719a4de3": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/system.py": {
+    "8338979d4ef6249bc018": 1,
+    "f08f9154cde83b884a8f": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/mcp_tools/tags.py": {
+    "e08e8ad0eace7300c08a": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/pipeline/classifier.py": {
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/pipeline/committer.py": {
+    "1be93e27d53d4b48a185": 3,
+    "2f4940f004662ceecc8c": 1,
+    "48c64c4a7089303ff0a2": 1,
+    "6373e349d0e711cc0b94": 1,
+    "ad46b1e3a0c90abca09c": 1,
+    "b92ba18d4da4ddd45729": 1,
+    "d176670a443b14e843a7": 1,
+    "da064e0b8118c8df727b": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/pipeline/document_processing.py": {
+    "61c3f6649354472130af": 1,
+    "6d3bbf3c3943b4d841e4": 2,
+    "8bf63f027b6eb9e83acb": 1,
+    "e2fba1fd41523738e23f": 1
+  },
+  "app/pipeline/ocr_correction.py": {
+    "f67b78aaca2138ccf596": 1
+  },
+  "app/vector_store.py": {
+    "20e669d78f6401513a17": 1,
+    "254439fa79014e21511f": 1,
+    "33409e896e996d45fad7": 1,
+    "517aa355add600b3bf3c": 1,
+    "82d215cca26efba4a1bd": 1,
+    "bdda4582a7fb81bcc672": 1,
+    "e36b791dba8b85cf6a64": 1
+  },
+  "app/worker.py": {
+    "2110f3853ca46b541a1c": 1,
+    "3392e43027b0258b0528": 1,
+    "7c716fabdde5e275d617": 1,
+    "f67b78aaca2138ccf596": 1
+  },
+  "constraints.txt": {
+    "a09bb8d06ca4ab467fdb": 2,
+    "b9f883b2a90e095769c0": 1,
+    "c10aeff77e7acb6ec74e": 1
+  },
+  "laravel/app/Http/Controllers/ErrorsController.php": {
+    "59a50a9e18d09ed8de89": 1,
+    "70d7c771fc2f9bfbd22b": 1,
+    "865114b1d0ad72176ab3": 2
+  },
+  "laravel/app/Http/Controllers/StatsController.php": {
+    "0ac58d24fdfd4f1b5ffd": 2,
+    "49d408f274cb935f914a": 1,
+    "70d7c771fc2f9bfbd22b": 1
+  },
+  "laravel/app/Services/LegacyPythonState.php": {
+    "0c909fbdc7acdf7c2185": 2,
+    "1be93e27d53d4b48a185": 1,
+    "311fbd6b7dd100d74725": 1,
+    "50f2e4f271a39ce1320c": 1,
+    "6d3542a3a108ae71515c": 1
+  },
+  "laravel/app/Support/DiagnosticPresenter.php": {
+    "6426800947e5ce7eb3fb": 1
+  },
+  "laravel/database/migrations/2026_06_05_000000_install_absurd_queue_schema.php": {
+    "19a220cbf5753012c0df": 1,
+    "2c1573f3bcfe19b9dc78": 1,
+    "dbee91e1443e2260463e": 1,
+    "f57ede8d499dbc28cd4d": 1
+  },
+  "laravel/database/sql/absurd.sql": {
+    "02ecd31ed53ee30f1c54": 2,
+    "062c3c54b596b97b6689": 3,
+    "08e44db18dcb9d8aa690": 1,
+    "0932647ff6e80af85358": 1,
+    "0bc18359cae5ab2211b8": 1,
+    "0d26edb9197d3af7b914": 1,
+    "0ee0916a8be61dd6d91b": 1,
+    "0f733038bc610898226b": 1,
+    "104d45faece3d589916d": 1,
+    "1783e15243d53c40116d": 1,
+    "184e0e41a8c40c37362b": 8,
+    "195683900d1bf669ffc6": 1,
+    "1d1da341d33141fee957": 9,
+    "20a67c35c5a8f7a35891": 1,
+    "21aeee906e8326e98219": 3,
+    "297658aebb6ccb60dedb": 1,
+    "298ba0621635986d908d": 1,
+    "2aa856c34bfc220b5655": 1,
+    "2bc7415cd9d40862df9b": 1,
+    "2c4ecaa8e2b2a0a476d2": 1,
+    "2df59726d5eb8865cf74": 1,
+    "2e3f2051ced2a9ba21ed": 1,
+    "2e918bfa3fd993eb7d45": 1,
+    "2fa0f46ff5cb0c96cd81": 1,
+    "30b69717eda8b3a17e63": 1,
+    "30dc5c68844a3c9f0647": 1,
+    "323573678b4e37b9dd8c": 1,
+    "35d16d14e69c5a9cdf3f": 1,
+    "3a719febffff3926da50": 1,
+    "3b2f39020de5fc441032": 1,
+    "3b7fd5564720b3fd143a": 8,
+    "40b9279359d4fc404a5b": 1,
+    "4142a247daebd61f2942": 1,
+    "446d4206a6eb77da0b33": 1,
+    "4cd83e1a4b3d0a0bf3b9": 1,
+    "4e10a1aa41230ba55698": 2,
+    "4e31a024b4aa501ff31b": 1,
+    "4fed118aa8c14a086f47": 1,
+    "59db1023e58cc8e3d978": 1,
+    "5e2f6d899381f3b9a695": 1,
+    "5e592beb37ca4340949e": 1,
+    "5e622ea4e53da8c119af": 1,
+    "5f81c842038c40287a24": 1,
+    "606e01e6716293577518": 4,
+    "60dfa59b6ccbac2c241d": 1,
+    "635ea73a65bfb52590b7": 1,
+    "637ccac97179c47ff636": 1,
+    "64b0e89fc79b248f3bdd": 1,
+    "67368bbfb415b9db0c71": 1,
+    "6837ace3a8d1e5efac01": 1,
+    "69a96929d58abc1003ec": 1,
+    "6b8c8eb144ae1590f2a5": 1,
+    "6c06750a92a8e99d3801": 1,
+    "6d04a59e390b782feea9": 2,
+    "6f2e856fa4d936b6c377": 3,
+    "70705b553585e2ee2e72": 1,
+    "72db342d494add4535d3": 1,
+    "7335af78990529ffc892": 2,
+    "734da01cad4c09748732": 1,
+    "7377f03d9a26cbfe2b8d": 1,
+    "742a7b7d806d71aa9b58": 6,
+    "766a46c6edf8ca539ed7": 1,
+    "7788dadb94c838023c72": 1,
+    "786ad30c5d4e1a67e797": 1,
+    "7ab149a77d475aa101b8": 1,
+    "7b276834ff13fb28e672": 1,
+    "7b4fad08c32f7cbda605": 1,
+    "7b965ef442dbb0e244b8": 1,
+    "7da1584a30650c9bc587": 1,
+    "7dc8cc7b4901009a0e9d": 1,
+    "7ff43ec1f77a1c9cf07f": 2,
+    "8019800bc1beb202e251": 9,
+    "824acfdb8b7b4a6a1197": 1,
+    "841f4dcbf2c8859cccf2": 1,
+    "8637e19e923c48bec370": 1,
+    "86a0d386993372bf4c0c": 1,
+    "8928be4228647288626c": 1,
+    "89b3760648e6a3b5fbe2": 1,
+    "8c38f277670b28b54397": 1,
+    "8d3106dd0b6d156b71f4": 1,
+    "8e3a2ea2611b3981a2a1": 1,
+    "8f0cfe8145c5957d6334": 1,
+    "9067df55577ec8c27fc2": 1,
+    "90aa813e86957debc5a6": 4,
+    "94fbec414b7829c1432c": 1,
+    "95e319a80eb73c1fd1e1": 1,
+    "96014a1bc31eb4a96f32": 14,
+    "979e71087d2739afaa63": 1,
+    "98398652cd926f6e028c": 1,
+    "9953961be86b9083e74b": 1,
+    "9dd0751904f11ccdbc0e": 1,
+    "9ee54685e91d50f424c1": 6,
+    "9fc12c44ba803567a9a4": 1,
+    "a280bfb9e2e9c2dd23bb": 3,
+    "a49091f25a33b4bcf77d": 1,
+    "a513bdca1d85047055c3": 1,
+    "a6a81d18ccbb48c85e8f": 2,
+    "a86e4dfc4b2645faafde": 4,
+    "ac61bed61047ba15ce92": 1,
+    "adcd2cef3d828f88757f": 1,
+    "adf8a0e585b0e93997aa": 15,
+    "aedbe36908e289f3e3eb": 1,
+    "b18c92d62a687fbae7b3": 1,
+    "b42345d29acce6431d08": 1,
+    "b46495f7df67a12d8a4e": 1,
+    "b542a12d38d1f029f5e9": 1,
+    "b584a4cb0100fa503c5a": 1,
+    "b5b652416fc8ed4c47fd": 2,
+    "b8c641b740e345aecc5f": 1,
+    "b91f97b63d07971ea888": 1,
+    "b992202d1c55c9544707": 2,
+    "ba252abcd92eed64efdf": 1,
+    "bd04219bf69bebaefbb8": 1,
+    "bd91711d38feace17080": 2,
+    "be30481154c73adee5df": 1,
+    "c160aef25be57125d1aa": 1,
+    "c4d39f660ba0934c1b1e": 1,
+    "c51e467e1c44c5e1c020": 1,
+    "c61687a6c56c36312039": 1,
+    "c782e3a3f05df4e61dbe": 2,
+    "ca6a89925a9e2729414d": 1,
+    "ccb783923ce9c439aa61": 1,
+    "ce5ef7e74c8d5b368c75": 1,
+    "d0eb2c3dd30b89c06169": 1,
+    "d43f7412fbde1b6a179e": 1,
+    "d6008e3cbb2adf72a946": 1,
+    "d68ff995877cb874315c": 1,
+    "db36855a689395568973": 2,
+    "dba6f0a985c2650a7fed": 1,
+    "dc97f43532e008a02f92": 1,
+    "dcfa12597105a4a4e57d": 1,
+    "dea2a56c8e9f3a143266": 1,
+    "e0295670418adf50e9bc": 1,
+    "e417c1781b88f9cc7246": 2,
+    "e5a3c977c87b4b104f5e": 1,
+    "e64ab18490904e226ef1": 1,
+    "e8ab6b968dceceed2308": 2,
+    "e90df7f83daf45b149b9": 1,
+    "e9b36c70093d4b9345ee": 1,
+    "e9cd0eeb2f11233513bb": 1,
+    "ed3e438a6c203b27f97f": 1,
+    "ee6cb9919f98b1332ee3": 14,
+    "eea96094a30f290cd377": 1,
+    "eeb664723ee68a7d4f77": 1,
+    "ef2f217715edb6df545a": 1,
+    "f0e539bd8460bfa40355": 1,
+    "f540e21c3f5ad54971b3": 1,
+    "f70531972a38763c80b1": 1,
+    "f73a60413c61e9455a27": 1,
+    "f9c6bfab83cf7f63b547": 1,
+    "fb20961e00e2a8c65b9c": 1,
+    "fccd136df9cbff42fda3": 1,
+    "fd3d988a6ffac3e67635": 1,
+    "fe69beecaeaaea3e0b0f": 1
+  },
+  "pyproject.toml": {
+    "23ae798e03ccc79b3c70": 1
+  },
+  "scripts/event_driven_smoke.py": {
+    "a64708f826dacca35125": 1
+  }
+}

@@ -8,6 +8,7 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Services\Pipeline\PipelineLifecycleRecorder;
 use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -66,7 +67,7 @@ class PipelineRunController extends Controller
             'queued',
             'Manual admin retry queued.',
         );
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => $gate['status'],
             'progress_current_phase' => $gate['progress_current_phase'],
             'progress_message' => $gate['progress_message'],
@@ -79,7 +80,7 @@ class PipelineRunController extends Controller
             'error_type' => $gate['error_type'],
             'error' => $gate['error'],
             'finished_at' => null,
-        ])->save();
+        ]);
 
         $this->audit($request, 'pipeline_run.retry_queued', $pipelineRun);
 
@@ -116,7 +117,7 @@ class PipelineRunController extends Controller
             'retry_failed_items',
             "Manual admin retry queued for {$failedItemCount} failed pipeline item(s).",
         );
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => $gate['status'],
             'progress_current_phase' => $gate['progress_current_phase'],
             'progress_message' => $gate['progress_message'],
@@ -130,9 +131,9 @@ class PipelineRunController extends Controller
             'error_type' => $gate['error_type'],
             'error' => $gate['error'],
             'finished_at' => null,
-        ])->save();
+        ]);
 
-        PipelineEvent::query()->create([
+        PipelineLifecycleRecorder::event([
             'pipeline_run_id' => $pipelineRun->id,
             'event_type' => 'job_control.retry_failed_items_requested',
             'paperless_document_id' => $pipelineRun->paperless_document_id,
@@ -163,13 +164,13 @@ class PipelineRunController extends Controller
             PipelineRun::STATUS_RETRYING,
         ], true), 409);
 
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
             'progress_message' => 'Manual admin cancellation requested.',
             'progress_updated_at' => now(),
             'error_type' => 'cancel_requested',
             'error' => 'Manual admin cancellation requested.',
-        ])->save();
+        ]);
 
         $this->audit($request, 'pipeline_run.cancel_requested', $pipelineRun);
 
@@ -358,7 +359,7 @@ class PipelineRunController extends Controller
      */
     private function audit(Request $request, string $event, PipelineRun $pipelineRun, array $metadata = []): void
     {
-        AuditLog::query()->create([
+        PipelineLifecycleRecorder::audit([
             'actor_user_id' => $request->user()->id,
             'event' => $event,
             'target_type' => 'pipeline_run',

@@ -5,7 +5,6 @@ namespace App\Services\Pipeline;
 use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -14,6 +13,10 @@ use Throwable;
 
 class MaintenanceCommandDispatcher
 {
+    public function __construct(
+        private readonly PipelineStartGate $pipelineStartGate,
+    ) {}
+
     public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): Command
     {
         return Cache::lock('archibot:poll-command-dispatch', 120)->block(
@@ -150,18 +153,7 @@ class MaintenanceCommandDispatcher
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): Command
     {
         $limit = $this->normalizedLimit($limit);
-        $embeddingState = EmbeddingIndexState::query()->latest()->first();
-        if ($embeddingState === null) {
-            $embeddingState = EmbeddingIndexState::query()->create([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Reindex requested by admin before an index existed.',
-            ]);
-        } else {
-            $embeddingState->forceFill([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Reindex requested by admin.',
-            ])->save();
-        }
+        $embeddingState = $this->pipelineStartGate->markStale('Reindex requested by admin.');
 
         $payload = array_filter([
             'limit' => $limit,

@@ -1,7 +1,20 @@
+from contextlib import contextmanager
+
 import pytest
 
 from app import actor_runner
 from app.jobs.commands import CommandRecord
+
+
+@pytest.fixture(autouse=True)
+def _actor_lease_protocol(monkeypatch):
+    @contextmanager
+    def lease():
+        yield object()
+
+    monkeypatch.setattr(actor_runner, "document_actor_lease", lease)
+    monkeypatch.setattr(actor_runner, "embedding_mutation_lease", lease)
+    monkeypatch.setattr(actor_runner, "embedding_index_ready", lambda connection: True)
 
 
 def test_build_embedding_index_uses_command_payload_limit(monkeypatch):
@@ -110,18 +123,45 @@ def test_build_embedding_index_marks_failed_and_reraises(monkeypatch):
     assert "test_actor_runner.py" in statuses[1][2]
 
 
-def test_run_document_pipeline_invokes_fixed_actor(monkeypatch):
-    calls = []
+def test_run_document_pipeline_revalidates_and_mutates_inside_child_shared_lease(monkeypatch):
+    events = []
+    connection = object()
 
+    @contextmanager
+    def lease():
+        events.append("shared-acquired")
+        try:
+            yield connection
+        finally:
+            events.append("shared-released")
+
+    monkeypatch.setattr(actor_runner, "document_actor_lease", lease)
+    monkeypatch.setattr(
+        actor_runner,
+        "embedding_index_ready",
+        lambda owned_connection: (
+            events.append(
+                "ready-on-owner" if owned_connection is connection else "wrong-connection"
+            )
+            or True
+        ),
+    )
     monkeypatch.setattr(
         actor_runner,
         "_handle_document_pipeline_impl",
-        lambda pipeline_run_id: calls.append(pipeline_run_id),
+        lambda pipeline_run_id, *, embedding_ready: events.append(
+            f"mutated:{pipeline_run_id}:ready={embedding_ready}"
+        ),
     )
 
     actor_runner.run_document_pipeline(77)
 
-    assert calls == [77]
+    assert events == [
+        "shared-acquired",
+        "ready-on-owner",
+        "mutated:77:ready=True",
+        "shared-released",
+    ]
 
 
 def test_run_webhook_delivery_invokes_fixed_actor(monkeypatch):
@@ -178,6 +218,52 @@ def test_run_poll_reconciliation_uses_command_payload_limit_and_force(monkeypatc
 
     assert calls == [(3, True, 44)]
     assert statuses == [(44, "running"), (44, "succeeded")]
+
+
+def test_embedding_build_transition_and_reindex_lifecycle_are_inside_child_exclusive_lease(
+    monkeypatch,
+):
+    events = []
+
+    @contextmanager
+    def lease():
+        events.append("exclusive-acquired")
+        try:
+            yield object()
+        finally:
+            events.append("exclusive-released")
+
+    monkeypatch.setattr(actor_runner, "embedding_mutation_lease", lease)
+    monkeypatch.setattr(
+        actor_runner,
+        "load_command",
+        lambda command_id: CommandRecord(
+            id=command_id,
+            type="embedding_index_build",
+            status="queued",
+            payload={},
+        ),
+    )
+    monkeypatch.setattr(
+        actor_runner,
+        "mark_command_status",
+        lambda command_id, status, *args: events.append(f"command:{status}"),
+    )
+    monkeypatch.setattr(
+        actor_runner,
+        "_build_initial_embedding_index_impl",
+        lambda **kwargs: events.append("stale-build-complete"),
+    )
+
+    actor_runner.run_embedding_index_build_command(45)
+
+    assert events == [
+        "exclusive-acquired",
+        "command:running",
+        "stale-build-complete",
+        "command:succeeded",
+        "exclusive-released",
+    ]
 
 
 def test_run_reindex_uses_embedding_rebuild_actor(monkeypatch):

@@ -76,9 +76,9 @@ Webhook and polling must not implement separate Pipeline Start decisions. ADR-00
 App\Services\Pipeline\DocumentPipelineStarter::start(...)
 ```
 
-The current Python `app.jobs.pipeline_start.start_or_attach_document_pipeline(...)` is transitional code scheduled for deletion. New work must not extend it. Python polling persists/reports durable candidates; a Laravel consumer invokes the starter, which computes the dedupe key, enforces the embedding readiness gate, coalesces through durable PostgreSQL state, emits canonical events and dispatches newly created runs.
+Productive Python Pipeline Start has been deleted. Python polling persists protocol-v1 durable candidates; a lease-fenced Laravel consumer invokes the starter, which computes the dedupe key, enforces the embedding readiness gate, coalesces through durable PostgreSQL state, emits canonical events and dispatches only newly created runs. Run creation commits before fallible dispatch, including webhook recovery, so enqueue failure leaves a `pending` run for Laravel recovery. The post-dispatch `pending` to `queued` update is conditional and cannot overwrite a fast child's `running` or terminal transition.
 
-Existing cross-runtime contract vectors remain migration evidence until every caller reaches Laravel. The hardening plan requires equivalent timestamp normalization and crash/replay tests before deleting the Python path.
+Cross-runtime contract vectors remain normalization evidence and ownership guards reject reintroduction of productive Python creation/start paths.
 
 Responsibilities:
 
@@ -124,7 +124,7 @@ All trigger sources use the same durable coalescing seam:
 unique(paperless_document_id, pipeline_dedupe_key)
 ```
 
-A future PostgreSQL advisory lock or lock table may still be added for finer-grained scheduling, but the implemented correctness seam is the database uniqueness constraint plus coalesced-source update.
+The uniqueness constraint and coalesced-source update serialize duplicate starts. In addition, a stable PostgreSQL session advisory lock fences execution against embedding mutation. Each productive Python document child owns a shared lease from readiness revalidation through the complete actor mutation; each Python build/reindex child owns an exclusive lease before its first stale/build transition through completion. Laravel holds only short start/stale-transition leases and never waits for a child while holding one, so parent death cannot release a live child's protection.
 
 ### Webhook Delivery Dedupe
 

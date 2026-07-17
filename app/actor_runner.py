@@ -28,6 +28,11 @@ from app.jobs.actor_execution import (
 )
 from app.jobs.commands import CommandRecord, load_command, mark_command_status
 from app.jobs.database import engine
+from app.jobs.pipeline_fence import (
+    document_actor_lease,
+    embedding_index_ready,
+    embedding_mutation_lease,
+)
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 
 log = structlog.get_logger(__name__)
@@ -99,7 +104,7 @@ def _payload_bool(command: CommandRecord, key: str) -> bool:
 
 
 def run_embedding_index_build_command(command_id: int) -> None:
-    """Run an embedding index build from the durable command payload."""
+    """Run an embedding build while the Python child owns the exclusive lease."""
     command = load_command(command_id)
     if command is None:
         _fail(f"Command {command_id} was not found")
@@ -110,33 +115,34 @@ def run_embedding_index_build_command(command_id: int) -> None:
         )
 
     limit = _payload_limit(command)
-    mark_command_status(command.id, "running")
-    log.info(
-        "embedding actor command started",
-        command_id=command.id,
-        command_type=command.type,
-        limit=limit,
-    )
-    try:
-        _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
-    except Exception as exc:
-        mark_command_status(command.id, "failed", _exception_summary(exc))
-        log.warning(
-            "embedding actor command failed",
+    with embedding_mutation_lease():
+        mark_command_status(command.id, "running")
+        log.info(
+            "embedding actor command started",
             command_id=command.id,
             command_type=command.type,
-            error_type=type(exc).__name__,
-            error=str(exc)[:1000],
-            exc_info=True,
+            limit=limit,
         )
-        raise
+        try:
+            _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
+        except Exception as exc:
+            mark_command_status(command.id, "failed", _exception_summary(exc))
+            log.warning(
+                "embedding actor command failed",
+                command_id=command.id,
+                command_type=command.type,
+                error_type=type(exc).__name__,
+                error=str(exc)[:1000],
+                exc_info=True,
+            )
+            raise
 
-    mark_command_status(command.id, "succeeded")
-    log.info(
-        "embedding actor command succeeded",
-        command_id=command.id,
-        command_type=command.type,
-    )
+        mark_command_status(command.id, "succeeded")
+        log.info(
+            "embedding actor command succeeded",
+            command_id=command.id,
+            command_type=command.type,
+        )
 
 
 def _load_typed_command(command_id: int, expected_type: str) -> CommandRecord:
@@ -170,18 +176,19 @@ def run_poll_reconciliation_command(command_id: int) -> None:
 
 
 def run_reindex_command(command_id: int) -> None:
-    """Run reindex from the durable command payload using the embedding rebuild actor."""
+    """Run reindex while the Python child owns the exclusive mutation lease."""
     command = _load_typed_command(command_id, REINDEX_COMMAND_TYPE)
     limit = _payload_limit(command)
-    mark_command_status(command.id, "running")
-    log.info("reindex actor command started", command_id=command.id, limit=limit)
-    try:
-        _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
-    except Exception as exc:
-        mark_command_status(command.id, "failed", _exception_summary(exc))
-        raise
-    mark_command_status(command.id, "succeeded")
-    log.info("reindex actor command succeeded", command_id=command.id)
+    with embedding_mutation_lease():
+        mark_command_status(command.id, "running")
+        log.info("reindex actor command started", command_id=command.id, limit=limit)
+        try:
+            _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
+        except Exception as exc:
+            mark_command_status(command.id, "failed", _exception_summary(exc))
+            raise
+        mark_command_status(command.id, "succeeded")
+        log.info("reindex actor command succeeded", command_id=command.id)
 
 
 def run_reindex_ocr_command(command_id: int) -> None:
@@ -288,10 +295,19 @@ def _mark_entity_approval_sync_status(entity_approval_id: object, status: str) -
 
 
 def run_document_pipeline(pipeline_run_id: int) -> None:
-    """Run one durable document pipeline run."""
-    log.info("document actor command started", pipeline_run_id=pipeline_run_id)
-    _handle_document_pipeline_impl(pipeline_run_id)
-    log.info("document actor command finished", pipeline_run_id=pipeline_run_id)
+    """Run one document actor while this Python child owns the shared lease."""
+    with document_actor_lease() as lease_connection:
+        # This is the decisive readiness read. It uses the exact session that
+        # owns the shared lease and is passed into the actor so no unfenced or
+        # second-session gate read controls mutation.
+        ready = embedding_index_ready(lease_connection)
+        log.info(
+            "document actor command started",
+            pipeline_run_id=pipeline_run_id,
+            embedding_index_ready=ready,
+        )
+        _handle_document_pipeline_impl(pipeline_run_id, embedding_ready=ready)
+        log.info("document actor command finished", pipeline_run_id=pipeline_run_id)
 
 
 def run_webhook_delivery(webhook_delivery_id: int) -> None:

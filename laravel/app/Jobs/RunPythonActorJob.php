@@ -6,6 +6,7 @@ use App\Models\Command;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
+use App\Services\Pipeline\PollCandidateConsumer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -70,22 +71,32 @@ class RunPythonActorJob implements ShouldQueue
         return new self(PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK, $deliveryId);
     }
 
-    public function handle(PythonActorRunner $runner): void
-    {
+    public function handle(
+        PythonActorRunner $runner,
+        ?PollCandidateConsumer $pollCandidates = null,
+    ): void {
+        $pollCandidates ??= app(PollCandidateConsumer::class);
+
         match ($this->actorName) {
-            PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX => $this->runCommandIfEligible($runner, 'runEmbeddingIndexBuild'),
+            PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX,
+            PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION,
+            PythonActorRunner::ACTOR_REINDEX,
+            PythonActorRunner::ACTOR_REINDEX_OCR,
+            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $this->runCommandIfEligible($runner),
             PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE => $this->runPipelineIfEligible($runner),
-            PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION => $this->runCommandIfEligible($runner, 'runReviewCommit'),
-            PythonActorRunner::ACTOR_POLL_RECONCILIATION => $this->runCommandIfEligible($runner, 'runPollReconciliation'),
-            PythonActorRunner::ACTOR_REINDEX => $this->runCommandIfEligible($runner, 'runReindex'),
-            PythonActorRunner::ACTOR_REINDEX_OCR => $this->runCommandIfEligible($runner, 'runReindexOcr'),
+            PythonActorRunner::ACTOR_POLL_RECONCILIATION => $this->runPollReconciliation($runner, $pollCandidates),
             PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK => $this->runWebhookIfEligible($runner),
-            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $this->runCommandIfEligible($runner, 'runSyncEntityApproval'),
             default => throw new InvalidArgumentException("Unsupported Python actor {$this->actorName}."),
         };
     }
 
-    private function runCommandIfEligible(PythonActorRunner $runner, string $method): void
+    private function runPollReconciliation(PythonActorRunner $runner, PollCandidateConsumer $pollCandidates): void
+    {
+        $this->runCommandIfEligible($runner);
+        $pollCandidates->consumeCommand($this->commandId);
+    }
+
+    private function runCommandIfEligible(PythonActorRunner $runner): void
     {
         $command = DB::transaction(function (): ?Command {
             $command = Command::query()->lockForUpdate()->findOrFail($this->commandId);
@@ -93,39 +104,45 @@ class RunPythonActorJob implements ShouldQueue
                 return null;
             }
 
-            $command->forceFill([
+            $command->update([
                 'status' => Command::STATUS_RUNNING,
                 'started_at' => $command->started_at ?? now(),
-            ])->save();
+            ]);
 
             return $command;
         });
-        if ($command !== null) {
-            $runner->{$method}($command);
+        if ($command === null) {
+            return;
         }
+
+        match ($this->actorName) {
+            PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX => $runner->runEmbeddingIndexBuild($command),
+            PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION => $runner->runReviewCommit($command),
+            PythonActorRunner::ACTOR_POLL_RECONCILIATION => $runner->runPollReconciliation($command),
+            PythonActorRunner::ACTOR_REINDEX => $runner->runReindex($command),
+            PythonActorRunner::ACTOR_REINDEX_OCR => $runner->runReindexOcr($command),
+            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $runner->runSyncEntityApproval($command),
+            default => throw new InvalidArgumentException("Unsupported command actor {$this->actorName}."),
+        };
     }
 
     private function runPipelineIfEligible(PythonActorRunner $runner): void
     {
         $run = DB::transaction(function (): ?PipelineRun {
             $run = PipelineRun::query()->lockForUpdate()->findOrFail($this->commandId);
-            if (! in_array($run->status, [
+
+            return in_array($run->status, [
                 PipelineRun::STATUS_PENDING,
                 PipelineRun::STATUS_QUEUED,
                 PipelineRun::STATUS_RETRYING,
-            ], true)) {
-                return null;
-            }
-
-            $run->forceFill([
-                'status' => PipelineRun::STATUS_RUNNING,
-                'started_at' => $run->started_at ?? now(),
-                'progress_updated_at' => now(),
-            ])->save();
-
-            return $run;
+            ], true) ? $run : null;
         });
         if ($run !== null) {
+            // The child acquires and owns its PostgreSQL shared lease before
+            // readiness revalidation or any productive pipeline mutation.
+            // Laravel must not hold a lease while waiting for the child: that
+            // would deadlock exclusive actors and parent death would otherwise
+            // release the wrong process's protection.
             $runner->runDocumentPipeline($run);
         }
     }
@@ -141,7 +158,7 @@ class RunPythonActorJob implements ShouldQueue
                 return null;
             }
 
-            $delivery->forceFill(['status' => WebhookDelivery::STATUS_RUNNING])->save();
+            $delivery->update(['status' => WebhookDelivery::STATUS_RUNNING]);
 
             return $delivery;
         });

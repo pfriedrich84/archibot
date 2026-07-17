@@ -32,12 +32,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
-from app.actors.embedding import _build_pgvector_embeddings
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.db import init_db
-from app.jobs.embedding_index import finish_embedding_index_build, start_embedding_index_build
 
 
 def _exception_summary(exc: BaseException) -> str:
@@ -140,87 +138,10 @@ async def cmd_reindex_ocr(*, force: bool = False) -> dict[str, object]:
 async def cmd_reindex_embed(
     *, emit_progress: bool = False, job_id: str | None = None, job_type: str = "reindex_embed"
 ) -> dict[str, object]:
-    """Rebuild embeddings only (skip OCR, use cached OCR text if available)."""
-    from datetime import UTC, datetime
-
-    import app.indexer as indexer
-    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress
-
-    enable_reindex_progress_stdout(emit_progress)
-    progress = get_reindex_progress()
-    progress.running = True
-    progress.total = 0
-    progress.done = 0
-    progress.failed = 0
-    progress.started_at = datetime.now(tz=UTC).isoformat()
-    progress.finished_at = None
-    progress.error = None
-    progress.cancelled = False
-    progress.phase = "prepare"
-    progress.job_id = job_id
-    progress.job_type = job_type
-    progress.failed_document_ids = []
-    indexer._emit_reindex_progress(event="job_started", message="Embedding reindex started")
-
-    build = start_embedding_index_build(
-        embedding_model=settings.ollama_embed_model,
-        dimensions=None,
-        content_scope="trusted_documents_without_inbox_tag",
-        document_count=0,
-    )
-    if build.already_running:
-        progress.running = False
-        progress.phase = "skipped"
-        progress.finished_at = datetime.now(tz=UTC).isoformat()
-        message = "Embedding reindex skipped because another PostgreSQL/pgvector build is already running."
-        indexer._emit_reindex_progress(event="job_skipped", message=message)
-        print(message)
-        return {
-            "indexed": 0,
-            "failed": 0,
-            "failed_document_ids": [],
-            "progress": progress.__dict__.copy(),
-        }
-
-    try:
-        total, count, failed = await _build_pgvector_embeddings(build.id, None, None)
-        progress.total = total
-        progress.done = count + failed
-        finish_embedding_index_build(
-            build.id,
-            status="complete" if failed == 0 else "failed",
-            error=None if failed == 0 else f"{failed} document embeddings failed",
-        )
-        progress.failed = failed
-        progress.phase = "finished"
-        progress.finished_at = datetime.now(tz=UTC).isoformat()
-        indexer._emit_reindex_progress(
-            event="job_finished",
-            message="Embedding reindex finished",
-            indexed=count,
-            failed=progress.failed,
-            failed_document_ids=progress.failed_document_ids or [],
-        )
-        print(f"Embedding complete: {count} documents indexed, {progress.failed} failed.")
-        return {
-            "indexed": count,
-            "failed": progress.failed,
-            "failed_document_ids": progress.failed_document_ids or [],
-            "progress": progress.__dict__.copy(),
-        }
-    except Exception as exc:
-        finish_embedding_index_build(build.id, status="failed", error=str(exc)[:1000])
-        progress.phase = "failed"
-        progress.error = str(exc)[:1000]
-        progress.finished_at = datetime.now(tz=UTC).isoformat()
-        indexer._emit_reindex_progress(
-            event="job_failed",
-            message="Embedding reindex failed",
-            error=progress.error,
-        )
-        raise
-    finally:
-        progress.running = False
+    """Queue embedding rebuild through Laravel, the sole fenced owner."""
+    del emit_progress, job_id, job_type
+    cmd_laravel_maintenance("reindex_embed")
+    return {"queued": True, "owner": "laravel"}
 
 
 async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
@@ -360,20 +281,53 @@ async def cmd_sync_entity_approval(
     )
 
     tables = {
-        "tag": ("tag_whitelist", "tag_blacklist", retroactive_tag_apply),
+        "tag": (
+            "DELETE FROM tag_blacklist WHERE name = ?",
+            "DELETE FROM tag_whitelist WHERE name = ?",
+            "SELECT times_seen FROM tag_whitelist WHERE name = ?",
+            "INSERT OR REPLACE INTO tag_blacklist (name, times_seen) VALUES (?, ?)",
+            """INSERT INTO tag_whitelist (name, paperless_id, approved)
+               VALUES (?, ?, 1)
+               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
+                                               approved = 1""",
+            retroactive_tag_apply,
+        ),
         "correspondent": (
-            "correspondent_whitelist",
-            "correspondent_blacklist",
+            "DELETE FROM correspondent_blacklist WHERE name = ?",
+            "DELETE FROM correspondent_whitelist WHERE name = ?",
+            "SELECT times_seen FROM correspondent_whitelist WHERE name = ?",
+            "INSERT OR REPLACE INTO correspondent_blacklist (name, times_seen) VALUES (?, ?)",
+            """INSERT INTO correspondent_whitelist (name, paperless_id, approved)
+               VALUES (?, ?, 1)
+               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
+                                               approved = 1""",
             retroactive_correspondent_apply,
         ),
-        "document_type": ("doctype_whitelist", "doctype_blacklist", retroactive_doctype_apply),
+        "document_type": (
+            "DELETE FROM doctype_blacklist WHERE name = ?",
+            "DELETE FROM doctype_whitelist WHERE name = ?",
+            "SELECT times_seen FROM doctype_whitelist WHERE name = ?",
+            "INSERT OR REPLACE INTO doctype_blacklist (name, times_seen) VALUES (?, ?)",
+            """INSERT INTO doctype_whitelist (name, paperless_id, approved)
+               VALUES (?, ?, 1)
+               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
+                                               approved = 1""",
+            retroactive_doctype_apply,
+        ),
     }
     if entity_type not in tables:
         raise ValueError(f"Unsupported entity approval type: {entity_type}")
     if action not in {"approved", "rejected", "unblacklisted"}:
         raise ValueError(f"Unsupported entity approval action: {action}")
 
-    whitelist_table, blacklist_table, retroactive_apply = tables[entity_type]
+    (
+        delete_blacklist_sql,
+        delete_whitelist_sql,
+        select_whitelist_sql,
+        insert_blacklist_sql,
+        upsert_whitelist_sql,
+        retroactive_apply,
+    ) = tables[entity_type]
     result: dict[str, object] = {
         "action": action,
         "type": entity_type,
@@ -385,15 +339,8 @@ async def cmd_sync_entity_approval(
         if paperless_id is None:
             raise ValueError("Approved entity sync requires paperless_id")
         with get_conn() as conn:
-            conn.execute(f"DELETE FROM {blacklist_table} WHERE name = ?", (name,))
-            conn.execute(
-                f"""
-                INSERT INTO {whitelist_table} (name, paperless_id, approved)
-                VALUES (?, ?, 1)
-                ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id, approved = 1
-                """,
-                (name, paperless_id),
-            )
+            conn.execute(delete_blacklist_sql, (name,))
+            conn.execute(upsert_whitelist_sql, (name, paperless_id))
             conn.execute(
                 """
                 INSERT INTO audit_log (action, document_id, actor, details)
@@ -421,18 +368,13 @@ async def cmd_sync_entity_approval(
         )
     elif action == "rejected":
         with get_conn() as conn:
-            row = conn.execute(
-                f"SELECT times_seen FROM {whitelist_table} WHERE name = ?", (name,)
-            ).fetchone()
+            row = conn.execute(select_whitelist_sql, (name,)).fetchone()
             times_seen = row["times_seen"] if row else 1
-            conn.execute(f"DELETE FROM {whitelist_table} WHERE name = ?", (name,))
-            conn.execute(
-                f"INSERT OR REPLACE INTO {blacklist_table} (name, times_seen) VALUES (?, ?)",
-                (name, times_seen),
-            )
+            conn.execute(delete_whitelist_sql, (name,))
+            conn.execute(insert_blacklist_sql, (name, times_seen))
     else:
         with get_conn() as conn:
-            conn.execute(f"DELETE FROM {blacklist_table} WHERE name = ?", (name,))
+            conn.execute(delete_blacklist_sql, (name,))
 
     print(f"Entity approval sync complete: {result}")
     return result

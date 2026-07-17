@@ -22,7 +22,7 @@ class RecoverPipelineActors extends Command
         }
 
         $this->info(
-            "Recovery scan complete. actor_executions_stale={$summary['actor_executions_stale']} actor_executions_redispatched={$summary['actor_executions_redispatched']} actor_executions_failed_permanent={$summary['actor_executions_failed_permanent']} pipeline_runs_cancelled={$summary['pipeline_runs_cancelled']} webhook_deliveries_redispatched={$summary['webhook_deliveries_redispatched']} document_pipeline_runs_redispatched={$summary['document_pipeline_runs_redispatched']} commands_redispatched={$summary['commands_redispatched']}",
+            "Recovery scan complete. actor_executions_stale={$summary['actor_executions_stale']} actor_executions_redispatched={$summary['actor_executions_redispatched']} actor_executions_failed_permanent={$summary['actor_executions_failed_permanent']} poll_candidates_completed={$summary['poll_candidates_completed']} poll_candidates_skipped={$summary['poll_candidates_skipped']} poll_candidates_failed={$summary['poll_candidates_failed']} pipeline_runs_cancelled={$summary['pipeline_runs_cancelled']} webhook_deliveries_redispatched={$summary['webhook_deliveries_redispatched']} document_pipeline_runs_redispatched={$summary['document_pipeline_runs_redispatched']} commands_redispatched={$summary['commands_redispatched']}",
         );
 
         return self::SUCCESS;

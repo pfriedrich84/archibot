@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.absurd_queue import queue_name
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
@@ -311,8 +311,15 @@ def _finish_actor_if_cancelled(
     return False
 
 
-def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
-    """Handle one document pipeline run through durable event-driven steps."""
+def _handle_document_pipeline_impl(
+    pipeline_run_id: int, *, embedding_ready: bool | None = None
+) -> None:
+    """Handle one document pipeline run through durable event-driven steps.
+
+    The productive actor runner supplies ``embedding_ready`` from the exact
+    PostgreSQL session that owns the shared pipeline lease. Direct unit calls
+    may omit it and retain the ordinary database readiness lookup.
+    """
     started = time.monotonic()
     actor_name = "handle_document_pipeline"
     actor_execution = start_actor_execution(
@@ -346,7 +353,8 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             return
 
         _ensure_not_cancelled(pipeline_run_id)
-        if not ensure_embedding_index_ready():
+        ready = ensure_embedding_index_ready() if embedding_ready is None else embedding_ready
+        if not ready:
             message = "Document actor blocked because the embedding index is not ready."
             mark_pipeline_run_status(
                 pipeline_run_id,
@@ -626,11 +634,3 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
         queue_name=queue_name("io"),
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    handle_document_pipeline = queue_backend.actor(queue_name=queue_name("io"))(
-        _handle_document_pipeline_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    handle_document_pipeline = _handle_document_pipeline_impl

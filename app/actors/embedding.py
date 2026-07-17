@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.absurd_queue import queue_name
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
@@ -313,11 +313,3 @@ def _build_initial_embedding_index_impl(
         embedding_index_state_id=build.id,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    build_initial_embedding_index = queue_backend.actor(queue_name=queue_name("embedding"))(
-        _build_initial_embedding_index_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    build_initial_embedding_index = _build_initial_embedding_index_impl

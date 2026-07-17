@@ -162,6 +162,43 @@ class PipelineRecoveryDispatcherTest extends TestCase
             && $job->commandId === $run->id);
     }
 
+    public function test_recovery_enqueue_failure_keeps_committed_pending_run(): void
+    {
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_RECEIVED,
+            'event_type' => 'document_created',
+            'normalized_payload' => [
+                'webhook_action' => 'process_document',
+                'paperless_modified' => '2026-05-08T12:00:00Z',
+            ],
+        ]);
+        $delivery->timestamps = false;
+        $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        Queue::shouldReceive('push')->once()->andReturnUsing(function (): never {
+            $this->assertDatabaseHas('pipeline_runs', [
+                'status' => PipelineRun::STATUS_PENDING,
+            ]);
+            throw new \RuntimeException('queue unavailable during recovery');
+        });
+
+        $result = app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10);
+
+        $this->assertSame(0, $result['webhook_deliveries_redispatched']);
+        $this->assertDatabaseHas('pipeline_runs', [
+            'webhook_delivery_id' => $delivery->id,
+            'status' => PipelineRun::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'pipeline.document_actor_enqueue_failed',
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'recovery.process_webhook_reconciliation_failed',
+        ]);
+    }
+
     public function test_recovery_reconciles_blocked_process_webhook_after_gate_release(): void
     {
         Queue::fake();
@@ -203,7 +240,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
 
         $this->artisan('archibot:recovery-scan', ['--limit' => 5])
-            ->expectsOutput('Recovery scan complete. actor_executions_stale=0 actor_executions_redispatched=0 actor_executions_failed_permanent=0 pipeline_runs_cancelled=0 webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
+            ->expectsOutput('Recovery scan complete. actor_executions_stale=0 actor_executions_redispatched=0 actor_executions_failed_permanent=0 poll_candidates_completed=0 poll_candidates_skipped=0 poll_candidates_failed=0 pipeline_runs_cancelled=0 webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
             ->assertSuccessful();
 
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $delivery->id);

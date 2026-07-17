@@ -6,7 +6,6 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
-use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +15,7 @@ class PipelineRecoveryDispatcher
 {
     public function __construct(
         private readonly DocumentPipelineStarter $pipelineStarter,
+        private readonly PollCandidateConsumer $pollCandidates,
     ) {}
 
     /**
@@ -30,6 +30,7 @@ class PipelineRecoveryDispatcher
 
         try {
             $actors = $this->recoverActorExecutions($limit);
+            $pollCandidates = $this->pollCandidates->replayPending($limit);
             $cancelled = $this->finalizeCancelRequestedRuns($limit);
             $documentRuns = $this->recoverDocumentPipelineRuns($limit);
             $webhookDeliveries = $this->recoverQueuedWebhookDeliveries($limit);
@@ -39,6 +40,9 @@ class PipelineRecoveryDispatcher
                 'actor_executions_stale' => $actors['stale'],
                 'actor_executions_redispatched' => $actors['redispatched'],
                 'actor_executions_failed_permanent' => $actors['failed_permanent'],
+                'poll_candidates_completed' => $pollCandidates['completed'],
+                'poll_candidates_skipped' => $pollCandidates['skipped'],
+                'poll_candidates_failed' => $pollCandidates['failed'],
                 'pipeline_runs_cancelled' => $cancelled,
                 'webhook_deliveries_redispatched' => $webhookDeliveries,
                 'document_pipeline_runs_redispatched' => $documentRuns,
@@ -124,7 +128,7 @@ class PipelineRecoveryDispatcher
                 return 'failed_permanent';
             }
 
-            $execution->forceFill([
+            $execution->update([
                 'status' => ActorExecution::STATUS_RETRYING,
                 'finished_at' => now(),
                 'retry_reason' => 'worker_recovery_stale_actor',
@@ -133,7 +137,7 @@ class PipelineRecoveryDispatcher
                 'next_retry_at' => now(),
                 'error_type' => 'worker_recovery_stale_actor',
                 'error_message' => 'Actor execution was left running and recovered by Laravel recovery.',
-            ])->save();
+            ]);
             $this->markActorSourceRetryable($execution);
             $this->recordActorRecoveryEvent(
                 $execution,
@@ -200,12 +204,12 @@ class PipelineRecoveryDispatcher
                 return 'ignored';
             }
             if ($run?->status === PipelineRun::STATUS_CANCEL_REQUESTED) {
-                $execution->forceFill([
+                $execution->update([
                     'status' => ActorExecution::STATUS_CANCELLED,
                     'finished_at' => $execution->finished_at ?? now(),
                     'error_type' => 'cancel_requested',
                     'error_message' => 'Retry suppressed because pipeline cancellation was requested.',
-                ])->save();
+                ]);
 
                 return 'ignored';
             }
@@ -223,12 +227,12 @@ class PipelineRecoveryDispatcher
             }
 
             if ($this->redispatchActorSource($execution)) {
-                $execution->forceFill([
+                $execution->update([
                     'status' => ActorExecution::STATUS_FAILED,
                     'finished_at' => $execution->finished_at ?? now(),
                     'error_type' => $execution->error_type ?? 'actor_retry_redispatched',
                     'error_message' => $execution->error_message ?? 'A new actor attempt was dispatched by Laravel recovery.',
-                ])->save();
+                ]);
                 $this->recordActorRecoveryEvent(
                     $execution,
                     'recovery.actor_execution_redispatched',
@@ -361,13 +365,13 @@ class PipelineRecoveryDispatcher
 
     private function markActorExecutionSuperseded(ActorExecution $execution): void
     {
-        $execution->forceFill([
+        $execution->update([
             'status' => ActorExecution::STATUS_SKIPPED,
             'finished_at' => $execution->finished_at ?? now(),
             'next_retry_at' => null,
             'error_type' => 'superseded_by_newer_attempt',
             'error_message' => 'Retry suppressed because a newer source dispatch or actor attempt is active.',
-        ])->save();
+        ]);
         $this->recordActorRecoveryEvent(
             $execution,
             'recovery.actor_execution_superseded',
@@ -402,16 +406,16 @@ class PipelineRecoveryDispatcher
                         'updated_at' => now(),
                     ]);
 
-                $run->forceFill([
+                $run->update([
                     'status' => PipelineRun::STATUS_CANCELLED,
                     'finished_at' => now(),
                     'progress_current_phase' => 'cancelled',
                     'progress_message' => 'Pipeline run cancelled by Laravel recovery.',
                     'progress_updated_at' => now(),
                     'next_retry_at' => null,
-                ])->save();
+                ]);
 
-                PipelineEvent::query()->create([
+                PipelineLifecycleRecorder::event([
                     'pipeline_run_id' => $run->id,
                     'webhook_delivery_id' => $run->webhook_delivery_id,
                     'command_id' => $run->command_id,
@@ -707,7 +711,9 @@ class PipelineRecoveryDispatcher
 
     private function recoverProcessWebhookDelivery(WebhookDelivery $selected): bool
     {
-        return DB::transaction(function () use ($selected): bool {
+        // Do not call Pipeline Start from this selection transaction. Its run
+        // must commit before queue dispatch can fail, including on recovery.
+        $delivery = DB::transaction(function () use ($selected): ?WebhookDelivery {
             $delivery = WebhookDelivery::query()->lockForUpdate()->find($selected->id);
             if ($delivery === null
                 || ! in_array($delivery->status, [
@@ -718,28 +724,36 @@ class PipelineRecoveryDispatcher
                 ], true)
                 || ($delivery->normalized_payload['webhook_action'] ?? null) !== 'process_document'
                 || $delivery->updated_at->isAfter($this->staleQueuedCutoff())) {
-                return false;
+                return null;
             }
 
-            $run = PipelineRun::query()
-                ->where('webhook_delivery_id', $delivery->id)
-                ->latest('id')
-                ->first();
+            return $delivery;
+        });
+        if ($delivery === null) {
+            return false;
+        }
 
-            try {
-                if ($run === null) {
-                    $modified = $delivery->normalized_payload['paperless_modified'] ?? null;
-                    $result = $this->pipelineStarter->start(
-                        triggerSource: 'webhook',
-                        paperlessDocumentId: (int) $delivery->paperless_document_id,
-                        paperlessModified: is_string($modified) ? $modified : null,
-                        webhookDeliveryId: $delivery->id,
-                    );
-                    $run = $result->pipelineRun;
-                }
-            } catch (\Throwable $exception) {
-                $delivery->touch();
-                PipelineEvent::query()->create([
+        $run = PipelineRun::query()
+            ->where('webhook_delivery_id', $delivery->id)
+            ->latest('id')
+            ->first();
+
+        try {
+            if ($run === null) {
+                $modified = $delivery->normalized_payload['paperless_modified'] ?? null;
+                $result = $this->pipelineStarter->start(
+                    triggerSource: 'webhook',
+                    paperlessDocumentId: (int) $delivery->paperless_document_id,
+                    paperlessModified: is_string($modified) ? $modified : null,
+                    webhookDeliveryId: $delivery->id,
+                );
+                $run = $result->pipelineRun;
+            }
+        } catch (\Throwable $exception) {
+            DB::transaction(function () use ($delivery, $exception): void {
+                $current = WebhookDelivery::query()->lockForUpdate()->find($delivery->id);
+                $current?->touch();
+                PipelineLifecycleRecorder::event([
                     'webhook_delivery_id' => $delivery->id,
                     'event_type' => 'recovery.process_webhook_reconciliation_failed',
                     'paperless_document_id' => $delivery->paperless_document_id,
@@ -747,28 +761,34 @@ class PipelineRecoveryDispatcher
                     'message' => 'Process-document webhook recovery could not start a durable pipeline run.',
                     'payload' => ['error_type' => $exception::class],
                 ]);
+            });
 
+            return false;
+        }
+
+        return DB::transaction(function () use ($delivery, $run): bool {
+            $current = WebhookDelivery::query()->lockForUpdate()->find($delivery->id);
+            if ($current === null) {
                 return false;
             }
-
             $status = $run->status === PipelineRun::STATUS_BLOCKED
                 ? WebhookDelivery::STATUS_BLOCKED
                 : WebhookDelivery::STATUS_PROCESSED;
             $error = $status === WebhookDelivery::STATUS_BLOCKED ? $run->error_type : null;
-            if ($delivery->status === $status && $delivery->error === $error) {
+            if ($current->status === $status && $current->error === $error) {
                 return false;
             }
 
-            $delivery->forceFill([
+            $current->update([
                 'status' => $status,
                 'processed_at' => now(),
                 'error' => $error,
-            ])->save();
-            PipelineEvent::query()->create([
+            ]);
+            PipelineLifecycleRecorder::event([
                 'pipeline_run_id' => $run->id,
-                'webhook_delivery_id' => $delivery->id,
+                'webhook_delivery_id' => $current->id,
                 'event_type' => 'recovery.process_webhook_reconciled',
-                'paperless_document_id' => $delivery->paperless_document_id,
+                'paperless_document_id' => $current->paperless_document_id,
                 'level' => 'info',
                 'message' => 'Process-document webhook delivery reconciled to its durable pipeline run.',
                 'payload' => [
@@ -843,13 +863,13 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $command->forceFill([
+            $command->update([
                 'status' => Command::STATUS_QUEUED,
                 'error' => null,
-            ])->save();
+            ]);
             dispatch($job);
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'command_id' => $command->id,
                 'event_type' => $eventType,
                 'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
@@ -885,13 +905,13 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $delivery->forceFill([
+            $delivery->update([
                 'status' => WebhookDelivery::STATUS_QUEUED,
                 'error' => null,
-            ])->save();
+            ]);
             dispatch(RunPythonActorJob::webhookDelivery($delivery->id));
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'webhook_delivery_id' => $delivery->id,
                 'event_type' => $eventType,
                 'paperless_document_id' => $delivery->paperless_document_id,
@@ -985,13 +1005,13 @@ class PipelineRecoveryDispatcher
             return false;
         }
 
-        $execution->forceFill([
+        $execution->update([
             'status' => $status,
             'finished_at' => $execution->finished_at ?? now(),
             'next_retry_at' => null,
             'error_type' => $status === ActorExecution::STATUS_SUCCEEDED ? null : $execution->error_type,
             'error_message' => $status === ActorExecution::STATUS_SUCCEEDED ? null : $execution->error_message,
-        ])->save();
+        ]);
         $this->recordActorRecoveryEvent(
             $execution,
             'recovery.actor_execution_reconciled_terminal_source',
@@ -1049,7 +1069,7 @@ class PipelineRecoveryDispatcher
 
     private function markActorExecutionPermanentFailure(ActorExecution $execution, string $errorType): void
     {
-        $execution->forceFill([
+        $execution->update([
             'status' => ActorExecution::STATUS_FAILED_PERMANENT,
             'finished_at' => $execution->finished_at ?? now(),
             'next_retry_at' => null,
@@ -1057,7 +1077,7 @@ class PipelineRecoveryDispatcher
             'retry_mode' => 'recovery',
             'error_type' => $errorType,
             'error_message' => 'Laravel recovery could not safely redispatch this actor execution.',
-        ])->save();
+        ]);
 
         if ($execution->pipeline_run_id !== null) {
             PipelineRun::query()
@@ -1110,7 +1130,7 @@ class PipelineRecoveryDispatcher
 
     private function recordActorRecoveryEvent(ActorExecution $execution, string $eventType, string $message): void
     {
-        PipelineEvent::query()->create([
+        PipelineLifecycleRecorder::event([
             'pipeline_run_id' => $execution->pipeline_run_id,
             'webhook_delivery_id' => $execution->webhook_delivery_id,
             'command_id' => $execution->command_id,
@@ -1152,17 +1172,17 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $run->forceFill([
+            $run->update([
                 'status' => PipelineRun::STATUS_QUEUED,
                 'progress_current_phase' => 'document_actor',
                 'progress_message' => $progressMessage,
                 'progress_updated_at' => now(),
                 'error_type' => null,
                 'error' => null,
-            ])->save();
+            ]);
             dispatch(RunPythonActorJob::documentPipeline($run->id));
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'pipeline_run_id' => $run->id,
                 'webhook_delivery_id' => $run->webhook_delivery_id,
                 'command_id' => $run->command_id,
@@ -1279,13 +1299,13 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $delivery->forceFill([
+            $delivery->update([
                 'status' => WebhookDelivery::STATUS_QUEUED,
                 'error' => null,
                 'processed_at' => null,
-            ])->save();
+            ]);
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'webhook_delivery_id' => $delivery->id,
                 'event_type' => 'recovery.webhook_embedding_gate_released',
                 'paperless_document_id' => $delivery->paperless_document_id,
@@ -1306,13 +1326,13 @@ class PipelineRecoveryDispatcher
         foreach (['action', 'type', 'name'] as $requiredKey) {
             if (! is_string($command->payload[$requiredKey] ?? null)
                 || trim((string) $command->payload[$requiredKey]) === '') {
-                $command->forceFill([
+                $command->update([
                     'status' => Command::STATUS_FAILED_PERMANENT,
                     'error' => 'missing_entity_sync_'.$requiredKey,
                     'finished_at' => now(),
-                ])->save();
+                ]);
 
-                PipelineEvent::query()->create([
+                PipelineLifecycleRecorder::event([
                     'command_id' => $command->id,
                     'event_type' => 'recovery.command_failed_permanent',
                     'level' => 'error',
@@ -1334,13 +1354,13 @@ class PipelineRecoveryDispatcher
     {
         $reviewSuggestionId = $command->payload['review_suggestion_id'] ?? null;
         if (! is_int($reviewSuggestionId) || $reviewSuggestionId <= 0) {
-            $command->forceFill([
+            $command->update([
                 'status' => Command::STATUS_FAILED_PERMANENT,
                 'error' => 'missing_review_suggestion_id',
                 'finished_at' => now(),
-            ])->save();
+            ]);
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'command_id' => $command->id,
                 'event_type' => 'recovery.command_failed_permanent',
                 'paperless_document_id' => $command->payload['paperless_document_id'] ?? null,
@@ -1392,16 +1412,16 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $run->forceFill([
+            $run->update([
                 'status' => PipelineRun::STATUS_PENDING,
                 'progress_current_phase' => 'queued',
                 'progress_message' => 'Released by Laravel recovery because the embedding index is complete.',
                 'progress_updated_at' => now(),
                 'error_type' => null,
                 'error' => null,
-            ])->save();
+            ]);
 
-            PipelineEvent::query()->create([
+            PipelineLifecycleRecorder::event([
                 'pipeline_run_id' => $run->id,
                 'webhook_delivery_id' => $run->webhook_delivery_id,
                 'command_id' => $run->command_id,

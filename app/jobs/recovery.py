@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import structlog
 
-from app.actors.document import handle_document_pipeline
-from app.actors.embedding import build_initial_embedding_index
 from app.actors.maintenance import reconcile_inbox_documents, reindex_ocr_documents
 from app.actors.review import commit_review_suggestion
 from app.actors.webhook import handle_paperless_webhook
@@ -27,11 +25,8 @@ from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_runs import (
     list_cancel_requested_pipeline_run_ids,
     list_due_retrying_document_pipeline_run_ids,
-    list_embedding_blocked_pipeline_run_ids,
     list_pending_document_pipeline_run_ids,
     mark_pipeline_run_cancelled,
-    mark_pipeline_run_pending,
-    mark_pipeline_run_status,
 )
 from app.jobs.review_commit import mark_review_commit_status
 from app.jobs.webhook_delivery import (
@@ -44,8 +39,8 @@ log = structlog.get_logger(__name__)
 
 
 def enqueue_embedding_build_command(command_id: int, limit: int | None = None) -> None:
-    """Enqueue an admin-requested embedding build command."""
-    _enqueue_command_actor(command_id, build_initial_embedding_index, limit)
+    """Reject the retired Python recovery path for fenced embedding mutation."""
+    raise RuntimeError("Embedding build recovery is Laravel-owned and requires its exclusive fence")
 
 
 def enqueue_poll_reconciliation_command(command_id: int, limit: int | None = None) -> None:
@@ -54,13 +49,8 @@ def enqueue_poll_reconciliation_command(command_id: int, limit: int | None = Non
 
 
 def enqueue_reindex_command(command_id: int, limit: int | None = None) -> None:
-    """Enqueue an admin-requested reindex using the embedding rebuild actor.
-
-    This is the first safe reindex control step: Laravel closes the embedding
-    readiness gate before creating the command, and recovery bridges the command
-    to the existing PostgreSQL/pgvector embedding rebuild actor.
-    """
-    _enqueue_command_actor(command_id, build_initial_embedding_index, limit)
+    """Reject the retired Python recovery path for fenced reindex mutation."""
+    raise RuntimeError("Reindex recovery is Laravel-owned and requires its exclusive fence")
 
 
 def enqueue_ocr_reindex_command(
@@ -123,30 +113,8 @@ def enqueue_review_commit_command(command_id: int, review_suggestion_id: int) ->
 
 
 def enqueue_document_pipeline_run(pipeline_run_id: int) -> None:
-    """Enqueue one pending document pipeline run for Absurd processing."""
-    mark_pipeline_run_status(
-        pipeline_run_id,
-        status="queued",
-        phase="document_actor",
-        message="Document actor queued.",
-    )
-    try:
-        send = getattr(handle_document_pipeline, "send", None)
-        if send is not None:
-            send(pipeline_run_id)
-            return
-
-        handle_document_pipeline(pipeline_run_id)
-    except Exception as exc:
-        mark_pipeline_run_status(
-            pipeline_run_id,
-            status="pending",
-            phase="queued",
-            message="Document actor enqueue failed; recovery will retry.",
-            error_type="enqueue_failed",
-            error=type(exc).__name__,
-        )
-        raise
+    """Reject the retired Python recovery path for fenced document execution."""
+    raise RuntimeError("Document actor recovery is Laravel-owned and requires its shared fence")
 
 
 def enqueue_webhook_delivery(webhook_delivery_id: int) -> None:
@@ -169,10 +137,8 @@ def recover_stale_actor_executions(
 ) -> tuple[int, int]:
     """Recover actor executions left running by worker/container crashes.
 
-    Document pipeline actors can be safely requeued through the durable pipeline
-    run id. Other stale actors are marked retrying for visibility and are picked
-    up by their source-of-truth scans when possible (for example queued webhook
-    deliveries and review commits below).
+    This legacy scan records stale attempts only. Laravel recovery owns every
+    redispatch so document actors can execute only under its shared fence.
     """
     recovered = 0
     requeued = 0
@@ -195,10 +161,6 @@ def recover_stale_actor_executions(
             },
         )
 
-        if execution.actor_name == "handle_document_pipeline" and execution.pipeline_run_id:
-            enqueue_document_pipeline_run(execution.pipeline_run_id)
-            requeued += 1
-
     return recovered, requeued
 
 
@@ -218,20 +180,8 @@ def finalize_cancel_requested_runs(limit: int = 100) -> int:
 
 
 def release_embedding_blocked_runs(limit: int = 100) -> int:
-    """Move runs blocked by the embedding gate back to pending when safe."""
-    if not ensure_embedding_index_ready():
-        return 0
-
-    pipeline_run_ids = list_embedding_blocked_pipeline_run_ids(limit=limit)
-    for pipeline_run_id in pipeline_run_ids:
-        mark_pipeline_run_pending(pipeline_run_id)
-        publish_pipeline_event(
-            types.PIPELINE_UNBLOCKED_EMBEDDING_READY,
-            pipeline_run_id=pipeline_run_id,
-            message="Pipeline run released because the embedding index is complete.",
-        )
-
-    return len(pipeline_run_ids)
+    """Leave blocked runs to Laravel recovery and its fenced execution path."""
+    return 0
 
 
 def release_embedding_blocked_webhooks(limit: int = 100) -> int:
@@ -261,22 +211,12 @@ def run_recovery_scan(limit: int = 100) -> None:
     for webhook_delivery_id in webhook_delivery_ids:
         enqueue_webhook_delivery(webhook_delivery_id)
 
-    pipeline_runs_requeued = release_embedding_blocked_runs(limit=limit)
+    # Observe only; Laravel recovery dispatches these fenced RunPythonActorJob
+    # paths. This scan must never claim or mutate them.
+    pipeline_runs_requeued = 0
     pending_pipeline_run_ids = list_pending_document_pipeline_run_ids(limit=limit)
-    for pipeline_run_id in pending_pipeline_run_ids:
-        enqueue_document_pipeline_run(pipeline_run_id)
-
     retrying_pipeline_run_ids = list_due_retrying_document_pipeline_run_ids(limit=limit)
-    for pipeline_run_id in retrying_pipeline_run_ids:
-        enqueue_document_pipeline_run(pipeline_run_id)
-
     embedding_build_commands = list_pending_embedding_build_commands(limit=limit)
-    for command in embedding_build_commands:
-        limit_value = command.payload.get("limit")
-        enqueue_embedding_build_command(
-            command.id,
-            limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
-        )
 
     poll_reconciliation_commands = list_pending_poll_reconciliation_commands(limit=limit)
     for command in poll_reconciliation_commands:
@@ -287,12 +227,6 @@ def run_recovery_scan(limit: int = 100) -> None:
         )
 
     reindex_commands = list_pending_reindex_commands(limit=limit)
-    for command in reindex_commands:
-        limit_value = command.payload.get("limit")
-        enqueue_reindex_command(
-            command.id,
-            limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
-        )
 
     ocr_reindex_commands = list_pending_ocr_reindex_commands(limit=limit)
     for command in ocr_reindex_commands:

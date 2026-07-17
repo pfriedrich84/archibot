@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
+use App\Services\Pipeline\PipelineStartGate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -30,18 +30,7 @@ class EmbeddingIndexController extends Controller
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
 
-        $state = EmbeddingIndexState::query()->latest()->first();
-        if ($state === null) {
-            $state = EmbeddingIndexState::query()->create([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Marked stale by admin before an index existed.',
-            ]);
-        } else {
-            $state->forceFill([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Marked stale by admin.',
-            ])->save();
-        }
+        $state = app(PipelineStartGate::class)->markStale('Marked stale by admin.');
 
         PipelineEvent::query()->create([
             'event_type' => 'embedding_index.marked_stale',

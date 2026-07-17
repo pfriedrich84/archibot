@@ -6,6 +6,7 @@ use App\Models\Command;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
+use Closure;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
@@ -36,7 +37,7 @@ class PythonActorRunner
         $this->assertCommandType($command, Command::TYPE_EMBEDDING_INDEX_BUILD);
 
         if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            $command->update(['status' => Command::STATUS_QUEUED]);
         }
 
         $this->runProcess(
@@ -53,21 +54,21 @@ class PythonActorRunner
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
                 if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
             onSuccess: function () use ($command): void {
                 $command->refresh();
                 if (in_array($command->status, [Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_SUCCEEDED,
                         'error' => null,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
         );
@@ -129,20 +130,20 @@ class PythonActorRunner
             onFailure: function (string $error) use ($delivery): void {
                 $delivery->refresh();
                 if (in_array($delivery->status, [WebhookDelivery::STATUS_RECEIVED, WebhookDelivery::STATUS_QUEUED, WebhookDelivery::STATUS_RUNNING], true)) {
-                    $delivery->forceFill([
+                    $delivery->update([
                         'status' => WebhookDelivery::STATUS_FAILED,
                         'error' => $error,
-                    ])->save();
+                    ]);
                 }
             },
             onSuccess: function () use ($delivery): void {
                 $delivery->refresh();
                 if ($delivery->status === WebhookDelivery::STATUS_RUNNING) {
-                    $delivery->forceFill([
+                    $delivery->update([
                         'status' => WebhookDelivery::STATUS_PROCESSED,
                         'processed_at' => now(),
                         'error' => null,
-                    ])->save();
+                    ]);
                 }
             },
         );
@@ -156,7 +157,7 @@ class PythonActorRunner
         $this->assertCommandType($command, Command::TYPE_REVIEW_COMMIT);
 
         if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            $command->update(['status' => Command::STATUS_QUEUED]);
         }
 
         $this->runProcess(
@@ -174,11 +175,11 @@ class PythonActorRunner
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
                 if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
 
                 $reviewSuggestionId = $command->payload['review_suggestion_id'] ?? null;
@@ -192,11 +193,11 @@ class PythonActorRunner
             onSuccess: function () use ($command): void {
                 $command->refresh();
                 if ($command->status === Command::STATUS_RUNNING) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_SUCCEEDED,
                         'error' => null,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
         );
@@ -208,7 +209,7 @@ class PythonActorRunner
     private function runCommandActor(Command $command, string $actorName, array $arguments): void
     {
         if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
+            $command->update(['status' => Command::STATUS_QUEUED]);
         }
 
         $this->runProcess(
@@ -221,21 +222,21 @@ class PythonActorRunner
             onFailure: function (string $error) use ($command): void {
                 $command->refresh();
                 if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_FAILED,
                         'error' => $error,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
             onSuccess: function () use ($command): void {
                 $command->refresh();
                 if (in_array($command->status, [Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
+                    $command->update([
                         'status' => Command::STATUS_SUCCEEDED,
                         'error' => null,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
         );
@@ -264,23 +265,23 @@ class PythonActorRunner
                     PipelineRun::STATUS_QUEUED,
                     PipelineRun::STATUS_RUNNING,
                 ], true)) {
-                    $pipelineRun->forceFill([
+                    $pipelineRun->update([
                         'status' => PipelineRun::STATUS_FAILED,
                         'error_type' => 'actor_process_failed',
                         'error' => $error,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
             onSuccess: function () use ($pipelineRun): void {
                 $pipelineRun->refresh();
                 if ($pipelineRun->status === PipelineRun::STATUS_RUNNING) {
-                    $pipelineRun->forceFill([
+                    $pipelineRun->update([
                         'status' => PipelineRun::STATUS_SUCCEEDED,
                         'error_type' => null,
                         'error' => null,
                         'finished_at' => now(),
-                    ])->save();
+                    ]);
                 }
             },
         );
@@ -294,8 +295,8 @@ class PythonActorRunner
         string $actorName,
         array $logContext,
         array $arguments,
-        ?callable $onFailure = null,
-        ?callable $onSuccess = null,
+        ?Closure $onFailure = null,
+        ?Closure $onSuccess = null,
     ): void {
         $process = new Process(
             [

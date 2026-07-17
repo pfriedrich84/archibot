@@ -27,7 +27,6 @@ from app.jobs.document_embeddings import (
     store_document_embedding,
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
-from app.jobs.pipeline_start import start_or_attach_document_pipeline
 from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
 from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 from app.jobs.webhook_delivery import load_webhook_delivery, mark_webhook_delivery_status
@@ -62,16 +61,6 @@ def validated_webhook_action(action: str | None) -> str:
     if action not in VALID_WEBHOOK_ACTIONS:
         raise InvalidWebhookAction(action or "missing")
     return action
-
-
-def webhook_requests_reprocess(action: str) -> bool:
-    """Return whether the persisted action should force a full document reprocess.
-
-    Automatic Paperless edit/update webhooks are normalized by Laravel to
-    `refresh_embedding`, not `process_document`, so they never force full
-    reprocessing here.
-    """
-    return False
 
 
 async def _refresh_document_embedding_async(paperless_document_id: int) -> EmbeddingRefreshResult:
@@ -268,36 +257,16 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             )
 
         if action == "process_document":
-            reprocess_requested = webhook_requests_reprocess(action)
-            result = start_or_attach_document_pipeline(
-                trigger_source="webhook",
-                paperless_document_id=delivery.paperless_document_id,
-                paperless_modified=delivery.paperless_modified,
-                reprocess_requested=reprocess_requested,
-                reprocess_reason=delivery.event_type if reprocess_requested else None,
-                reprocess_mode="webhook" if reprocess_requested else None,
-                webhook_delivery_id=webhook_delivery_id,
-            )
-            delivery_status = "blocked" if result.status == "blocked" else "processed"
+            # Productive process-document deliveries are consumed by Laravel
+            # before any Python actor is dispatched. Fail closed if stale queue
+            # data reaches this retired path; Python must never own Pipeline Start.
             mark_webhook_delivery_status(
-                webhook_delivery_id, delivery_status, result.blocked_reason
+                webhook_delivery_id, "failed_permanent", "pipeline_start_owned_by_laravel"
             )
-            if actor_execution.id is not None:
-                update_actor_execution_progress(
-                    actor_execution.id,
-                    ProgressSnapshot(
-                        total=3,
-                        done=3,
-                        failed=0 if delivery_status == "processed" else 1,
-                        phase="webhook_finished",
-                        message=f"Webhook process action finished with status {delivery_status}.",
-                    ),
-                    current_item=f"paperless_document:{delivery.paperless_document_id}",
-                )
             finish_actor_execution(
                 actor_execution,
-                status="succeeded" if delivery_status == "processed" else "blocked",
-                error_type=result.blocked_reason,
+                status="failed_permanent",
+                error_type="pipeline_start_owned_by_laravel",
             )
         elif action == "refresh_embedding":
             refresh = refresh_document_embedding(delivery.paperless_document_id)

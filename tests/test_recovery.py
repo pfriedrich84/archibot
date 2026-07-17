@@ -11,9 +11,8 @@ def default_no_pending_commands(monkeypatch):
     monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
 
 
-def test_recover_stale_actor_executions_marks_and_requeues_document_runs(monkeypatch):
+def test_recover_stale_actor_executions_marks_document_runs_for_laravel_recovery(monkeypatch):
     marked = []
-    enqueued = []
     events = []
 
     monkeypatch.setattr(
@@ -39,18 +38,12 @@ def test_recover_stale_actor_executions_marks_and_requeues_document_runs(monkeyp
     )
     monkeypatch.setattr(
         recovery,
-        "enqueue_document_pipeline_run",
-        lambda pipeline_run_id: enqueued.append(pipeline_run_id),
-    )
-    monkeypatch.setattr(
-        recovery,
         "publish_pipeline_event",
         lambda *args, **kwargs: events.append((args, kwargs)),
     )
 
-    assert recovery.recover_stale_actor_executions(limit=10) == (1, 1)
+    assert recovery.recover_stale_actor_executions(limit=10) == (1, 0)
     assert marked == [7]
-    assert enqueued == [21]
     assert events[0][1]["pipeline_run_id"] == 21
     assert events[0][1]["payload"]["actor_execution_id"] == 7
 
@@ -140,22 +133,12 @@ def test_release_embedding_blocked_runs_does_nothing_until_index_is_ready(monkey
     assert recovery.release_embedding_blocked_runs(limit=10) == 0
 
 
-def test_release_embedding_blocked_runs_marks_runs_pending(monkeypatch):
-    marked = []
-    events = []
-
+def test_release_embedding_blocked_runs_leaves_ready_runs_to_fenced_laravel_recovery(
+    monkeypatch,
+):
     monkeypatch.setattr(recovery, "ensure_embedding_index_ready", lambda: True)
-    monkeypatch.setattr(recovery, "list_embedding_blocked_pipeline_run_ids", lambda limit: [8, 9])
-    monkeypatch.setattr(recovery, "mark_pipeline_run_pending", lambda run_id: marked.append(run_id))
-    monkeypatch.setattr(
-        recovery,
-        "publish_pipeline_event",
-        lambda *args, **kwargs: events.append((args, kwargs)),
-    )
 
-    assert recovery.release_embedding_blocked_runs(limit=10) == 2
-    assert marked == [8, 9]
-    assert [event[1]["pipeline_run_id"] for event in events] == [8, 9]
+    assert recovery.release_embedding_blocked_runs(limit=10) == 0
 
 
 def test_release_embedding_blocked_webhooks_marks_deliveries_queued(monkeypatch):
@@ -182,125 +165,34 @@ def test_release_embedding_blocked_webhooks_marks_deliveries_queued(monkeypatch)
     assert [event[1]["webhook_delivery_id"] for event in events] == [3, 4]
 
 
-def test_recovery_scan_enqueues_pending_document_runs(monkeypatch):
-    enqueued = []
-
+@pytest.mark.parametrize(
+    ("pending", "retrying"),
+    [([21, 22], []), ([], [51, 52])],
+)
+def test_python_recovery_observes_document_runs_without_dispatching_them(
+    monkeypatch, pending, retrying
+):
     monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
     monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
     monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
     monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [21, 22])
-    monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
+    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: pending)
     monkeypatch.setattr(
-        recovery, "enqueue_document_pipeline_run", lambda run_id: enqueued.append(run_id)
-    )
-
-    recovery.run_recovery_scan(limit=10)
-
-    assert enqueued == [21, 22]
-
-
-def test_recovery_scan_enqueues_due_retrying_document_runs(monkeypatch):
-    enqueued = []
-
-    monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
-    monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(
-        recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [51, 52]
+        recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: retrying
     )
     monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
     monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
-    monkeypatch.setattr(
-        recovery, "enqueue_document_pipeline_run", lambda run_id: enqueued.append(run_id)
-    )
 
     recovery.run_recovery_scan(limit=10)
 
-    assert enqueued == [51, 52]
+    with pytest.raises(RuntimeError, match=r"Laravel-owned.*shared fence"):
+        recovery.enqueue_document_pipeline_run((pending or retrying)[0])
 
 
-def test_recovery_scan_enqueues_embedding_build_commands(monkeypatch):
-    enqueued = []
-
-    monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
-    monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(
-        recovery,
-        "list_pending_embedding_build_commands",
-        lambda limit: [
-            CommandRecord(
-                id=66,
-                type="embedding_index_build",
-                status="pending",
-                payload={"limit": 10},
-            )
-        ],
-    )
-    monkeypatch.setattr(
-        recovery,
-        "enqueue_embedding_build_command",
-        lambda command_id, limit: enqueued.append((command_id, limit)),
-    )
-    monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_reindex_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_review_commit_commands", lambda limit: [])
-
-    recovery.run_recovery_scan(limit=10)
-
-    assert enqueued == [(66, 10)]
-
-
-def test_enqueue_embedding_build_command_marks_queued_and_sends(monkeypatch):
-    statuses = []
-    sent = []
-
-    class Actor:
-        @staticmethod
-        def send(limit):
-            sent.append(limit)
-
-    monkeypatch.setattr(recovery, "build_initial_embedding_index", Actor())
-    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
-
-    recovery.enqueue_embedding_build_command(66, limit=10)
-
-    assert statuses == [(66, "queued")]
-    assert sent == [10]
-
-
-def test_enqueue_command_restores_pending_when_send_fails(monkeypatch):
-    statuses = []
-
-    class Actor:
-        @staticmethod
-        def send(limit):
-            raise RuntimeError("queue down")
-
-    monkeypatch.setattr(recovery, "build_initial_embedding_index", Actor())
-    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
-
-    try:
+def test_python_recovery_cannot_dispatch_embedding_build():
+    with pytest.raises(RuntimeError, match=r"Laravel-owned.*exclusive fence"):
         recovery.enqueue_embedding_build_command(66, limit=10)
-    except RuntimeError:
-        pass
-    else:  # pragma: no cover - defensive assertion
-        raise AssertionError("send failure did not propagate")
-
-    assert statuses == [(66, "queued"), (66, "pending", "enqueue_failed:RuntimeError")]
 
 
 def test_recovery_scan_enqueues_poll_reconciliation_commands(monkeypatch):
@@ -357,124 +249,14 @@ def test_enqueue_poll_reconciliation_command_marks_queued_and_sends(monkeypatch)
     assert sent == [25]
 
 
-def test_recovery_scan_enqueues_reindex_commands(monkeypatch):
-    enqueued = []
-
-    monkeypatch.setattr(recovery, "recover_stale_actor_executions", lambda limit: (0, 0))
-    monkeypatch.setattr(recovery, "finalize_cancel_requested_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "release_embedding_blocked_webhooks", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_queued_webhook_delivery_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "release_embedding_blocked_runs", lambda limit: 0)
-    monkeypatch.setattr(recovery, "list_pending_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_due_retrying_document_pipeline_run_ids", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_embedding_build_commands", lambda limit: [])
-    monkeypatch.setattr(recovery, "list_pending_poll_reconciliation_commands", lambda limit: [])
-    monkeypatch.setattr(
-        recovery,
-        "list_pending_reindex_commands",
-        lambda limit: [
-            CommandRecord(
-                id=88,
-                type="reindex",
-                status="pending",
-                payload={"limit": 50},
-            )
-        ],
-    )
-    monkeypatch.setattr(
-        recovery,
-        "enqueue_reindex_command",
-        lambda command_id, limit: enqueued.append((command_id, limit)),
-    )
-
-    recovery.run_recovery_scan(limit=10)
-
-    assert enqueued == [(88, 50)]
+def test_python_recovery_cannot_dispatch_reindex():
+    with pytest.raises(RuntimeError, match=r"Laravel-owned.*exclusive fence"):
+        recovery.enqueue_reindex_command(88, limit=50)
 
 
-def test_enqueue_reindex_command_marks_queued_and_sends_embedding_actor(monkeypatch):
-    statuses = []
-    sent = []
-
-    class Actor:
-        @staticmethod
-        def send(limit):
-            sent.append(limit)
-
-    monkeypatch.setattr(recovery, "build_initial_embedding_index", Actor())
-    monkeypatch.setattr(recovery, "mark_command_status", lambda *args: statuses.append(args))
-
-    recovery.enqueue_reindex_command(88, limit=50)
-
-    assert statuses == [(88, "queued")]
-    assert sent == [50]
-
-
-def test_enqueue_document_pipeline_run_marks_queued_and_sends(monkeypatch):
-    statuses = []
-    sent = []
-
-    class Actor:
-        @staticmethod
-        def send(pipeline_run_id):
-            sent.append(pipeline_run_id)
-
-    monkeypatch.setattr(recovery, "handle_document_pipeline", Actor())
-    monkeypatch.setattr(
-        recovery,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: statuses.append((args, kwargs)),
-    )
-
-    recovery.enqueue_document_pipeline_run(31)
-
-    assert sent == [31]
-    assert statuses == [
-        (
-            (31,),
-            {"status": "queued", "phase": "document_actor", "message": "Document actor queued."},
-        )
-    ]
-
-
-def test_enqueue_document_pipeline_run_restores_pending_when_send_fails(monkeypatch):
-    statuses = []
-
-    class Actor:
-        @staticmethod
-        def send(pipeline_run_id):
-            raise RuntimeError("queue down")
-
-    monkeypatch.setattr(recovery, "handle_document_pipeline", Actor())
-    monkeypatch.setattr(
-        recovery,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: statuses.append((args, kwargs)),
-    )
-
-    try:
+def test_python_recovery_cannot_dispatch_document_pipeline():
+    with pytest.raises(RuntimeError, match=r"Laravel-owned.*shared fence"):
         recovery.enqueue_document_pipeline_run(31)
-    except RuntimeError:
-        pass
-    else:  # pragma: no cover - defensive assertion
-        raise AssertionError("send failure did not propagate")
-
-    assert statuses == [
-        (
-            (31,),
-            {"status": "queued", "phase": "document_actor", "message": "Document actor queued."},
-        ),
-        (
-            (31,),
-            {
-                "status": "pending",
-                "phase": "queued",
-                "message": "Document actor enqueue failed; recovery will retry.",
-                "error_type": "enqueue_failed",
-                "error": "RuntimeError",
-            },
-        ),
-    ]
 
 
 def test_recovery_scan_does_not_enqueue_legacy_review_commits(monkeypatch):
