@@ -29,6 +29,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 - [`governance/release-governance.md`](governance/release-governance.md) — Release-, Rollback- und Provenance-Erwartungen.
 - [`governance/agent-workflow.md`](governance/agent-workflow.md) — Agenten- und Subagenten-Workflow.
 - [`governance/review-checklist.md`](governance/review-checklist.md) — Review-Checkliste fuer Migrationaenderungen.
+- [`../SECURITY.md`](../SECURITY.md) — Private Meldung von Sicherheitsluecken und Disclosure-Grenzen.
 
 ## Agent Instructions
 
