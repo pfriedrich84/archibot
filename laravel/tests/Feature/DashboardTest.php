@@ -58,7 +58,9 @@ class DashboardTest extends TestCase
                 ->where('activeOperations.summary.queued', 0)
                 ->has('recentPipelineRuns', 1)
                 ->has('recentActorExecutions', 1)
+                ->where('recentActorExecutions.0.actor_name', 'handle_document_pipeline')
                 ->has('recentWebhookDeliveries', 1)
+                ->where('recentWebhookDeliveries.0.event_type', 'document_added')
             );
     }
 }

@@ -57,7 +57,11 @@
         event: string;
         target_type: string | null;
         target_id: string | null;
-        metadata: Record<string, unknown>;
+        metadata: {
+            key: string;
+            label: string;
+            value: boolean | number | string | null;
+        }[];
         created_at: string | null;
     };
 

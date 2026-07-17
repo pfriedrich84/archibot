@@ -15,7 +15,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
-    import { displayEntries, formatTarget } from '@/lib/display';
+    import { formatDisplayValue, formatTarget } from '@/lib/display';
 
     type AuditLog = {
         id: number;
@@ -23,14 +23,16 @@
         target_type: string | null;
         target_id: string | null;
         target_url: string | null;
-        metadata: Record<string, unknown>;
+        metadata: {
+            key: string;
+            label: string;
+            value: boolean | number | string | null;
+        }[];
         actor: {
             id: number;
             name: string;
-            email: string;
             paperless_username: string | null;
         } | null;
-        ip_address: string | null;
         created_at: string | null;
     };
 
@@ -68,7 +70,7 @@
                                 <div>{log.actor.name}</div>
                                 <div class="text-muted-foreground">
                                     {log.actor.paperless_username ??
-                                        log.actor.email}
+                                        'Local administrator'}
                                 </div>
                             {:else}
                                 <span class="text-muted-foreground">System</span
@@ -88,9 +90,9 @@
                             {/if}
                         </td>
                         <td class="px-4 py-3">
-                            {#if displayEntries(log.metadata).length > 0}
+                            {#if log.metadata.length > 0}
                                 <dl class="grid gap-1 text-xs">
-                                    {#each displayEntries(log.metadata) as entry (entry.key)}
+                                    {#each log.metadata as entry (entry.key)}
                                         <div
                                             class="grid gap-1 sm:grid-cols-[8rem_1fr]"
                                         >
@@ -98,7 +100,10 @@
                                                 {entry.label}
                                             </dt>
                                             <dd class="break-words">
-                                                {entry.value}
+                                                {formatDisplayValue(
+                                                    entry.value,
+                                                    entry.key,
+                                                )}
                                             </dd>
                                         </div>
                                     {/each}

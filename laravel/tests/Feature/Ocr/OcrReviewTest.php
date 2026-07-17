@@ -437,7 +437,7 @@ class OcrReviewTest extends TestCase
 
     public function test_stats_does_not_expose_unscoped_ocr_counts_or_content(): void
     {
-        $user = User::factory()->create(['paperless_token' => 'reader-token']);
+        $user = User::factory()->create(['paperless_token' => 'reader-token', 'is_admin' => true]);
         $this->review($user, 456, 'Stats-hidden original marker', 'Stats-hidden correction marker');
 
         $this->actingAs($user)

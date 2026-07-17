@@ -10,7 +10,7 @@
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
-    import { displayEntries } from '@/lib/display';
+    import { displayEntries, formatDisplayValue } from '@/lib/display';
     import { index as errorsIndex } from '@/routes/errors';
 
     type LegacyError = {
@@ -33,7 +33,11 @@
         received_at: string | null;
         processed_at: string | null;
         error: string | null;
-        payload_summary: { key: string; value: unknown }[];
+        payload_summary: {
+            key: string;
+            label: string;
+            value: boolean | number | string | null;
+        }[];
         show_url: string;
         retry_url: string | null;
         dismiss_url: string | null;
@@ -71,9 +75,6 @@
         value
             .replaceAll('_', ' ')
             .replace(/^./, (character) => character.toUpperCase());
-
-    const formatValue = (value: unknown) =>
-        typeof value === 'string' ? value : JSON.stringify(value);
 
     const paginationLabel = (value: string) =>
         value.replace('&laquo;', '‹').replace('&raquo;', '›');
@@ -176,9 +177,9 @@
                     </div>
                     {#each delivery.payload_summary as entry (entry.key)}
                         <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                            <dt class="text-muted-foreground">{entry.key}</dt>
+                            <dt class="text-muted-foreground">{entry.label}</dt>
                             <dd class="break-all">
-                                {formatValue(entry.value)}
+                                {formatDisplayValue(entry.value, entry.key)}
                             </dd>
                         </div>
                     {/each}

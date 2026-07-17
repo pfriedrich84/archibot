@@ -17,9 +17,9 @@ class PipelineRunVisibilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_authenticated_users_can_view_pipeline_runs_index(): void
+    public function test_non_admin_users_cannot_view_pipeline_runs_index(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => false]);
         $command = Command::query()->create([
             'type' => Command::TYPE_POLL_RECONCILIATION,
             'status' => Command::STATUS_PENDING,
@@ -65,22 +65,7 @@ class PipelineRunVisibilityTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('pipeline-runs.index'))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('pipeline-runs/Index')
-                ->where('runs.data.0.id', $run->id)
-                ->where('runs.data.0.type', 'document')
-                ->where('runs.data.0.scope', 'document:123')
-                ->where('runs.data.0.trigger_source', 'webhook')
-                ->where('runs.data.0.paperless_document_id', 123)
-                ->where('runs.data.0.progress_total', 3)
-                ->where('runs.data.0.progress_done', 1)
-                ->where('runs.data.0.events_count', 1)
-                ->where('runs.data.0.items_count', 1)
-                ->where('runs.data.0.command.id', $command->id)
-                ->where('runs.data.0.webhook_delivery.id', $delivery->id)
-                ->where('isAdmin', false)
-            );
+            ->assertForbidden();
     }
 
     public function test_pipeline_run_detail_shows_links_events_items_and_audit(): void
@@ -151,12 +136,18 @@ class PipelineRunVisibilityTest extends TestCase
                 ->component('pipeline-runs/Show')
                 ->where('run.id', $run->id)
                 ->where('run.status', PipelineRun::STATUS_FAILED)
+                ->where('run.progress_current_phase', 'review')
+                ->where('run.error_type', 'RuntimeError')
                 ->where('run.command.id', $command->id)
-                ->where('run.command.payload.paperless_document_id', 456)
+                ->where('run.command.metadata.0.key', 'paperless_document_id')
+                ->where('run.command.metadata.0.value', 456)
                 ->where('run.webhook_delivery.id', $delivery->id)
-                ->where('run.webhook_delivery.request_id', 'request-456')
+                ->where('run.webhook_delivery.request_id', 'ref:'.substr(hash('sha256', 'request-456'), 0, 12))
                 ->where('run.events.0.event_type', 'pipeline.failed')
+                ->where('run.events.0.message', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
+                ->where('run.events.0.metadata.0.key', 'phase')
                 ->where('run.items.0.item_type', PipelineItem::TYPE_REVIEW_SUGGESTION)
+                ->where('run.items.0.error', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
                 ->where('run.audit_logs.0.event', 'pipeline_run.retry_queued')
                 ->where('run.can_retry', true)
                 ->where('isAdmin', true)

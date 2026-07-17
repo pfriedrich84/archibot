@@ -65,7 +65,7 @@ Er fuehrt durch:
 2. **Tags und direkte Anmeldung** — Inbox-, optionales Processed- und OCR-Requested-Tag anhand lesbarer Namen waehlen; ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt
 3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; ein alter `paperless.url`-Wert bleibt nur Migrationsdatum und kann den Deployment-Origin nicht ueberschreiben
 4. **Post-Claim Admin-Settings** — nach erfolgreichem Claim wird direkt `/admin/settings/ai-provider` geoeffnet. Dort bleiben AI-Provider-Endpunkte und Discovery sowie Klassifikations-, Embedding-, OCR-, Review-, Worker-, MCP-, GUI- und Audit-Einstellungen editierbar; der Paperless-Origin bleibt read-only
-5. **Maintenance und Operations Log** — Poll/Reindex/Einzeldokument-Verarbeitung starten ueber Laravel Maintenance; `/operations-log` zeigt durable Commands, Pipeline Runs, Actor Executions, Webhooks und Audit-Logs.
+5. **Admin-Diagnostik und Maintenance** — Nur ArchiBot-Admins koennen Operations Log, Pipeline Runs, Actor Executions, Webhook Deliveries, Statistiken, Fehler, Embedding-Diagnostik, Maintenance und Audit-Logs direkt aufrufen. Die Seiten zeigen Status, IDs, Zaehler, strukturierte Metadaten, Badges und Ereignis-Timelines; rohe JSON-Payloads/Headers sowie freie Fehler-, Dokument-, OCR- und Prompt-Inhalte werden nicht ausgegeben. Konfigurierbare Provider-Profil- und Modell-IDs erscheinen nur als stabile, nicht rueckrechenbare Referenzen. Poll/Reindex/Einzeldokument-Verarbeitung bleibt ueber die admin-geschuetzte Laravel-Maintenance verfuegbar.
 
 Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung und MCP aktiv.
 

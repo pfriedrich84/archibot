@@ -32,6 +32,7 @@
         SidebarMenuItem,
     } from '@/components/ui/sidebar';
     import { toUrl } from '@/lib/utils';
+    import type { NavItem } from '@/types';
     import { dashboard } from '@/routes';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { index as maintenanceIndex } from '@/routes/admin/maintenance';
@@ -40,7 +41,6 @@
     import { index as operationsLogIndex } from '@/routes/operations-log';
     import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     import { index as reviewIndex } from '@/routes/review';
-    import type { NavItem } from '@/types';
 
     let {
         children,
@@ -92,38 +92,38 @@
     ];
 
     const processingNavItems: NavItem[] = $derived([
-        {
-            title: 'Operations Log',
-            href: operationsLogIndex(),
-            icon: Workflow,
-        },
-        {
-            title: 'Pipeline runs',
-            href: pipelineRunsIndex(),
-            icon: FolderGit2,
-        },
-        {
-            title: 'Webhooks',
-            href: '/webhook-deliveries',
-            icon: Webhook,
-        },
-        {
-            title: 'Embeddings',
-            href: '/embeddings',
-            icon: Database,
-        },
-        {
-            title: 'Stats',
-            href: '/stats',
-            icon: Sigma,
-        },
-        {
-            title: 'Errors',
-            href: '/errors',
-            icon: TriangleAlert,
-        },
         ...(user?.is_admin
             ? [
+                  {
+                      title: 'Stats',
+                      href: '/stats',
+                      icon: Sigma,
+                  },
+                  {
+                      title: 'Operations Log',
+                      href: operationsLogIndex(),
+                      icon: Workflow,
+                  },
+                  {
+                      title: 'Pipeline runs',
+                      href: pipelineRunsIndex(),
+                      icon: FolderGit2,
+                  },
+                  {
+                      title: 'Webhooks',
+                      href: '/webhook-deliveries',
+                      icon: Webhook,
+                  },
+                  {
+                      title: 'Embeddings',
+                      href: '/embeddings',
+                      icon: Database,
+                  },
+                  {
+                      title: 'Errors',
+                      href: '/errors',
+                      icon: TriangleAlert,
+                  },
                   {
                       title: 'Maintenance',
                       href: maintenanceIndex(),

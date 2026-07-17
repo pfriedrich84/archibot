@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\WebhookDelivery;
 use App\Services\LegacyPythonState;
+use App\Support\DiagnosticPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -11,22 +12,24 @@ use Inertia\Response;
 
 class ErrorsController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function __invoke(Request $request, LegacyPythonState $legacyPythonState): Response
     {
-        $validated = $request->validate([
-            'source' => ['nullable', Rule::in(['all', 'webhook', 'legacy'])],
-            'status' => ['nullable', 'string', 'max:64'],
-        ]);
-
-        $source = $validated['source'] ?? 'all';
-        $status = $validated['status'] ?? 'all';
-        $isAdmin = (bool) $request->user()?->is_admin;
-
         $webhookStatuses = [
             WebhookDelivery::STATUS_FAILED,
             WebhookDelivery::STATUS_BLOCKED,
             WebhookDelivery::STATUS_FAILED_PERMANENT,
         ];
+
+        $validated = $request->validate([
+            'source' => ['nullable', Rule::in(['all', 'webhook', 'legacy'])],
+            'status' => ['nullable', Rule::in(array_merge(['all'], $webhookStatuses))],
+        ]);
+
+        $source = $validated['source'] ?? 'all';
+        $status = $validated['status'] ?? 'all';
+        $isAdmin = (bool) $request->user()?->is_admin;
 
         $webhookErrors = WebhookDelivery::query()
             ->when(! in_array($source, ['all', 'webhook'], true), fn ($query) => $query->whereRaw('1 = 0'))
@@ -48,7 +51,18 @@ class ErrorsController extends Controller
                 'statuses' => array_values(array_unique(array_merge(['all'], $webhookStatuses))),
             ],
             'webhookErrors' => $webhookErrors,
-            'legacyErrors' => in_array($source, ['all', 'legacy'], true) ? $legacyPythonState->recentErrors(25) : [],
+            'legacyErrors' => in_array($source, ['all', 'legacy'], true)
+                ? collect($legacyPythonState->recentErrors(25))->map(fn (array $error): array => [
+                    'id' => is_int($error['id'] ?? null) && $error['id'] >= 0 ? $error['id'] : null,
+                    'occurred_at' => $this->diagnostics->timestamp($error['occurred_at'] ?? null),
+                    'stage' => $this->diagnostics->typedScalar('phase', $error['stage'] ?? null),
+                    'document_reference' => is_int($error['document_reference'] ?? null) && $error['document_reference'] >= 0
+                        ? $error['document_reference']
+                        : null,
+                    'message' => $this->diagnostics->redactedMessage($error['message'] ?? null),
+                    'details' => [],
+                ])->values()->all()
+                : [],
             'isAdmin' => $isAdmin,
         ]);
     }
@@ -66,16 +80,16 @@ class ErrorsController extends Controller
 
         return [
             'id' => $delivery->id,
-            'source' => $delivery->source,
-            'event_type' => $delivery->event_type,
+            'source' => $this->diagnostics->typedScalar('source', $delivery->source),
+            'event_type' => $this->diagnostics->webhookEventType($delivery->event_type),
             'paperless_document_id' => $delivery->paperless_document_id,
-            'status' => $delivery->status,
-            'dedupe_key' => $delivery->dedupe_key,
-            'request_id' => $delivery->request_id,
+            'status' => $this->diagnostics->typedScalar('status', $delivery->status),
+            'dedupe_key' => $this->diagnostics->opaqueReference($delivery->dedupe_key),
+            'request_id' => $this->diagnostics->opaqueReference($delivery->request_id),
             'received_at' => $delivery->received_at?->toISOString(),
             'processed_at' => $delivery->processed_at?->toISOString(),
-            'error' => $delivery->error,
-            'payload_summary' => $this->summary($delivery->normalized_payload ?: $delivery->raw_payload),
+            'error' => $this->diagnostics->redactedMessage($delivery->error),
+            'payload_summary' => $this->diagnostics->webhook($delivery->normalized_payload ?: $delivery->raw_payload),
             'show_url' => route('webhook-deliveries.show', $delivery),
             'retry_url' => $canControl ? route('webhook-deliveries.retry', $delivery) : null,
             'dismiss_url' => $canControl ? route('webhook-deliveries.dismiss', $delivery) : null,
@@ -84,19 +98,4 @@ class ErrorsController extends Controller
         ];
     }
 
-    /**
-     * @param  array<string, mixed>|null  $value
-     * @return array<int, array{key: string, value: mixed}>
-     */
-    private function summary(?array $value): array
-    {
-        return collect($value ?? [])
-            ->take(6)
-            ->map(fn (mixed $entry, string|int $key): array => [
-                'key' => (string) $key,
-                'value' => is_scalar($entry) || $entry === null ? $entry : json_encode($entry),
-            ])
-            ->values()
-            ->all();
-    }
 }

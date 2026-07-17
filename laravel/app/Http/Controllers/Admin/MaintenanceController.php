@@ -9,6 +9,7 @@ use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
 use App\Support\ActiveOperationsSnapshot;
+use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,6 +18,8 @@ use Inertia\Response;
 
 class MaintenanceController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function index(Request $request, ActiveOperationsSnapshot $activeOperations): Response
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
@@ -42,10 +45,14 @@ class MaintenanceController extends Controller
                 ->get()
                 ->map(fn (AuditLog $auditLog) => [
                     'id' => $auditLog->id,
-                    'event' => $auditLog->event,
-                    'target_type' => $auditLog->target_type,
-                    'target_id' => $auditLog->target_id,
-                    'metadata' => $auditLog->metadata ?? [],
+                    'event' => $this->diagnostics->diagnosticEventType($auditLog->event),
+                    'target_type' => in_array($auditLog->target_type, ['pipeline_recovery', 'command'], true)
+                        ? $auditLog->target_type
+                        : 'unknown',
+                    'target_id' => ctype_digit((string) $auditLog->target_id)
+                        ? $auditLog->target_id
+                        : $this->diagnostics->opaqueReference($auditLog->target_id),
+                    'metadata' => $this->diagnostics->metadata($auditLog->metadata),
                     'created_at' => $auditLog->created_at?->toISOString(),
                 ])
                 ->values(),

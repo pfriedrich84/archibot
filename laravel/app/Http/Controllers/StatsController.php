@@ -9,6 +9,7 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
 use App\Services\LegacyPythonState;
+use App\Support\DiagnosticPresenter;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,8 @@ use Inertia\Response;
 
 class StatsController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function __invoke(LegacyPythonState $legacyPythonState): Response
     {
         return Inertia::render('stats/Index', [
@@ -25,22 +28,22 @@ class StatsController extends Controller
                 'accepted' => ReviewSuggestion::query()->where('status', ReviewSuggestion::STATUS_ACCEPTED)->count(),
                 'rejected' => ReviewSuggestion::query()->where('status', ReviewSuggestion::STATUS_REJECTED)->count(),
             ],
-            'reviewStatusCounts' => $this->countsBy(ReviewSuggestion::class, 'status'),
+            'reviewStatusCounts' => $this->diagnostics->typedCounts($this->countsBy(ReviewSuggestion::class, 'status'), 'status'),
             'reviewConfidenceDistribution' => $this->reviewConfidenceDistribution(),
-            'reviewJudgeCounts' => $this->countsBy(ReviewSuggestion::class, 'judge_verdict'),
+            'reviewJudgeCounts' => $this->diagnostics->typedCounts($this->countsBy(ReviewSuggestion::class, 'judge_verdict'), 'judge_verdict'),
             'entities' => [
                 'pending' => EntityApproval::query()->where('status', EntityApproval::STATUS_PENDING)->count(),
                 'approved' => EntityApproval::query()->where('status', EntityApproval::STATUS_APPROVED)->count(),
                 'rejected' => EntityApproval::query()->where('status', EntityApproval::STATUS_REJECTED)->count(),
             ],
-            'entityApprovalMatrix' => $this->matrixCounts(EntityApproval::class, 'type', 'status'),
-            'webhookStatusCounts' => $this->countsBy(WebhookDelivery::class, 'status'),
-            'pipelineRunStatusCounts' => $this->countsBy(PipelineRun::class, 'status'),
-            'pipelineRunTypeMatrix' => $this->matrixCounts(PipelineRun::class, 'type', 'status'),
-            'actorStatusCounts' => $this->countsBy(ActorExecution::class, 'status'),
-            'actorNameMatrix' => $this->matrixCounts(ActorExecution::class, 'actor_name', 'status'),
+            'entityApprovalMatrix' => $this->diagnostics->typedMatrix($this->matrixCounts(EntityApproval::class, 'type', 'status'), 'entity_type', 'status'),
+            'webhookStatusCounts' => $this->diagnostics->typedCounts($this->countsBy(WebhookDelivery::class, 'status'), 'status'),
+            'pipelineRunStatusCounts' => $this->diagnostics->typedCounts($this->countsBy(PipelineRun::class, 'status'), 'status'),
+            'pipelineRunTypeMatrix' => $this->diagnostics->typedMatrix($this->matrixCounts(PipelineRun::class, 'type', 'status'), 'pipeline_type', 'status'),
+            'actorStatusCounts' => $this->diagnostics->typedCounts($this->countsBy(ActorExecution::class, 'status'), 'status'),
+            'actorNameMatrix' => $this->diagnostics->typedMatrix($this->matrixCounts(ActorExecution::class, 'actor_name', 'status'), 'actor_name', 'status'),
             'dailyActivity' => $this->dailyActivity(),
-            'python' => $legacyPythonState->stats(),
+            'python' => $this->diagnostics->legacyStats($legacyPythonState->stats()),
         ]);
     }
 

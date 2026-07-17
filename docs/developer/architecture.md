@@ -169,6 +169,12 @@ Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitu
 7. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in dauerhafte Pipeline-/Command-State-Tabellen; Laravel zeigt Status und Ergebnis aus PostgreSQL an
 8. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
 
+## Diagnose- und Operations-Grenze
+
+Globale Operations-Daten sind privilegierte Systemdiagnostik. Eine gemeinsame Laravel-Admin-Middleware laeuft vor dem Route Model Binding fuer Operations Log, Pipeline Runs, Webhook Deliveries, Actor Executions, Statistiken, Fehler, Embedding-Diagnostik, Maintenance und Audit. Dadurch liefern direkte Nicht-Admin-Aufrufe immer `403`, unabhaengig davon, ob eine angefragte Run- oder Delivery-ID existiert. Mutierende Controller pruefen den Admin-Status zusaetzlich unmittelbar vor der Zustandsaenderung.
+
+Die Browser-Datenvertraege enthalten nur explizit erlaubte skalare Metadaten mit Labels. Webhook-Headers und rohe/normalisierte Payloads werden nicht dargestellt; unbekannte oder verschachtelte Metadaten werden verworfen. Freie Fehler-, Event- und Fortschrittstexte werden durch einen festen Redaktionshinweis ersetzt, damit Tokens, Authorization-Header, Dokument-/OCR-Inhalt oder Prompts nicht ueber Diagnoseansichten offengelegt werden. Provider-Typen und interne Fehlerklassen/-arten werden nur aus kanonischen, im Quellcode inventarisierten Mengen angezeigt; unbekannte Werte erhalten nicht rueckrechenbare Referenzen. Konfigurierbare Provider-Profil- und Modell-IDs werden ungeachtet ihrer Zeichenform nie woertlich ausgegeben, sondern als stabile Referenz dargestellt. Status, Fehlerart, IDs, Zaehler und Ereignis-Timelines bleiben fuer Retry- und Recovery-Diagnose erhalten.
+
 ## Datenbank-Schema
 
 | Tabelle | Zweck |
