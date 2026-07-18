@@ -13,7 +13,13 @@
         approved_content: string | null;
     };
 
-    let { review }: { review: OcrReview } = $props();
+    let {
+        review,
+        actions,
+    }: {
+        review: OcrReview;
+        actions: { approve: string; reject: string };
+    } = $props();
 
     let approvedContent = $derived(
         review.approved_content ?? review.ocr_content,
@@ -61,7 +67,7 @@
 
     {#if review.status === 'pending'}
         <div class="flex flex-wrap gap-3">
-            <Form method="post" action={`/ocr-reviews/${review.id}/approve`}>
+            <Form method="post" action={actions.approve}>
                 {#snippet children({ processing })}
                     <input
                         type="hidden"
@@ -74,7 +80,19 @@
                 {/snippet}
             </Form>
 
-            <Form method="post" action={`/ocr-reviews/${review.id}/reject`}>
+            <Form
+                method="post"
+                action={actions.reject}
+                onsubmit={(event) => {
+                    if (
+                        !confirm(
+                            'Reject this OCR correction? The local corrected snapshot will remain rejected and Paperless content will not change.',
+                        )
+                    ) {
+                        event.preventDefault();
+                    }
+                }}
+            >
                 {#snippet children({ processing })}
                     <Button
                         type="submit"

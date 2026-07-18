@@ -48,6 +48,16 @@ class HandleInertiaRequests extends Middleware
                 'date_format' => AppSetting::getValue('gui.date_format', 'dd.mm.yyyy hh:mm:ss'),
             ],
             'build' => BuildInfo::current(),
+            'appPathPrefix' => ($pathPrefix = trim((string) config('archibot.path_prefix', ''), '/')) === ''
+                ? ''
+                : '/'.$pathPrefix,
+            'flash' => [
+                // Keep the existing event-driven toast contract while also exposing
+                // persistent, accessible status/error regions in the page layout.
+                'toast' => fn (): mixed => $request->session()->get('toast'),
+                'success' => fn (): ?string => $request->session()->get('status'),
+                'error' => fn (): ?string => $request->session()->get('error'),
+            ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

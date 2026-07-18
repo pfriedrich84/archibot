@@ -17,10 +17,13 @@ class WebhookDeliveryController extends Controller
 
     public function index(Request $request): Response
     {
+        $validated = $request->validate(['per_page' => ['nullable', 'integer', 'in:10,25,50,100']]);
+
         $deliveries = WebhookDelivery::query()
             ->latest('received_at')
             ->latest('id')
-            ->paginate(25)
+            ->paginate((int) ($validated['per_page'] ?? 25))
+            ->withQueryString()
             ->through(fn (WebhookDelivery $delivery) => $this->deliveryPayload($request, $delivery, includeDetails: false));
 
         return Inertia::render('webhooks/Index', [

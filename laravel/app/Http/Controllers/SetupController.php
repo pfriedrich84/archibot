@@ -33,6 +33,10 @@ class SetupController extends Controller
             'deploymentWebhookSecretConfigured' => ValidatePaperlessWebhookRequest::secretIsUsable(
                 config('archibot.paperless_webhook_secret', ''),
             ),
+            'actions' => [
+                'store' => route('setup.store'),
+                'paperlessTags' => route('setup.paperless-tags'),
+            ],
             'defaults' => [
                 'inboxTagId' => AppSetting::getValue('paperless.inbox_tag_id', ''),
                 'processedTagId' => AppSetting::getValue('paperless.processed_tag_id', ''),
@@ -120,6 +124,7 @@ class SetupController extends Controller
             ]);
         }
 
-        return redirect()->route('admin.settings.edit', ['section' => 'ai-provider']);
+        return redirect()->route('admin.settings.edit', ['section' => 'ai-provider'])
+            ->with('status', 'Setup completed. Configure and validate the AI models for each role.');
     }
 }

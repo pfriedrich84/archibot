@@ -215,7 +215,19 @@
             Mark the embedding index stale to close the document-processing gate
             until a fresh build completes.
         </p>
-        <Form method="post" action={actionUrls.mark_embedding_stale}>
+        <Form
+            method="post"
+            action={actionUrls.mark_embedding_stale}
+            onsubmit={(event) => {
+                if (
+                    !confirm(
+                        'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
+                    )
+                ) {
+                    event.preventDefault();
+                }
+            }}
+        >
             {#snippet children({ processing })}
                 <Button type="submit" variant="outline" disabled={processing}
                     >Mark embedding index stale</Button

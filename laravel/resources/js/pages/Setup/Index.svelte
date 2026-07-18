@@ -28,11 +28,13 @@
         paperlessUrl,
         deploymentWebhookSecretConfigured = false,
         defaults = {},
+        actions,
     }: {
         requiresResetToken: boolean;
         paperlessUrl: string;
         deploymentWebhookSecretConfigured?: boolean;
         defaults?: SetupDefaults;
+        actions: { store: string; paperlessTags: string };
     } = $props();
 
     let username = $state('');
@@ -83,7 +85,7 @@
         loadingTags = true;
 
         try {
-            const response = await fetch('/setup/paperless-tags', {
+            const response = await fetch(actions.paperlessTags, {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',
@@ -134,7 +136,7 @@
     </div>
 
     <Form
-        action="/setup"
+        action={actions.store}
         method="post"
         resetOnSuccess={['password', 'webhook_secret', 'setup_token']}
         novalidate

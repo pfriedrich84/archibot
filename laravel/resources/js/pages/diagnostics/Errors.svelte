@@ -1,6 +1,8 @@
 <script module lang="ts">
+    import { index as errorsBreadcrumb } from '@/routes/errors';
+
     export const layout = {
-        breadcrumbs: [{ title: 'Errors', href: '/errors' }],
+        breadcrumbs: [{ title: 'Errors', href: errorsBreadcrumb() }],
     };
 </script>
 
@@ -8,9 +10,11 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
     import { formatDisplayValue } from '@/lib/display';
+    import type { Paginator } from '@/types';
     import { index as errorsIndex } from '@/routes/errors';
 
     type WebhookError = {
@@ -36,25 +40,13 @@
         can_dismiss: boolean;
     };
 
-    type PaginatorLink = {
-        url: string | null;
-        label: string;
-        active: boolean;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
-        links: PaginatorLink[];
-    };
-
     let {
         filters,
         filterOptions,
         webhookErrors,
         isAdmin,
     }: {
-        filters: { source: string; status: string };
+        filters: { source: string; status: string; per_page: number };
         filterOptions: { sources: string[]; statuses: string[] };
         webhookErrors: Paginator<WebhookError>;
         isAdmin: boolean;
@@ -64,9 +56,6 @@
         value
             .replaceAll('_', ' ')
             .replace(/^./, (character) => character.toUpperCase());
-
-    const paginationLabel = (value: string) =>
-        value.replace('&laquo;', '‹').replace('&raquo;', '›');
 </script>
 
 <AppHead title="Errors" />
@@ -80,7 +69,7 @@
     <form
         method="get"
         action={errorsIndex().url}
-        class="grid gap-3 rounded-xl border p-4 text-sm md:grid-cols-[1fr_1fr_auto]"
+        class="grid gap-3 rounded-xl border p-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto]"
     >
         <label class="grid gap-1">
             <span class="font-medium">Source</span>
@@ -105,6 +94,19 @@
                     <option value={status} selected={filters.status === status}>
                         {label(status)}
                     </option>
+                {/each}
+            </select>
+        </label>
+        <label class="grid gap-1">
+            <span class="font-medium">Page size</span>
+            <select
+                name="per_page"
+                class="rounded-md border bg-background px-3 py-2"
+            >
+                {#each [10, 25, 50, 100] as size (size)}
+                    <option value={size} selected={filters.per_page === size}
+                        >{size}</option
+                    >
                 {/each}
             </select>
         </label>
@@ -188,7 +190,19 @@
                             </Form>
                         {/if}
                         {#if delivery.can_dismiss && delivery.dismiss_url}
-                            <Form method="post" action={delivery.dismiss_url}>
+                            <Form
+                                method="post"
+                                action={delivery.dismiss_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Dismiss webhook failure ${delivery.id}? It will be removed from the active error list.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
                                 {#snippet children({ processing })}
                                     <Button
                                         type="submit"
@@ -208,22 +222,13 @@
             </div>
         {/each}
 
-        {#if webhookErrors.links.length > 3}
-            <nav class="flex flex-wrap gap-2 border-t p-4 text-sm">
-                {#each webhookErrors.links as link, index (`${link.label}-${link.url ?? index}`)}
-                    {#if link.url}
-                        <a
-                            class:font-semibold={link.active}
-                            class="rounded-md border px-3 py-1"
-                            href={link.url}>{paginationLabel(link.label)}</a
-                        >
-                    {:else}
-                        <span class="rounded-md border px-3 py-1 opacity-50"
-                            >{paginationLabel(link.label)}</span
-                        >
-                    {/if}
-                {/each}
-            </nav>
-        {/if}
+        <Pagination
+            links={webhookErrors.links}
+            from={webhookErrors.from}
+            to={webhookErrors.to}
+            total={webhookErrors.total}
+            perPage={webhookErrors.per_page}
+            label="Error pages"
+        />
     </section>
 </div>

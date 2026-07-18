@@ -133,7 +133,8 @@ class ReviewSuggestionController extends Controller
 
         $this->queueCommitCommand($request, $reviewSuggestion);
 
-        return redirect()->route('review.index');
+        return redirect()->route('review.index')
+            ->with('status', 'Review accepted; the Paperless metadata update was queued.');
     }
 
     public function reject(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
@@ -141,7 +142,8 @@ class ReviewSuggestionController extends Controller
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
-        return redirect()->route('review.index');
+        return redirect()->route('review.index')
+            ->with('status', 'Review rejected; no Paperless metadata was changed.');
     }
 
     public function reprocess(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
@@ -215,7 +217,8 @@ class ReviewSuggestionController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return redirect()->route('review.show', $reviewSuggestion);
+        return redirect()->route('review.show', $reviewSuggestion)
+            ->with('status', 'Review edits saved.');
     }
 
     public function bulkAccept(Request $request): RedirectResponse

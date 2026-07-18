@@ -36,7 +36,8 @@ class McpTokenTest extends TestCase
 
         $response = $this->actingAs($user)
             ->post(route('mcp-tokens.store'), ['name' => 'Claude Desktop'])
-            ->assertRedirect(route('mcp-tokens.index'));
+            ->assertRedirect(route('mcp-tokens.index'))
+            ->assertSessionHas('status', "MCP token 'Claude Desktop' created. Copy it now; it will not be shown again.");
 
         $plainTextToken = $response->getSession()->get('created_mcp_token');
         $this->assertIsString($plainTextToken);
@@ -62,7 +63,8 @@ class McpTokenTest extends TestCase
 
         $this->actingAs($user)
             ->delete(route('mcp-tokens.destroy', $token))
-            ->assertRedirect(route('mcp-tokens.index'));
+            ->assertRedirect(route('mcp-tokens.index'))
+            ->assertSessionHas('status', "MCP token '{$token->name}' revoked.");
 
         $this->assertNotNull($token->refresh()->revoked_at);
         $this->assertDatabaseHas('audit_logs', [

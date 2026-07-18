@@ -1,9 +1,11 @@
 <script module lang="ts">
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
+
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Webhook deliveries',
-                href: '/webhook-deliveries',
+                href: webhookDeliveriesIndex(),
             },
         ],
     };
@@ -13,8 +15,10 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { formatDateTime } from '@/lib/datetime';
     import { formatDisplayValue } from '@/lib/display';
+    import type { Paginator } from '@/types';
 
     type SummaryEntry = {
         key: string;
@@ -40,11 +44,6 @@
         dismiss_url: string;
         can_retry: boolean;
         can_dismiss: boolean;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
     };
 
     let {
@@ -145,7 +144,19 @@
                             </Form>
                         {/if}
                         {#if delivery.can_dismiss}
-                            <Form method="post" action={delivery.dismiss_url}>
+                            <Form
+                                method="post"
+                                action={delivery.dismiss_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
                                 {#snippet children({ processing })}
                                     <button
                                         type="submit"
@@ -165,5 +176,13 @@
                 No webhook deliveries yet.
             </div>
         {/each}
+        <Pagination
+            links={deliveries.links}
+            from={deliveries.from}
+            to={deliveries.to}
+            total={deliveries.total}
+            perPage={deliveries.per_page}
+            label="Webhook delivery pages"
+        />
     </div>
 </div>

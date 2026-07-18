@@ -83,6 +83,7 @@
         prompts,
         paperlessTagOptions,
         webhookDevelopmentBypassActive = false,
+        aiModelActions,
     }: {
         groups: SettingGroup[];
         sections: SettingsSection[];
@@ -90,6 +91,7 @@
         prompts: Prompt[];
         paperlessTagOptions: PaperlessTagOption[];
         webhookDevelopmentBypassActive?: boolean;
+        aiModelActions: { discover: string; validate: string };
     } = $props();
 
     let aiModelProviderId = $state('default');
@@ -97,6 +99,12 @@
     let aiModelError = $state('');
     let aiModelItems = $state<string[]>([]);
     let selectedAiModel = $state('');
+    let manualAiModel = $state('');
+    let manualAiRole = $state('classification');
+    let aiModelValidationLoading = $state(false);
+    let aiModelValidationMessage = $state('');
+    let aiModelValidationError = $state('');
+    let aiModelDiscoveryMessage = $state('');
     let aiModelProvider = $state<{
         id: string;
         label: string;
@@ -117,6 +125,13 @@
         'ocr_vision_model',
         'classification_judge_model',
     ]);
+    const modelRoleInputNames: Record<string, string> = {
+        classification: 'classification_model',
+        embedding: 'embedding_model',
+        ocr_text: 'ocr_text_model',
+        ocr_vision: 'ocr_vision_model',
+        judge: 'classification_judge_model',
+    };
 
     const isModelSetting = (setting: Setting) =>
         modelSettingInputNames.has(setting.input_name);
@@ -144,8 +159,8 @@
         return element?.value ?? '';
     };
 
-    function applyLoadedModel(inputName: string) {
-        if (!selectedAiModel) {
+    function applyLoadedModel(inputName: string | undefined) {
+        if (!selectedAiModel || !inputName) {
             return;
         }
 
@@ -167,9 +182,10 @@
         aiModelError = '';
         aiModelItems = [];
         aiModelProvider = null;
+        aiModelDiscoveryMessage = '';
 
         try {
-            const response = await fetch('/admin/settings/ai-models', {
+            const response = await fetch(aiModelActions.discover, {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',
@@ -201,11 +217,62 @@
             aiModelItems = data.items ?? [];
             selectedAiModel = aiModelItems[0] ?? '';
             aiModelProvider = data.provider ?? null;
+            aiModelDiscoveryMessage = data.discovery?.message ?? '';
         } catch (error) {
             aiModelError =
                 error instanceof Error ? error.message : String(error);
         } finally {
             aiModelLoading = false;
+        }
+    }
+
+    async function validateManualAiModel() {
+        aiModelValidationLoading = true;
+        aiModelValidationMessage = '';
+        aiModelValidationError = '';
+
+        try {
+            const response = await fetch(aiModelActions.validate, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    model_id: manualAiModel,
+                    role: manualAiRole,
+                    provider_id: aiModelProviderId,
+                    llm_provider: settingValue('llm_provider'),
+                    ollama_url: settingValue('ollama_url'),
+                    openai_api_key: settingValue('llm_openai_api_key'),
+                    ai_provider_profiles: settingValue('llm_provider_profiles'),
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const firstError = Object.values(data?.errors ?? {}).flat()[0];
+
+                throw new Error(
+                    typeof firstError === 'string'
+                        ? firstError
+                        : (data?.message ?? 'Model validation failed.'),
+                );
+            }
+
+            selectedAiModel = manualAiModel;
+            applyLoadedModel(modelRoleInputNames[manualAiRole]);
+            aiModelValidationMessage = `${data.message} It has been applied to the matching settings field; save settings to persist it.`;
+
+            if (!aiModelItems.includes(manualAiModel)) {
+                aiModelItems = [...aiModelItems, manualAiModel];
+            }
+        } catch (error) {
+            aiModelValidationError =
+                error instanceof Error ? error.message : String(error);
+        } finally {
+            aiModelValidationLoading = false;
         }
     }
 </script>
@@ -311,8 +378,72 @@
             </div>
 
             {#if aiModelError}
-                <p class="text-sm text-destructive">{aiModelError}</p>
+                <p class="text-sm text-destructive" role="alert">
+                    Discovery failure: {aiModelError}
+                </p>
             {/if}
+            {#if aiModelDiscoveryMessage}
+                <p
+                    class="text-sm text-amber-700 dark:text-amber-400"
+                    role="status"
+                >
+                    {aiModelDiscoveryMessage}
+                </p>
+            {/if}
+
+            <div class="grid gap-3 rounded-md border p-4">
+                <div>
+                    <h3 class="font-medium">Validate a manual model ID</h3>
+                    <p class="text-sm text-muted-foreground">
+                        Use this when discovery is unavailable or incomplete.
+                        Validation makes a minimal request for the selected role
+                        and is separate from discovery.
+                    </p>
+                </div>
+                <div class="grid gap-3 md:grid-cols-[1fr_12rem_auto]">
+                    <Input
+                        value={manualAiModel}
+                        oninput={(event) =>
+                            (manualAiModel = event.currentTarget.value)}
+                        aria-label="Manual model ID"
+                        placeholder="provider/model-id"
+                        maxlength="255"
+                    />
+                    <select
+                        bind:value={manualAiRole}
+                        aria-label="Model role"
+                        class="h-9 rounded-md border bg-background px-3 text-sm"
+                    >
+                        <option value="classification">Classification</option>
+                        <option value="embedding">Embedding</option>
+                        <option value="ocr_text">OCR text</option>
+                        <option value="ocr_vision">OCR vision</option>
+                        <option value="judge">Judge</option>
+                    </select>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onclick={validateManualAiModel}
+                        disabled={aiModelValidationLoading ||
+                            !manualAiModel.trim()}
+                    >
+                        {#if aiModelValidationLoading}<Spinner />{/if}Validate
+                        model
+                    </Button>
+                </div>
+                {#if aiModelValidationMessage}<p
+                        class="text-sm text-green-700 dark:text-green-400"
+                        role="status"
+                    >
+                        {aiModelValidationMessage}
+                    </p>{/if}
+                {#if aiModelValidationError}<p
+                        class="text-sm text-destructive"
+                        role="alert"
+                    >
+                        Validation failure: {aiModelValidationError}
+                    </p>{/if}
+            </div>
 
             {#if aiModelProvider}
                 <div class="rounded-md border bg-muted/30 p-3 text-sm">
@@ -630,7 +761,19 @@
                     </Form>
 
                     {#if prompt.has_override}
-                        <Form method="delete" action={prompt.reset_url}>
+                        <Form
+                            method="delete"
+                            action={prompt.reset_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Reset the ${prompt.label} override? The bundled default will take effect immediately.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
                             {#snippet children({ processing })}
                                 <Button
                                     type="submit"

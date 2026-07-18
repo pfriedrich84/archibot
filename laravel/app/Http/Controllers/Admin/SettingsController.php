@@ -54,6 +54,10 @@ class SettingsController extends Controller
             'prompts' => $activeSection === 'prompts' ? $this->promptPayloads() : [],
             'paperlessTagOptions' => $this->paperlessTagOptions($request),
             'webhookDevelopmentBypassActive' => ValidatePaperlessWebhookRequest::developmentBypassIsActive(),
+            'aiModelActions' => [
+                'discover' => route('admin.settings.ai-models'),
+                'validate' => route('admin.settings.ai-models.validate'),
+            ],
         ]);
     }
 
@@ -72,12 +76,20 @@ class SettingsController extends Controller
         $provider = $this->resolveAiProvider($validated);
 
         try {
+            $items = app(OllamaClient::class, [
+                'baseUrl' => $provider['base_url'],
+                'provider' => $provider['type'],
+                'apiKey' => $provider['api_key'] ?: null,
+            ])->models();
+
             return [
-                'items' => app(OllamaClient::class, [
-                    'baseUrl' => $provider['base_url'],
-                    'provider' => $provider['type'],
-                    'apiKey' => $provider['api_key'] ?: null,
-                ])->models(),
+                'items' => $items,
+                'discovery' => [
+                    'status' => $items === [] ? 'no_models' : 'ok',
+                    'message' => $items === []
+                        ? 'Provider discovery succeeded but returned no useful model IDs. Enter and validate a model ID manually.'
+                        : null,
+                ],
                 'provider' => [
                     'id' => $provider['id'],
                     'label' => $provider['label'],
@@ -87,10 +99,54 @@ class SettingsController extends Controller
                 ],
             ];
         } catch (\RuntimeException $exception) {
+            return [
+                'items' => [],
+                'discovery' => [
+                    'status' => 'failed',
+                    'message' => 'Model discovery failed: '.$exception->getMessage().' You can still enter and validate a model ID manually.',
+                ],
+                'provider' => [
+                    'id' => $provider['id'],
+                    'label' => $provider['label'],
+                    'type' => $provider['type'],
+                    'base_url' => $provider['base_url'],
+                    'is_cloud' => $provider['is_cloud'],
+                ],
+            ];
+        }
+    }
+
+    public function validateAiModel(Request $request): array
+    {
+        $this->authorizeAdmin($request);
+
+        $validated = $request->validate([
+            'model_id' => ['required', 'string', 'max:255', 'regex:/^[^\\x00-\\x1F\\x7F]+$/'],
+            'role' => ['required', Rule::in(['classification', 'embedding', 'ocr_text', 'ocr_vision', 'judge'])],
+            'provider_id' => ['nullable', 'string'],
+            'llm_provider' => ['nullable', Rule::in(['ollama', 'openai_compatible'])],
+            'ollama_url' => ['nullable', 'url:http,https'],
+            'openai_api_key' => ['nullable', 'string'],
+            'ai_provider_profiles' => ['nullable', 'string'],
+        ]);
+        $provider = $this->resolveAiProvider($validated);
+
+        try {
+            app(OllamaClient::class, [
+                'baseUrl' => $provider['base_url'],
+                'provider' => $provider['type'],
+                'apiKey' => $provider['api_key'] ?: null,
+            ])->validateModel($validated['model_id'], $validated['role']);
+        } catch (\RuntimeException $exception) {
             throw ValidationException::withMessages([
-                'provider_id' => $exception->getMessage(),
+                'model_id' => $exception->getMessage(),
             ]);
         }
+
+        return [
+            'valid' => true,
+            'message' => "Model '{$validated['model_id']}' validated for {$validated['role']}.",
+        ];
     }
 
     public function update(Request $request, SettingsCatalog $catalog): RedirectResponse
@@ -184,7 +240,7 @@ class SettingsController extends Controller
             ]);
         }
 
-        return back()->with('status', 'settings-updated');
+        return back()->with('status', $changes === [] ? 'Settings are already up to date.' : 'Settings saved.');
     }
 
     public function updatePrompt(Request $request, string $prompt): RedirectResponse
@@ -210,7 +266,7 @@ class SettingsController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return back()->with('status', 'prompt-updated');
+        return back()->with('status', 'Prompt override saved.');
     }
 
     public function resetPrompt(Request $request, string $prompt): RedirectResponse
@@ -231,7 +287,7 @@ class SettingsController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return back()->with('status', 'prompt-reset');
+        return back()->with('status', 'Prompt reset to its packaged default.');
     }
 
     /**

@@ -22,12 +22,15 @@ class PipelineRunController extends Controller
 
     public function index(Request $request): Response
     {
+        $validated = $request->validate(['per_page' => ['nullable', 'integer', 'in:10,25,50,100']]);
+
         $runs = PipelineRun::query()
             ->with(['command:id,type,status,created_at', 'webhookDelivery:id,source,event_type,status,paperless_document_id,received_at'])
             ->withCount(['events', 'items'])
             ->latest('updated_at')
             ->latest('id')
-            ->paginate(25)
+            ->paginate((int) ($validated['per_page'] ?? 25))
+            ->withQueryString()
             ->through(fn (PipelineRun $run) => $this->runPayload($request, $run, includeDetails: false));
 
         return Inertia::render('pipeline-runs/Index', [

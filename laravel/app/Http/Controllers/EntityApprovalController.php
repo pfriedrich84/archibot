@@ -50,13 +50,17 @@ class EntityApprovalController extends Controller
         $token = $request->user()->paperless_token;
         abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        $command = $this->enqueueDecision($decisions, $entityApproval, 'approved', $request);
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'approved', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Entity approval could not be queued: '.$exception->getMessage());
+        }
         $this->audit($request, $entityApproval, 'approved', [
             'command_id' => $command->id,
             'outcome' => 'queued',
         ]);
 
-        return back();
+        return back()->with('status', "Approval for '{$entityApproval->name}' was queued.");
     }
 
     public function reject(Request $request, string $segment, EntityApproval $entityApproval, EntityApprovalDecisionService $decisions): RedirectResponse
@@ -66,10 +70,14 @@ class EntityApprovalController extends Controller
 
         abort_unless($entityApproval->status === EntityApproval::STATUS_PENDING, 409);
 
-        $command = $this->enqueueDecision($decisions, $entityApproval, 'rejected', $request);
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'rejected', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Entity rejection could not be queued: '.$exception->getMessage());
+        }
         $this->audit($request, $entityApproval, 'rejected', ['command_id' => $command->id, 'outcome' => 'queued']);
 
-        return back();
+        return back()->with('status', "Rejection of '{$entityApproval->name}' was queued.");
     }
 
     public function unblacklist(Request $request, string $segment, EntityApproval $entityApproval, EntityApprovalDecisionService $decisions): RedirectResponse
@@ -79,10 +87,14 @@ class EntityApprovalController extends Controller
 
         abort_unless($entityApproval->status === EntityApproval::STATUS_REJECTED, 409);
 
-        $command = $this->enqueueDecision($decisions, $entityApproval, 'unblacklisted', $request);
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'unblacklisted', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Blocklist removal could not be queued: '.$exception->getMessage());
+        }
         $this->audit($request, $entityApproval, 'unblacklisted', ['command_id' => $command->id, 'outcome' => 'queued']);
 
-        return back();
+        return back()->with('status', "Blocklist removal for '{$entityApproval->name}' was queued.");
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -130,11 +142,7 @@ class EntityApprovalController extends Controller
         string $action,
         Request $request,
     ): Command {
-        try {
-            return $decisions->enqueue($entityApproval, $action, $request->user());
-        } catch (\DomainException $exception) {
-            abort(409, $exception->getMessage());
-        }
+        return $decisions->enqueue($entityApproval, $action, $request->user());
     }
 
     /** @param array<string, mixed> $metadata */

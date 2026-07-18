@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as entitiesIndex } from '@/routes/entities';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Entity approvals',
-                href: '/tags',
+                href: entitiesIndex({ segment: 'tags' }),
             },
         ],
     };
@@ -104,6 +105,15 @@
                         <Form
                             method="post"
                             action={actionUrl(entity, 'approve')}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Approve “${entity.name}” for the whitelist and queue its Paperless application?`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
                         >
                             {#snippet children({ processing })}
                                 <Button
@@ -116,6 +126,15 @@
                         <Form
                             method="post"
                             action={actionUrl(entity, 'reject')}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Reject and block “${entity.name}”? It will not be applied to Paperless.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
                         >
                             {#snippet children({ processing })}
                                 <Button
@@ -183,6 +202,15 @@
                     <Form
                         method="post"
                         action={actionUrl(entity, 'unblacklist')}
+                        onsubmit={(event) => {
+                            if (
+                                !confirm(
+                                    `Remove “${entity.name}” from the blocklist? Future suggestions may propose it again.`,
+                                )
+                            ) {
+                                event.preventDefault();
+                            }
+                        }}
                     >
                         {#snippet children({ processing })}
                             <Button

@@ -504,7 +504,8 @@ class ReviewSuggestionTest extends TestCase
                 'proposed_storage_path_id' => 66,
                 'proposed_storage_path_name' => 'Edited storage',
             ])
-            ->assertRedirect(route('review.show', $suggestion));
+            ->assertRedirect(route('review.show', $suggestion))
+            ->assertSessionHas('status', 'Review edits saved.');
 
         $suggestion->refresh();
         $this->assertSame('Edited title', $suggestion->proposed_title);
@@ -548,7 +549,8 @@ class ReviewSuggestionTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('review.accept', $suggestion))
-            ->assertRedirect(route('review.index'));
+            ->assertRedirect(route('review.index'))
+            ->assertSessionHas('status', 'Review accepted; the Paperless metadata update was queued.');
 
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->refresh()->status);
         $command = Command::query()->firstOrFail();
@@ -570,7 +572,8 @@ class ReviewSuggestionTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('review.reject', $suggestion))
-            ->assertRedirect(route('review.index'));
+            ->assertRedirect(route('review.index'))
+            ->assertSessionHas('status', 'Review rejected; no Paperless metadata was changed.');
 
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $suggestion->refresh()->status);
     }

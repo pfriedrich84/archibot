@@ -113,6 +113,9 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])
             ->middleware('throttle:model-discovery')
             ->name('admin.settings.ai-models');
+        Route::post('admin/settings/ai-models/validate', [SettingsController::class, 'validateAiModel'])
+            ->middleware('throttle:model-discovery')
+            ->name('admin.settings.ai-models.validate');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
         Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');

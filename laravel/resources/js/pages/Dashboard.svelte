@@ -19,6 +19,7 @@
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
     import { index as reviewIndex } from '@/routes/review';
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
 
     type DashboardStatus = {
         setup_complete: boolean;
@@ -501,6 +502,15 @@
                         <Form
                             method="post"
                             action={embeddingIndex.mark_stale_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
                         >
                             {#snippet children({ processing })}
                                 <button
@@ -672,7 +682,7 @@
                 <div class="font-semibold">Recent webhook deliveries</div>
                 <a
                     class="text-sm text-muted-foreground underline-offset-4 hover:underline"
-                    href="/webhook-deliveries"
+                    href={webhookDeliveriesIndex().url}
                 >
                     View all
                 </a>
@@ -736,6 +746,15 @@
                                     <Form
                                         method="post"
                                         action={delivery.dismiss_url}
+                                        onsubmit={(event) => {
+                                            if (
+                                                !confirm(
+                                                    `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                                )
+                                            ) {
+                                                event.preventDefault();
+                                            }
+                                        }}
                                     >
                                         {#snippet children({ processing })}
                                             <button
@@ -890,7 +909,19 @@
                                     </Form>
                                 {/if}
                                 {#if run.can_cancel}
-                                    <Form method="post" action={run.cancel_url}>
+                                    <Form
+                                        method="post"
+                                        action={run.cancel_url}
+                                        onsubmit={(event) => {
+                                            if (
+                                                !confirm(
+                                                    `Cancel pipeline run ${run.id}? Remaining queued work will not start.`,
+                                                )
+                                            ) {
+                                                event.preventDefault();
+                                            }
+                                        }}
+                                    >
                                         {#snippet children({ processing })}
                                             <button
                                                 type="submit"

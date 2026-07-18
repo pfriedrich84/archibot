@@ -46,6 +46,23 @@ class EntityApprovalTest extends TestCase
             );
     }
 
+    public function test_entity_queue_failure_returns_an_accessible_session_error(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        $entity = EntityApproval::factory()->create([
+            'type' => EntityApproval::TYPE_TAG,
+            'name' => 'Accounting',
+        ]);
+        $decisions = $this->mock(EntityApprovalDecisionService::class);
+        $decisions->shouldReceive('enqueue')->once()->andThrow(new \DomainException('A newer decision already exists.'));
+
+        $this->actingAs($admin)
+            ->from(route('entities.index', ['segment' => 'tags']))
+            ->post(route('entities.approve', ['segment' => 'tags', 'entityApproval' => $entity]))
+            ->assertRedirect(route('entities.index', ['segment' => 'tags']))
+            ->assertSessionHas('error', 'Entity approval could not be queued: A newer decision already exists.');
+    }
+
     public function test_admin_can_approve_pending_entity_and_create_it_in_paperless(): void
     {
         Http::fake([
@@ -60,7 +77,8 @@ class EntityApprovalTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('entities.approve', ['segment' => 'tags', 'entityApproval' => $entity]))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('status', "Approval for 'Accounting' was queued.");
         $command = Command::query()->firstOrFail();
         $this->execute($command);
 
@@ -617,14 +635,16 @@ class EntityApprovalTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('entities.reject', ['segment' => 'doctypes', 'entityApproval' => $entity]))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('status', "Rejection of 'Invoice' was queued.");
         $this->execute(Command::query()->latest('id')->firstOrFail());
 
         $this->assertSame(EntityApproval::STATUS_REJECTED, $entity->refresh()->status);
 
         $this->actingAs($admin)
             ->post(route('entities.unblacklist', ['segment' => 'doctypes', 'entityApproval' => $entity]))
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('status', "Blocklist removal for 'Invoice' was queued.");
         $this->execute(Command::query()->latest('id')->firstOrFail());
 
         $this->assertSame(EntityApproval::STATUS_PENDING, $entity->refresh()->status);

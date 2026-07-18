@@ -24,6 +24,7 @@ class ErrorsController extends Controller
         $validated = $request->validate([
             'source' => ['nullable', Rule::in(['all', 'webhook'])],
             'status' => ['nullable', Rule::in(array_merge(['all'], $webhookStatuses))],
+            'per_page' => ['nullable', 'integer', 'in:10,25,50,100'],
         ]);
 
         $source = $validated['source'] ?? 'all';
@@ -36,7 +37,7 @@ class ErrorsController extends Controller
             ->when(in_array($status, $webhookStatuses, true), fn ($query) => $query->where('status', $status))
             ->latest('received_at')
             ->latest('id')
-            ->paginate(15, ['*'], 'webhook_page')
+            ->paginate((int) ($validated['per_page'] ?? 25), ['*'], 'webhook_page')
             ->withQueryString()
             ->through(fn (WebhookDelivery $delivery) => $this->webhookPayload($delivery, $isAdmin));
 
@@ -44,6 +45,7 @@ class ErrorsController extends Controller
             'filters' => [
                 'source' => $source,
                 'status' => $status,
+                'per_page' => $validated['per_page'] ?? 25,
             ],
             'filterOptions' => [
                 'sources' => ['all', 'webhook'],

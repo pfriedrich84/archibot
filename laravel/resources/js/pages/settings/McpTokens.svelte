@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as mcpTokensIndex } from '@/routes/mcp-tokens';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'MCP tokens',
-                href: '/settings/mcp-tokens',
+                href: mcpTokensIndex(),
             },
         ],
     };
@@ -15,6 +16,10 @@
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
+    import {
+        destroy as destroyMcpToken,
+        store as storeMcpToken,
+    } from '@/routes/mcp-tokens';
 
     type McpToken = {
         id: number;
@@ -59,7 +64,7 @@
         <h2 class="mb-3 font-semibold">Create token</h2>
         <Form
             method="post"
-            action="/settings/mcp-tokens"
+            action={storeMcpToken()}
             class="flex flex-wrap gap-3"
         >
             {#snippet children({ errors, processing })}
@@ -111,7 +116,16 @@
                 {#if !token.revoked_at}
                     <Form
                         method="delete"
-                        action={`/settings/mcp-tokens/${token.id}`}
+                        action={destroyMcpToken(token.id)}
+                        onsubmit={(event) => {
+                            if (
+                                !confirm(
+                                    `Revoke MCP token “${token.name}”? Existing clients using it will immediately lose access.`,
+                                )
+                            ) {
+                                event.preventDefault();
+                            }
+                        }}
                     >
                         {#snippet children({ processing })}
                             <Button

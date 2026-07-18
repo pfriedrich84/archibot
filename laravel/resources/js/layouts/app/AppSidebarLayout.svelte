@@ -4,6 +4,7 @@
     import AppShell from '@/components/AppShell.svelte';
     import AppSidebar from '@/components/AppSidebar.svelte';
     import AppSidebarHeader from '@/components/AppSidebarHeader.svelte';
+    import GlobalFlash from '@/components/GlobalFlash.svelte';
     import { Toaster } from '@/components/ui/sonner';
     import type { BreadcrumbItem } from '@/types';
 
@@ -20,6 +21,7 @@
     <AppSidebar />
     <AppContent variant="sidebar" class="overflow-x-hidden">
         <AppSidebarHeader {breadcrumbs} />
+        <GlobalFlash />
         {@render children?.()}
     </AppContent>
     <Toaster />

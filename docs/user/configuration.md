@@ -168,9 +168,13 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `QUEUE_CONNECTION` | `database` | Erforderliches Laravel Queue Backend; andere Backends werden beim Start abgelehnt. |
 | `QUEUE_WORKER_TIMEOUT` | `21600` | Maximale Laufzeit eines Laravel Actor-Jobs in Sekunden. |
 | `DB_QUEUE_RETRY_AFTER` | `21720` | Queue-Lease in Sekunden; muss groesser als das sechsstuendige Actor-Timeout bleiben. |
-| `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
+| `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/`, z.B. `archibot` stellt die Oberflaeche unter `/archibot` bereit. Interne Navigation, Setup-/Settings-Aktionen, Vorschauen und API-Aufrufe verwenden den Praefix automatisch. Nach einer Aenderung ist ein Container-Neustart erforderlich. |
 
 Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Posteingang` statt `124`). IDs bleiben nur interne technische Referenzen.
+
+Paginierten Listen fuer Reviews, OCR, Pipeline Runs, Webhooks und Fehler bieten eine gemeinsame Seitennavigation und Seitengroesse. Filter und Sortierung bleiben beim Seitenwechsel erhalten. Globale, barrierearm ausgezeichnete Statusmeldungen bestaetigen erfolgreiche oder fehlgeschlagene Aktionen. Bereits laufende Formulare deaktivieren ihre Schaltflaeche gegen Doppelklicks; Sammel- und destruktive Aktionen nennen Anzahl und Auswirkung in einer Bestaetigung.
+
+Nach dem ersten Setup fuehrt ArchiBot den neuen Administrator zur AI-Provider-Sektion. Falls die Modell-Discovery keine brauchbare `/models`-Liste liefert oder unvollstaendig ist, kann dort fuer Klassifikation, Embeddings, OCR Text/Vision oder Judge eine manuelle Modell-ID eingegeben werden. **Validate model** fuehrt einen kleinen rollenspezifischen Provider-Aufruf aus; erst bei Erfolg wird die ID in das passende Settings-Feld uebernommen. Discovery-Fehler und Modellvalidierungsfehler werden getrennt angezeigt. Anschliessend muessen die Settings gespeichert werden.
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 

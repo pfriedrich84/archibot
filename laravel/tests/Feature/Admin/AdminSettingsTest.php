@@ -5,12 +5,14 @@ namespace Tests\Feature\Admin;
 use App\Models\AppSetting;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
+use App\Services\Ollama\OllamaClient;
 use App\Services\Settings\PythonRuntimeConfigExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -289,7 +291,7 @@ class AdminSettingsTest extends TestCase
         $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
             'llm_provider' => 'ollama',
             'ollama_url' => 'http://ollama.test:11434',
-        ])->assertUnprocessable();
+        ])->assertOk()->assertJsonPath('discovery.status', 'failed');
 
         Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://attacker.test/'));
     }
@@ -304,9 +306,173 @@ class AdminSettingsTest extends TestCase
             'ollama_url' => 'http://ollama.test:11434',
         ];
 
-        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertUnprocessable();
-        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertUnprocessable();
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertOk()->assertJsonPath('discovery.status', 'failed');
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertOk()->assertJsonPath('discovery.status', 'failed');
         $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $payload)->assertTooManyRequests();
+    }
+
+    public function test_manual_model_validation_requires_an_admin(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)->postJson(route('admin.settings.ai-models.validate'), [
+            'model_id' => 'manual/model',
+            'role' => 'classification',
+        ])->assertForbidden();
+    }
+
+    public function test_openai_provider_with_empty_discovery_can_validate_manual_role_specific_models(): void
+    {
+        config(['archibot.model_discovery_rate_limit_per_minute' => 20]);
+        $admin = User::factory()->create(['is_admin' => true]);
+        RateLimiter::clear((string) $admin->id);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/models')) {
+                return Http::response(['data' => []]);
+            }
+            if (str_ends_with($request->url(), '/embeddings')) {
+                return Http::response(['data' => [['embedding' => [0.1]]]]);
+            }
+
+            $content = $request['messages'][0]['content'] ?? null;
+            $visionImage = is_array($content)
+                ? ($content[1]['image_url']['url'] ?? null)
+                : null;
+            $visionPassed = is_string($visionImage)
+                && str_starts_with($visionImage, 'data:image/png;base64,')
+                && $this->isExpectedVisionFixture(substr($visionImage, strlen('data:image/png;base64,')));
+
+            return Http::response(['choices' => [['message' => ['content' =>
+                $request['model'] === 'manual/ocr_vision-model' && $visionPassed
+                    ? 'VISION_OK:A7K9'
+                    : 'ARCHIBOT_OK',
+            ]]]]);
+        });
+        $provider = [
+            'llm_provider' => 'openai_compatible',
+            'ollama_url' => 'http://openai.test/v1',
+        ];
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $provider)
+            ->assertOk()
+            ->assertJsonPath('items', [])
+            ->assertJsonPath('discovery.status', 'no_models');
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models.validate'), [
+            ...$provider,
+            'model_id' => 'manual/embed-model',
+            'role' => 'embedding',
+        ])->assertOk()->assertJsonPath('valid', true);
+
+        foreach (['classification', 'ocr_text', 'ocr_vision', 'judge'] as $role) {
+            $this->actingAs($admin)->postJson(route('admin.settings.ai-models.validate'), [
+                ...$provider,
+                'model_id' => "manual/{$role}-model",
+                'role' => $role,
+            ])->assertOk()->assertJsonPath('valid', true);
+        }
+
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/embeddings')
+            && $request['encoding_format'] === 'float'
+            && $request['model'] === 'manual/embed-model');
+        foreach (['classification', 'ocr_text', 'ocr_vision', 'judge'] as $role) {
+            Http::assertSent(fn ($request) => str_ends_with($request->url(), '/chat/completions')
+                && $request['model'] === "manual/{$role}-model");
+        }
+        Http::assertSent(fn ($request) => $request['model'] === 'manual/ocr_vision-model'
+            && $request['messages'][0]['content'][1]['type'] === 'image_url'
+            && $this->isExpectedVisionFixture(substr($request['messages'][0]['content'][1]['image_url']['url'], strlen('data:image/png;base64,')))
+            && ! str_contains($request['messages'][0]['content'][0]['text'], 'A7K9'));
+    }
+
+    public function test_ollama_can_validate_manual_models_for_all_five_roles(): void
+    {
+        config(['archibot.model_discovery_rate_limit_per_minute' => 20]);
+        $admin = User::factory()->create(['is_admin' => true]);
+        RateLimiter::clear((string) $admin->id);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/embed')) {
+                return Http::response(['embeddings' => [[0.1, 0.2]]]);
+            }
+
+            $visionImage = $request['messages'][0]['images'][0] ?? null;
+            $visionPassed = is_string($visionImage) && $this->isExpectedVisionFixture($visionImage);
+
+            return Http::response(['message' => ['content' =>
+                $request['model'] === 'manual-ocr_vision' && $visionPassed
+                    ? 'VISION_OK:A7K9'
+                    : 'ARCHIBOT_OK',
+            ]]);
+        });
+        $provider = ['llm_provider' => 'ollama', 'ollama_url' => 'http://ollama.test:11434'];
+
+        foreach (['classification', 'embedding', 'ocr_text', 'ocr_vision', 'judge'] as $role) {
+            $this->actingAs($admin)->postJson(route('admin.settings.ai-models.validate'), [
+                ...$provider,
+                'model_id' => "manual-{$role}",
+                'role' => $role,
+            ])->assertOk()->assertJsonPath('valid', true);
+        }
+
+        Http::assertSent(fn ($request) => $request['model'] === 'manual-ocr_vision'
+            && str_ends_with($request->url(), '/api/chat')
+            && $this->isExpectedVisionFixture($request['messages'][0]['images'][0])
+            && ! str_contains($request['messages'][0]['content'], 'A7K9'));
+    }
+
+    public function test_corrupt_vision_challenge_is_rejected_before_submission(): void
+    {
+        $this->assertVisionFixtureRejected(base64_encode('not a PNG'));
+    }
+
+    public function test_wrong_but_valid_png_vision_challenge_is_rejected_before_submission(): void
+    {
+        // Valid 1x1 PNG: decoding succeeds, but dimensions and fixture hash do
+        // not match the reviewed 132x44 visual challenge.
+        $this->assertVisionFixtureRejected(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        );
+    }
+
+    public function test_text_only_success_response_fails_ocr_vision_validation(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        Http::fake(['http://openai.test/v1/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => 'ARCHIBOT_OK']]],
+        ])]);
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models.validate'), [
+            'llm_provider' => 'openai_compatible',
+            'ollama_url' => 'http://openai.test/v1',
+            'model_id' => 'text-only-model',
+            'role' => 'ocr_vision',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('model_id');
+    }
+
+    public function test_manual_model_validation_failure_is_distinct_from_discovery_failure(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        Http::fake([
+            'http://ollama.test:11434/api/tags' => Http::response(['error' => 'offline'], 503),
+            'http://ollama.test:11434/api/chat' => Http::response(['error' => 'model not found'], 404),
+        ]);
+        $provider = [
+            'llm_provider' => 'ollama',
+            'ollama_url' => 'http://ollama.test:11434',
+        ];
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), $provider)
+            ->assertOk()
+            ->assertJsonPath('discovery.status', 'failed')
+            ->assertJsonPath('items', []);
+
+        $this->actingAs($admin)->postJson(route('admin.settings.ai-models.validate'), [
+            ...$provider,
+            'model_id' => 'missing:model',
+            'role' => 'classification',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('model_id');
     }
 
     public function test_admin_can_update_and_reset_active_prompt_overrides(): void
@@ -380,5 +546,34 @@ class AdminSettingsTest extends TestCase
         ])->assertForbidden();
 
         $this->assertSame('https://paperless.test', AppSetting::getValue('paperless.url'));
+    }
+
+    private function assertVisionFixtureRejected(string $encoded): void
+    {
+        Http::fake();
+        $client = new OllamaClient('http://ollama.test:11434', 'ollama', null, $encoded);
+
+        try {
+            $client->validateModel('vision-model', 'ocr_vision');
+            $this->fail('A corrupt or substituted OCR vision fixture was accepted.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('OCR vision validation challenge image is corrupt.', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    private function isExpectedVisionFixture(string $encoded): bool
+    {
+        $bytes = base64_decode($encoded, true);
+        $dimensions = is_string($bytes) ? @getimagesizefromstring($bytes) : false;
+
+        return is_string($bytes)
+            && hash('sha256', $bytes) === '61dc1e5e1e79b8ab0fdd016f2333085e593c182b23051c162a36cb9b067c092f'
+            && strlen($bytes) === 220
+            && $dimensions !== false
+            && $dimensions[0] === 132
+            && $dimensions[1] === 44
+            && ($dimensions['mime'] ?? null) === 'image/png';
     }
 }

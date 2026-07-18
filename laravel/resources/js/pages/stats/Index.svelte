@@ -1,6 +1,7 @@
 <script module lang="ts">
+    import { index as statsIndex } from '@/routes/stats';
     export const layout = {
-        breadcrumbs: [{ title: 'Stats', href: '/stats' }],
+        breadcrumbs: [{ title: 'Stats', href: statsIndex() }],
     };
 </script>
 

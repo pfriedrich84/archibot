@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Pipeline runs',
-                href: '/pipeline-runs',
+                href: pipelineRunsIndex(),
             },
             {
                 title: 'Run detail',
@@ -199,7 +200,19 @@
                         </Form>
                     {/if}
                     {#if run.can_cancel}
-                        <Form method="post" action={run.cancel_url}>
+                        <Form
+                            method="post"
+                            action={run.cancel_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Cancel pipeline run ${run.id}? Remaining queued work will not start.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
                             {#snippet children({ processing })}
                                 <button
                                     type="submit"

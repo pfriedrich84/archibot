@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Webhook deliveries',
-                href: '/webhook-deliveries',
+                href: webhookDeliveriesIndex(),
             },
             {
                 title: 'Delivery detail',
@@ -99,7 +100,19 @@
                         </Form>
                     {/if}
                     {#if delivery.can_dismiss}
-                        <Form method="post" action={delivery.dismiss_url}>
+                        <Form
+                            method="post"
+                            action={delivery.dismiss_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
                             {#snippet children({ processing })}
                                 <button
                                     type="submit"

@@ -1,9 +1,11 @@
 <script module lang="ts">
+    import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
+
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Pipeline runs',
-                href: '/pipeline-runs',
+                href: pipelineRunsIndex(),
             },
         ],
     };
@@ -13,7 +15,9 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { formatDateTime } from '@/lib/datetime';
+    import type { Paginator } from '@/types';
 
     type LinkedCommand = {
         id: number;
@@ -56,11 +60,6 @@
         can_cancel: boolean;
         command: LinkedCommand | null;
         webhook_delivery: LinkedWebhookDelivery | null;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
     };
 
     let {
@@ -177,7 +176,19 @@
                             </Form>
                         {/if}
                         {#if run.can_cancel}
-                            <Form method="post" action={run.cancel_url}>
+                            <Form
+                                method="post"
+                                action={run.cancel_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Cancel pipeline run ${run.id}? Remaining queued work will not start.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
                                 {#snippet children({ processing })}
                                     <button
                                         type="submit"
@@ -197,5 +208,13 @@
                 No pipeline runs yet.
             </div>
         {/each}
+        <Pagination
+            links={runs.links}
+            from={runs.from}
+            to={runs.to}
+            total={runs.total}
+            perPage={runs.per_page}
+            label="Pipeline run pages"
+        />
     </div>
 </div>
