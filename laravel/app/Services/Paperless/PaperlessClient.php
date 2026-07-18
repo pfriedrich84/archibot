@@ -133,6 +133,55 @@ class PaperlessClient
     /** @param array<string, mixed> $fields */
     public function patchDocument(string $token, int $documentId, array $fields): void
     {
+        $this->patchDocumentFields(
+            $token,
+            $documentId,
+            $fields,
+            ['title', 'created_date', 'correspondent', 'document_type', 'tags'],
+        );
+    }
+
+    /**
+     * Manual-review seam. Storage path may only transition from absent to set.
+     *
+     * @param array<string, mixed> $fields
+     */
+    public function patchReviewedDocument(string $token, int $documentId, array $fields): void
+    {
+        if (array_key_exists('storage_path', $fields)) {
+            $proposed = $fields['storage_path'];
+            if (! is_int($proposed) || $proposed <= 0) {
+                throw new \InvalidArgumentException('A reviewed Paperless storage path must be a positive ID.');
+            }
+
+            $current = $this->document($token, $documentId);
+            if (! array_key_exists('storage_path', $current)) {
+                throw new \InvalidArgumentException('Paperless must report a null storage path before manual assignment.');
+            }
+            if ($current['storage_path'] !== null) {
+                throw new \InvalidArgumentException('An existing Paperless storage path is immutable.');
+            }
+        }
+
+        $this->patchDocumentFields(
+            $token,
+            $documentId,
+            $fields,
+            ['title', 'created_date', 'correspondent', 'document_type', 'tags', 'storage_path'],
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @param array<int, string> $safeFields
+     */
+    private function patchDocumentFields(string $token, int $documentId, array $fields, array $safeFields): void
+    {
+        $unexpected = array_diff(array_keys($fields), $safeFields);
+        if ($unexpected !== []) {
+            throw new \InvalidArgumentException('Paperless document PATCH contains prohibited fields.');
+        }
+
         $response = $this->request($token)->patch("/api/documents/{$documentId}/", $fields);
         if (! $response->successful()) {
             throw new RuntimeException('Could not update Paperless document.');

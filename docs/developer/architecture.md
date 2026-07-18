@@ -28,7 +28,7 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
 
 ## Chat/RAG-Containment
 
-Chat/RAG ist fuer Admins und Nicht-Admins deaktiviert. Laravel registriert weder Seite noch API-Routen und besitzt keinen Python-Bridge-Service; die Python-CLI registriert kein `chat-ask`; MCP registriert weder globale Suche/Volltext-Retrieval noch aehnlichkeitsbasierte Retrieval-Tools. Bestehende `chat_sessions`- und `chat_messages`-Zeilen sowie ihre Migration bleiben zur sicheren Datenerhaltung bestehen, werden aber nicht exponiert. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer Redesign und moegliches Re-enable.
+Chat/RAG ist fuer Admins und Nicht-Admins deaktiviert. Laravel registriert weder Seite noch API-Routen und besitzt keinen Python-Bridge-Service; die Python-CLI registriert kein `chat-ask`; MCP registriert weder globale Suche/Volltext-Retrieval noch aehnlichkeitsbasierte Retrieval-Tools. Bestehende `chat_sessions`- und `chat_messages`-Zeilen sowie ihre Migration bleiben zur sicheren Datenerhaltung bestehen, werden aber nicht exponiert. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer Redesign und moegliches Re-enable; der [Authorization-safe-RAG-Entwurf](../architecture/authorization-safe-rag-design.md) ist Forschung/Proposal und keine Freigabe.
 
 ## Dokument-Lebenszyklus
 
@@ -152,7 +152,7 @@ Der Judge bekommt Zieldokument + Kontext + den Erst-Vorschlag und gibt einen `Ju
 
 ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Der Document Actor speichert auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
 
-Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.
+Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche. Der zentrale Client erlaubt dabei nur die geprueften Metadatenfelder. `storage_path` besitzt eine eigene manuelle Review-Naht: Der Client liest den aktuellen Dokumentzustand erneut und erlaubt nur `null` zu einer positiven ID; ein fehlendes Feld oder ein vorhandener Wert schliesst den Schreibvorgang. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
 
 ## Reindex
 

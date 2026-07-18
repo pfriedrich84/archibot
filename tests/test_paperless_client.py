@@ -14,6 +14,95 @@ def test_paperless_client_rejects_empty_token():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field",
+    ["ocr", "content", "file", "files", "version", "versions", "storage_path", "owner"],
+)
+async def test_paperless_client_rejects_fields_outside_manual_metadata_seam(field: str):
+    paperless = PaperlessClient("http://paperless", "token")
+
+    with pytest.raises(ValueError, match="prohibited fields"):
+        await paperless.patch_document(42, {field: "forbidden"})
+
+    await paperless.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reviewed_storage_path_can_only_fill_an_absent_live_value():
+    requests_seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        if request.method == "GET":
+            return httpx.Response(200, json={"id": 42, "title": "Doc", "storage_path": None})
+        return httpx.Response(200, json={})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://paperless/api") as client:
+        paperless = PaperlessClient("http://paperless", "token")
+        paperless._client = client
+        await paperless.patch_reviewed_document(42, {"storage_path": 7, "title": "Reviewed"})
+
+    assert [request.method for request in requests_seen] == ["GET", "PATCH"]
+    assert json.loads(requests_seen[-1].content) == {"storage_path": 7, "title": "Reviewed"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("proposed", [None, 0, -1, True, "7"])
+async def test_reviewed_storage_path_rejects_non_assignment_values_before_dispatch(proposed):
+    requests_seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        return httpx.Response(200, json={})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://paperless/api") as client:
+        paperless = PaperlessClient("http://paperless", "token")
+        paperless._client = client
+        with pytest.raises(ValueError, match="positive ID"):
+            await paperless.patch_reviewed_document(42, {"storage_path": proposed})
+
+    assert requests_seen == []
+
+
+@pytest.mark.asyncio
+async def test_reviewed_storage_path_fails_closed_when_live_field_is_missing():
+    requests_seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        return httpx.Response(200, json={"id": 42, "title": "Doc"})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://paperless/api") as client:
+        paperless = PaperlessClient("http://paperless", "token")
+        paperless._client = client
+        with pytest.raises(ValueError, match="must report a null storage path"):
+            await paperless.patch_reviewed_document(42, {"storage_path": 7})
+
+    assert [request.method for request in requests_seen] == ["GET"]
+
+
+@pytest.mark.asyncio
+async def test_reviewed_storage_path_rejects_overwrite_before_patch_dispatch():
+    requests_seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        return httpx.Response(200, json={"id": 42, "title": "Doc", "storage_path": 9})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://paperless/api") as client:
+        paperless = PaperlessClient("http://paperless", "token")
+        paperless._client = client
+        with pytest.raises(ValueError, match="immutable"):
+            await paperless.patch_reviewed_document(42, {"storage_path": 7})
+
+    assert [request.method for request in requests_seen] == ["GET"]
+
+
+@pytest.mark.asyncio
 async def test_search_documents_url_encodes_filter_values():
     requests: list[httpx.Request] = []
 

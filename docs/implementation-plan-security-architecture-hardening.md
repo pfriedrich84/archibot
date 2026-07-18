@@ -2,7 +2,7 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation in progress. Containment 0.1–0.6 and Milestone 1.1–1.4 are implemented; remaining milestones are pending.
+Status: accepted 13-step maintainer sequence; implementation in progress. Steps 1–12 have implementation changes, subject to the acceptance qualifications recorded below. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
@@ -354,6 +354,8 @@ Acceptance:
 
 ## Milestone 3 — UX consistency before stable release
 
+**Step 12 status: implemented.** Path-prefix behavior, pagination, mutation feedback/confirmation and manual model identifiers are present; this status does not waive the validation matrix or stable-release gates.
+
 ### 3.1 Complete path-prefix support
 
 - replace hard-coded frontend URLs with generated/prefix-aware route data;
@@ -387,17 +389,21 @@ Milestone acceptance:
 
 ## Milestone 4 — Deliberate redesign tracks
 
-These do not block containment or backend retirement unless their issue explicitly changes priority.
+**Step 13 research/design status (2026-07-18): complete; implementation and re-enable remain unapproved and not started.** The durable deliverables are the [authorization-safe RAG proposal](architecture/authorization-safe-rag-design.md), [Paperless 2.20/v3 OCR/API compatibility research](architecture/paperless-v3-ocr-compatibility-design.md), and [safe-automation experiment design](architecture/safe-automation-design.md). Completion means the investigation, test design, open questions and approval gates are reviewable; it does not claim runtime compatibility work, Chat/RAG, OCR integration/write-back or safe automation.
+
+These tracks do not block containment or backend retirement unless their issue explicitly changes priority.
 
 ### 4.1 Authorization-safe RAG
 
-Tracked in Issue #221. Do not re-enable Chat/RAG until the issue's identity propagation, ACL filtering, revocation, source-redaction and cross-user tests are complete and explicitly approved.
+Research/design deliverable: complete in the [authorization-safe RAG proposal](architecture/authorization-safe-rag-design.md). Tracked in Issue #221. Do not re-enable Chat/RAG until the proposed identity propagation, ACL filtering, revocation, source-redaction and cross-user tests are implemented, pass, and receive the proposal's explicit product/security approvals.
 
 ### 4.2 Paperless-ngx v3 compatibility and OCR investigation
 
-Tracked in Issue #222. Produce a Paperless 2.20/v3 compatibility matrix and API-version negotiation tests. Parser plugins, remote OCR or file versions must not silently reintroduce OCR content write-back or new cloud-data flows.
+Research/design deliverable: complete in the [Paperless 2.20/v3 OCR/API compatibility research](architecture/paperless-v3-ocr-compatibility-design.md). Tracked in Issue #222. The matrix and negotiation/contract-test design are complete; implementation against representative stable versions is not. Parser plugins, remote OCR or file versions must not silently reintroduce OCR content write-back or new cloud-data flows.
 
 ### 4.3 Safe automation eligibility
+
+Research/design deliverable: complete in the [safe-automation experiment design](architecture/safe-automation-design.md). No eligibility implementation, experiment result or re-enable approval is claimed.
 
 Before proposing auto-commit re-enable:
 
@@ -437,22 +443,22 @@ Do not declare a stable multi-user release until:
 - CI Docker, Grype and Trivy checks pass on the release commit;
 - documentation clearly identifies disabled redesign tracks.
 
-## Suggested PR sequence
+## Canonical maintainer sequence and status
 
-1. Disable Chat/RAG.
-2. Suspend auto-commit.
-3. Remove OCR write-back and add OCR authorization.
-4. Require webhook secret.
-5. Harden setup and pin the Paperless origin.
-6. Restrict/structure diagnostics.
-7. Add ownership inventory and regression guards.
-8. Move all Pipeline Start callers to Laravel.
-9. Add Python execution lifecycle and align Laravel transport outcomes.
-10. Migrate CLI/MCP off SQLite.
-11. Delete SQLite processing.
-12. Remove Absurd.
-13. Deliver UX consistency slices.
-14. Complete Issue #222 compatibility research.
-15. Design work for Issue #221 and safe automation only after separate approval.
+This is the only step numbering used for hardening status. Milestone subsections group architecture scope; they do not create extra steps.
 
-PRs 1-6 may be reordered for reviewer availability, but containment must precede redesign. PRs 8-12 are dependency-ordered and should not be collapsed into one large migration.
+1. Disable Chat/RAG — implemented containment; redesign remains disabled.
+2. Suspend auto-commit — implemented containment; safe automation remains disabled.
+3. Remove OCR write-back and add OCR authorization — implemented containment; Paperless v3/OCR compatibility work remains pending.
+4. Require webhook secret — implemented.
+5. Harden setup and pin the Paperless origin — implemented.
+6. Restrict and structure diagnostics — implemented.
+7. Add the ownership inventory/guards and centralize Pipeline Start in Laravel — implemented.
+8. Add the Python execution lifecycle and align Laravel transport outcomes — implemented.
+9. Migrate CLI/MCP off SQLite — implemented; retired MCP surfaces remain absent.
+10. Delete SQLite processing — implementation complete; final acceptance qualifications remain those in Milestone 2.2.
+11. Remove Absurd — implementation complete; final acceptance qualifications remain those in Milestone 2.3.
+12. Deliver the aggregated Milestone 3 UX consistency work — implemented; release validation remains required.
+13. Deliver the aggregated Milestone 4 research/design for Issue #221, Issue #222 and safe automation — research/design complete on 2026-07-18. Authorization-safe RAG runtime work, Paperless v3/API negotiation implementation and safe-automation runtime/canary work are **not implemented or approved**; Chat/RAG, OCR write-back and automatic commits remain disabled.
+
+Steps 1–6 may be reordered for reviewer availability, but containment precedes redesign. Steps 7–11 are dependency-ordered and must not be collapsed into one large migration. There are no hardening Steps 14 or 15.

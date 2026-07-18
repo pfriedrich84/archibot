@@ -760,6 +760,18 @@ def test_lifecycle_owners_reject_normalized_creation_semantics_and_future_varian
             )
 
 
+def test_pipeline_run_controller_allows_only_reviewed_non_mutating_pagination_calls():
+    owner = "laravel/app/Http/Controllers/PipelineRunController.php"
+    safe = """<?php
+$validated = $request->validate(['per_page' => ['integer']]);
+$runs = PipelineRun::query()->paginate($validated['per_page'])->withQueryString()->through($presenter);
+"""
+    assert scan_php(owner, safe) == []
+
+    for method in ("create", "save", "persistChanges", "upsertDocuments"):
+        assert scan_php(owner, f"<?php $runs->{method}($payload);"), method
+
+
 def test_lifecycle_owner_keeps_literal_audited_service_calls_and_denies_unknown_model_methods():
     safe_calls = {
         "laravel/app/Http/Controllers/PipelineRunController.php": "<?php $this->audit($request); $run->update($payload);",

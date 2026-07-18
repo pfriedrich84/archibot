@@ -318,6 +318,7 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
         "typedscalar",
         "update",
         "user",
+        "validate",
         "useragent",
         "value",
         "values",
@@ -325,6 +326,7 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
         "where",
         "with",
         "withcount",
+        "withquerystring",
     },
     "laravel/app/Jobs/RunPythonActorJob.php": {
         "consumecommand",

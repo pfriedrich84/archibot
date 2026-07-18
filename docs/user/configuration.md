@@ -2,7 +2,7 @@
 
 Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend.
 
-> **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
+> **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track; der [RAG-Entwurf](../architecture/authorization-safe-rag-design.md) ist keine Freigabe.
 
 > Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
 > (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
@@ -130,7 +130,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 ## Phase 3: Klassifikation
 
-> **Security-Hinweis:** Confidence-basiertes Auto-Commit ist gemaess ADR-0018 deaktiviert. Laravel exportiert den effektiven Wert `0`, Python erzwingt `0`, und alte Environment-, Import- oder PostgreSQL-Werte koennen weder Annahme noch Paperless-Write ausloesen. Das Admin-Feld ist deshalb read-only.
+> **Security-Hinweis:** Confidence-basiertes Auto-Commit ist gemaess ADR-0018 deaktiviert. Laravel exportiert den effektiven Wert `0`, Python erzwingt `0`, und alte Environment-, Import- oder PostgreSQL-Werte koennen weder Annahme noch Paperless-Write ausloesen. Das Admin-Feld ist deshalb read-only. Der [Safe-Automation-Entwurf](../architecture/safe-automation-design.md) beschreibt nur Forschungs- und Freigabe-Gates und aktiviert diese Einstellung nicht.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
