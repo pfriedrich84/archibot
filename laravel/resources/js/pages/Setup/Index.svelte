@@ -8,6 +8,7 @@
 
 <script lang="ts">
     import { Form } from '@inertiajs/svelte';
+    import AlertError from '@/components/AlertError.svelte';
     import AppHead from '@/components/AppHead.svelte';
     import InputError from '@/components/InputError.svelte';
     import PasswordInput from '@/components/PasswordInput.svelte';
@@ -159,7 +160,28 @@
                         {step.label}
                     </Button>
                 {/each}
+                <Button
+                    type="button"
+                    variant="outline"
+                    class="justify-start"
+                    disabled
+                    aria-label="AI providers, available after setup completion"
+                >
+                    <span
+                        class="flex size-6 items-center justify-center rounded-full bg-background/20 text-xs"
+                    >
+                        {setupSteps.length + 1}
+                    </span>
+                    AI providers
+                </Button>
             </nav>
+
+            {#if Object.keys(errors).length > 0}
+                <AlertError
+                    title="Setup could not be completed."
+                    errors={Object.values(errors)}
+                />
+            {/if}
 
             {#if requiresResetToken}
                 <section
