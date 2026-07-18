@@ -6,7 +6,7 @@
 
 > **Hinweis:** ArchiBot ist aktuell in aktiver Entwicklung. Es gibt noch keinen stabilen Release.
 >
-> **Security-Hardening laeuft:** Vor Abschluss von [Hardening-Meilenstein 0](./docs/implementation-plan-security-architecture-hardening.md) ist ArchiBot nicht fuer einen oeffentlichen oder nicht voll vertrauenswuerdigen Multi-User-Betrieb freigegeben. Chat/RAG ist fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. Confidence-basiertes Auto-Commit ist gemaess ADR-0018 ebenfalls in Laravel-Export und Python-Verarbeitung deaktiviert: alte Env-, Import- oder Datenbankwerte sind wirkungslos, und jede Klassifikation bleibt bis zur manuellen Freigabe pending. Die weiteren offenen Meilenstein-0-Risiken bleiben davon unberuehrt.
+> **Security-Status:** Die 13 Schritte des [Security- und Architektur-Hardening](./docs/implementation-plan-security-architecture-hardening.md) sind implementiert und CI-validiert. Chat/RAG bleibt fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. Confidence-basiertes Auto-Commit bleibt gemaess ADR-0018 ebenfalls deaktiviert: alte Env-, Import- oder Datenbankwerte sind wirkungslos, und jede Klassifikation bleibt bis zur manuellen Freigabe pending. Diese Implementierungsfreigabe ist noch kein stabiler Release; die Release-Gates im Hardening-Plan gelten weiterhin.
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
