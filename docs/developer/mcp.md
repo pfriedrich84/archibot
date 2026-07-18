@@ -1,6 +1,6 @@
 # MCP Server
 
-Der optionale MCP-Prozess bleibt als Integrationspunkt vorhanden, registriert nach Hardening-Milestone 2.1 aber **keine Tools oder Resources**. Alle 24 frueheren Tools und beide Resources wurden inventarisiert und bis zu einem vollstaendigen, berechtigungsgebundenen Laravel/PostgreSQL-Seam retired. Die Entscheidung und Rueckkehrkriterien fuer jede Registrierung stehen in der [MCP disposition matrix](../implementation-notes/mcp-disposition-matrix.md).
+Der optionale MCP-Prozess bleibt als Integrationspunkt vorhanden, registriert aktuell aber **keine Tools oder Resources**. Alle 24 frueheren Tools und beide Resources wurden inventarisiert und bis zu einem vollstaendigen, berechtigungsgebundenen Laravel/PostgreSQL-Seam retired. Die Entscheidung und Rueckkehrkriterien fuer jede Registrierung stehen in der [MCP disposition matrix](../implementation-notes/mcp-disposition-matrix.md).
 
 ## Sicherheits- und Datenmodell
 

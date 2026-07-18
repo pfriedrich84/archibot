@@ -15,8 +15,8 @@ The former plan hardened `worker_jobs` as a temporary Laravel control plane and 
 Use these documents for current work:
 
 1. Root [`AGENTS.md`](../AGENTS.md) for task routing and non-negotiable repository rules.
-2. [Security and architecture hardening plan](implementation-plan-security-architecture-hardening.md) for active sequencing and containment.
-3. [Event-driven implementation plan](implementation-plan-event-driven-archibot.md) for subordinate migration detail.
+2. Accepted ADRs and current architecture docs for security, ownership and containment.
+3. [Event-driven implementation plan](implementation-plan-event-driven-archibot.md) for migration history and remaining runtime follow-ups.
 4. [Event-driven phase status](implementation-notes/event-driven-phase-status.md) for the revisions and transition debt currently inspected.
 5. [Job-control model](architecture/job-control-model.md) for active durable actions, ownership and state machines.
 6. [Conditional migration task router](prompts/pi-dev-event-driven-migration.md) only for migration-related tasks.

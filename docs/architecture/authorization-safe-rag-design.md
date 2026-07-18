@@ -2,7 +2,7 @@
 
 ## Status and non-enablement boundary
 
-**Design research complete; proposal unapproved; Chat/RAG remains disabled.** This document satisfies the design deliverable for [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) and hardening plan 4.1. It is not an implementation decision or re-enable authorization. Existing chat rows remain preserved and unexposed; no page, API/CLI command, MCP retrieval tool, prompt/provider setting or compatibility route may be registered.
+**Design research complete; proposal unapproved; Chat/RAG remains disabled.** This document is the design record for [Issue #221](https://github.com/pfriedrich84/archibot/issues/221). It is not an implementation decision or re-enable authorization. Existing chat rows remain preserved and unexposed; no page, API/CLI command, MCP retrieval tool, prompt/provider setting or compatibility route may be registered.
 
 ## Security objective
 

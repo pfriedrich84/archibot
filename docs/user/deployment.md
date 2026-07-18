@@ -4,7 +4,7 @@ Anleitungen fuer verschiedene Deployment-Szenarien.
 
 ## Docker Compose (Standard)
 
-Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad wird auf Laravel Database Queues mit festen Python-Actor-Kommandos migriert und benoetigt keinen separaten Broker-Service. Paperless-NGX und der AI-Provider (Ollama-kompatibel oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
+Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad nutzt Laravel Database Queues mit festen Python-Actor-Kommandos und benoetigt keinen separaten Broker-Service. Paperless-NGX und der AI-Provider (Ollama-kompatibel oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
 
 Das ArchiBot-App-Image wird automatisch ueber GitHub Container Registry bereitgestellt:
 

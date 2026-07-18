@@ -2,7 +2,7 @@
 
 ## Status and boundary
 
-**Research/design deliverable complete; proposal unapproved; no automation is enabled.** This document expands hardening plan 4.3 and [ADR-0018](../decisions/0018-suspend-model-confidence-auto-commit.md). `AUTO_COMMIT_CONFIDENCE` remains ineffective. Model or judge confidence, agreement, prose, chain-of-thought or document instructions cannot accept a suggestion, queue a commit or authorize a Paperless write.
+**Research/design deliverable complete; proposal unapproved; no automation is enabled.** This document defines a possible future path beyond [ADR-0018](../decisions/0018-suspend-model-confidence-auto-commit.md). `AUTO_COMMIT_CONFIDENCE` remains ineffective. Model or judge confidence, agreement, prose, chain-of-thought or document instructions cannot accept a suggestion, queue a commit or authorize a Paperless write.
 
 The purpose is to define what evidence would be required before a separately approved, deterministic safe-automation implementation could even be proposed.
 

@@ -4,11 +4,11 @@ Concise project context for coding agents. For durable details, prefer the canon
 
 ## Purpose
 
-ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It is being migrated from polling/subprocess-oriented processing to an event-driven architecture where Paperless webhooks are the primary trigger and periodic polling remains reconciliation/fallback.
+ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It uses an event-driven architecture where Paperless webhooks are the primary trigger and periodic polling remains reconciliation/fallback.
 
 Suggested metadata includes title, date, correspondent, document type, storage path, and tags.
 
-## Core architecture target
+## Core architecture
 
 - **Paperless webhooks** are the primary low-latency trigger for new or changed documents.
 - **Periodic polling** remains automatic every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic as webhooks.
@@ -34,7 +34,7 @@ Safety boundaries:
 ```text
 app/                  Python worker, CLI, MCP runtime, Paperless/AI-provider clients
 app/pipeline/         OCR, context building, classification, commit pipeline
-app/mcp_tools/        MCP tool implementations
+app/mcp_tools/        Retired MCP registration modules; no tools/resources are active
 laravel/              Laravel/Inertia/Svelte UI and API
 prompts/              LLM system prompts
 docs/                 User/developer documentation
@@ -53,7 +53,7 @@ Read these instead of expanding this file with duplicate details:
 - [`../user/configuration.md`](../user/configuration.md) — environment variables and runtime settings.
 - [`../user/installation.md`](../user/installation.md) — Docker-first setup and local development.
 - [`../developer/cli.md`](../developer/cli.md) — CLI commands.
-- [`../developer/mcp.md`](../developer/mcp.md) — MCP server/tools.
+- [`../developer/mcp.md`](../developer/mcp.md) — dormant MCP integration point and registration return criteria.
 - [`../user/webhooks.md`](../user/webhooks.md) — Paperless webhook integration.
 - [`../user/deployment.md`](../user/deployment.md) — deployment notes.
 - [`../../.graphify/GRAPH_REPORT.md`](../../.graphify/GRAPH_REPORT.md) — high-level Graphify repository graph report for agent orientation.

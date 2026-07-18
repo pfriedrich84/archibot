@@ -2,16 +2,15 @@
 
 ## Status und Geltungsbereich
 
-Dieses Dokument beschreibt die event-driven Teilmigration. Die uebergeordnete Security-, Ownership- und Delivery-Reihenfolge steht in [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md); bei Konflikten gilt der neuere Hardening-Plan. Dieses Dokument ist kein historisches Phasenprotokoll.
+Dieses Dokument beschreibt das event-driven Zielbild, die abgeschlossene Teilmigration und verbleibende Runtime-Follow-ups. Es ist keine aktive Security- oder PR-Phasenliste.
 
 Bei Widerspruechen gilt diese Reihenfolge:
 
 1. [`AGENTS.md`](../AGENTS.md) fuer den Agenten-Arbeitsvertrag.
 2. Akzeptierte ADRs in [`docs/decisions/`](decisions/), insbesondere ADR-0015, ADR-0016, [ADR-0017](decisions/0017-single-durable-orchestration-and-execution-ownership.md) und [ADR-0018](decisions/0018-suspend-model-confidence-auto-commit.md).
-3. Der [Hardening-Plan](implementation-plan-security-architecture-hardening.md) fuer Security-, Ownership- und PR-Reihenfolge.
-4. Detailvertraege in [`docs/architecture/`](architecture/).
-5. Dieser Plan fuer event-driven Zielbild und Migrationsdetails.
-6. [`docs/implementation-notes/event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md) fuer den revisionsgebundenen Ist-Stand.
+3. Aktuelle Detailvertraege in [`docs/architecture/`](architecture/).
+4. [`docs/implementation-notes/event-driven-phase-status.md`](implementation-notes/event-driven-phase-status.md) fuer den revisionsgebundenen Ist-Stand.
+5. Dieser Plan fuer Migrationshistorie und verbleibende Runtime-Follow-ups.
 
 Die urspruengliche Absurd-Transportentscheidung ist durch ADR-0015 abgeloest. Historische Begruendung bleibt im als superseded markierten [ADR-0013](decisions/0013-use-absurd-postgresql-queue.md) und in der Git-Historie erhalten; sie ist keine Implementierungsanweisung.
 
@@ -144,35 +143,17 @@ Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](i
 - Actor Executions sind mit Command, Pipeline Run oder Webhook Delivery verknuepft; Laravel Recovery behandelt stale/rertryable Attempts, Cancellation und Entity Sync ueber diese Quelle.
 - Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Nur autorisierte manuelle Annahme erzeugt einen `review_commit` Command; Confidence-Auto-Commit ist gemaess ADR-0018 entfernt.
 - `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
-- Der fruehere Python Queue-Transport, SDK, Konfiguration, Clean-Install-Schema und zugehoerige Tests sind im Step-11-Kandidaten entfernt. Bestehende historische Schemaobjekte bleiben fuer Retention/Rollback inert. Full-Reindex- und Runtime-Timeout-Luecken bleiben offen.
+- Der fruehere Python Queue-Transport, SDK, Konfiguration, Clean-Install-Schema und zugehoerige Tests sind entfernt. Bestehende historische Schemaobjekte bleiben fuer Retention/Rollback inert. Full-Reindex- und Runtime-Timeout-Luecken bleiben offen.
 
-## Verbleibende Migration
+## Verbleibende Runtime- und Release-Follow-ups
 
-### 1. Laravel-Transport und Recovery im Runtimepfad verifizieren
+Der produktive Queue-/State-Cutover ist abgeschlossen: Python Processing Actors bleiben als plain Functions hinter dem festen Laravel Runner; Full Suite, Clean-Install-Docker-Build und Image-Security-Gates laufen in CI. Upgrade und Rollback stehen in den [Transport-Removal-Notizen](implementation-notes/absurd-removal.md).
 
-- Webhook, Embedding Build, Document Pipeline, Review Commit, Poll Reconciliation, Reindex, OCR Reindex und Entity Sync mit fokussierten Tests und Docker-Smokes abdecken.
-- PostgreSQL-Restart, stale Actor Recovery, bounded Attempts, Cancellation und Scheduler-Dedupe live pruefen.
-- Laravel Queue Worker, Timeout, Retry und Failure-Verhalten im Docker-Runtimepfad pruefen.
+Verbleibende, separat zu planende Arbeit:
+
 - Endliche, begruendete Actor-/Process-Timeouts, Heartbeats und kooperative Cancellation definieren und testen; `timeout = 0` und unbeschraenkte Child Processes sind kein abgeschlossenes Runtime-Modell.
 - Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
-- Verbleibende GUI-ueberlappende CLI-Aktionen auf denselben Laravel-/PostgreSQL-Backendpfad bringen.
-
-### 2. Queue-Transport-Cleanup — Implementierung abgeschlossen, Acceptance pending
-
-Der Step-11-Kandidat entfernt SDK, Konfiguration, Adapter, Event-/Recovery-Worker, Decorators, vendored SQL, Installationsmigration und transportbezogene Tests. Python Processing Actors bleiben als plain Functions hinter dem festen Laravel Runner erhalten. Acceptance erfordert noch die Full-Suite-, Clean-Install-Docker- und Image-Security-Gates aus dem Hardening-Plan; Upgrade und Rollback stehen in den [Step-11-Notizen](implementation-notes/absurd-removal.md).
-
-### 3. Runtime- und End-to-End-Nachweis
-
-- Clean Install mit PostgreSQL, Laravel Queue und pgvector.
-- Webhook -> durable Delivery -> Laravel Queue -> Python Actor -> Pipeline/Review Result.
-- Restart/Recovery fuer pending und retrying Arbeit.
-- Automatische Polling-Reconciliation nach 600 Sekunden ueber denselben Pipeline-Startpfad.
-- Embedding Gate, Reprocess, Retry, Cancel und Berechtigungen.
-- Docker Health/Readiness und Operations UI ohne superseded Queue-/`worker_jobs`-Runtime.
-
-### 4. Dokumentationsabschluss
-
-Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governance-Dokumente auf Laravel-only Transport pruefen. Historische Absurd- oder `worker_jobs`-Erklaerungen muessen als superseded/retired markiert oder entfernt sein.
+- PostgreSQL-Restart, Scheduler-Timing, Backup/Rollback und Paperless-Integration in einer repraesentativen Deployment-Umgebung als Release-Evidence pruefen.
 
 ## Risiken und Gegenmassnahmen
 

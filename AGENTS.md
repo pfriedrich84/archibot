@@ -4,7 +4,7 @@ Tool-neutral operating contract for coding agents working in this repository. Ke
 
 ## Purpose and scope
 
-ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. It is being migrated to an event-driven architecture using Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
+ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. Its event-driven architecture uses Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
 
 This file is the canonical starting point for agents. Within repository guidance, `AGENTS.md` takes precedence over all other repository instructions; accepted ADRs govern the architecture decisions in their scope unless explicitly superseded. Surface unresolved conflicts instead of choosing silently. This repository contract does not override system, developer, or explicit maintainer instructions.
 
@@ -58,8 +58,8 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 
 Load the narrowest relevant source of truth:
 
-- Active security/ownership sequencing: [hardening implementation plan](docs/implementation-plan-security-architecture-hardening.md) and [accepted ADRs](docs/decisions/), especially ADR-0017, ADR-0018 and ADR-0019.
-- Event-driven migration detail: [conditional migration task router](docs/prompts/pi-dev-event-driven-migration.md), [event-driven plan](docs/implementation-plan-event-driven-archibot.md), and [architecture details](docs/architecture/); these remain subordinate to later ADRs and the hardening plan.
+- Current security and ownership authority: [accepted ADRs](docs/decisions/), especially ADR-0017, ADR-0018 and ADR-0019, plus the [trust-boundary register](docs/governance/trust-boundaries.md).
+- Event-driven architecture detail: [conditional migration task router](docs/prompts/pi-dev-event-driven-migration.md), [event-driven plan](docs/implementation-plan-event-driven-archibot.md), and [architecture details](docs/architecture/); accepted ADRs and current implementation docs take precedence.
 - Current implementation: [developer architecture](docs/developer/architecture.md) and [job-control model](docs/architecture/job-control-model.md).
 - Governance: [repository topology](docs/governance/repository-governance.md), [agent workflow](docs/governance/agent-workflow.md), [trust boundaries](docs/governance/trust-boundaries.md), and [release governance](docs/governance/release-governance.md).
 - User behavior: [workflow](docs/user/workflow.md), [configuration](docs/user/configuration.md), and [installation](docs/user/installation.md).

@@ -11,7 +11,7 @@ This guide was written for the retired [`worker_jobs`/Absurd implementation plan
 Use:
 
 1. root [`AGENTS.md`](../AGENTS.md) for instruction precedence and task-specific reading;
-2. [`docs/implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) for active containment, ownership and PR ordering;
+2. accepted ADRs and current architecture docs for security, ownership and runtime authority;
 3. [`docs/governance/agent-workflow.md`](governance/agent-workflow.md) for shared contracts, delegation and milestone checks;
 4. the [conditional migration task router](prompts/pi-dev-event-driven-migration.md) only when changing migration, queue, pipeline, recovery or superseded runtime paths;
 5. [`docs/agent/CONTEXT_AND_EVIDENCE.md`](agent/CONTEXT_AND_EVIDENCE.md) for delegated evidence, handoff and recovery.

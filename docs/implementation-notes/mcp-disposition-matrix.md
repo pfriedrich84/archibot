@@ -1,6 +1,6 @@
-# MCP tool and resource disposition matrix (Milestone 2.1)
+# MCP tool and resource disposition matrix
 
-Baseline inventory: all 24 tools and two resources registered at `67339a8`. Step 9 retires every registration because none yet has a complete permission-aware Laravel/PostgreSQL data seam. The dormant runtime has no SQLite initialization, database fallback, privileged global Paperless client, or identity-less resource. The existing verified-identity guard remains available for a future seam, but no direct Paperless or local-state registration is exposed.
+Baseline inventory: all 24 tools and two resources registered at `67339a8`. Every registration is retired because none yet has a complete permission-aware Laravel/PostgreSQL data seam. The dormant runtime has no SQLite initialization, database fallback, privileged global Paperless client, or identity-less resource. The existing verified-identity guard remains available for a future seam, but no direct Paperless or local-state registration is exposed.
 
 | Registration | Disposition / replacement seam | Identity and permission rule | Durable mutation/audit behavior | Deletion criterion |
 | --- | --- | --- | --- | --- |

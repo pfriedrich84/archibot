@@ -1,6 +1,6 @@
 # Pipeline Start caller inventory and freeze
 
-Status: Steps 7–9 implemented; the Step 10 deletion candidate is complete but hardening plan 2.2 acceptance remains pending its required full-suite and clean-install Docker gates. This file-by-file inventory was checked over `app/`, `laravel/app/`, scheduler/supervisor configuration, MCP registration, migrations, dependencies, CI and tests. The deny-by-default regression guard is `tests/test_pipeline_start_ownership.py`.
+Status: implemented and CI-validated. Laravel exclusively owns Pipeline Start; productive legacy state and transport paths are retired. This file-by-file inventory was checked over `app/`, `laravel/app/`, scheduler/supervisor configuration, MCP registration, migrations, dependencies, CI and tests. The deny-by-default regression guard is `tests/test_pipeline_start_ownership.py`.
 
 ## Productive Pipeline Start ownership
 
@@ -8,23 +8,23 @@ Status: Steps 7–9 implemented; the Step 10 deletion candidate is complete but 
 
 | Productive caller file | Trigger and final path | Replacement/deletion milestone |
 | --- | --- | --- |
-| `laravel/app/Http/Controllers/PaperlessEventWebhookController.php` | create/consume webhook -> starter | Final Step 7 path. |
-| `laravel/app/Services/Pipeline/DocumentPipelineStarter.php` | sole run constructor/coalescer; shared-fenced readiness and newly-created dispatch | Final Step 7 owner. |
-| `laravel/app/Services/Pipeline/PipelineStartGate.php` | PostgreSQL shared/exclusive cross-process fence | Final Step 7 ownership boundary. |
-| `laravel/app/Services/Pipeline/PollCandidateConsumer.php` | scheduled/admin poll candidate -> versioned fenced lease -> starter | Final Step 7 path. |
-| `laravel/app/Services/Pipeline/PipelineContentStateNormalizer.php` | canonical webhook/poll timestamp, hash and content-state normalization | Final Step 7 normalization owner. |
-| `laravel/app/Console/Commands/DispatchMaintenanceCommand.php` | CLI `process_document` -> starter | Final Step 7 path. |
-| `laravel/app/Http/Controllers/Admin/MaintenanceController.php` | admin manual document start -> starter | Final Step 7 path. |
-| `laravel/app/Http/Controllers/ReviewSuggestionController.php` | authorized force reprocess -> starter | Final Step 7 path. |
-| `laravel/app/Http/Controllers/PipelineRunController.php` | manual existing-run retry changes durable state; Laravel recovery redispatches the fixed queued job, whose execution revalidates inside the shared fence | Final Step 7 execution path; lifecycle consolidation remains hardening 1.3. |
-| `laravel/app/Services/Pipeline/PipelineRecoveryDispatcher.php` | candidate replay and missing-run recovery -> candidate consumer/starter; existing runs are redispatched as `RunPythonActorJob` without recreation | Final Step 7 path; lifecycle consolidation remains hardening 1.3. |
-| `laravel/app/Jobs/RunPythonActorJob.php` | sole productive launch point for document/build/reindex Python actors; performs eligibility only and never holds a parent lease while waiting for Python | Final Step 7 child-owned fenced execution path. |
-| `laravel/app/Services/Actors/PythonActorRunner.php` | fixed allowlisted subprocess invocation reached only by `RunPythonActorJob` | Retain transport seam; lifecycle consolidation remains hardening 1.3. |
+| `laravel/app/Http/Controllers/PaperlessEventWebhookController.php` | create/consume webhook -> starter | Final webhook path. |
+| `laravel/app/Services/Pipeline/DocumentPipelineStarter.php` | sole run constructor/coalescer; shared-fenced readiness and newly-created dispatch | Final Pipeline Start owner. |
+| `laravel/app/Services/Pipeline/PipelineStartGate.php` | PostgreSQL shared/exclusive cross-process fence | Final ownership boundary. |
+| `laravel/app/Services/Pipeline/PollCandidateConsumer.php` | scheduled/admin poll candidate -> versioned fenced lease -> starter | Final poll-candidate path. |
+| `laravel/app/Services/Pipeline/PipelineContentStateNormalizer.php` | canonical webhook/poll timestamp, hash and content-state normalization | Final normalization owner. |
+| `laravel/app/Console/Commands/DispatchMaintenanceCommand.php` | CLI `process_document` -> starter | Final CLI path. |
+| `laravel/app/Http/Controllers/Admin/MaintenanceController.php` | admin manual document start -> starter | Final admin path. |
+| `laravel/app/Http/Controllers/ReviewSuggestionController.php` | authorized force reprocess -> starter | Final reviewed reprocess path. |
+| `laravel/app/Http/Controllers/PipelineRunController.php` | manual existing-run retry changes durable state; Laravel recovery redispatches the fixed queued job, whose execution revalidates inside the shared fence | Final execution path; lifecycle ownership is implemented under ADR-0017. |
+| `laravel/app/Services/Pipeline/PipelineRecoveryDispatcher.php` | candidate replay and missing-run recovery -> candidate consumer/starter; existing runs are redispatched as `RunPythonActorJob` without recreation | Final recovery path; lifecycle ownership is implemented under ADR-0017. |
+| `laravel/app/Jobs/RunPythonActorJob.php` | sole productive launch point for document/build/reindex Python actors; performs eligibility only and never holds a parent lease while waiting for Python | Final child-owned fenced execution path. |
+| `laravel/app/Services/Actors/PythonActorRunner.php` | fixed allowlisted subprocess invocation reached only by `RunPythonActorJob` | Retain transport seam; lifecycle ownership is implemented under ADR-0017. |
 | `laravel/app/Services/Pipeline/PipelineLifecycleRecorder.php` | append-only `PipelineEvent`/`AuditLog` persistence called through literal `event`/`audit` methods, keeping creation APIs outside lifecycle-owner files | Retain narrow audit seam; it has no Pipeline Run creation authority. |
-| `laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php` | reindex closes the shared fence before command dispatch; polling emits candidates | Final reindex/poll orchestration seam; actor lifecycle cleanup is hardening 1.3/1.5. |
+| `laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php` | reindex closes the shared fence before command dispatch; polling emits candidates | Final reindex/poll orchestration seam; actor lifecycle is owned by the execution-lifecycle module. |
 | `laravel/app/Http/Controllers/EmbeddingIndexController.php` | manual stale transition through shared fence | Final gate-control seam. |
-| `app/actors/maintenance.py` | discovers and inserts protocol-v1 candidates only | Productive Python Pipeline Start deleted in Step 7. Candidate discovery remains Python domain work. |
-| `app/actors/webhook.py` | refresh/delete domain actions; stale `process_document` fails closed | Delete stale process-document compatibility branch in hardening 1.3 after old queued work is drained. |
+| `app/actors/maintenance.py` | discovers and inserts protocol-v1 candidates only | Productive Python Pipeline Start is deleted; candidate discovery remains Python domain work. |
+| `app/actors/webhook.py` | refresh/delete domain actions; stale `process_document` fails closed | The stale `process_document` action fails closed; remove it only through a separately reviewed compatibility cleanup after old queued work is drained. |
 
 The empty-webhook poll hint persists a Webhook Delivery and creates a reconciliation Command; it reaches the starter only through `PollCandidateConsumer`. Reindex/embedding build is not itself a document start and any future document observations must use the candidate protocol.
 
@@ -40,30 +40,30 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 
 | File | Current behavior/state | Replacement/deletion milestone |
 | --- | --- | --- |
-| `app/mcp_server.py` | Registers all MCP tools/resources and still initializes legacy DB compatibility. | Hardening 1.4: use Laravel/PostgreSQL service seam; remove legacy DB initialization. |
+| `app/mcp_server.py` | Starts the optional MCP process with zero registered tools/resources and no legacy product-state backend. | Retain the empty integration point; registrations require permission-aware Laravel/PostgreSQL seams. |
 | `app/mcp_tools/__init__.py` | Package marker only; no state/start caller. | Retain. |
 | `app/mcp_tools/_auth.py` | MCP token/auth checks only. | Retain; no migration. |
 | `app/mcp_tools/_deps.py` | Dormant lifespan/verified-identity marker; creates no product-state client. | Retain; no state owner. |
-| `app/mcp_tools/classify.py` | Registration retired in Step 9. | No return before a permission-aware Laravel Pipeline seam exists. |
-| `app/mcp_tools/correspondents.py` | Proposal registrations retired in Step 9. | No return before an admin-authorized PostgreSQL entity seam exists. |
-| `app/mcp_tools/doctypes.py` | Proposal registrations retired in Step 9. | Same. |
-| `app/mcp_tools/documents.py` | All registrations retired in Step 9. | No return before a permission-aware Laravel/PostgreSQL read or mutation seam exists. |
-| `app/mcp_tools/entities.py` | All registrations retired in Step 9. | No return before a permission-aware Laravel/PostgreSQL entity-read seam exists. |
-| `app/mcp_tools/resources.py` | Identity-less resources retired in Step 9. | No return before identity-aware PostgreSQL redaction seam exists. |
-| `app/mcp_tools/suggestions.py` | All registrations retired in Step 9. | No return before permission-filtered Laravel Review seam exists. |
-| `app/mcp_tools/system.py` | Global status registration retired in Step 9. | No return before admin-only PostgreSQL diagnostics seam exists. |
-| `app/mcp_tools/tags.py` | Proposal registrations retired in Step 9. | No return before an admin-authorized PostgreSQL entity seam exists. |
+| `app/mcp_tools/classify.py` | Registration retired. | No return before a permission-aware Laravel Pipeline seam exists. |
+| `app/mcp_tools/correspondents.py` | Proposal registrations retired. | No return before an admin-authorized PostgreSQL entity seam exists. |
+| `app/mcp_tools/doctypes.py` | Proposal registrations retired. | Same. |
+| `app/mcp_tools/documents.py` | All registrations retired. | No return before a permission-aware Laravel/PostgreSQL read or mutation seam exists. |
+| `app/mcp_tools/entities.py` | All registrations retired. | No return before a permission-aware Laravel/PostgreSQL entity-read seam exists. |
+| `app/mcp_tools/resources.py` | Identity-less resources retired. | No return before identity-aware PostgreSQL redaction seam exists. |
+| `app/mcp_tools/suggestions.py` | All registrations retired. | No return before permission-filtered Laravel Review seam exists. |
+| `app/mcp_tools/system.py` | Global status registration retired. | No return before admin-only PostgreSQL diagnostics seam exists. |
+| `app/mcp_tools/tags.py` | Proposal registrations retired. | No return before an admin-authorized PostgreSQL entity seam exists. |
 
-## Retired SQLite state/vector inventory (Step 10)
+## Retired SQLite state/vector inventory
 
 The former `app/db.py`, `app/api_data.py`, `app/indexer.py`, `app/job_events.py`, `app/vector_store.py`, `app/worker.py`, `app/pipeline/committer.py`, `app/pipeline/document_processing.py` and Laravel `LegacyPythonState` service were deleted. Their processing, suggestion, vector/search, processed-document, poll-cycle, timing, error and audit tables have no productive reader or writer. PostgreSQL/pgvector repositories, Laravel scheduling, durable Pipeline Events/Audit Logs and authorized Review/Entity services are the replacements. `app/config.py` no longer defines or inspects a local database path, and reset remains exclusively `php artisan archibot:reset` through `ArchibotResetService`.
 
 See [SQLite disposition and upgrade notes](sqlite-disposition.md) for the classification of every retained reference and persistent-volume behavior.
-## Retired queue transport inventory (Step 11)
+## Retired queue transport inventory
 
 The former Python queue backend, decorator/bootstrap compatibility, event and recovery workers, SDK dependency, environment/settings, vendored SQL, installation migration and broker tests are deleted. Actor modules now expose plain functions imported only by the fixed `app.actor_runner` allowlist. Laravel's `RunPythonActorJob`, database queue worker, scheduler and durable recovery dispatcher are the sole productive transport/recovery path.
 
-Clean installs create no historical queue schema. Existing schemas are left inert to preserve rollback evidence; see [Step 11 queue transport removal and upgrade notes](absurd-removal.md). The repository-wide structural guard rejects backend, SDK, environment and worker-process reintroduction in productive files.
+Clean installs create no historical queue schema. Existing schemas are left inert to preserve rollback evidence; see the [retired transport removal and upgrade notes](absurd-removal.md). The repository-wide structural guard rejects backend, SDK, environment and worker-process reintroduction in productive files.
 
 | Retained seam | Final responsibility |
 | --- | --- |
@@ -90,4 +90,4 @@ Rolling back the migration **does delete the candidate audit/replay table**; it 
 4. retain Commands/Pipeline Runs and record the export beside the rollback change record;
 5. run migration rollback only after the export is verified.
 
-An older image against a persistent volume with Step 7 rows cannot replay them and must not restore Python Pipeline Start. Roll forward by redeploying Step 7 schema/code and importing the verified export with idempotency constraints intact, then replay `ready` or expired `claimed` rows. A clean rollback may drop `poll_candidates`; the advisory fence has no schema object, and Commands and Pipeline Runs are intentionally not deleted by `down()`.
+An older image against a persistent volume with poll-candidate rows cannot replay them and must not restore Python Pipeline Start. Roll forward by redeploying the current schema/code and importing the verified export with idempotency constraints intact, then replay `ready` or expired `claimed` rows. A clean rollback may drop `poll_candidates`; the advisory fence has no schema object, and Commands and Pipeline Runs are intentionally not deleted by `down()`.

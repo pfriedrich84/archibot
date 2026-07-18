@@ -1,6 +1,6 @@
-# SQLite disposition after hardening Step 10
+# SQLite disposition
 
-Status: Step 10 implementation candidate; hardening plan 2.2 acceptance remains pending until its full-suite and clean-install Docker gates pass. This inventory classifies every intentional SQLite reference that remains after productive SQLite processing was deleted.
+Status: implemented and CI-validated. Productive SQLite processing has been removed. This inventory classifies every intentional SQLite reference that remains after productive SQLite processing was deleted.
 
 ## Product/runtime classification
 
@@ -19,8 +19,8 @@ There is no unrelated bounded SQLite cache to retain. Laravel's application cach
 
 ## Upgrade, rollback and persistent volumes
 
-Step 10 intentionally does not delete an existing `/data/classifier.db` during startup or reset. On upgrade the file is inert: current code neither opens nor modifies it, and `archibot reset` delegates only to Laravel's PostgreSQL-owned `archibot:reset` service. This preserves downgrade and forensic/export options instead of mutating an operator's persistent volume implicitly.
+The removal intentionally does not delete an existing `/data/classifier.db` during startup or reset. On upgrade the file is inert: current code neither opens nor modifies it, and `archibot reset` delegates only to Laravel's PostgreSQL-owned `archibot:reset` service. This preserves downgrade and forensic/export options instead of mutating an operator's persistent volume implicitly.
 
-Before upgrading, operators who need historical legacy processing/suggestion/audit data must stop the old worker, take a verified backup/export of `classifier.db`, and retain it with the upgrade record. PostgreSQL rows created by Steps 7–10 are not backported into that file. An older rollback image cannot understand newer PostgreSQL pipeline state and may see only its old file, so workers must remain stopped until the rollback/export decision is explicit. After the new PostgreSQL path is validated and rollback is no longer required, operators may archive or remove the inert file manually according to their retention policy.
+Before upgrading, operators who need historical legacy processing/suggestion/audit data must stop the old worker, take a verified backup/export of `classifier.db`, and retain it with the upgrade record. PostgreSQL rows created by the migrated pipeline are not backported into that file. An older rollback image cannot understand newer PostgreSQL pipeline state and may see only its old file, so workers must remain stopped until the rollback/export decision is explicit. After the new PostgreSQL path is validated and rollback is no longer required, operators may archive or remove the inert file manually according to their retention policy.
 
 A clean installation creates no `classifier.db` and no legacy processing tables. Existing PostgreSQL persistent-volume migration and poll-candidate export-first rollback notes remain in the [Pipeline Start inventory](pipeline-start-caller-inventory.md#retention-and-rollback-safety).

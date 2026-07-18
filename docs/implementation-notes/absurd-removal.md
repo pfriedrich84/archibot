@@ -1,6 +1,6 @@
-# Step 11 queue transport removal and upgrade notes
+# Retired queue transport removal and upgrade notes
 
-Status: implementation complete in the Step 11 working tree; acceptance pending the required full-suite, clean-install Docker and image-security gates recorded in the hardening plan.
+Status: implemented and CI-validated. Laravel Database Queues are the sole productive transport.
 
 ## Final runtime
 
@@ -14,7 +14,7 @@ The vendored queue SQL and its installation migration were deleted. A clean migr
 
 ## Persistent-volume upgrade
 
-An existing PostgreSQL volume may already contain the historical queue schema. Step 11 deliberately **leaves it inert** instead of dropping it during deployment:
+An existing PostgreSQL volume may already contain the historical queue schema. The migration deliberately **leaves it inert** instead of dropping it during deployment:
 
 - no current process, dependency, setting or migration reads or writes it;
 - retaining it avoids destroying old queue evidence during an application upgrade;
@@ -24,7 +24,7 @@ Do not assume the current migration rollback command removes that historical sch
 
 ## Rollback
 
-Stop the current queue worker, scheduler and recovery loop before rolling back the application. Redeploy the pre-Step-11 image against the unchanged PostgreSQL volume before invoking any old migration rollback. On an upgraded volume, the retained migration record and inert schema let the older image see its original objects. On a database first created by Step 11, an older image will install its historical schema when its migrations run.
+Stop the current queue worker, scheduler and recovery loop before rolling back the application. Redeploy an image from before the transport removal against the unchanged PostgreSQL volume before invoking any old migration rollback. On an upgraded volume, the retained migration record and inert schema let the older image see its original objects. On a database created after the removal, an older image will install its historical schema when its migrations run.
 
 Dropping the historical schema is irreversible queue-state deletion and weakens this rollback path. Export it and obtain explicit operator approval before removal. Durable ArchiBot Commands, Pipeline Runs, Webhook Deliveries, Actor Executions and Laravel `jobs` remain the authoritative recovery state regardless of that historical queue state.
 

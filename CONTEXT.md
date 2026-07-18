@@ -1,6 +1,6 @@
 # ArchiBot Context
 
-ArchiBot is a self-hosted Paperless-NGX assistant that suggests document metadata, keeps safety-critical changes behind review and permission checks, and is migrating to a durable event-driven pipeline.
+ArchiBot is a self-hosted Paperless-NGX assistant that suggests document metadata, keeps safety-critical changes behind review and permission checks, and uses a durable event-driven pipeline.
 
 ## Language
 
@@ -28,9 +28,9 @@ _Avoid_: Paperless modified timestamp
 A durable PostgreSQL record tracking one event-driven processing attempt for a **Paperless Document**.
 _Avoid_: worker job when referring to the target event-driven pipeline
 
-**Worker Job**:
-A temporary Laravel control-plane record for legacy/subprocess execution during migration.
-_Avoid_: pipeline run
+**Worker Job** (retired):
+The removed temporary Laravel control-plane record from the legacy migration path. Do not use this term for current runtime state.
+_Avoid_: pipeline run, command, actor execution
 
 **Webhook Delivery**:
 A persisted Paperless webhook receipt normalized by Laravel before Python actors execute the requested ArchiBot action.
@@ -45,7 +45,7 @@ _Avoid_: webhook event when referring to the durable PostgreSQL receipt
 - A **Pipeline Run** may produce one **Review Suggestion** for a **Paperless Document**.
 - A **Review Suggestion** is the **Classification Marker** that prevents automatic polling from repeatedly classifying the same **Inbox Document**.
 - A **Webhook Delivery** may create or link to one **Pipeline Run** for a **Paperless Document**.
-- A **Worker Job** is temporary migration infrastructure and must not become the permanent **Pipeline Run** model.
+- A retired **Worker Job** must not be reintroduced or confused with a **Pipeline Run**, **Command**, or **Actor Execution**.
 
 ## Example dialogue
 
