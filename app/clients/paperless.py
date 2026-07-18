@@ -13,6 +13,18 @@ from app.models import PaperlessDocument, PaperlessEntity
 
 log = structlog.get_logger(__name__)
 
+# Deliberately narrower than Paperless' API schema: all document writes must
+# cross a reviewed metadata seam. OCR/file/version mutations are never delegated;
+# storage_path has one explicit manual-review-only null-to-value seam.
+SAFE_DOCUMENT_PATCH_FIELDS = {
+    "title",
+    "created_date",
+    "correspondent",
+    "document_type",
+    "tags",
+}
+REVIEWED_STORAGE_PATH_FIELD = "storage_path"
+
 
 class PaperlessClient:
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
@@ -74,9 +86,38 @@ class PaperlessClient:
         return PaperlessDocument.model_validate(r.json())
 
     async def patch_document(self, document_id: int, fields: dict[str, Any]) -> None:
-        """Apply metadata changes to a document."""
+        """Apply metadata through the ordinary reviewed metadata seam."""
+        await self._patch_document(document_id, fields, SAFE_DOCUMENT_PATCH_FIELDS)
+
+    async def patch_reviewed_document(self, document_id: int, fields: dict[str, Any]) -> None:
+        """Apply a manual review, permitting only null-to-value storage assignment."""
+        if REVIEWED_STORAGE_PATH_FIELD in fields:
+            proposed = fields[REVIEWED_STORAGE_PATH_FIELD]
+            if not isinstance(proposed, int) or isinstance(proposed, bool) or proposed <= 0:
+                raise ValueError("A reviewed Paperless storage path must be a positive ID")
+            current = await self.get_document(document_id)
+            if REVIEWED_STORAGE_PATH_FIELD not in current.model_fields_set:
+                raise ValueError(
+                    "Paperless must report a null storage path before manual assignment"
+                )
+            if current.storage_path is not None:
+                raise ValueError("An existing Paperless storage path is immutable")
+        await self._patch_document(
+            document_id,
+            fields,
+            SAFE_DOCUMENT_PATCH_FIELDS | {REVIEWED_STORAGE_PATH_FIELD},
+        )
+
+    async def _patch_document(
+        self, document_id: int, fields: dict[str, Any], allowed: set[str]
+    ) -> None:
         if not fields:
             return
+        unexpected = set(fields) - allowed
+        if unexpected:
+            raise ValueError(
+                f"Paperless document PATCH contains prohibited fields: {sorted(unexpected)}"
+            )
         r = await self._client.patch(f"/documents/{document_id}/", json=fields)
         r.raise_for_status()
         log.info("document patched", id=document_id, fields=list(fields.keys()))

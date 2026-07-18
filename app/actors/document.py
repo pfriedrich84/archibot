@@ -9,12 +9,17 @@ from typing import Any
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import finish_actor_execution, start_actor_execution
+from app.execution_lifecycle import (
+    ExecutionLifecycle,
+    finish_actor_execution,
+    start_actor_execution,
+    update_item_derived_progress,
+)
 from app.jobs.document_embeddings import (
     document_embedding_text,
     find_similar_with_precomputed_embedding,
@@ -23,26 +28,13 @@ from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_items import (
     PipelineItemRecord,
     finish_pipeline_item,
-    progress_from_pipeline_items,
     start_or_resume_pipeline_item,
 )
-from app.jobs.pipeline_runs import (
-    is_pipeline_run_cancel_requested,
-    load_document_pipeline_run,
-    mark_pipeline_run_cancelled,
-    mark_pipeline_run_retrying,
-    mark_pipeline_run_status,
-)
-from app.jobs.progress import (
-    ProgressSnapshot,
-    update_actor_execution_progress,
-    update_pipeline_run_progress,
-)
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.pipeline_runs import is_pipeline_run_cancel_requested, load_document_pipeline_run
 from app.jobs.review_suggestions import store_review_suggestion
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import classify
-from app.pipeline.document_processing import maybe_run_judge
+from app.pipeline.judge import maybe_run_judge
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
     effective_ocr_mode,
@@ -182,7 +174,6 @@ async def _classify_document(
             catalog.storage_paths,
             catalog.tags,
             provider,
-            cycle_id=None,
         )
         return DocumentClassificationOutcome(
             document=processed_document,
@@ -212,18 +203,13 @@ def _update_item_derived_progress(
     message: str,
     current_item: str | None = None,
 ) -> None:
-    total, done, failed, skipped = progress_from_pipeline_items(pipeline_run_id)
-    snapshot = ProgressSnapshot(
-        total=total,
-        done=done,
-        failed=failed,
-        skipped=skipped,
+    update_item_derived_progress(
+        pipeline_run_id=pipeline_run_id,
+        actor_execution_id=actor_execution_id,
         phase=phase,
         message=message,
+        current_item=current_item,
     )
-    update_pipeline_run_progress(pipeline_run_id, snapshot)
-    if actor_execution_id is not None:
-        update_actor_execution_progress(actor_execution_id, snapshot, current_item=current_item)
 
 
 def start_pipeline_item(
@@ -278,7 +264,6 @@ def _ensure_not_cancelled(
         return
     if current_item is not None:
         finish_pipeline_item(current_item.id, status="skipped", error="Pipeline run cancelled.")
-    mark_pipeline_run_cancelled(pipeline_run_id)
     publish_pipeline_event(
         types.PIPELINE_CANCELLED,
         pipeline_run_id=pipeline_run_id,
@@ -311,21 +296,28 @@ def _finish_actor_if_cancelled(
     return False
 
 
-def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
-    """Handle one document pipeline run through durable event-driven steps."""
+def _handle_document_pipeline_impl(
+    pipeline_run_id: int, *, embedding_ready: bool | None = None
+) -> None:
+    """Handle one document pipeline run through durable event-driven steps.
+
+    The productive actor runner supplies ``embedding_ready`` from the exact
+    PostgreSQL session that owns the shared pipeline lease. Direct unit calls
+    may omit it and retain the ordinary database readiness lookup.
+    """
     started = time.monotonic()
     actor_name = "handle_document_pipeline"
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         pipeline_run_id=pipeline_run_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     log.info(
         "document actor started",
         event_type=types.ACTOR_STARTED,
         pipeline_run_id=pipeline_run_id,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
 
     run = None
@@ -336,26 +328,16 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             message = "Document pipeline run was not found."
             finish_actor_execution(
                 actor_execution,
-                status="failed",
+                status="failed_permanent",
                 error_type="pipeline_run_not_found",
                 error_message=message,
-            )
-            publish_pipeline_event(
-                types.ACTOR_FAILED, pipeline_run_id=pipeline_run_id, level="error", message=message
             )
             return
 
         _ensure_not_cancelled(pipeline_run_id)
-        if not ensure_embedding_index_ready():
+        ready = ensure_embedding_index_ready() if embedding_ready is None else embedding_ready
+        if not ready:
             message = "Document actor blocked because the embedding index is not ready."
-            mark_pipeline_run_status(
-                pipeline_run_id,
-                status="blocked",
-                phase="blocked",
-                message="Waiting for embedding index to complete.",
-                error_type="embedding_index_not_ready",
-                error="Waiting for embedding index to complete.",
-            )
             _ensure_not_cancelled(pipeline_run_id)
             finish_actor_execution(
                 actor_execution,
@@ -372,12 +354,6 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             )
             return
 
-        mark_pipeline_run_status(
-            pipeline_run_id,
-            status="running",
-            phase="paperless_fetch",
-            message="Fetching document from Paperless.",
-        )
         _ensure_not_cancelled(pipeline_run_id)
         publish_pipeline_event(
             types.DOCUMENT_ACTOR_READY,
@@ -535,16 +511,7 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
             payload={"review_suggestion_id": suggestion.id, "status": suggestion.status},
         )
 
-        final_phase = "review_suggestion"
-        final_message = "Document classification is ready for manual review."
-
         _ensure_not_cancelled(pipeline_run_id)
-        mark_pipeline_run_status(
-            pipeline_run_id,
-            status="succeeded",
-            phase=final_phase,
-            message=final_message,
-        )
         _ensure_not_cancelled(pipeline_run_id)
         finish_actor_execution(actor_execution, status="succeeded")
     except DocumentPipelineCancelled as exc:
@@ -564,58 +531,12 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
                 current_item = None
             except Exception as item_exc:  # pragma: no cover - preserve original failure
                 log.warning("failed to mark pipeline item failed", error=str(item_exc))
-        retry_class = classify_exception(exc)
-        attempt = 1 if run is None else run.retry_count + 1
-        max_attempts = 5 if run is None else run.max_retries
-        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
-            backoff_seconds = retry_backoff_seconds(attempt)
-            message = f"Document actor retry scheduled in {backoff_seconds} seconds."
-            mark_pipeline_run_retrying(
-                pipeline_run_id,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=backoff_seconds,
-                phase="document_actor",
-                message=message,
-            )
-            if _finish_actor_if_cancelled(pipeline_run_id, actor_execution):
-                return
-            finish_actor_execution(
-                actor_execution,
-                status="retrying",
-                error_type=retry_class.value,
-                error_message=str(exc)[:1000],
-            )
-            publish_pipeline_event(
-                types.ACTOR_RETRY_SCHEDULED,
-                pipeline_run_id=pipeline_run_id,
-                level="warning",
-                message=message,
-                payload={
-                    "actor_name": actor_name,
-                    "retry_class": retry_class.value,
-                    "retry_reason": type(exc).__name__,
-                    "backoff_seconds": backoff_seconds,
-                },
-            )
-            return
-
-        mark_pipeline_run_status(
-            pipeline_run_id,
-            status="failed",
-            phase="document_actor",
-            message="Document actor failed.",
-            error_type=retry_class.value,
-            error=str(exc)[:1000],
-        )
         if _finish_actor_if_cancelled(pipeline_run_id, actor_execution):
             return
-        finish_actor_execution(
-            actor_execution,
-            status="failed",
-            error_type=retry_class.value,
-            error_message=str(exc)[:1000],
-        )
+        max_attempts = 5 if run is None else run.max_retries
+        disposition = ExecutionLifecycle(actor_execution).fail(exc, max_attempts=max_attempts)
+        if disposition.retrying:
+            return
         raise
 
     log.info(
@@ -623,14 +544,6 @@ def _handle_document_pipeline_impl(pipeline_run_id: int) -> None:
         event_type=types.ACTOR_SUCCEEDED,
         pipeline_run_id=pipeline_run_id,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    handle_document_pipeline = queue_backend.actor(queue_name=queue_name("io"))(
-        _handle_document_pipeline_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    handle_document_pipeline = _handle_document_pipeline_impl

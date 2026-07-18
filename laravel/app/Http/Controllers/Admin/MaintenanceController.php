@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Command;
+use App\Services\ArchibotResetService;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
 use App\Support\ActiveOperationsSnapshot;
+use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,6 +19,8 @@ use Inertia\Response;
 
 class MaintenanceController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function index(Request $request, ActiveOperationsSnapshot $activeOperations): Response
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
@@ -34,6 +38,7 @@ class MaintenanceController extends Controller
                 'recover_pipeline_actors' => route('admin.maintenance.recover-pipeline-actors'),
                 'mark_embedding_stale' => route('embedding-index.mark-stale'),
                 'document_pipeline' => route('admin.maintenance.document-pipeline'),
+                'reset' => route('admin.maintenance.reset'),
             ],
             'recentAuditLogs' => AuditLog::query()
                 ->where('event', 'like', 'maintenance.%')
@@ -42,10 +47,14 @@ class MaintenanceController extends Controller
                 ->get()
                 ->map(fn (AuditLog $auditLog) => [
                     'id' => $auditLog->id,
-                    'event' => $auditLog->event,
-                    'target_type' => $auditLog->target_type,
-                    'target_id' => $auditLog->target_id,
-                    'metadata' => $auditLog->metadata ?? [],
+                    'event' => $this->diagnostics->diagnosticEventType($auditLog->event),
+                    'target_type' => in_array($auditLog->target_type, ['pipeline_recovery', 'command'], true)
+                        ? $auditLog->target_type
+                        : 'unknown',
+                    'target_id' => ctype_digit((string) $auditLog->target_id)
+                        ? $auditLog->target_id
+                        : $this->diagnostics->opaqueReference($auditLog->target_id),
+                    'metadata' => $this->diagnostics->metadata($auditLog->metadata),
                     'created_at' => $auditLog->created_at?->toISOString(),
                 ])
                 ->values(),
@@ -87,8 +96,29 @@ class MaintenanceController extends Controller
             requestedByUserId: $request->user()->id,
         );
 
+        $this->audit($request, 'maintenance.document_pipeline_requested', 'pipeline_run', (string) $result->pipelineRun->id, [
+            'actor_principal' => 'authenticated_user',
+            'paperless_document_id' => (int) $validated['paperless_document_id'],
+            'force' => $force,
+        ]);
+
         return redirect()->route('pipeline-runs.show', $result->pipelineRun)
             ->with('status', 'Document Pipeline Run queued.');
+    }
+
+    public function reset(Request $request, ArchibotResetService $reset): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+        $request->validate(['confirmation' => ['required', 'in:RESET']]);
+
+        $cleared = $reset->reset(false);
+        $this->audit($request, 'maintenance.reset_completed', 'system', 'archibot', [
+            'actor_principal' => 'authenticated_user',
+            'include_config' => false,
+            'cleared_tables' => $cleared,
+        ]);
+
+        return redirect()->route('admin.maintenance.index')->with('status', 'ArchiBot operational state reset complete.');
     }
 
     public function startCommand(Request $request, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse

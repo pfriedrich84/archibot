@@ -28,7 +28,7 @@ Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
 
 ## Chat/RAG-Containment
 
-Chat/RAG ist fuer Admins und Nicht-Admins deaktiviert. Laravel registriert weder Seite noch API-Routen und besitzt keinen Python-Bridge-Service; die Python-CLI registriert kein `chat-ask`; MCP registriert weder globale Suche/Volltext-Retrieval noch aehnlichkeitsbasierte Retrieval-Tools. Bestehende `chat_sessions`- und `chat_messages`-Zeilen sowie ihre Migration bleiben zur sicheren Datenerhaltung bestehen, werden aber nicht exponiert. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer Redesign und moegliches Re-enable.
+Chat/RAG ist fuer Admins und Nicht-Admins deaktiviert. Laravel registriert weder Seite noch API-Routen und besitzt keinen Python-Bridge-Service; die Python-CLI registriert kein `chat-ask`; MCP registriert weder globale Suche/Volltext-Retrieval noch aehnlichkeitsbasierte Retrieval-Tools. Bestehende `chat_sessions`- und `chat_messages`-Zeilen sowie ihre Migration bleiben zur sicheren Datenerhaltung bestehen, werden aber nicht exponiert. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer Redesign und moegliches Re-enable; der [Authorization-safe-RAG-Entwurf](../architecture/authorization-safe-rag-design.md) ist Forschung/Proposal und keine Freigabe.
 
 ## Dokument-Lebenszyklus
 
@@ -72,7 +72,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
                    │ Accept
                    ▼
 ┌─────────────────────────────────────────────┐
-│  Commit (committer.py)                       │
+│  Review-Commit Actor (app/actors/review.py)  │
 │                                              │
 │  PATCH /api/documents/{id}/ →                │
 │   - Titel, Datum, Korrespondent              │
@@ -86,14 +86,14 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 
 ## Einstiegspunkte fuer die Dokumentverarbeitung
 
-Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
+Es gibt **vier Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → `RunPythonActorJob::pollReconciliation(<command-id>)` → festes Python-Actor-Kommando | Ja, ueberspringt mit Log |
+| **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → festes Python-Discovery-Kommando → versionierte `poll_candidates` → Laravel `PollCandidateConsumer` → `DocumentPipelineStarter` | Ja, Marker-Disposition wird dauerhaft protokolliert |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware erzwingt vor Controller/Persistenz Roh-Body-Limit, gemeinsames per-Client Rate-Limit fuer beide Aliase und ein nicht leeres effektives Secret (verschluesselte globale Einstellung vor Deployment-Konfiguration) mit `hash_equals`; danach speichert Laravel redigierte `webhook_deliveries`. Create/Process-Events starten `pipeline_runs` und queuen `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, Refresh/Delete-Events queuen `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)`. | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
-| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py`; Ziel ist Delegation an Laravel durable Commands fuer produktive Operator-Aktionen | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge (Actors nutzen `app.actor_runner`) |
 
 ## Inbox-Seite (`/inbox`)
 
@@ -110,7 +110,7 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 
 Der event-driven Poll laedt vor dem Pipeline-Start die dauerhaften Klassifikationsmarker aus PostgreSQL: Sobald fuer ein Paperless-Dokument ein `review_suggestions`-Eintrag existiert, ist die Klassifikation mindestens einmal erfolgreich abgeschlossen. Solche Inbox-Dokumente werden bei automatischen Polls unabhaengig von spaeteren Paperless-`modified`-Aenderungen uebersprungen. Das verhindert erneute LLM-Klassifikation nach Review/Commit, wenn `KEEP_INBOX_TAG=true` ist.
 
-Fuer noch nicht markierte Dokumente koordinieren Poll und Webhook weiterhin ueber den gemeinsamen `pipeline_runs.pipeline_dedupe_key`. Explizite Force-Polls und manuelles Force-Reprocess umgehen den poll-spezifischen Marker und erzeugen neue Pipeline Runs; die Webhook-Action-Policy bleibt unberuehrt. `processed_documents` ist nur noch Idempotenzzustand des nicht automatisch gestarteten Legacy-Python-Pollpfads und darf fuer neue event-driven Funktionalitaet nicht erweitert werden.
+Fuer noch nicht markierte Dokumente koordinieren Poll und Webhook weiterhin ueber den gemeinsamen `pipeline_runs.pipeline_dedupe_key`. Explizite Force-Polls und manuelles Force-Reprocess umgehen den poll-spezifischen Marker und erzeugen neue Pipeline Runs; die Webhook-Action-Policy bleibt unberuehrt. Es gibt keinen separaten lokalen Poll- oder Idempotenzzustand.
 
 ### 2. OCR-Korrektur (optional)
 
@@ -137,7 +137,7 @@ Die Laravel-OCR-Review-Oberfläche unter `/ocr-reviews` ist davon getrennt ein l
 
 Vom LLM vorgeschlagene Tags werden gegen die existierenden Paperless-Tags abgeglichen:
 - **Bekannte Tags:** Werden direkt mit ihrer ID gespeichert
-- **Unbekannte Tags:** Landen in `tag_whitelist` mit Status `pending`. Muessen unter `/tags` manuell freigegeben werden. Bei Freigabe wird der Tag retroaktiv auf bereits committete Dokumente angewendet und in offenen Vorschlaegen voraufgeloest
+- **Unbekannte Tags:** Landen in PostgreSQL `entity_approvals` mit Status `pending`. Muessen unter `/tags` manuell freigegeben werden. Bei Freigabe wird der Tag retroaktiv auf bereits committete Dokumente angewendet und in offenen Vorschlaegen voraufgeloest.
 
 ### 6. Judge-Pass (optional)
 
@@ -148,13 +148,11 @@ Wenn `ENABLE_JUDGE_VERIFICATION=true`, laeuft nach der Klassifikation ein zweite
 
 Der Judge bekommt Zieldokument + Kontext + den Erst-Vorschlag und gibt einen `JudgeVerdict` zurueck: `agree`, `corrected`, `skipped` oder `error`. Bei `corrected` ersetzt das neue JSON die Erst-Klassifikation; der Original-Vorschlag wird als `original_proposed_json` in der Suggestion erhalten (Audit). Der Judge nutzt per Default dasselbe Modell (`OLLAMA_MODEL`) — kein zusaetzlicher GPU-Swap. Alternativ via `OLLAMA_JUDGE_MODEL`. Transport-/Parse-Fehler werden als `verdict="error"` geloggt; die Pipeline behaelt die Erst-Klassifikation.
 
-Timing wird separat unter `phase='judge'` in `phase_timing` erfasst.
-
 ### 7. Manuelle Review-Commit-Grenze
 
-ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Document Actor sowie legacy/phased Processing speichern auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
+ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Der Document Actor speichert auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
 
-Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche.
+Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche. Der zentrale Client erlaubt dabei nur die geprueften Metadatenfelder. `storage_path` besitzt eine eigene manuelle Review-Naht: Der Client liest den aktuellen Dokumentzustand erneut und erlaubt nur `null` zu einer positiven ID; ein fehlendes Feld oder ein vorhandener Wert schliesst den Schreibvorgang. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
 
 ## Reindex
 
@@ -169,27 +167,27 @@ Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitu
 7. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in dauerhafte Pipeline-/Command-State-Tabellen; Laravel zeigt Status und Ergebnis aus PostgreSQL an
 8. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
 
+## Diagnose- und Operations-Grenze
+
+Globale Operations-Daten sind privilegierte Systemdiagnostik. Eine gemeinsame Laravel-Admin-Middleware laeuft vor dem Route Model Binding fuer Operations Log, Pipeline Runs, Webhook Deliveries, Actor Executions, Statistiken, Fehler, Embedding-Diagnostik, Maintenance und Audit. Dadurch liefern direkte Nicht-Admin-Aufrufe immer `403`, unabhaengig davon, ob eine angefragte Run- oder Delivery-ID existiert. Mutierende Controller pruefen den Admin-Status zusaetzlich unmittelbar vor der Zustandsaenderung.
+
+Die Browser-Datenvertraege enthalten nur explizit erlaubte skalare Metadaten mit Labels. Webhook-Headers und rohe/normalisierte Payloads werden nicht dargestellt; unbekannte oder verschachtelte Metadaten werden verworfen. Freie Fehler-, Event- und Fortschrittstexte werden durch einen festen Redaktionshinweis ersetzt, damit Tokens, Authorization-Header, Dokument-/OCR-Inhalt oder Prompts nicht ueber Diagnoseansichten offengelegt werden. Provider-Typen und interne Fehlerklassen/-arten werden nur aus kanonischen, im Quellcode inventarisierten Mengen angezeigt; unbekannte Werte erhalten nicht rueckrechenbare Referenzen. Konfigurierbare Provider-Profil- und Modell-IDs werden ungeachtet ihrer Zeichenform nie woertlich ausgegeben, sondern als stabile Referenz dargestellt. Status, Fehlerart, IDs, Zaehler und Ereignis-Timelines bleiben fuer Retry- und Recovery-Diagnose erhalten.
+
 ## Datenbank-Schema
 
 | Tabelle | Zweck |
 |---|---|
 | `chat_sessions`, `chat_messages` | Erhaltene historische Chat-Daten; normale Produkt- und Chat-Oberflaechen lesen, zeigen oder loeschen diese Zeilen nicht. Nur der ausdruecklich bestaetigte vollstaendige Operator-Reset (`archibot reset` / `php artisan archibot:reset`) bleibt destruktiv und leert sie. |
 | `review_suggestions` | Dauerhafte Review-Vorschlaege; ihre Existenz ist zugleich der Klassifikationsmarker fuer automatische Polls |
-| `processed_documents` | Legacy-Python-Pollstatus; nicht Source of Truth fuer den event-driven Pfad |
-| `suggestions` | Legacy-LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
 | `document_embeddings` | PostgreSQL/pgvector Embeddings mit Metadaten und `trusted_for_context` fuer Klassifikationskontext |
-| `tag_whitelist` | Staging fuer unbekannte Tags (name, times_seen, approved) |
-| `tag_blacklist` | Abgelehnte Tags — werden bei zukuenftigen Vorschlaegen ignoriert |
-| `doc_ocr_cache` | Lokal gecachter korrigierter OCR-Text (nie zurueck nach Paperless) |
-| `errors` | Fehler-Audit-Trail (stage, document_id, message) |
-| `audit_log` | Aktions-Audit-Trail (commit, reject, prompt_update) |
-| `poll_cycles` | Zusammenfassung pro `poll_inbox()`-Aufruf (started_at, finished_at, succeeded, failed, skipped) |
-| `phase_timing` | Pro-Dokument-Pro-Phase Verarbeitungsdauer (poll_cycle_id, phase, duration_ms, success) |
+| `entity_approvals` | PostgreSQL-eigene Staging-, Freigabe- und Blacklist-Grenze fuer unbekannte Tags, Korrespondenten und Dokumenttypen; produktive Klassifikation liest abgelehnte Namen ausschliesslich hier. |
+| `document_ocr_corrections` | Gemeinsamer PostgreSQL-Cache fuer lokal korrigierten OCR-Text (nie zurueck nach Paperless). |
+| `poll_candidates` | Versionierter, idempotenter Python-Discovery/Laravel-Start-Handoff mit Marker-Disposition, normalisiertem Content-State, Claim/Replay und Starter-Ergebnis |
 
 ## Docker-Deployment
 
 - **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Laravel Database Queues laufen ohne separaten Broker-Service
 - **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
-- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings, Pipeline-State und Laravel Queue-State; `archibot_data` fuer App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel und startet Web-App, Laravel Queue Worker, `schedule:work`, Laravel-native Recovery sowie optional den Python MCP-Server. Supervisor startet keine Absurd Worker/Recovery-Prozesse mehr; verbleibender Absurd-Code und das Schema sind separates Cleanup-Delta.
+- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings, Pipeline-State und Laravel Queue-State; `archibot_data` fuer App-Key, Logs und Custom Prompts. Ein vorhandenes Legacy-`classifier.db` bleibt bei Upgrades inert und wird nicht als Produktzustand gelesen.
+- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel und startet Web-App, Laravel Queue Worker, `schedule:work`, Laravel-native Recovery sowie optional den Python MCP-Server. Supervisor startet keinen Python Queue-/Recovery-Worker; der fruehere Queue-SDK, Bootstrap und Clean-Install-Schema sind entfernt.
 - **Netzwerk:** App-Container muss Paperless, PostgreSQL und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`

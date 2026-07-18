@@ -3,15 +3,20 @@
 namespace App\Services\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 class DocumentPipelineStarter
 {
     public const BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY = 'embedding_index_not_ready';
+
+    public function __construct(
+        private readonly PipelineContentStateNormalizer $normalizer,
+        private readonly PipelineStartGate $gate,
+    ) {}
 
     public function start(
         string $triggerSource,
@@ -27,83 +32,99 @@ class DocumentPipelineStarter
         ?int $webhookDeliveryId = null,
         ?int $commandId = null,
     ): PipelineStartResult {
+        $paperlessModified = $this->normalizer->modified($paperlessModified);
+        $contentHash = $this->normalizer->contentHash($contentHash);
         $dedupeKey = $forceNewRun
             ? $this->forceDedupeKey($paperlessDocumentId, $paperlessModified, $contentHash, $forceToken ?? (string) Str::uuid())
             : $this->dedupeKey($paperlessDocumentId, $paperlessModified, $contentHash);
-        $gateOpen = $this->embeddingGateOpen();
-        $gate = $this->gateAttributes($gateOpen, 'queued', 'Waiting for document actor.');
 
-        $attributes = [
-            'type' => 'document',
-            'status' => $gate['status'],
-            'scope' => 'single_document',
-            'trigger_source' => $triggerSource,
-            'paperless_document_id' => $paperlessDocumentId,
-            'paperless_modified' => $paperlessModified,
-            'content_hash' => $contentHash,
-            'pipeline_dedupe_key' => $dedupeKey,
-            'coalesced_sources' => [$triggerSource],
-            'progress_current_phase' => $gate['progress_current_phase'],
-            'progress_message' => $gate['progress_message'],
-            'progress_updated_at' => now(),
-            'reprocess_requested' => $reprocessRequested,
-            'reprocess_reason' => $reprocessReason,
-            'reprocess_mode' => $reprocessMode,
-            'requested_by_user_id' => $requestedByUserId,
-            'webhook_delivery_id' => $webhookDeliveryId,
-            'command_id' => $commandId,
-            'error_type' => $gate['error_type'],
-            'error' => $gate['error'],
-        ];
+        /** @var array{run: PipelineRun, created: bool, gate_open: bool} $result */
+        $result = $this->gate->pipelineStart(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
+            /** @var array{run: PipelineRun, created: bool, gate_open: bool} $committed */
+            $committed = DB::transaction(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
+                $gateOpen = $this->gate->isOpen();
+                $gate = $this->gateAttributes($gateOpen, 'queued', 'Waiting for document actor.');
+                $candidate = new PipelineRun;
+                $candidate->forceFill([
+                    'type' => 'document',
+                    'status' => $gate['status'],
+                    'scope' => 'single_document',
+                    'trigger_source' => $triggerSource,
+                    'paperless_document_id' => $paperlessDocumentId,
+                    'paperless_modified' => $paperlessModified,
+                    'content_hash' => $contentHash,
+                    'pipeline_dedupe_key' => $dedupeKey,
+                    'coalesced_sources' => [$triggerSource],
+                    'progress_current_phase' => $gate['progress_current_phase'],
+                    'progress_message' => $gate['progress_message'],
+                    'progress_updated_at' => now(),
+                    'reprocess_requested' => $reprocessRequested,
+                    'reprocess_reason' => $reprocessReason,
+                    'reprocess_mode' => $reprocessMode,
+                    'requested_by_user_id' => $requestedByUserId,
+                    'webhook_delivery_id' => $webhookDeliveryId,
+                    'command_id' => $commandId,
+                    'error_type' => $gate['error_type'],
+                    'error' => $gate['error'],
+                ]);
+                $candidate->setCreatedAt(now());
+                $candidate->setUpdatedAt(now());
+                $created = DB::table('pipeline_runs')->insertOrIgnore($candidate->getAttributes()) === 1;
 
-        /** @var array{run: PipelineRun, created: bool} $result */
-        $result = DB::transaction(function () use ($attributes, $paperlessDocumentId, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
-            $candidate = new PipelineRun;
-            $candidate->forceFill($attributes);
-            $candidate->setCreatedAt(now());
-            $candidate->setUpdatedAt(now());
-            $created = DB::table($candidate->getTable())->insertOrIgnore($candidate->getAttributes()) === 1;
+                $run = PipelineRun::query()
+                    ->where('paperless_document_id', $paperlessDocumentId)
+                    ->where('pipeline_dedupe_key', $dedupeKey)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $run = PipelineRun::query()
-                ->where('paperless_document_id', $paperlessDocumentId)
-                ->where('pipeline_dedupe_key', $dedupeKey)
-                ->lockForUpdate()
-                ->firstOrFail();
+                if (! $created) {
+                    $run = $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId);
+                }
 
-            if ($created) {
-                return ['run' => $run, 'created' => true];
+                return ['run' => $run, 'created' => $created, 'gate_open' => $gateOpen];
+            });
+
+            if ($committed['created'] && $committed['gate_open']) {
+                $run = $committed['run'];
+                try {
+                    // Run creation is committed before this fallible operation,
+                    // while the shared fence still orders dispatch against an
+                    // exclusive stale/build transition.
+                    dispatch(RunPythonActorJob::documentPipeline($run->id));
+                } catch (Throwable $exception) {
+                    $this->recordActorEnqueueFailedEvent($run, $exception);
+                    throw $exception;
+                }
+
+                // A fast worker may already have moved pending -> running (or a
+                // terminal state). Never overwrite that child-owned transition.
+                PipelineRun::query()
+                    ->whereKey($run->id)
+                    ->where('status', PipelineRun::STATUS_PENDING)
+                    ->update([
+                        'status' => PipelineRun::STATUS_QUEUED,
+                        'progress_current_phase' => 'document_actor',
+                        'progress_message' => 'Document actor queued through Laravel actor transport.',
+                        'progress_updated_at' => now(),
+                        'error_type' => null,
+                        'error' => null,
+                        'updated_at' => now(),
+                    ]);
+                $committed['run'] = $run->refresh();
+                $this->recordActorQueuedEvent($committed['run']);
             }
 
-            return [
-                'run' => $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId),
-                'created' => false,
-            ];
+            return $committed;
         });
 
         $run = $result['run'];
         $created = $result['created'];
+        $gateOpen = $result['gate_open'];
+
         $outcome = $this->outcome($created, $forceNewRun, $gateOpen);
         $blockedReason = $gateOpen ? null : self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY;
-
+        $run = $run->refresh();
         $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason);
-
-        if ($created && $gateOpen) {
-            DB::transaction(function () use ($run): void {
-                $run = PipelineRun::query()->lockForUpdate()->findOrFail($run->id);
-                if ($run->status !== PipelineRun::STATUS_PENDING) {
-                    return;
-                }
-
-                $run->forceFill([
-                    'status' => PipelineRun::STATUS_QUEUED,
-                    'progress_current_phase' => 'document_actor',
-                    'progress_message' => 'Document actor queued through Laravel actor transport.',
-                    'progress_updated_at' => now(),
-                ])->save();
-                dispatch(RunPythonActorJob::documentPipeline($run->id));
-                $this->recordActorQueuedEvent($run);
-            });
-        }
 
         return new PipelineStartResult($run->refresh(), $outcome, $dedupeKey, $blockedReason, $created);
     }
@@ -132,13 +153,11 @@ class DocumentPipelineStarter
         ];
     }
 
-    public function embeddingGateOpen(): bool
-    {
-        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
-    }
-
     public function dedupeKey(int $paperlessDocumentId, ?string $paperlessModified, ?string $contentHash, string $pipelineVersion = 'v1'): string
     {
+        $paperlessModified = $this->normalizer->modified($paperlessModified);
+        $contentHash = $this->normalizer->contentHash($contentHash);
+
         return hash('sha256', implode(':', [
             (string) $paperlessDocumentId,
             $paperlessModified ?: 'unknown_modified',
@@ -149,6 +168,9 @@ class DocumentPipelineStarter
 
     public function forceDedupeKey(int $paperlessDocumentId, ?string $paperlessModified, ?string $contentHash, string $forceToken, string $pipelineVersion = 'v1'): string
     {
+        $paperlessModified = $this->normalizer->modified($paperlessModified);
+        $contentHash = $this->normalizer->contentHash($contentHash);
+
         return hash('sha256', implode(':', [
             'force',
             (string) $paperlessDocumentId,
@@ -202,6 +224,20 @@ class DocumentPipelineStarter
         return 'created';
     }
 
+    private function recordActorEnqueueFailedEvent(PipelineRun $run, Throwable $exception): void
+    {
+        PipelineEvent::query()->create([
+            'pipeline_run_id' => $run->id,
+            'webhook_delivery_id' => $run->webhook_delivery_id,
+            'command_id' => $run->command_id,
+            'event_type' => 'pipeline.document_actor_enqueue_failed',
+            'paperless_document_id' => $run->paperless_document_id,
+            'level' => 'warning',
+            'message' => 'Document actor enqueue failed; the pending run remains recoverable.',
+            'payload' => ['error_type' => $exception::class],
+        ]);
+    }
+
     private function recordActorQueuedEvent(PipelineRun $run): void
     {
         PipelineEvent::query()->create([
@@ -237,7 +273,7 @@ class DocumentPipelineStarter
         $message = match ($outcome) {
             'coalesced' => 'Document pipeline start coalesced with an existing run.',
             'blocked' => 'Document pipeline start blocked because the embedding index is not ready.',
-            'force_created' => 'Manual force reprocess accepted as a new document pipeline run.',
+            'force_created' => 'Explicit force request accepted as a new document pipeline run.',
             default => 'Document pipeline start accepted by the shared trigger gate.',
         };
 

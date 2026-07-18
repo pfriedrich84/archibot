@@ -381,12 +381,34 @@
 
     {#if suggestion.status === 'pending'}
         <div class="flex gap-3">
-            <Form {...accept.form(suggestion.id)}>
+            <Form
+                {...accept.form(suggestion.id)}
+                onsubmit={(event) => {
+                    if (
+                        !confirm(
+                            'Accept this suggestion and queue its reviewed metadata update in Paperless?',
+                        )
+                    ) {
+                        event.preventDefault();
+                    }
+                }}
+            >
                 {#snippet children({ processing })}
                     <Button type="submit" disabled={processing}>Accept</Button>
                 {/snippet}
             </Form>
-            <Form {...reject.form(suggestion.id)}>
+            <Form
+                {...reject.form(suggestion.id)}
+                onsubmit={(event) => {
+                    if (
+                        !confirm(
+                            'Reject this suggestion? No Paperless metadata will be changed.',
+                        )
+                    ) {
+                        event.preventDefault();
+                    }
+                }}
+            >
                 {#snippet children({ processing })}
                     <Button
                         type="submit"
@@ -410,6 +432,15 @@
                 method="post"
                 action={suggestion.reprocess_url}
                 class="flex gap-3"
+                onsubmit={(event) => {
+                    if (
+                        !confirm(
+                            'Force a new pipeline run for this one document? This queues fresh processing even when its content is unchanged.',
+                        )
+                    ) {
+                        event.preventDefault();
+                    }
+                }}
             >
                 {#snippet children({ processing })}
                     <input

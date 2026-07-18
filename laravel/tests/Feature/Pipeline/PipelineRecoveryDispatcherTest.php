@@ -12,6 +12,7 @@ use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
+use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -162,6 +163,45 @@ class PipelineRecoveryDispatcherTest extends TestCase
             && $job->commandId === $run->id);
     }
 
+    public function test_recovery_enqueue_failure_keeps_committed_pending_run(): void
+    {
+        EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+        $delivery = $this->webhookDelivery([
+            'status' => WebhookDelivery::STATUS_RECEIVED,
+            'event_type' => 'document_created',
+            'normalized_payload' => [
+                'webhook_action' => 'process_document',
+                'paperless_modified' => '2026-05-08T12:00:00Z',
+            ],
+        ]);
+        $delivery->timestamps = false;
+        $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        $queue = $this->mock(QueueContract::class);
+        Queue::shouldReceive('connection')->once()->andReturn($queue);
+        $queue->shouldReceive('push')->once()->andReturnUsing(function (): never {
+            $this->assertDatabaseHas('pipeline_runs', [
+                'status' => PipelineRun::STATUS_PENDING,
+            ]);
+            throw new \RuntimeException('queue unavailable during recovery');
+        });
+
+        $result = app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10);
+
+        $this->assertSame(0, $result['webhook_deliveries_redispatched']);
+        $this->assertDatabaseHas('pipeline_runs', [
+            'webhook_delivery_id' => $delivery->id,
+            'status' => PipelineRun::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'pipeline.document_actor_enqueue_failed',
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'webhook_delivery_id' => $delivery->id,
+            'event_type' => 'recovery.process_webhook_reconciliation_failed',
+        ]);
+    }
+
     public function test_recovery_reconciles_blocked_process_webhook_after_gate_release(): void
     {
         Queue::fake();
@@ -203,7 +243,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
 
         $this->artisan('archibot:recovery-scan', ['--limit' => 5])
-            ->expectsOutput('Recovery scan complete. actor_executions_stale=0 actor_executions_redispatched=0 actor_executions_failed_permanent=0 pipeline_runs_cancelled=0 webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
+            ->expectsOutput('Recovery scan complete. actor_executions_stale=0 actor_executions_redispatched=0 actor_executions_failed_permanent=0 poll_candidates_completed=0 poll_candidates_skipped=0 poll_candidates_failed=0 pipeline_runs_cancelled=0 webhook_deliveries_redispatched=1 document_pipeline_runs_redispatched=0 commands_redispatched=0')
             ->assertSuccessful();
 
         Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $delivery->id);
@@ -523,43 +563,6 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
     }
 
-    public function test_recovery_scan_redispatches_sync_entity_approval_commands(): void
-    {
-        Queue::fake();
-        $command = $this->command([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
-            'payload' => [
-                'action' => 'approve',
-                'type' => 'tag',
-                'name' => 'Invoices',
-                'paperless_id' => 12,
-            ],
-        ]);
-
-        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
-
-        $this->assertSame(1, $count);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL
-            && $job->commandId === $command->id);
-        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
-    }
-
-    public function test_recovery_scan_marks_invalid_sync_entity_command_permanently_failed(): void
-    {
-        Queue::fake();
-        $command = $this->command([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
-            'payload' => ['action' => 'approve', 'type' => 'tag'],
-        ]);
-
-        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
-
-        $this->assertSame(0, $count);
-        Queue::assertNothingPushed();
-        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
-        $this->assertSame('missing_entity_sync_name', $command->fresh()->error);
-    }
-
     public function test_recovery_redispatches_stale_running_actor_through_linked_command(): void
     {
         Queue::fake();
@@ -575,6 +578,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'status' => ActorExecution::STATUS_RUNNING,
             'attempt' => 1,
             'max_attempts' => 5,
+            'source_version' => 0,
             'started_at' => now()->subMinutes(11),
             'progress_updated_at' => now()->subMinutes(11),
         ]);
@@ -605,6 +609,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'status' => ActorExecution::STATUS_RUNNING,
             'attempt' => 5,
             'max_attempts' => 5,
+            'source_version' => 0,
             'started_at' => now()->subMinutes(11),
             'progress_updated_at' => now()->subMinutes(11),
         ]);
@@ -713,7 +718,8 @@ class PipelineRecoveryDispatcherTest extends TestCase
 
         $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
         Queue::assertNothingPushed();
-        $this->assertSame(ActorExecution::STATUS_SUCCEEDED, $execution->fresh()->status);
+        $this->assertSame(ActorExecution::STATUS_SKIPPED, $execution->fresh()->status);
+        $this->assertSame('superseded_by_terminal_source', $execution->fresh()->error_type);
         $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
     }
 

@@ -36,10 +36,17 @@
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { index as maintenanceIndex } from '@/routes/admin/maintenance';
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
+    import { index as embeddingsIndex } from '@/routes/embeddings';
+    import { index as entitiesIndex } from '@/routes/entities';
+    import { index as errorsIndex } from '@/routes/errors';
     import { index as inboxIndex } from '@/routes/inbox';
+    import { index as mcpTokensIndex } from '@/routes/mcp-tokens';
+    import { index as ocrReviewsIndex } from '@/routes/ocr-reviews';
     import { index as operationsLogIndex } from '@/routes/operations-log';
     import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     import { index as reviewIndex } from '@/routes/review';
+    import { index as statsIndex } from '@/routes/stats';
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
     import type { NavItem } from '@/types';
 
     let {
@@ -68,62 +75,62 @@
         },
         {
             title: 'OCR reviews',
-            href: '/ocr-reviews',
+            href: ocrReviewsIndex(),
             icon: FileText,
         },
     ]);
 
-    const masterDataNavItems: NavItem[] = [
+    const masterDataNavItems: NavItem[] = $derived([
         {
             title: 'Correspondents',
-            href: '/correspondents',
+            href: entitiesIndex({ segment: 'correspondents' }),
             icon: UserRound,
         },
         {
             title: 'Document types',
-            href: '/doctypes',
+            href: entitiesIndex({ segment: 'doctypes' }),
             icon: FileType,
         },
         {
             title: 'Tags',
-            href: '/tags',
+            href: entitiesIndex({ segment: 'tags' }),
             icon: Tag,
         },
-    ];
+    ]);
 
     const processingNavItems: NavItem[] = $derived([
-        {
-            title: 'Operations Log',
-            href: operationsLogIndex(),
-            icon: Workflow,
-        },
-        {
-            title: 'Pipeline runs',
-            href: pipelineRunsIndex(),
-            icon: FolderGit2,
-        },
-        {
-            title: 'Webhooks',
-            href: '/webhook-deliveries',
-            icon: Webhook,
-        },
-        {
-            title: 'Embeddings',
-            href: '/embeddings',
-            icon: Database,
-        },
-        {
-            title: 'Stats',
-            href: '/stats',
-            icon: Sigma,
-        },
-        {
-            title: 'Errors',
-            href: '/errors',
-            icon: TriangleAlert,
-        },
         ...(user?.is_admin
             ? [
+                  {
+                      title: 'Stats',
+                      href: statsIndex(),
+                      icon: Sigma,
+                  },
+                  {
+                      title: 'Operations Log',
+                      href: operationsLogIndex(),
+                      icon: Workflow,
+                  },
+                  {
+                      title: 'Pipeline runs',
+                      href: pipelineRunsIndex(),
+                      icon: FolderGit2,
+                  },
+                  {
+                      title: 'Webhooks',
+                      href: webhookDeliveriesIndex(),
+                      icon: Webhook,
+                  },
+                  {
+                      title: 'Embeddings',
+                      href: embeddingsIndex(),
+                      icon: Database,
+                  },
+                  {
+                      title: 'Errors',
+                      href: errorsIndex(),
+                      icon: TriangleAlert,
+                  },
                   {
                       title: 'Maintenance',
                       href: maintenanceIndex(),
@@ -150,7 +157,7 @@
             : []),
         {
             title: 'MCP tokens',
-            href: '/settings/mcp-tokens',
+            href: mcpTokensIndex(),
             icon: KeyRound,
         },
     ]);

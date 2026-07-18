@@ -19,6 +19,7 @@
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
     import { index as reviewIndex } from '@/routes/review';
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
 
     type DashboardStatus = {
         setup_complete: boolean;
@@ -36,16 +37,16 @@
 
     type Counts = {
         pending_reviews: number;
-        queued_webhook_deliveries: number;
-        active_pipeline_runs: number;
-        pending_pipeline_runs: number;
-        queued_pipeline_runs: number;
-        running_pipeline_runs: number;
-        retrying_pipeline_runs: number;
-        blocked_pipeline_runs: number;
-        failed_pipeline_runs: number;
-        running_actor_executions: number;
-        failed_actor_executions: number;
+        queued_webhook_deliveries?: number;
+        active_pipeline_runs?: number;
+        pending_pipeline_runs?: number;
+        queued_pipeline_runs?: number;
+        running_pipeline_runs?: number;
+        retrying_pipeline_runs?: number;
+        blocked_pipeline_runs?: number;
+        failed_pipeline_runs?: number;
+        running_actor_executions?: number;
+        failed_actor_executions?: number;
     };
 
     type EmbeddingIndex = {
@@ -183,13 +184,13 @@
     }: {
         status: DashboardStatus;
         counts: Counts;
-        embeddingIndex: EmbeddingIndex;
-        maintenance: MaintenanceState;
-        activeOperations: ActiveOperations;
-        recentWebhookDeliveries: RecentWebhookDelivery[];
-        recentActorExecutions: RecentActorExecution[];
-        recentPipelineRuns: RecentPipelineRun[];
-        recentErrors: RecentError[];
+        embeddingIndex?: EmbeddingIndex;
+        maintenance?: MaintenanceState;
+        activeOperations?: ActiveOperations;
+        recentWebhookDeliveries?: RecentWebhookDelivery[];
+        recentActorExecutions?: RecentActorExecution[];
+        recentPipelineRuns?: RecentPipelineRun[];
+        recentErrors?: RecentError[];
     } = $props();
 
     const isAdmin = $derived(Boolean(page.props.auth.user?.is_admin));
@@ -303,12 +304,13 @@
     }
 
     const dashboardHasActiveWork = $derived(
-        counts.active_pipeline_runs > 0 ||
-            counts.running_actor_executions > 0 ||
-            embeddingIndex.status === 'building' ||
-            embeddingIndex.pending_build_commands > 0 ||
-            maintenance.pending_poll_commands > 0 ||
-            maintenance.pending_reindex_commands > 0,
+        isAdmin &&
+            ((counts.active_pipeline_runs ?? 0) > 0 ||
+                (counts.running_actor_executions ?? 0) > 0 ||
+                embeddingIndex?.status === 'building' ||
+                (embeddingIndex?.pending_build_commands ?? 0) > 0 ||
+                (maintenance?.pending_poll_commands ?? 0) > 0 ||
+                (maintenance?.pending_reindex_commands ?? 0) > 0),
     );
 
     onMount(() => {
@@ -327,7 +329,9 @@
 <div class="space-y-6">
     <Heading title="Dashboard" description="ArchiBot application status." />
 
-    <ActiveOperationsPanel operations={activeOperations} />
+    {#if isAdmin && activeOperations}
+        <ActiveOperationsPanel operations={activeOperations} />
+    {/if}
 
     <div class="grid gap-4 md:grid-cols-4">
         <a
@@ -339,61 +343,66 @@
                 {counts.pending_reviews}
             </div>
         </a>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">Queued webhooks</div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.queued_webhook_deliveries}
+        {#if isAdmin}
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">Queued webhooks</div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.queued_webhook_deliveries}
+                </div>
             </div>
-        </div>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">Running actors</div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.running_actor_executions}
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">Running actors</div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.running_actor_executions}
+                </div>
             </div>
-        </div>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">Failed actors</div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.failed_actor_executions}
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">Failed actors</div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.failed_actor_executions}
+                </div>
             </div>
-        </div>
+        {/if}
     </div>
 
-    <div class="grid gap-4 md:grid-cols-3">
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">
-                Pipeline work backlog
+    {#if isAdmin}
+        <div class="grid gap-4 md:grid-cols-3">
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">
+                    Pipeline work backlog
+                </div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.active_pipeline_runs}
+                </div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                    {counts.pending_pipeline_runs} pending · {counts.queued_pipeline_runs}
+                    queued · {counts.running_pipeline_runs} running · {counts.retrying_pipeline_runs}
+                    retrying
+                </div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                    Inbox documents wait here after the embedding gate opens;
+                    they are not trusted embedding context until the inbox tag
+                    is gone.
+                </div>
             </div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.active_pipeline_runs}
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">
+                    Blocked pipeline runs
+                </div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.blocked_pipeline_runs}
+                </div>
             </div>
-            <div class="mt-1 text-xs text-muted-foreground">
-                {counts.pending_pipeline_runs} pending · {counts.queued_pipeline_runs}
-                queued · {counts.running_pipeline_runs} running · {counts.retrying_pipeline_runs}
-                retrying
-            </div>
-            <div class="mt-1 text-xs text-muted-foreground">
-                Inbox documents wait here after the embedding gate opens; they
-                are not trusted embedding context until the inbox tag is gone.
+            <div class="rounded-xl border p-4">
+                <div class="text-sm text-muted-foreground">
+                    Failed pipeline runs
+                </div>
+                <div class="mt-2 text-3xl font-semibold">
+                    {counts.failed_pipeline_runs}
+                </div>
             </div>
         </div>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">
-                Blocked pipeline runs
-            </div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.blocked_pipeline_runs}
-            </div>
-        </div>
-        <div class="rounded-xl border p-4">
-            <div class="text-sm text-muted-foreground">
-                Failed pipeline runs
-            </div>
-            <div class="mt-2 text-3xl font-semibold">
-                {counts.failed_pipeline_runs}
-            </div>
-        </div>
-    </div>
+    {/if}
 
     <section class="rounded-xl border p-4">
         <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -464,413 +473,475 @@
         {/if}
     </section>
 
-    <section class="rounded-xl border p-4">
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-                <h2 class="font-semibold">Embedding index</h2>
-                <p class="text-sm text-muted-foreground">
-                    Document processing is blocked until this index is complete.
-                </p>
-            </div>
-            {#if isAdmin}
-                <div class="flex flex-wrap gap-2">
-                    <Form method="post" action={embeddingIndex.build_url}>
-                        {#snippet children({ processing })}
-                            <button
-                                type="submit"
-                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                disabled={processing}
-                            >
-                                {embeddingIndex.status === 'failed' ||
-                                embeddingIndex.status === 'stale'
-                                    ? 'Resume embedding build'
-                                    : 'Start embedding build'}
-                            </button>
-                        {/snippet}
-                    </Form>
-                    <Form method="post" action={embeddingIndex.mark_stale_url}>
-                        {#snippet children({ processing })}
-                            <button
-                                type="submit"
-                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                disabled={processing}
-                            >
-                                Mark embedding index stale
-                            </button>
-                        {/snippet}
-                    </Form>
+    {#if isAdmin && embeddingIndex}
+        <section class="rounded-xl border p-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-semibold">Embedding index</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Document processing is blocked until this index is
+                        complete.
+                    </p>
                 </div>
-            {/if}
-        </div>
-        <dl class="grid gap-3 text-sm md:grid-cols-3">
-            <div>
-                <dt class="text-muted-foreground">Status</dt>
-                <dd>{embeddingIndex.status}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Readiness</dt>
-                <dd>{embeddingIndex.ready ? 'Ready' : 'Not ready'}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Progress</dt>
-                <dd>
-                    {embeddingIndex.embedded_count} / {embeddingIndex.document_count}
-                    embedded
-                    {#if embeddingIndex.failed_count}
-                        · {embeddingIndex.failed_count} failed{/if}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Pending build commands</dt>
-                <dd>{embeddingIndex.pending_build_commands}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Model</dt>
-                <dd>{embeddingIndex.embedding_model ?? 'Not recorded'}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Started</dt>
-                <dd>
-                    {formatDateTime(embeddingIndex.started_at, 'Not started')}
-                </dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Completed</dt>
-                <dd>
-                    {formatDateTime(
-                        embeddingIndex.completed_at,
-                        'Not complete',
-                    )}
-                </dd>
-            </div>
-        </dl>
-        {#if embeddingIndex.error}
-            <p class="mt-3 text-sm text-destructive">{embeddingIndex.error}</p>
-        {/if}
-    </section>
-
-    <section class="rounded-xl border p-4">
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-                <h2 class="font-semibold">Maintenance</h2>
-                <p class="text-sm text-muted-foreground">
-                    Automatic polling reconciliation runs every {maintenance.poll_interval_seconds}
-                    seconds.
-                </p>
-            </div>
-            {#if isAdmin}
-                <div class="flex flex-wrap gap-2">
-                    <Form method="post" action={maintenance.poll_url}>
-                        {#snippet children({ processing })}
-                            <button
-                                type="submit"
-                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                disabled={processing}
-                            >
-                                Run poll now
-                            </button>
-                        {/snippet}
-                    </Form>
-                    <Form method="post" action={maintenance.reindex_url}>
-                        {#snippet children({ processing })}
-                            <button
-                                type="submit"
-                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                disabled={processing}
-                            >
-                                Start reindex
-                            </button>
-                        {/snippet}
-                    </Form>
-                </div>
-            {/if}
-        </div>
-        <dl class="grid gap-3 text-sm md:grid-cols-3">
-            <div>
-                <dt class="text-muted-foreground">Pending poll commands</dt>
-                <dd>{maintenance.pending_poll_commands}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Pending reindex commands</dt>
-                <dd>{maintenance.pending_reindex_commands}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Poll interval</dt>
-                <dd>{maintenance.poll_interval_seconds} seconds</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">
-                    Document processing active
-                </dt>
-                <dd>{maintenance.document_processing_active ? 'Yes' : 'No'}</dd>
-            </div>
-            <div>
-                <dt class="text-muted-foreground">Reindex active</dt>
-                <dd>{maintenance.reindex_active ? 'Yes' : 'No'}</dd>
-            </div>
-        </dl>
-    </section>
-
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 font-semibold">Recent errors</div>
-        {#each recentErrors as error (`${error.source}-${error.id}`)}
-            <div
-                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
-            >
-                <span class="font-medium">{error.source} {error.id}</span>
-                <span class="rounded-full bg-muted px-2 py-0.5"
-                    >{error.status}</span
-                >
-                {#if error.occurred_at}
-                    <span class="text-muted-foreground"
-                        >{formatDateTime(error.occurred_at)}</span
-                    >
-                {/if}
-                {#if error.message}
-                    <span class="basis-full text-destructive"
-                        >{error.message}</span
-                    >
-                {/if}
-            </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No recent errors.
-            </div>
-        {/each}
-    </section>
-
-    <section class="rounded-xl border">
-        <div class="flex items-center justify-between border-b px-4 py-3">
-            <div class="font-semibold">Recent webhook deliveries</div>
-            <a
-                class="text-sm text-muted-foreground underline-offset-4 hover:underline"
-                href="/webhook-deliveries"
-            >
-                View all
-            </a>
-        </div>
-        {#each recentWebhookDeliveries as delivery (delivery.id)}
-            <div
-                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
-            >
-                <a
-                    class="font-medium underline-offset-4 hover:underline"
-                    href={delivery.show_url}
-                    >Webhook {delivery.id} · {delivery.event_type}</a
-                >
-                <span class="rounded-full bg-muted px-2 py-0.5"
-                    >{delivery.status}</span
-                >
-                {#if delivery.paperless_document_id}
-                    <span class="text-muted-foreground"
-                        >document {delivery.paperless_document_id}</span
-                    >
-                {/if}
-                {#if delivery.received_at}
-                    <span class="text-muted-foreground"
-                        >received {formatDateTime(delivery.received_at)}</span
-                    >
-                {/if}
-                {#if delivery.processed_at}
-                    <span class="text-muted-foreground"
-                        >processed {formatDateTime(delivery.processed_at)}</span
-                    >
-                {/if}
-                {#if delivery.error}
-                    <span class="basis-full text-destructive"
-                        >{delivery.error}</span
-                    >
-                {/if}
-                {#if isAdmin && (delivery.can_retry || delivery.can_dismiss)}
-                    <div class="basis-full pt-2">
-                        <div class="flex gap-2">
-                            {#if delivery.can_retry}
-                                <Form method="post" action={delivery.retry_url}>
-                                    {#snippet children({ processing })}
-                                        <button
-                                            type="submit"
-                                            class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                            disabled={processing}
-                                        >
-                                            Retry webhook delivery
-                                        </button>
-                                    {/snippet}
-                                </Form>
-                            {/if}
-                            {#if delivery.can_dismiss}
-                                <Form
-                                    method="post"
-                                    action={delivery.dismiss_url}
+                {#if isAdmin}
+                    <div class="flex flex-wrap gap-2">
+                        <Form method="post" action={embeddingIndex.build_url}>
+                            {#snippet children({ processing })}
+                                <button
+                                    type="submit"
+                                    class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                    disabled={processing}
                                 >
-                                    {#snippet children({ processing })}
-                                        <button
-                                            type="submit"
-                                            class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                            disabled={processing}
-                                        >
-                                            Dismiss webhook failure
-                                        </button>
-                                    {/snippet}
-                                </Form>
-                            {/if}
-                        </div>
+                                    {embeddingIndex.status === 'failed' ||
+                                    embeddingIndex.status === 'stale'
+                                        ? 'Resume embedding build'
+                                        : 'Start embedding build'}
+                                </button>
+                            {/snippet}
+                        </Form>
+                        <Form
+                            method="post"
+                            action={embeddingIndex.mark_stale_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
+                            {#snippet children({ processing })}
+                                <button
+                                    type="submit"
+                                    class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                    disabled={processing}
+                                >
+                                    Mark embedding index stale
+                                </button>
+                            {/snippet}
+                        </Form>
                     </div>
                 {/if}
             </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No webhook deliveries yet.
-            </div>
-        {/each}
-    </section>
+            <dl class="grid gap-3 text-sm md:grid-cols-3">
+                <div>
+                    <dt class="text-muted-foreground">Status</dt>
+                    <dd>{embeddingIndex.status}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Readiness</dt>
+                    <dd>{embeddingIndex.ready ? 'Ready' : 'Not ready'}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Progress</dt>
+                    <dd>
+                        {embeddingIndex.embedded_count} / {embeddingIndex.document_count}
+                        embedded
+                        {#if embeddingIndex.failed_count}
+                            · {embeddingIndex.failed_count} failed{/if}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">
+                        Pending build commands
+                    </dt>
+                    <dd>{embeddingIndex.pending_build_commands}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Model</dt>
+                    <dd>{embeddingIndex.embedding_model ?? 'Not recorded'}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Started</dt>
+                    <dd>
+                        {formatDateTime(
+                            embeddingIndex.started_at,
+                            'Not started',
+                        )}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Completed</dt>
+                    <dd>
+                        {formatDateTime(
+                            embeddingIndex.completed_at,
+                            'Not complete',
+                        )}
+                    </dd>
+                </div>
+            </dl>
+            {#if embeddingIndex.error}
+                <p class="mt-3 text-sm text-destructive">
+                    {embeddingIndex.error}
+                </p>
+            {/if}
+        </section>
+    {/if}
 
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 font-semibold">
-            Recent actor executions
-        </div>
-        {#each recentActorExecutions as execution (execution.id)}
-            <div
-                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
-            >
-                <span class="font-medium"
-                    >Actor {execution.id} · {execution.actor_name}</span
-                >
-                <span class="rounded-full bg-muted px-2 py-0.5"
-                    >{execution.status}</span
-                >
-                {#if execution.queue_name}
-                    <span class="text-muted-foreground"
-                        >queue {execution.queue_name}</span
-                    >
-                {/if}
-                {#if execution.pipeline_run_id}
-                    <span class="text-muted-foreground"
-                        >run {execution.pipeline_run_id}</span
-                    >
-                {/if}
-                <span class="text-muted-foreground">
-                    progress {execution.progress_done}/{execution.progress_total}
-                    {#if execution.progress_failed}
-                        · failed {execution.progress_failed}{/if}
-                </span>
-                {#if execution.progress_current_item}
-                    <span class="text-muted-foreground"
-                        >item {execution.progress_current_item}</span
-                    >
-                {/if}
-                {#if execution.error_type}
-                    <span class="text-destructive">{execution.error_type}</span>
-                {/if}
-                {#if execution.progress_message}
-                    <span class="basis-full text-muted-foreground"
-                        >{execution.progress_message}</span
-                    >
+    {#if isAdmin && maintenance}
+        <section class="rounded-xl border p-4">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-semibold">Maintenance</h2>
+                    <p class="text-sm text-muted-foreground">
+                        Automatic polling reconciliation runs every {maintenance.poll_interval_seconds}
+                        seconds.
+                    </p>
+                </div>
+                {#if isAdmin}
+                    <div class="flex flex-wrap gap-2">
+                        <Form method="post" action={maintenance.poll_url}>
+                            {#snippet children({ processing })}
+                                <button
+                                    type="submit"
+                                    class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                    disabled={processing}
+                                >
+                                    Run poll now
+                                </button>
+                            {/snippet}
+                        </Form>
+                        <Form method="post" action={maintenance.reindex_url}>
+                            {#snippet children({ processing })}
+                                <button
+                                    type="submit"
+                                    class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                    disabled={processing}
+                                >
+                                    Start reindex
+                                </button>
+                            {/snippet}
+                        </Form>
+                    </div>
                 {/if}
             </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No actor executions yet.
-            </div>
-        {/each}
-    </section>
+            <dl class="grid gap-3 text-sm md:grid-cols-3">
+                <div>
+                    <dt class="text-muted-foreground">Pending poll commands</dt>
+                    <dd>{maintenance.pending_poll_commands}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">
+                        Pending reindex commands
+                    </dt>
+                    <dd>{maintenance.pending_reindex_commands}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Poll interval</dt>
+                    <dd>{maintenance.poll_interval_seconds} seconds</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">
+                        Document processing active
+                    </dt>
+                    <dd>
+                        {maintenance.document_processing_active ? 'Yes' : 'No'}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Reindex active</dt>
+                    <dd>{maintenance.reindex_active ? 'Yes' : 'No'}</dd>
+                </div>
+            </dl>
+        </section>
+    {/if}
 
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 font-semibold">Recent pipeline runs</div>
-        {#each recentPipelineRuns as run (run.id)}
-            <div
-                class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
-            >
-                <span class="font-medium"
-                    >Run {run.id} · {run.type} · {run.trigger_source}</span
+    {#if isAdmin && recentErrors && recentWebhookDeliveries && recentActorExecutions && recentPipelineRuns}
+        <section class="rounded-xl border">
+            <div class="border-b px-4 py-3 font-semibold">Recent errors</div>
+            {#each recentErrors as error (`${error.source}-${error.id}`)}
+                <div
+                    class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
                 >
-                <span class="rounded-full bg-muted px-2 py-0.5"
-                    >{run.status}</span
-                >
-                {#if run.paperless_document_id}
-                    <span class="text-muted-foreground"
-                        >document {run.paperless_document_id}</span
-                    >
-                {/if}
-                {#if run.reprocess_requested}
+                    <span class="font-medium">{error.source} {error.id}</span>
                     <span class="rounded-full bg-muted px-2 py-0.5"
-                        >reprocess</span
+                        >{error.status}</span
                     >
-                {/if}
-                <span class="text-muted-foreground">
-                    progress {run.progress_done}/{run.progress_total}
-                    {#if run.progress_failed}
-                        · failed {run.progress_failed}{/if}
-                    {#if run.progress_skipped}
-                        · skipped {run.progress_skipped}{/if}
-                </span>
-                {#if run.progress_current_phase}
-                    <span class="text-muted-foreground"
-                        >phase {run.progress_current_phase}</span
+                    {#if error.occurred_at}
+                        <span class="text-muted-foreground"
+                            >{formatDateTime(error.occurred_at)}</span
+                        >
+                    {/if}
+                    {#if error.message}
+                        <span class="basis-full text-destructive"
+                            >{error.message}</span
+                        >
+                    {/if}
+                </div>
+            {:else}
+                <div class="p-8 text-center text-muted-foreground">
+                    No recent errors.
+                </div>
+            {/each}
+        </section>
+
+        <section class="rounded-xl border">
+            <div class="flex items-center justify-between border-b px-4 py-3">
+                <div class="font-semibold">Recent webhook deliveries</div>
+                <a
+                    class="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                    href={webhookDeliveriesIndex().url}
+                >
+                    View all
+                </a>
+            </div>
+            {#each recentWebhookDeliveries as delivery (delivery.id)}
+                <div
+                    class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
+                >
+                    <a
+                        class="font-medium underline-offset-4 hover:underline"
+                        href={delivery.show_url}
+                        >Webhook {delivery.id} · {delivery.event_type}</a
                     >
-                {/if}
-                {#if run.failed_items_count}
-                    <span class="text-destructive"
-                        >failed items {run.failed_items_count}</span
+                    <span class="rounded-full bg-muted px-2 py-0.5"
+                        >{delivery.status}</span
                     >
-                {/if}
-                {#if run.progress_message}
-                    <span class="basis-full text-muted-foreground"
-                        >{run.progress_message}</span
-                    >
-                {/if}
-                {#if isAdmin && (run.can_retry || run.can_retry_failed_items || run.can_cancel)}
-                    <div class="basis-full pt-2">
-                        <div class="flex gap-2">
-                            {#if run.can_retry}
-                                <Form method="post" action={run.retry_url}>
-                                    {#snippet children({ processing })}
-                                        <button
-                                            type="submit"
-                                            class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                            disabled={processing}
-                                        >
-                                            Retry
-                                        </button>
-                                    {/snippet}
-                                </Form>
-                            {/if}
-                            {#if run.can_retry_failed_items}
-                                <Form
-                                    method="post"
-                                    action={run.retry_failed_items_url}
-                                >
-                                    {#snippet children({ processing })}
-                                        <button
-                                            type="submit"
-                                            class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                            disabled={processing}
-                                        >
-                                            Retry failed items
-                                        </button>
-                                    {/snippet}
-                                </Form>
-                            {/if}
-                            {#if run.can_cancel}
-                                <Form method="post" action={run.cancel_url}>
-                                    {#snippet children({ processing })}
-                                        <button
-                                            type="submit"
-                                            class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
-                                            disabled={processing}
-                                        >
-                                            Cancel
-                                        </button>
-                                    {/snippet}
-                                </Form>
-                            {/if}
+                    {#if delivery.paperless_document_id}
+                        <span class="text-muted-foreground"
+                            >document {delivery.paperless_document_id}</span
+                        >
+                    {/if}
+                    {#if delivery.received_at}
+                        <span class="text-muted-foreground"
+                            >received {formatDateTime(
+                                delivery.received_at,
+                            )}</span
+                        >
+                    {/if}
+                    {#if delivery.processed_at}
+                        <span class="text-muted-foreground"
+                            >processed {formatDateTime(
+                                delivery.processed_at,
+                            )}</span
+                        >
+                    {/if}
+                    {#if delivery.error}
+                        <span class="basis-full text-destructive"
+                            >{delivery.error}</span
+                        >
+                    {/if}
+                    {#if isAdmin && (delivery.can_retry || delivery.can_dismiss)}
+                        <div class="basis-full pt-2">
+                            <div class="flex gap-2">
+                                {#if delivery.can_retry}
+                                    <Form
+                                        method="post"
+                                        action={delivery.retry_url}
+                                    >
+                                        {#snippet children({ processing })}
+                                            <button
+                                                type="submit"
+                                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                                disabled={processing}
+                                            >
+                                                Retry webhook delivery
+                                            </button>
+                                        {/snippet}
+                                    </Form>
+                                {/if}
+                                {#if delivery.can_dismiss}
+                                    <Form
+                                        method="post"
+                                        action={delivery.dismiss_url}
+                                        onsubmit={(event) => {
+                                            if (
+                                                !confirm(
+                                                    `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                                )
+                                            ) {
+                                                event.preventDefault();
+                                            }
+                                        }}
+                                    >
+                                        {#snippet children({ processing })}
+                                            <button
+                                                type="submit"
+                                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                                disabled={processing}
+                                            >
+                                                Dismiss webhook failure
+                                            </button>
+                                        {/snippet}
+                                    </Form>
+                                {/if}
+                            </div>
                         </div>
-                    </div>
-                {/if}
+                    {/if}
+                </div>
+            {:else}
+                <div class="p-8 text-center text-muted-foreground">
+                    No webhook deliveries yet.
+                </div>
+            {/each}
+        </section>
+
+        <section class="rounded-xl border">
+            <div class="border-b px-4 py-3 font-semibold">
+                Recent actor executions
             </div>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No pipeline runs yet.
+            {#each recentActorExecutions as execution (execution.id)}
+                <div
+                    class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
+                >
+                    <span class="font-medium"
+                        >Actor {execution.id} · {execution.actor_name}</span
+                    >
+                    <span class="rounded-full bg-muted px-2 py-0.5"
+                        >{execution.status}</span
+                    >
+                    {#if execution.queue_name}
+                        <span class="text-muted-foreground"
+                            >queue {execution.queue_name}</span
+                        >
+                    {/if}
+                    {#if execution.pipeline_run_id}
+                        <span class="text-muted-foreground"
+                            >run {execution.pipeline_run_id}</span
+                        >
+                    {/if}
+                    <span class="text-muted-foreground">
+                        progress {execution.progress_done}/{execution.progress_total}
+                        {#if execution.progress_failed}
+                            · failed {execution.progress_failed}{/if}
+                    </span>
+                    {#if execution.progress_current_item}
+                        <span class="text-muted-foreground"
+                            >item {execution.progress_current_item}</span
+                        >
+                    {/if}
+                    {#if execution.error_type}
+                        <span class="text-destructive"
+                            >{execution.error_type}</span
+                        >
+                    {/if}
+                    {#if execution.progress_message}
+                        <span class="basis-full text-muted-foreground"
+                            >{execution.progress_message}</span
+                        >
+                    {/if}
+                </div>
+            {:else}
+                <div class="p-8 text-center text-muted-foreground">
+                    No actor executions yet.
+                </div>
+            {/each}
+        </section>
+
+        <section class="rounded-xl border">
+            <div class="border-b px-4 py-3 font-semibold">
+                Recent pipeline runs
             </div>
-        {/each}
-    </section>
+            {#each recentPipelineRuns as run (run.id)}
+                <div
+                    class="flex flex-wrap items-center gap-2 border-b p-4 text-sm last:border-b-0"
+                >
+                    <span class="font-medium"
+                        >Run {run.id} · {run.type} · {run.trigger_source}</span
+                    >
+                    <span class="rounded-full bg-muted px-2 py-0.5"
+                        >{run.status}</span
+                    >
+                    {#if run.paperless_document_id}
+                        <span class="text-muted-foreground"
+                            >document {run.paperless_document_id}</span
+                        >
+                    {/if}
+                    {#if run.reprocess_requested}
+                        <span class="rounded-full bg-muted px-2 py-0.5"
+                            >reprocess</span
+                        >
+                    {/if}
+                    <span class="text-muted-foreground">
+                        progress {run.progress_done}/{run.progress_total}
+                        {#if run.progress_failed}
+                            · failed {run.progress_failed}{/if}
+                        {#if run.progress_skipped}
+                            · skipped {run.progress_skipped}{/if}
+                    </span>
+                    {#if run.progress_current_phase}
+                        <span class="text-muted-foreground"
+                            >phase {run.progress_current_phase}</span
+                        >
+                    {/if}
+                    {#if run.failed_items_count}
+                        <span class="text-destructive"
+                            >failed items {run.failed_items_count}</span
+                        >
+                    {/if}
+                    {#if run.progress_message}
+                        <span class="basis-full text-muted-foreground"
+                            >{run.progress_message}</span
+                        >
+                    {/if}
+                    {#if isAdmin && (run.can_retry || run.can_retry_failed_items || run.can_cancel)}
+                        <div class="basis-full pt-2">
+                            <div class="flex gap-2">
+                                {#if run.can_retry}
+                                    <Form method="post" action={run.retry_url}>
+                                        {#snippet children({ processing })}
+                                            <button
+                                                type="submit"
+                                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                                disabled={processing}
+                                            >
+                                                Retry
+                                            </button>
+                                        {/snippet}
+                                    </Form>
+                                {/if}
+                                {#if run.can_retry_failed_items}
+                                    <Form
+                                        method="post"
+                                        action={run.retry_failed_items_url}
+                                    >
+                                        {#snippet children({ processing })}
+                                            <button
+                                                type="submit"
+                                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                                disabled={processing}
+                                            >
+                                                Retry failed items
+                                            </button>
+                                        {/snippet}
+                                    </Form>
+                                {/if}
+                                {#if run.can_cancel}
+                                    <Form
+                                        method="post"
+                                        action={run.cancel_url}
+                                        onsubmit={(event) => {
+                                            if (
+                                                !confirm(
+                                                    `Cancel pipeline run ${run.id}? Remaining queued work will not start.`,
+                                                )
+                                            ) {
+                                                event.preventDefault();
+                                            }
+                                        }}
+                                    >
+                                        {#snippet children({ processing })}
+                                            <button
+                                                type="submit"
+                                                class="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-50"
+                                                disabled={processing}
+                                            >
+                                                Cancel
+                                            </button>
+                                        {/snippet}
+                                    </Form>
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            {:else}
+                <div class="p-8 text-center text-muted-foreground">
+                    No pipeline runs yet.
+                </div>
+            {/each}
+        </section>
+    {/if}
 </div>

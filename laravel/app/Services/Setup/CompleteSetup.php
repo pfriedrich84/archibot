@@ -6,6 +6,7 @@ use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\SetupState;
 use App\Models\User;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Settings\LegacySettingsImporter;
 use App\Services\Settings\PythonRuntimeConfigExporter;
@@ -29,13 +30,15 @@ class CompleteSetup
             throw new RuntimeException('Setup is already complete.');
         }
 
-        $paperlessUrl = rtrim($data['paperless_url'], '/');
-        $client = new PaperlessClient($paperlessUrl);
+        $origin = app(CanonicalPaperlessOrigin::class);
+        $origin->assertMatches(isset($data['paperless_url']) ? (string) $data['paperless_url'] : null);
+        $paperlessUrl = $origin->url();
+        $client = new PaperlessClient;
         $token = $client->createToken($data['username'], $data['password']);
         $paperlessUser = $client->currentUser($token, $data['username']);
 
-        if (! $paperlessUser->isAdmin) {
-            throw new RuntimeException('Setup must be completed by a Paperless superuser/admin.');
+        if (! $paperlessUser->isSuperuser) {
+            throw new RuntimeException('Setup must be completed by a Paperless superuser.');
         }
 
         return DB::transaction(function () use ($data, $paperlessUrl, $token, $paperlessUser, $state, $request): User {
@@ -48,14 +51,7 @@ class CompleteSetup
             AppSetting::put('paperless.inbox_tag_id', (string) $data['paperless_inbox_tag_id']);
             AppSetting::put('paperless.processed_tag_id', (string) ($data['paperless_processed_tag_id'] ?? ''));
             AppSetting::put('ocr.requested_tag_id', (string) ($data['ocr_requested_tag_id'] ?? ''));
-            AppSetting::put('ocr.mode', (string) $data['ocr_mode']);
-            AppSetting::put('llm.provider', (string) $data['llm_provider']);
-            AppSetting::put('ollama.url', rtrim((string) $data['ollama_url'], '/'));
-            AppSetting::put('llm.openai_api_key', (string) ($data['openai_api_key'] ?? ''), true);
-            AppSetting::put('classification.model', (string) $data['classification_model']);
-            AppSetting::put('embedding.model', (string) $data['embedding_model']);
-            AppSetting::put('ocr.text_model', (string) ($data['ocr_text_model'] ?? ''));
-            AppSetting::put('classification.judge_model', (string) ($data['classification_judge_model'] ?? ''));
+            AppSetting::put('ocr.mode', 'off');
 
             $email = $paperlessUser->email ?: $paperlessUser->username.'@paperless.local';
 
@@ -65,7 +61,7 @@ class CompleteSetup
                     'name' => $paperlessUser->displayName,
                     'email' => $email,
                     'paperless_user_id' => $paperlessUser->id,
-                    'is_admin' => $paperlessUser->isAdmin,
+                    'is_admin' => $paperlessUser->isSuperuser,
                     'paperless_token' => $token,
                     'paperless_profile_refreshed_at' => now(),
                     'password' => Hash::make(Str::random(64)),
@@ -91,10 +87,7 @@ class CompleteSetup
                     'paperless_user_id' => $paperlessUser->id,
                     'imported_setting_keys' => $importedKeys,
                     'paperless_inbox_tag_id' => (int) $data['paperless_inbox_tag_id'],
-                    'llm_provider' => (string) $data['llm_provider'],
-                    'ollama_url' => rtrim((string) $data['ollama_url'], '/'),
-                    'classification_model' => (string) $data['classification_model'],
-                    'embedding_model' => (string) $data['embedding_model'],
+                    'ai_provider_configuration' => 'deferred_until_authenticated_admin_session',
                 ],
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
@@ -106,18 +99,7 @@ class CompleteSetup
                 'PAPERLESS_INBOX_TAG_ID' => (string) $data['paperless_inbox_tag_id'],
                 'PAPERLESS_PROCESSED_TAG_ID' => (string) ($data['paperless_processed_tag_id'] ?? ''),
                 'OCR_REQUESTED_TAG_ID' => (string) ($data['ocr_requested_tag_id'] ?? ''),
-                'OCR_MODE' => (string) $data['ocr_mode'],
-                'LLM_PROVIDER' => (string) $data['llm_provider'],
-                'OLLAMA_URL' => rtrim((string) $data['ollama_url'], '/'),
-                'OPENAI_API_KEY' => (string) ($data['openai_api_key'] ?? ''),
-                'CLASSIFICATION_MODEL' => (string) $data['classification_model'],
-                'EMBEDDING_MODEL' => (string) $data['embedding_model'],
-                'OCR_TEXT_MODEL' => (string) ($data['ocr_text_model'] ?? ''),
-                'JUDGE_MODEL' => (string) ($data['classification_judge_model'] ?? ''),
-                'OLLAMA_MODEL' => (string) $data['classification_model'],
-                'OLLAMA_EMBED_MODEL' => (string) $data['embedding_model'],
-                'OLLAMA_OCR_MODEL' => (string) ($data['ocr_text_model'] ?? ''),
-                'OLLAMA_JUDGE_MODEL' => (string) ($data['classification_judge_model'] ?? ''),
+                'OCR_MODE' => 'off',
             ]);
 
             Auth::login($user);

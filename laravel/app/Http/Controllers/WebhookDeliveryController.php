@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\PipelineEvent;
 use App\Models\WebhookDelivery;
+use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,12 +13,17 @@ use Inertia\Response;
 
 class WebhookDeliveryController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function index(Request $request): Response
     {
+        $validated = $request->validate(['per_page' => ['nullable', 'integer', 'in:10,25,50,100']]);
+
         $deliveries = WebhookDelivery::query()
             ->latest('received_at')
             ->latest('id')
-            ->paginate(25)
+            ->paginate((int) ($validated['per_page'] ?? 25))
+            ->withQueryString()
             ->through(fn (WebhookDelivery $delivery) => $this->deliveryPayload($request, $delivery, includeDetails: false));
 
         return Inertia::render('webhooks/Index', [
@@ -90,18 +96,17 @@ class WebhookDeliveryController extends Controller
 
         $payload = [
             'id' => $delivery->id,
-            'source' => $delivery->source,
-            'event_type' => $delivery->event_type,
+            'source' => $this->diagnostics->typedScalar('source', $delivery->source),
+            'event_type' => $this->diagnostics->webhookEventType($delivery->event_type),
             'paperless_document_id' => $delivery->paperless_document_id,
-            'status' => $delivery->status,
-            'dedupe_key' => $delivery->dedupe_key,
-            'payload_hash' => $delivery->payload_hash,
-            'request_id' => $delivery->request_id,
+            'status' => $this->diagnostics->typedScalar('status', $delivery->status),
+            'dedupe_key' => $this->diagnostics->opaqueReference($delivery->dedupe_key),
+            'payload_hash' => $this->diagnostics->opaqueReference($delivery->payload_hash),
+            'request_id' => $this->diagnostics->opaqueReference($delivery->request_id),
             'received_at' => $delivery->received_at?->toISOString(),
             'processed_at' => $delivery->processed_at?->toISOString(),
-            'error' => $delivery->error,
-            'payload_summary' => $this->summary($delivery->normalized_payload ?: $delivery->raw_payload),
-            'header_summary' => $this->summary($delivery->headers),
+            'error' => $this->diagnostics->redactedMessage($delivery->error),
+            'payload_summary' => $this->diagnostics->webhook($delivery->normalized_payload ?: $delivery->raw_payload),
             'show_url' => route('webhook-deliveries.show', $delivery),
             'retry_url' => route('webhook-deliveries.retry', $delivery),
             'dismiss_url' => route('webhook-deliveries.dismiss', $delivery),
@@ -110,9 +115,6 @@ class WebhookDeliveryController extends Controller
         ];
 
         if ($includeDetails) {
-            $payload['raw_payload'] = $delivery->raw_payload ?? [];
-            $payload['normalized_payload'] = $delivery->normalized_payload ?? [];
-            $payload['headers'] = $delivery->headers ?? [];
             $payload['pipeline_events'] = PipelineEvent::query()
                 ->where('webhook_delivery_id', $delivery->id)
                 ->latest('created_at')
@@ -121,35 +123,19 @@ class WebhookDeliveryController extends Controller
                 ->get()
                 ->map(fn (PipelineEvent $event) => [
                     'id' => $event->id,
-                    'event_type' => $event->event_type,
-                    'level' => $event->level,
-                    'message' => $event->message,
+                    'event_type' => $this->diagnostics->diagnosticEventType($event->event_type),
+                    'level' => $this->diagnostics->typedScalar('level', $event->level),
+                    'message' => $this->diagnostics->redactedMessage($event->message),
                     'paperless_document_id' => $event->paperless_document_id,
                     'pipeline_run_id' => $event->pipeline_run_id,
                     'command_id' => $event->command_id,
-                    'payload' => $event->payload ?? [],
+                    'metadata' => $this->diagnostics->metadata($event->payload),
                     'created_at' => $event->created_at?->toISOString(),
                 ])
                 ->values();
         }
 
         return $payload;
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $value
-     * @return array<int, array{key: string, value: mixed}>
-     */
-    private function summary(?array $value): array
-    {
-        return collect($value ?? [])
-            ->take(6)
-            ->map(fn (mixed $entry, string|int $key): array => [
-                'key' => (string) $key,
-                'value' => is_scalar($entry) || $entry === null ? $entry : json_encode($entry),
-            ])
-            ->values()
-            ->all();
     }
 
     private function event(Request $request, string $eventType, WebhookDelivery $webhookDelivery, string $message): void

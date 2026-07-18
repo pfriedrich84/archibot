@@ -57,7 +57,11 @@
         event: string;
         target_type: string | null;
         target_id: string | null;
-        metadata: Record<string, unknown>;
+        metadata: {
+            key: string;
+            label: string;
+            value: boolean | number | string | null;
+        }[];
         created_at: string | null;
     };
 
@@ -79,6 +83,7 @@
             recover_pipeline_actors: string;
             mark_embedding_stale: string;
             document_pipeline: string;
+            reset: string;
         };
         recentAuditLogs: AuditLog[];
     } = $props();
@@ -131,7 +136,7 @@
 <div class="space-y-6">
     <Heading
         title="Admin maintenance"
-        description="Admin-only recovery and reindex controls. Destructive reset is CLI-only for operators."
+        description="Admin-only recovery, reindex, and destructive reset controls."
     />
 
     <ActiveOperationsPanel operations={activeOperations} />
@@ -210,7 +215,19 @@
             Mark the embedding index stale to close the document-processing gate
             until a fresh build completes.
         </p>
-        <Form method="post" action={actionUrls.mark_embedding_stale}>
+        <Form
+            method="post"
+            action={actionUrls.mark_embedding_stale}
+            onsubmit={(event) => {
+                if (
+                    !confirm(
+                        'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
+                    )
+                ) {
+                    event.preventDefault();
+                }
+            }}
+        >
             {#snippet children({ processing })}
                 <Button type="submit" variant="outline" disabled={processing}
                     >Mark embedding index stale</Button
@@ -256,6 +273,39 @@
                 <InputError message={errors.force} />
                 <Button type="submit" disabled={processing} class="w-fit">
                     Queue document pipeline
+                </Button>
+            {/snippet}
+        </Form>
+    </section>
+
+    <section class="rounded-xl border border-destructive/40 p-4">
+        <h2 class="mb-3 font-semibold">Reset operational state</h2>
+        <p class="mb-4 text-sm text-muted-foreground">
+            This uses the same Laravel/PostgreSQL reset backend as
+            <code>archibot reset</code>. Type RESET to confirm. Configuration
+            and setup credentials are retained.
+        </p>
+        <Form
+            method="post"
+            action={actionUrls.reset}
+            class="grid max-w-md gap-3"
+        >
+            {#snippet children({ errors, processing })}
+                <Label for="reset_confirmation">Confirmation</Label>
+                <Input
+                    id="reset_confirmation"
+                    name="confirmation"
+                    required
+                    autocomplete="off"
+                    placeholder="RESET"
+                />
+                <InputError message={errors.confirmation} />
+                <Button
+                    type="submit"
+                    variant="destructive"
+                    disabled={processing}
+                >
+                    Reset operational state
                 </Button>
             {/snippet}
         </Form>

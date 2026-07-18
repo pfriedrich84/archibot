@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AppSetting;
 use App\Models\McpToken;
+use App\Services\Paperless\CanonicalPaperlessOrigin;
 use Illuminate\Console\Command;
 
 class VerifyMcpToken extends Command
@@ -50,7 +50,7 @@ class VerifyMcpToken extends Command
 
         if ($this->option('include-paperless-context')) {
             $payload['paperless'] = [
-                'url' => AppSetting::getValue('paperless.url'),
+                'url' => app(CanonicalPaperlessOrigin::class)->url(),
                 'token' => $token->user->paperless_token,
             ];
         }

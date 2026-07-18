@@ -14,6 +14,12 @@ class InboxTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
+    }
+
     public function test_authenticated_users_can_view_paperless_inbox_documents(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.example');

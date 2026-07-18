@@ -14,20 +14,19 @@ class InboxController extends Controller
 {
     public function index(Request $request): Response
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
         $token = $request->user()->paperless_token;
         $documents = [];
         $inboxTagName = null;
         $error = null;
 
-        if (! $paperlessUrl || ! $token) {
+        if (! $token) {
             $error = 'Paperless connection is not available.';
         } elseif ($inboxTagId <= 0) {
             $error = 'Paperless inbox tag ID is not configured.';
         } else {
             try {
-                $client = app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+                $client = app(PaperlessClient::class);
                 $entityMaps = $this->entityMaps($client, $token);
                 $inboxTagName = $entityMaps['tags'][$inboxTagId] ?? null;
                 $documents = $this->documentsWithReviewStatus(

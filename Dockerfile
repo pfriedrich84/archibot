@@ -23,7 +23,6 @@ RUN apt-get update \
         php-cli \
         php-mbstring \
         php-xml \
-        php-sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 COPY laravel/package.json laravel/package-lock.json ./
 RUN npm ci
@@ -62,26 +61,22 @@ RUN apt-get update \
         php-curl \
         php-mbstring \
         php-pgsql \
-        php-sqlite3 \
         php-xml \
         php-zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies are kept for CLI workers and MCP runtime.
+# Python dependencies are kept for fixed actor execution, operator CLI, and MCP runtime.
 COPY pyproject.toml constraints.txt ./
 RUN pip install --upgrade pip setuptools wheel \
     && pip install -c constraints.txt \
         "httpx>=0.27.0" \
         "pydantic>=2.9.0,<=2.12.5" \
         "pydantic-settings>=2.14.2,<=2.14.2" \
-        "apscheduler>=3.10.4" \
-        "absurd-sdk" \
         "sqlalchemy>=2.0.0,<3.0.0" \
         "psycopg[binary]>=3.2.0,<4.0.0" \
         "pgvector>=0.3.0,<1.0.0" \
         "structlog>=24.4.0,<=25.5.0" \
-        "sqlite-vec>=0.1.3,<=0.1.9" \
         "mcp[cli]>=1.20.0,<=1.28.1" \
         "pymupdf>=1.24.0,<=1.28.0"
 

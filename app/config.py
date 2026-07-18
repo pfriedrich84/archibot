@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def require_postgresql_database_url(value: str) -> str:
+    """Return a PostgreSQL URL or fail closed before any product DB is opened."""
+    scheme = urlsplit(value.strip()).scheme.lower()
+    if scheme != "postgresql" and not scheme.startswith("postgresql+"):
+        raise ValueError("DATABASE_URL must use PostgreSQL; other database backends are test-only")
+    return value
 
 
 class Settings(BaseSettings):
@@ -90,11 +98,6 @@ class Settings(BaseSettings):
 
     # --- Event-driven pipeline ---
     database_url: str = "postgresql+psycopg://archibot:archibot@postgres:5432/archibot"
-    absurd_database_url: str = Field(
-        default="",
-        validation_alias=AliasChoices("ABSURD_DATABASE_URL"),
-    )
-    archibot_queue_prefix: str = "archibot"
     paperless_webhook_secret: str = ""
 
     # --- Worker ---
@@ -150,6 +153,13 @@ class Settings(BaseSettings):
     data_dir: str = "/data"
     log_level: str = "INFO"
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _require_postgresql_database_url(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("DATABASE_URL must be a PostgreSQL URL")
+        return require_postgresql_database_url(value)
+
     @field_validator("auto_commit_confidence", mode="before")
     @classmethod
     def _disable_confidence_auto_commit(cls, _value: Any) -> int:
@@ -176,10 +186,6 @@ class Settings(BaseSettings):
         if field.default is None or isinstance(field.default, (bool, int, float)):
             return field.default
         return value
-
-    @property
-    def db_path(self) -> Path:
-        return Path(self.data_dir) / "classifier.db"
 
     @property
     def prompts_dir(self) -> Path:
@@ -353,7 +359,9 @@ def _apply_config_env_overrides() -> None:
             continue
 
         try:
-            if isinstance(default, bool):
+            if field_name == "database_url":
+                coerced = require_postgresql_database_url(raw)
+            elif isinstance(default, bool):
                 coerced: Any = raw.lower() in ("true", "1", "yes")
             elif isinstance(default, int):
                 coerced = int(raw)
@@ -365,6 +373,8 @@ def _apply_config_env_overrides() -> None:
             else:
                 coerced = raw
         except (ValueError, TypeError):
+            if field_name == "database_url":
+                raise ValueError("DATABASE_URL in config.env must use PostgreSQL") from None
             continue
 
         object.__setattr__(settings, field_name, coerced)
@@ -372,82 +382,10 @@ def _apply_config_env_overrides() -> None:
 
 _apply_config_env_overrides()
 
-_SETUP_COMPLETE_KEY = "setup_completed_at"
-_SETUP_REQUIRED_KEY = "setup_required"
-_LEGACY_ACTIVITY_TABLES = (
-    "processed_documents",
-    "suggestions",
-    "tag_whitelist",
-    "correspondent_whitelist",
-    "doctype_whitelist",
-    "doc_embedding_meta",
-    "doc_ocr_cache",
-    "audit_log",
-    "poll_cycles",
-    "errors",
-)
 
-
-def _essential_config_missing() -> bool:
-    return not settings.paperless_url or settings.paperless_inbox_tag_id == 0
-
-
-def _db_requires_setup(db_path: Path) -> bool:
-    """True when the DB is missing, empty, invalid, or still uninitialized."""
-    if not db_path.exists():
-        return True
-
-    try:
-        if db_path.stat().st_size == 0:
-            return True
-    except OSError:
-        return True
-
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return True
-
-    try:
-        app_state_exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_state'"
-        ).fetchone()
-        if app_state_exists:
-            required = conn.execute(
-                "SELECT value FROM app_state WHERE key = ?", (_SETUP_REQUIRED_KEY,)
-            ).fetchone()
-            if required and str(required[0]).lower() in {"1", "true", "yes"}:
-                return True
-
-            row = conn.execute(
-                "SELECT value FROM app_state WHERE key = ?", (_SETUP_COMPLETE_KEY,)
-            ).fetchone()
-            if row and row[0]:
-                return False
-
-            # A schema-initialized database plus complete essential env/config is usable.
-            # Explicit reset flows set setup_required above to force re-onboarding.
-            return False
-
-        for table in _LEGACY_ACTIVITY_TABLES:
-            table_exists = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?", (table,)
-            ).fetchone()
-            if not table_exists:
-                return True
-            if conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
-                return False
-
-        return True
-    except sqlite3.Error:
-        return True
-    finally:
-        conn.close()
-
-
-def needs_setup() -> bool:
-    """True when essential config or persistent setup state is still missing."""
-    return _essential_config_missing() or _db_requires_setup(settings.db_path)
+def assert_product_database_config() -> None:
+    """Fail product entry points closed unless their database is PostgreSQL."""
+    require_postgresql_database_url(settings.database_url)
 
 
 # ---------------------------------------------------------------------------

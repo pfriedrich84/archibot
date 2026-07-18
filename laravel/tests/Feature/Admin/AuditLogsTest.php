@@ -35,7 +35,7 @@ class AuditLogsTest extends TestCase
                 ->component('admin/AuditLogs')
                 ->has('logs', 1)
                 ->where('logs.0.event', 'setup.completed')
-                ->where('logs.0.actor.paperless_username', 'admin')
+                ->where('logs.0.actor.paperless_username', 'Paperless Username (ref:'.substr(hash('sha256', 'admin'), 0, 12).')')
             );
     }
 

@@ -37,7 +37,6 @@ python -m app.actor_runner reindex --command-id <commands.id>
 python -m app.actor_runner reindex-ocr --command-id <commands.id>
 python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>
 python -m app.actor_runner commit-review --command-id <commands.id>
-python -m app.actor_runner sync-entity-approval --command-id <commands.id>
 ```
 
 Laravel queued wrappers:
@@ -50,10 +49,9 @@ RunPythonActorJob::reindex($commandId)
 RunPythonActorJob::reindexOcr($commandId)
 RunPythonActorJob::webhookDelivery($deliveryId)
 RunPythonActorJob::reviewCommit($commandId)
-RunPythonActorJob::syncEntityApproval($commandId)
 ```
 
-The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests now dispatch this Laravel queued wrapper directly; they no longer create a temporary `worker_jobs` fallback entry and no longer branch on Absurd configuration. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries and progress remain Python-owned and PostgreSQL-backed. ADR-0018 containment is implemented: the actor always stores model/judge results as pending Review Suggestions and cannot accept or queue a commit from confidence. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
+The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests dispatch this Laravel queued wrapper directly and never branch to another transport. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries and progress remain Python-owned and PostgreSQL-backed. ADR-0018 containment is implemented: the actor always stores model/judge results as pending Review Suggestions and cannot accept or queue a commit from confidence. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
 
 ## Database migrations
 
@@ -80,7 +78,7 @@ PostgreSQL is the source of truth for progress, retries, audit and recovery stat
 
 The source-link migration cannot safely infer a command or webhook delivery for non-pipeline actor attempts created by older releases. It marks any such in-flight `running` or `retrying` execution `failed_permanent` with `error_type=source_link_unavailable_after_upgrade`. After upgrading, operators should inspect those rows and rerun the corresponding maintenance command or webhook from the operations UI only after confirming that the old actor process has stopped. The migration does not guess links or replay ambiguous work.
 
-ADR-0015 supersedes the previous Absurd queue target, and ADR-0017 requires complete removal after parity migration. Current Absurd files are transitional inventory only; they must not receive new behavior. New work targets Laravel queues and fixed Python actor commands according to the hardening plan.
+ADR-0015 and ADR-0017 govern the final transport: Laravel Database Queues and fixed Python actor commands are the only productive path. The previous Python queue backend, SDK, schema installer, workers and configuration have been removed. Existing historical schema objects on upgraded volumes are inert; see the [Step 11 upgrade notes](../implementation-notes/absurd-removal.md).
 
 ## Paperless webhook setup
 
@@ -116,7 +114,7 @@ cd laravel
 php artisan queue:work --sleep=3 --tries=1
 ```
 
-The supervised runtime uses Laravel as the exclusive queue, scheduler and recovery owner. Absurd compatibility code and schema remain only as cleanup debt; no Absurd worker or recovery bridge is started by Supervisor.
+The supervised runtime uses Laravel as the exclusive queue, scheduler and recovery owner. Supervisor starts no Python queue or recovery worker.
 
 Useful manual commands:
 
@@ -138,7 +136,7 @@ php artisan archibot:scheduled-poll
 python -m app.actor_runner handle-webhook --delivery-id=123
 ```
 
-The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. Actor executions link to their source command, pipeline run or webhook delivery so stale running and due retrying attempts can be recovered without global actor-name guesses. Laravel-native recovery finalizes safe cancellation requests, releases embedding-blocked work, suppresses fresh duplicate webhook dispatch, and handles pending/stale commands including entity approval sync. Process-document webhooks recover by starting or reconciling their durable pipeline runs rather than invoking the webhook actor; blocked deliveries become processed after the embedding gate releases and the linked run is queued.
+The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. Actor executions link to their source command, pipeline run or webhook delivery so stale running and due retrying attempts can be recovered without global actor-name guesses. Laravel-native recovery finalizes safe cancellation requests, releases embedding-blocked work, suppresses fresh duplicate webhook dispatch, and handles pending/stale actor-backed commands. Entity approval decisions use a queued, fenced Laravel/PostgreSQL Command seam and never enter Python actor recovery; matching token/version checks prevent stale deliveries from applying a conflicting decision. Process-document webhooks recover by starting or reconciling their durable pipeline runs rather than invoking the webhook actor; blocked deliveries become processed after the embedding gate releases and the linked run is queued.
 
 ## Embedding readiness gate
 
@@ -202,7 +200,7 @@ Recovery behavior:
 - queued non-process webhook deliveries are redispatched to the webhook actor through Laravel queues;
 - pending document runs are redispatched to the document actor through Laravel queues;
 - due retrying document runs are redispatched after backoff;
-- pending embedding-build, poll, reindex, OCR reindex, review-commit and entity-sync commands are redispatched through Laravel queues;
+- pending embedding-build, poll, reindex, OCR reindex and review-commit commands are redispatched through Laravel queues; entity approval application is also a queued, PostgreSQL-owned Laravel command (with no Python actor) and pending, stale-queued, or stale-running application commands are redispatched through its allowlisted `ApplyEntityApprovalCommand`;
 - stale `running` and due `retrying` actor executions are recovered through their linked durable source with bounded attempts;
 - exhausted or unlinked actor retries fail permanently instead of looping forever;
 - `cancel_requested` pipeline runs without a live actor are finalized as `cancelled`;
@@ -234,7 +232,7 @@ Live integration smoke checklist:
 2. Start PostgreSQL.
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
-5. Start Laravel, the Laravel queue worker, `schedule:work`, and Laravel-native recovery; verify no Absurd worker/recovery process starts.
+5. Start Laravel, the Laravel queue worker, `schedule:work`, and Laravel-native recovery; verify no Python queue/recovery process starts and no historical queue schema exists on the clean database.
 6. Configure a non-empty secret on both sides, then point Paperless to `POST /api/webhooks/paperless` with `X-Webhook-Secret`. Missing configuration and missing/wrong headers fail closed without a Delivery. Use the rotation and rollback order in the [webhook runbook](../user/webhooks.md#secret-sicher-rotieren).
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.

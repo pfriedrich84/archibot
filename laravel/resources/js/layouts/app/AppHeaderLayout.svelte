@@ -3,6 +3,7 @@
     import AppContent from '@/components/AppContent.svelte';
     import AppHeader from '@/components/AppHeader.svelte';
     import AppShell from '@/components/AppShell.svelte';
+    import GlobalFlash from '@/components/GlobalFlash.svelte';
     import { Toaster } from '@/components/ui/sonner';
     import type { BreadcrumbItem } from '@/types';
 
@@ -18,6 +19,7 @@
 <AppShell variant="header">
     <AppHeader {breadcrumbs} />
     <AppContent variant="header">
+        <GlobalFlash />
         {@render children?.()}
     </AppContent>
     <Toaster />

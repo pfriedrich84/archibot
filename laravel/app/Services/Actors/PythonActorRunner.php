@@ -2,9 +2,9 @@
 
 namespace App\Services\Actors;
 
+use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\PipelineRun;
-use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -24,322 +24,150 @@ class PythonActorRunner
 
     public const ACTOR_REINDEX_OCR = 'reindex_ocr';
 
-    public const ACTOR_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
-
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
-    /**
-     * Run the fixed embedding-index actor command for a durable command row.
-     */
-    public function runEmbeddingIndexBuild(Command $command): void
+    public function runEmbeddingIndexBuild(Command $command, ActorInvocationClaim $claim): void
     {
         $this->assertCommandType($command, Command::TYPE_EMBEDDING_INDEX_BUILD);
-
-        if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-        }
-
-        $this->runProcess(
-            actorName: self::ACTOR_BUILD_EMBEDDING_INDEX,
-            logContext: [
-                'command_id' => $command->id,
-                'command_type' => $command->type,
-            ],
-            arguments: [
-                'build-embedding-index',
-                '--command-id',
-                (string) $command->id,
-            ],
-            onFailure: function (string $error) use ($command): void {
-                $command->refresh();
-                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_FAILED,
-                        'error' => $error,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
-            onSuccess: function () use ($command): void {
-                $command->refresh();
-                if (in_array($command->status, [Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_SUCCEEDED,
-                        'error' => null,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
-        );
+        $this->runCommandActor($command, $claim, self::ACTOR_BUILD_EMBEDDING_INDEX, ['build-embedding-index', '--command-id', (string) $command->id]);
     }
 
-    /**
-     * Run the fixed poll reconciliation actor command for a durable command row.
-     */
-    public function runPollReconciliation(Command $command): void
+    public function runPollReconciliation(Command $command, ActorInvocationClaim $claim): void
     {
         $this->assertCommandType($command, Command::TYPE_POLL_RECONCILIATION);
-        $this->runCommandActor($command, self::ACTOR_POLL_RECONCILIATION, ['reconcile-poll', '--command-id', (string) $command->id]);
+        $this->runCommandActor($command, $claim, self::ACTOR_POLL_RECONCILIATION, ['reconcile-poll', '--command-id', (string) $command->id]);
     }
 
-    /**
-     * Run the fixed reindex actor command for a durable command row.
-     */
-    public function runReindex(Command $command): void
+    public function runReindex(Command $command, ActorInvocationClaim $claim): void
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX);
-        $this->runCommandActor($command, self::ACTOR_REINDEX, ['reindex', '--command-id', (string) $command->id]);
+        $this->runCommandActor($command, $claim, self::ACTOR_REINDEX, ['reindex', '--command-id', (string) $command->id]);
     }
 
-    /**
-     * Run the fixed OCR reindex actor command for a durable command row.
-     */
-    public function runReindexOcr(Command $command): void
+    public function runReindexOcr(Command $command, ActorInvocationClaim $claim): void
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX_OCR);
-        $this->runCommandActor($command, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
+        $this->runCommandActor($command, $claim, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
     }
 
-    /**
-     * Run the fixed entity approval sync actor command for a durable command row.
-     */
-    public function runSyncEntityApproval(Command $command): void
-    {
-        $this->assertCommandType($command, Command::TYPE_SYNC_ENTITY_APPROVAL);
-        $this->runCommandActor($command, self::ACTOR_SYNC_ENTITY_APPROVAL, ['sync-entity-approval', '--command-id', (string) $command->id]);
-    }
-
-    /**
-     * Run the fixed webhook actor command for a durable webhook delivery row.
-     */
-    public function runWebhookDelivery(WebhookDelivery $delivery): void
+    public function runWebhookDelivery(WebhookDelivery $delivery, ActorInvocationClaim $claim): void
     {
         $this->runProcess(
-            actorName: self::ACTOR_HANDLE_PAPERLESS_WEBHOOK,
-            logContext: [
-                'webhook_delivery_id' => $delivery->id,
-                'paperless_document_id' => $delivery->paperless_document_id,
-                'webhook_action' => $delivery->normalized_payload['webhook_action'] ?? null,
-            ],
-            arguments: [
-                'handle-webhook',
-                '--delivery-id',
-                (string) $delivery->id,
-            ],
-            onFailure: function (string $error) use ($delivery): void {
-                $delivery->refresh();
-                if (in_array($delivery->status, [WebhookDelivery::STATUS_RECEIVED, WebhookDelivery::STATUS_QUEUED, WebhookDelivery::STATUS_RUNNING], true)) {
-                    $delivery->forceFill([
-                        'status' => WebhookDelivery::STATUS_FAILED,
-                        'error' => $error,
-                    ])->save();
-                }
-            },
-            onSuccess: function () use ($delivery): void {
-                $delivery->refresh();
-                if ($delivery->status === WebhookDelivery::STATUS_RUNNING) {
-                    $delivery->forceFill([
-                        'status' => WebhookDelivery::STATUS_PROCESSED,
-                        'processed_at' => now(),
-                        'error' => null,
-                    ])->save();
-                }
-            },
+            self::ACTOR_HANDLE_PAPERLESS_WEBHOOK,
+            ['webhook_delivery_id' => $delivery->id, 'paperless_document_id' => $delivery->paperless_document_id],
+            ['handle-webhook', '--delivery-id', (string) $delivery->id],
+            $claim,
         );
     }
 
-    /**
-     * Run the fixed review commit actor command for a durable command row.
-     */
-    public function runReviewCommit(Command $command): void
+    public function runReviewCommit(Command $command, ActorInvocationClaim $claim): void
     {
         $this->assertCommandType($command, Command::TYPE_REVIEW_COMMIT);
-
-        if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-        }
-
-        $this->runProcess(
-            actorName: self::ACTOR_COMMIT_REVIEW_SUGGESTION,
-            logContext: [
-                'command_id' => $command->id,
-                'command_type' => $command->type,
-                'review_suggestion_id' => $command->payload['review_suggestion_id'] ?? null,
-            ],
-            arguments: [
-                'commit-review',
-                '--command-id',
-                (string) $command->id,
-            ],
-            onFailure: function (string $error) use ($command): void {
-                $command->refresh();
-                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_FAILED,
-                        'error' => $error,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-
-                $reviewSuggestionId = $command->payload['review_suggestion_id'] ?? null;
-                if ($command->status === Command::STATUS_FAILED && is_int($reviewSuggestionId)) {
-                    ReviewSuggestion::query()
-                        ->whereKey($reviewSuggestionId)
-                        ->where('commit_status', ReviewSuggestion::COMMIT_STATUS_QUEUED)
-                        ->update(['commit_status' => ReviewSuggestion::COMMIT_STATUS_FAILED]);
-                }
-            },
-            onSuccess: function () use ($command): void {
-                $command->refresh();
-                if ($command->status === Command::STATUS_RUNNING) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_SUCCEEDED,
-                        'error' => null,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
-        );
+        $this->runCommandActor($command, $claim, self::ACTOR_COMMIT_REVIEW_SUGGESTION, ['commit-review', '--command-id', (string) $command->id]);
     }
 
     /**
      * @param  array<int, string>  $arguments
      */
-    private function runCommandActor(Command $command, string $actorName, array $arguments): void
+    private function runCommandActor(Command $command, ActorInvocationClaim $claim, string $actorName, array $arguments): void
     {
-        if ($command->status === Command::STATUS_PENDING) {
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-        }
+        $this->runProcess($actorName, ['command_id' => $command->id, 'command_type' => $command->type], $arguments, $claim);
+    }
 
+    public function runDocumentPipeline(PipelineRun $pipelineRun, ActorInvocationClaim $claim): void
+    {
         $this->runProcess(
-            actorName: $actorName,
-            logContext: [
-                'command_id' => $command->id,
-                'command_type' => $command->type,
-            ],
-            arguments: $arguments,
-            onFailure: function (string $error) use ($command): void {
-                $command->refresh();
-                if (in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_FAILED,
-                        'error' => $error,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
-            onSuccess: function () use ($command): void {
-                $command->refresh();
-                if (in_array($command->status, [Command::STATUS_QUEUED, Command::STATUS_RUNNING], true)) {
-                    $command->forceFill([
-                        'status' => Command::STATUS_SUCCEEDED,
-                        'error' => null,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
+            self::ACTOR_HANDLE_DOCUMENT_PIPELINE,
+            ['pipeline_run_id' => $pipelineRun->id, 'paperless_document_id' => $pipelineRun->paperless_document_id],
+            ['process-document', '--pipeline-run-id', (string) $pipelineRun->id],
+            $claim,
         );
     }
 
     /**
-     * Run the fixed document pipeline actor command for a durable pipeline run.
+     * Process exit and the Python-owned domain result are independent signals.
+     * Protocol/launch/timeout/signal failures throw without mutating domain rows.
+     *
+     * @param  array<string, mixed>  $logContext
+     * @param  array<int, string>  $arguments
      */
-    public function runDocumentPipeline(PipelineRun $pipelineRun): void
+    private function runProcess(string $actorName, array $logContext, array $arguments, ActorInvocationClaim $claim): void
     {
-        $this->runProcess(
-            actorName: self::ACTOR_HANDLE_DOCUMENT_PIPELINE,
-            logContext: [
-                'pipeline_run_id' => $pipelineRun->id,
-                'paperless_document_id' => $pipelineRun->paperless_document_id,
-            ],
-            arguments: [
-                'process-document',
-                '--pipeline-run-id',
-                (string) $pipelineRun->id,
-            ],
-            onFailure: function (string $error) use ($pipelineRun): void {
-                $pipelineRun->refresh();
-                if (in_array($pipelineRun->status, [
-                    PipelineRun::STATUS_PENDING,
-                    PipelineRun::STATUS_QUEUED,
-                    PipelineRun::STATUS_RUNNING,
-                ], true)) {
-                    $pipelineRun->forceFill([
-                        'status' => PipelineRun::STATUS_FAILED,
-                        'error_type' => 'actor_process_failed',
-                        'error' => $error,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
-            onSuccess: function () use ($pipelineRun): void {
-                $pipelineRun->refresh();
-                if ($pipelineRun->status === PipelineRun::STATUS_RUNNING) {
-                    $pipelineRun->forceFill([
-                        'status' => PipelineRun::STATUS_SUCCEEDED,
-                        'error_type' => null,
-                        'error' => null,
-                        'finished_at' => now(),
-                    ])->save();
-                }
-            },
+        $process = new Process(
+            [(string) config('archibot.python_binary', 'python3'), '-m', 'app.actor_runner', ...$arguments, '--execution-token', $claim->token, '--source-version', (string) $claim->sourceVersion, '--actor-execution-id', (string) $claim->actorExecutionId, '--attempt', (string) $claim->attempt],
+            base_path('..'),
+            timeout: max(1, (int) config('archibot_workers.queue_worker_timeout', 21600)),
         );
+
+        Log::info('python actor command starting', ['actor_name' => $actorName, ...$logContext]);
+        $process->run();
+
+        $outcome = PythonActorOutcome::fromProcessOutput($process->getOutput());
+        [$sourceKind, $sourceId] = $this->durableSourceIdentity($logContext);
+        $outcome->assertInvocation($actorName, $sourceKind, $sourceId);
+
+        if ($outcome->status === 'protocol-failure') {
+            throw new RuntimeException('Python actor reported a protocol failure.');
+        }
+        $this->assertDurableExecution($outcome, $claim, $actorName, $sourceKind, $sourceId);
+        if (! $process->isSuccessful() && $outcome->status === 'succeeded') {
+            throw new RuntimeException('Python actor process failed after reporting a successful domain outcome.');
+        }
+
+        Log::log($process->isSuccessful() ? 'info' : 'warning', 'python actor command completed with durable domain outcome', [
+            'actor_name' => $actorName,
+            'domain_status' => $outcome->status,
+            'actor_execution_id' => $outcome->actorExecutionId,
+            'attempt' => $outcome->attempt,
+            'exit_code' => $process->getExitCode(),
+            ...$logContext,
+        ]);
     }
 
     /**
      * @param  array<string, mixed>  $logContext
-     * @param  array<int, string>  $arguments
+     * @return array{string, int}
      */
-    private function runProcess(
+    private function durableSourceIdentity(array $logContext): array
+    {
+        if (isset($logContext['pipeline_run_id']) && is_int($logContext['pipeline_run_id'])) {
+            return ['pipeline_run', $logContext['pipeline_run_id']];
+        }
+        if (isset($logContext['command_id']) && is_int($logContext['command_id'])) {
+            return ['command', $logContext['command_id']];
+        }
+        if (isset($logContext['webhook_delivery_id']) && is_int($logContext['webhook_delivery_id'])) {
+            return ['webhook_delivery', $logContext['webhook_delivery_id']];
+        }
+        throw new RuntimeException('Python actor invocation has no durable source identity.');
+    }
+
+    private function assertDurableExecution(
+        PythonActorOutcome $outcome,
+        ActorInvocationClaim $claim,
         string $actorName,
-        array $logContext,
-        array $arguments,
-        ?callable $onFailure = null,
-        ?callable $onSuccess = null,
+        string $sourceKind,
+        int $sourceId,
     ): void {
-        $process = new Process(
-            [
-                (string) config('archibot.python_binary', 'python3'),
-                '-m',
-                'app.actor_runner',
-                ...$arguments,
-            ],
-            base_path('..'),
-            timeout: null,
-        );
-
-        Log::info('python actor command starting', [
-            'actor_name' => $actorName,
-            ...$logContext,
-        ]);
-
-        $process->run();
-
-        if (! $process->isSuccessful()) {
-            $errorOutput = trim($process->getErrorOutput() ?: $process->getOutput() ?: 'Python actor command failed.');
-            if ($onFailure !== null) {
-                $onFailure($errorOutput);
-            }
-
-            Log::warning('python actor command failed', [
-                'actor_name' => $actorName,
-                'exit_code' => $process->getExitCode(),
-                ...$logContext,
-            ]);
-
-            $suffix = $errorOutput !== '' ? " Output: {$errorOutput}" : '';
-
-            throw new RuntimeException("Python actor command {$actorName} failed with exit code {$process->getExitCode()}.{$suffix}");
+        $sourceColumn = match ($sourceKind) {
+            'pipeline_run' => 'pipeline_run_id',
+            'command' => 'command_id',
+            'webhook_delivery' => 'webhook_delivery_id',
+            default => throw new RuntimeException('Unsupported durable actor source kind.'),
+        };
+        $storedStatus = str_replace('-', '_', $outcome->status);
+        $exists = ActorExecution::query()
+            ->whereKey($outcome->actorExecutionId)
+            ->where('execution_token', $claim->token)
+            ->where('source_version', $claim->sourceVersion)
+            ->where('actor_name', $actorName)
+            ->where($sourceColumn, $sourceId)
+            ->where('attempt', $outcome->attempt)
+            ->where('status', $storedStatus)
+            ->exists();
+        if (! $exists) {
+            throw new RuntimeException('Python actor outcome does not match its durable fenced execution.');
         }
-
-        if ($onSuccess !== null) {
-            $onSuccess();
-        }
-
-        Log::info('python actor command succeeded', [
-            'actor_name' => $actorName,
-            ...$logContext,
-        ]);
     }
 
     private function assertCommandType(Command $command, string $expectedType): void

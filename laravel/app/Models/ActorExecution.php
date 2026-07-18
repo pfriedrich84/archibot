@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'duration_ms', 'progress_total', 'progress_done', 'progress_failed', 'progress_skipped',
     'progress_current_item', 'progress_message', 'progress_updated_at', 'next_retry_at',
     'last_retry_at', 'retry_reason', 'retry_mode', 'error_type', 'error_message',
+    'execution_token', 'source_version',
 ])]
 class ActorExecution extends Model
 {
@@ -20,6 +21,8 @@ class ActorExecution extends Model
     public const STATUS_RUNNING = 'running';
 
     public const STATUS_RETRYING = 'retrying';
+
+    public const STATUS_BLOCKED = 'blocked';
 
     public const STATUS_SUCCEEDED = 'succeeded';
 

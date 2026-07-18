@@ -21,6 +21,7 @@ class OcrReviewTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::preventStrayRequests();
     }
@@ -42,6 +43,7 @@ class OcrReviewTest extends TestCase
 
         $review = OcrReview::query()->firstOrFail();
         $response->assertRedirect(route('ocr-reviews.show', $review));
+        $response->assertSessionHas('status', 'OCR correction created for review.');
         $this->assertSame('Synthetic original snapshot', $review->original_content);
         $this->assertSame('Synthetic corrected snapshot', $review->ocr_content);
         $this->assertSame(OcrReview::STATUS_PENDING, $review->status);
@@ -255,7 +257,8 @@ class OcrReviewTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('ocr-reviews.approve', $review), ['approved_content' => 'Locally approved snapshot'])
-            ->assertRedirect(route('ocr-reviews.show', $review));
+            ->assertRedirect(route('ocr-reviews.show', $review))
+            ->assertSessionHas('status', 'OCR correction approved and stored locally.');
 
         $review->refresh();
         $this->assertSame(OcrReview::STATUS_APPROVED, $review->status);
@@ -426,7 +429,9 @@ class OcrReviewTest extends TestCase
             'paperless.example/api/documents/456/' => Http::response([], 200, ['Allow' => 'GET, PATCH, OPTIONS']),
         ]);
 
-        $this->actingAs($user)->post(route('ocr-reviews.reject', $review))->assertRedirect(route('ocr-reviews.index'));
+        $this->actingAs($user)->post(route('ocr-reviews.reject', $review))
+            ->assertRedirect(route('ocr-reviews.index'))
+            ->assertSessionHas('status', 'OCR correction rejected; Paperless content was not changed.');
         $review->refresh();
         $this->assertSame(OcrReview::STATUS_REJECTED, $review->status);
         $this->assertSame('Original retained', $review->original_content);
@@ -436,7 +441,7 @@ class OcrReviewTest extends TestCase
 
     public function test_stats_does_not_expose_unscoped_ocr_counts_or_content(): void
     {
-        $user = User::factory()->create(['paperless_token' => 'reader-token']);
+        $user = User::factory()->create(['paperless_token' => 'reader-token', 'is_admin' => true]);
         $this->review($user, 456, 'Stats-hidden original marker', 'Stats-hidden correction marker');
 
         $this->actingAs($user)

@@ -35,8 +35,11 @@ def sql_text(statement: str):
 
 def update_pipeline_run_progress(pipeline_run_id: int, snapshot: ProgressSnapshot) -> None:
     """Persist a pipeline-level progress snapshot."""
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("pipeline_run", pipeline_run_id)
     statement = sql_text(
-        """
+        f"""
         UPDATE pipeline_runs
         SET progress_total = :total,
             progress_done = :done,
@@ -46,7 +49,7 @@ def update_pipeline_run_progress(pipeline_run_id: int, snapshot: ProgressSnapsho
             progress_message = :message,
             progress_updated_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :pipeline_run_id
+        WHERE id = :pipeline_run_id {fence_sql}
         """
     )
     with engine().begin() as connection:
@@ -60,6 +63,7 @@ def update_pipeline_run_progress(pipeline_run_id: int, snapshot: ProgressSnapsho
                 "skipped": snapshot.skipped,
                 "phase": snapshot.phase,
                 "message": snapshot.message,
+                **fence_params,
             },
         )
 
@@ -79,7 +83,7 @@ def update_actor_execution_progress(
             progress_message = :message,
             progress_updated_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :actor_execution_id
+        WHERE id = :actor_execution_id AND status = 'running'
         """
     )
     with engine().begin() as connection:

@@ -108,7 +108,9 @@ def build_paperless_patch(
         fields["correspondent"] = record.proposed_correspondent_id
     if record.proposed_document_type_id is not None:
         fields["document_type"] = record.proposed_document_type_id
-    if record.proposed_storage_path_id is not None and current_storage_path is None:
+    # A live existing Paperless storage path is authoritative. The only writable
+    # case is an explicitly accepted review filling a currently absent value.
+    if current_storage_path is None and record.proposed_storage_path_id is not None:
         fields["storage_path"] = record.proposed_storage_path_id
 
     tag_ids = [
@@ -129,7 +131,7 @@ async def commit_review_suggestion_to_paperless(
     document = await paperless.get_document(record.paperless_document_id)
     fields = build_paperless_patch(record, document.tags, document.storage_path)
     if fields:
-        await paperless.patch_document(record.paperless_document_id, fields)
+        await paperless.patch_reviewed_document(record.paperless_document_id, fields)
     return fields
 
 

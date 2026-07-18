@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\RunPythonActorJob;
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineEvent;
@@ -11,6 +10,7 @@ use App\Models\ReviewSuggestion;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessDocumentPermissions;
 use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Support\OperatorPrincipal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -133,7 +133,8 @@ class ReviewSuggestionController extends Controller
 
         $this->queueCommitCommand($request, $reviewSuggestion);
 
-        return redirect()->route('review.index');
+        return redirect()->route('review.index')
+            ->with('status', 'Review accepted; the Paperless metadata update was queued.');
     }
 
     public function reject(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
@@ -141,7 +142,8 @@ class ReviewSuggestionController extends Controller
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
-        return redirect()->route('review.index');
+        return redirect()->route('review.index')
+            ->with('status', 'Review rejected; no Paperless metadata was changed.');
     }
 
     public function reprocess(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
@@ -215,7 +217,8 @@ class ReviewSuggestionController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return redirect()->route('review.show', $reviewSuggestion);
+        return redirect()->route('review.show', $reviewSuggestion)
+            ->with('status', 'Review edits saved.');
     }
 
     public function bulkAccept(Request $request): RedirectResponse
@@ -231,12 +234,11 @@ class ReviewSuggestionController extends Controller
     public function preview(Request $request, ReviewSuggestion $reviewSuggestion)
     {
         $this->assertCanViewSuggestion($request, $reviewSuggestion);
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
 
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        $client = new PaperlessClient($paperlessUrl);
+        $client = new PaperlessClient;
 
         try {
             $preview = $client->documentPreview($token, $reviewSuggestion->paperless_document_id);
@@ -313,6 +315,7 @@ class ReviewSuggestionController extends Controller
                 'message' => 'Review suggestion commit requested through durable command.',
                 'payload' => [
                     'review_suggestion_id' => $reviewSuggestion->id,
+                    'actor_principal' => OperatorPrincipal::name($request),
                     'actor_user_id' => $request->user()->id,
                     'actor_is_admin' => (bool) $request->user()->is_admin,
                 ],
@@ -335,6 +338,8 @@ class ReviewSuggestionController extends Controller
                 'payload' => [
                     'review_suggestion_id' => $reviewSuggestion->id,
                     'actor_name' => 'commit_review_suggestion',
+                    'actor_principal' => OperatorPrincipal::name($request),
+                    'actor_user_id' => $request->user()->id,
                 ],
             ]);
 
@@ -354,6 +359,7 @@ class ReviewSuggestionController extends Controller
             'target_type' => 'review_suggestion',
             'target_id' => (string) $suggestion->id,
             'metadata' => [
+                'actor_principal' => OperatorPrincipal::name($request),
                 'paperless_document_id' => $suggestion->paperless_document_id,
                 'confidence' => $suggestion->confidence,
             ],
@@ -367,14 +373,13 @@ class ReviewSuggestionController extends Controller
      */
     private function entityOptions(Request $request): array
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()?->paperless_token;
 
-        if (! $paperlessUrl || ! $token) {
+        if (! $token) {
             return ['correspondents' => [], 'documentTypes' => [], 'storagePaths' => []];
         }
 
-        $client = new PaperlessClient($paperlessUrl);
+        $client = new PaperlessClient;
 
         try {
             return [

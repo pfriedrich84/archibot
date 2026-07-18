@@ -29,9 +29,12 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
-    Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])->name('setup.paperless-tags');
-    Route::post('/setup/ollama-models', [SetupController::class, 'ollamaModels'])->name('setup.ollama-models');
-    Route::post('/setup', [SetupController::class, 'store'])->name('setup.store');
+    Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])
+        ->middleware('throttle:setup-paperless')
+        ->name('setup.paperless-tags');
+    Route::post('/setup', [SetupController::class, 'store'])
+        ->middleware('throttle:setup-paperless')
+        ->name('setup.store');
 
     Route::middleware('guest')->group(function () {
         Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -80,36 +83,42 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('ocr-reviews/{ocrReview}/approve', [OcrReviewController::class, 'approve'])->name('ocr-reviews.approve');
         Route::post('ocr-reviews/{ocrReview}/reject', [OcrReviewController::class, 'reject'])->name('ocr-reviews.reject');
 
-        Route::get('stats', StatsController::class)->name('stats.index');
-        Route::get('errors', ErrorsController::class)->name('errors.index');
-
-        Route::get('operations-log', OperationsLogController::class)->name('operations-log.index');
-        Route::get('pipeline-runs', [PipelineRunController::class, 'index'])->name('pipeline-runs.index');
-        Route::get('pipeline-runs/{pipelineRun}', [PipelineRunController::class, 'show'])->name('pipeline-runs.show');
-        Route::post('pipeline-runs/{pipelineRun}/retry', [PipelineRunController::class, 'retry'])->name('pipeline-runs.retry');
-        Route::post('pipeline-runs/{pipelineRun}/retry-failed-items', [PipelineRunController::class, 'retryFailedItems'])->name('pipeline-runs.retry-failed-items');
-        Route::post('pipeline-runs/{pipelineRun}/cancel', [PipelineRunController::class, 'cancel'])->name('pipeline-runs.cancel');
-        Route::post('embedding-index/build', [EmbeddingIndexController::class, 'build'])->name('embedding-index.build');
-        Route::post('embedding-index/mark-stale', [EmbeddingIndexController::class, 'markStale'])->name('embedding-index.mark-stale');
-        Route::post('maintenance/poll', [MaintenanceCommandController::class, 'poll'])->name('maintenance.poll');
-        Route::post('maintenance/reindex', [MaintenanceCommandController::class, 'reindex'])->name('maintenance.reindex');
-        Route::get('webhook-deliveries', [WebhookDeliveryController::class, 'index'])->name('webhook-deliveries.index');
-        Route::get('webhook-deliveries/{webhookDelivery}', [WebhookDeliveryController::class, 'show'])->name('webhook-deliveries.show');
-        Route::post('webhook-deliveries/{webhookDelivery}/retry', [WebhookDeliveryController::class, 'retry'])->name('webhook-deliveries.retry');
-        Route::post('webhook-deliveries/{webhookDelivery}/dismiss', [WebhookDeliveryController::class, 'dismiss'])->name('webhook-deliveries.dismiss');
-
-        Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
+        Route::middleware('admin')->group(function () {
+            Route::get('stats', StatsController::class)->name('stats.index');
+            Route::get('errors', ErrorsController::class)->name('errors.index');
+            Route::get('operations-log', OperationsLogController::class)->name('operations-log.index');
+            Route::get('pipeline-runs', [PipelineRunController::class, 'index'])->name('pipeline-runs.index');
+            Route::get('pipeline-runs/{pipelineRun}', [PipelineRunController::class, 'show'])->name('pipeline-runs.show');
+            Route::post('pipeline-runs/{pipelineRun}/retry', [PipelineRunController::class, 'retry'])->name('pipeline-runs.retry');
+            Route::post('pipeline-runs/{pipelineRun}/retry-failed-items', [PipelineRunController::class, 'retryFailedItems'])->name('pipeline-runs.retry-failed-items');
+            Route::post('pipeline-runs/{pipelineRun}/cancel', [PipelineRunController::class, 'cancel'])->name('pipeline-runs.cancel');
+            Route::post('embedding-index/build', [EmbeddingIndexController::class, 'build'])->name('embedding-index.build');
+            Route::post('embedding-index/mark-stale', [EmbeddingIndexController::class, 'markStale'])->name('embedding-index.mark-stale');
+            Route::post('maintenance/poll', [MaintenanceCommandController::class, 'poll'])->name('maintenance.poll');
+            Route::post('maintenance/reindex', [MaintenanceCommandController::class, 'reindex'])->name('maintenance.reindex');
+            Route::get('webhook-deliveries', [WebhookDeliveryController::class, 'index'])->name('webhook-deliveries.index');
+            Route::get('webhook-deliveries/{webhookDelivery}', [WebhookDeliveryController::class, 'show'])->name('webhook-deliveries.show');
+            Route::post('webhook-deliveries/{webhookDelivery}/retry', [WebhookDeliveryController::class, 'retry'])->name('webhook-deliveries.retry');
+            Route::post('webhook-deliveries/{webhookDelivery}/dismiss', [WebhookDeliveryController::class, 'dismiss'])->name('webhook-deliveries.dismiss');
+            Route::get('embeddings', [EmbeddingsController::class, 'index'])->name('embeddings.index');
+            Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
+            Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
+            Route::post('admin/maintenance/recover-pipeline-actors', [MaintenanceController::class, 'recoverPipelineActors'])->name('admin.maintenance.recover-pipeline-actors');
+            Route::post('admin/maintenance/document-pipeline', [MaintenanceController::class, 'startDocumentPipeline'])->name('admin.maintenance.document-pipeline');
+            Route::post('admin/maintenance/commands', [MaintenanceController::class, 'startCommand'])->name('admin.maintenance.commands');
+            Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])->name('admin.maintenance.reset');
+        });
 
         Route::get('admin/settings/{section?}', [SettingsController::class, 'edit'])->name('admin.settings.edit');
-        Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])->name('admin.settings.ai-models');
+        Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])
+            ->middleware('throttle:model-discovery')
+            ->name('admin.settings.ai-models');
+        Route::post('admin/settings/ai-models/validate', [SettingsController::class, 'validateAiModel'])
+            ->middleware('throttle:model-discovery')
+            ->name('admin.settings.ai-models.validate');
         Route::patch('admin/settings', [SettingsController::class, 'update'])->name('admin.settings.update');
         Route::patch('admin/settings/prompts/{prompt}', [SettingsController::class, 'updatePrompt'])->name('admin.settings.prompts.update');
         Route::delete('admin/settings/prompts/{prompt}', [SettingsController::class, 'resetPrompt'])->name('admin.settings.prompts.reset');
-        Route::get('admin/audit-logs', [AuditLogController::class, 'index'])->name('admin.audit-logs.index');
-        Route::get('admin/maintenance', [MaintenanceController::class, 'index'])->name('admin.maintenance.index');
-        Route::post('admin/maintenance/recover-pipeline-actors', [MaintenanceController::class, 'recoverPipelineActors'])->name('admin.maintenance.recover-pipeline-actors');
-        Route::post('admin/maintenance/document-pipeline', [MaintenanceController::class, 'startDocumentPipeline'])->name('admin.maintenance.document-pipeline');
-        Route::post('admin/maintenance/commands', [MaintenanceController::class, 'startCommand'])->name('admin.maintenance.commands');
     });
 
     require __DIR__.'/settings.php';

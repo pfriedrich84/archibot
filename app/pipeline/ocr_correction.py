@@ -1,7 +1,7 @@
 """Multi-level OCR correction: text-only, vision-light, and vision-full.
 
-Corrected text is **never** written back to Paperless — it is stored in our
-local ``doc_ocr_cache`` table and used for classification + embedding context.
+Corrected text is **never** written back to Paperless — it is stored in the
+shared PostgreSQL OCR correction repository and used for classification context.
 """
 
 from __future__ import annotations
@@ -13,7 +13,11 @@ import structlog
 
 from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.db import get_conn
+from app.jobs.ocr_corrections import (
+    cached_ocr_correction,
+    cached_ocr_document_ids,
+    store_ocr_correction,
+)
 from app.models import PaperlessDocument
 from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
@@ -147,24 +151,13 @@ def cache_ocr_correction(
     ocr_mode: str,
     num_corrections: int,
 ) -> None:
-    """Store corrected text in ``doc_ocr_cache``."""
-    with get_conn() as conn:
-        conn.execute(
-            """INSERT OR REPLACE INTO doc_ocr_cache
-               (document_id, corrected_content, ocr_mode, num_corrections, corrected_at)
-               VALUES (?, ?, ?, ?, datetime('now'))""",
-            (document_id, corrected_text, ocr_mode, num_corrections),
-        )
+    """Store corrected text in the shared PostgreSQL repository."""
+    store_ocr_correction(document_id, corrected_text, ocr_mode, num_corrections)
 
 
 def get_cached_ocr(document_id: int) -> str | None:
-    """Return cached corrected text for a document, or ``None``."""
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT corrected_content FROM doc_ocr_cache WHERE document_id = ?",
-            (document_id,),
-        ).fetchone()
-    return row["corrected_content"] if row else None
+    """Return the PostgreSQL-backed corrected text, or ``None``."""
+    return cached_ocr_correction(document_id)
 
 
 async def batch_correct_documents(
@@ -176,7 +169,7 @@ async def batch_correct_documents(
 ) -> int:
     """Run OCR correction over all Paperless documents.
 
-    Skips documents already in ``doc_ocr_cache`` unless *force* is ``True``.
+    Skips documents already in PostgreSQL unless *force* is ``True``.
     Forced runs also bypass the text/``vision_light`` clean-text heuristic so
     operators can refresh OCR after model or prompt changes.
     Returns the number of documents corrected.
@@ -191,9 +184,7 @@ async def batch_correct_documents(
     available_tags = await paperless.list_tags()
 
     if not force:
-        with get_conn() as conn:
-            cached = conn.execute("SELECT document_id FROM doc_ocr_cache").fetchall()
-            cached_ids = {row["document_id"] for row in cached}
+        cached_ids = cached_ocr_document_ids()
         all_docs = [doc for doc in all_docs if doc.id not in cached_ids]
 
     if limit:

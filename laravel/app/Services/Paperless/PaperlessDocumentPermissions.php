@@ -2,7 +2,6 @@
 
 namespace App\Services\Paperless;
 
-use App\Models\AppSetting;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Throwable;
@@ -17,7 +16,7 @@ class PaperlessDocumentPermissions
         }
 
         try {
-            app(PaperlessClient::class, ['baseUrl' => $context['paperless_url']])
+            app(PaperlessClient::class)
                 ->document($context['token'], $paperlessDocumentId);
 
             return true;
@@ -34,7 +33,7 @@ class PaperlessDocumentPermissions
         }
 
         try {
-            return app(PaperlessClient::class, ['baseUrl' => $context['paperless_url']])
+            return app(PaperlessClient::class)
                 ->canChangeDocument($context['token'], $paperlessDocumentId);
         } catch (Throwable) {
             return false;
@@ -61,17 +60,14 @@ class PaperlessDocumentPermissions
         }
     }
 
-    /**
-     * @return array{paperless_url: string, token: string}|null
-     */
+    /** @return array{token: string}|null */
     private function paperlessContext(User $user): ?array
     {
         $token = $user->paperless_token;
-        $paperlessUrl = AppSetting::getValue('paperless.url');
-        if (! is_string($token) || $token === '' || ! is_string($paperlessUrl) || $paperlessUrl === '') {
+        if (! is_string($token) || $token === '') {
             return null;
         }
 
-        return ['paperless_url' => $paperlessUrl, 'token' => $token];
+        return ['token' => $token];
     }
 }

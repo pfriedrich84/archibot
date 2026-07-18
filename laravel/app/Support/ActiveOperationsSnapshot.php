@@ -8,6 +8,8 @@ use App\Models\PipelineRun;
 
 class ActiveOperationsSnapshot
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     /**
      * @return array{
      *     summary: array{total: int, queued: int, running: int, retrying: int, blocked: int},
@@ -85,13 +87,13 @@ class ActiveOperationsSnapshot
             'kind' => 'command',
             'id' => $command->id,
             'label' => $this->commandLabel($command),
-            'status' => $command->status,
+            'status' => $this->diagnostics->typedScalar('status', $command->status),
             'detail' => $this->commandDetail($command),
             'progress_total' => $execution?->progress_total ?? 0,
             'progress_done' => $execution?->progress_done ?? 0,
             'progress_failed' => $execution?->progress_failed ?? 0,
             'progress_skipped' => $execution?->progress_skipped ?? 0,
-            'progress_message' => $execution?->progress_message ?? $command->error,
+            'progress_message' => $this->diagnostics->redactedMessage($execution?->progress_message ?? $command->error),
             'created_at' => $command->created_at?->toISOString(),
             'started_at' => $command->started_at?->toISOString(),
             'updated_at' => $command->updated_at?->toISOString(),
@@ -107,13 +109,13 @@ class ActiveOperationsSnapshot
             'kind' => 'pipeline_run',
             'id' => $run->id,
             'label' => $this->pipelineRunLabel($run),
-            'status' => $run->status,
+            'status' => $this->diagnostics->typedScalar('status', $run->status),
             'detail' => $this->pipelineRunDetail($run),
             'progress_total' => $run->progress_total,
             'progress_done' => $run->progress_done,
             'progress_failed' => $run->progress_failed,
             'progress_skipped' => $run->progress_skipped,
-            'progress_message' => $run->progress_message,
+            'progress_message' => $this->diagnostics->redactedMessage($run->progress_message),
             'created_at' => $run->created_at?->toISOString(),
             'started_at' => $run->started_at?->toISOString(),
             'updated_at' => $run->updated_at?->toISOString(),
@@ -130,7 +132,7 @@ class ActiveOperationsSnapshot
             Command::TYPE_EMBEDDING_INDEX_BUILD => 'Embedding index build',
             Command::TYPE_REVIEW_COMMIT => 'Review commit',
             Command::TYPE_SYNC_ENTITY_APPROVAL => 'Entity approval sync',
-            default => str($command->type)->replace('_', ' ')->title()->toString(),
+            default => $this->diagnostics->scalarSummary('unknown command', $command->type) ?? 'Unknown command',
         };
     }
 
@@ -143,7 +145,7 @@ class ActiveOperationsSnapshot
             $details[] = 'force';
         }
 
-        if (isset($payload['limit'])) {
+        if (isset($payload['limit']) && is_int($payload['limit']) && $payload['limit'] >= 0) {
             $details[] = "limit {$payload['limit']}";
         }
 
@@ -162,7 +164,7 @@ class ActiveOperationsSnapshot
             'reindex' => 'Full reindex',
             'ocr_reindex' => 'OCR reindex',
             'embedding_index' => 'Embedding index build',
-            default => str($run->type)->replace('_', ' ')->title()->toString(),
+            default => $this->diagnostics->scalarSummary('unknown pipeline', $run->type) ?? 'Unknown pipeline',
         };
     }
 
@@ -171,10 +173,7 @@ class ActiveOperationsSnapshot
         $details = ["Pipeline Run #{$run->id}"];
 
         if ($run->progress_current_phase) {
-            $details[] = str($run->progress_current_phase)
-                ->replace('_', ' ')
-                ->title()
-                ->toString();
+            $details[] = $this->diagnostics->typedScalar('phase', $run->progress_current_phase);
         }
 
         if ($run->reprocess_requested) {

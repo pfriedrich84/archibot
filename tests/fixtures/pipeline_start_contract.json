@@ -6,8 +6,8 @@
       "paperless_modified": "2026-05-08T12:00:00Z",
       "content_hash": "hash",
       "pipeline_version": "v1",
-      "expected_raw": "42:2026-05-08T12:00:00Z:hash:v1",
-      "expected_sha256": "cc903fbb64df5b3fcabd9bf0d3996357606c9a99bf7f569bbb5d42433ef16298"
+      "expected_raw": "42:2026-05-08T12:00:00.000000Z:hash:v1",
+      "expected_sha256": "7e160423633b0d08eb6d0fd2e5c76359ad14d7bb0ab89e66394842978763d832"
     },
     {
       "name": "unknown modified and content fallback",
@@ -27,8 +27,8 @@
       "content_hash": "hash",
       "force_token": "first",
       "pipeline_version": "v1",
-      "expected_raw": "force:42:2026-05-08T12:00:00Z:hash:first:v1",
-      "expected_sha256": "edf8867e25e3736a08f9a58c4f628db82517605b9d5576aac1d0629a540debbb"
+      "expected_raw": "force:42:2026-05-08T12:00:00.000000Z:hash:first:v1",
+      "expected_sha256": "855fd70f36bab8c8c7adede614641bfadf0231b280a7b2a335627c0f598ea65c"
     }
   ],
   "blocked_reason": "embedding_index_not_ready"

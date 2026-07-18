@@ -1,8 +1,7 @@
 """Small data models for Dokument-Verarbeitung.
 
-Keeping these result/intermediate types outside the orchestration module makes
-`document_processing.py` easier to scan without splitting the processing flow
-itself across many shallow modules.
+These result/intermediate types are shared by the durable document actor and
+pipeline helpers without coupling them to orchestration ownership.
 """
 
 from __future__ import annotations

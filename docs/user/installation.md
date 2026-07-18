@@ -24,7 +24,7 @@ oder selbst gebaut.
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
 curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
 cp .env.example .env
-# → Docker-/AI-Provider-Werte eintragen; Paperless-Verbindung wird im Setup-Wizard konfiguriert
+# → PAPERLESS_URL auf den vertrauten Paperless-Origin setzen; weitere Provider-Werte optional
 
 # 2. Starten (zieht automatisch ghcr.io/pfriedrich84/archibot:latest)
 docker compose up -d
@@ -47,7 +47,7 @@ cd archibot
 
 # 2. .env anlegen
 cp .env.example .env
-# → Docker-/AI-Provider-Werte eintragen; Paperless-Verbindung wird im Setup-Wizard konfiguriert
+# → PAPERLESS_URL auf den vertrauten Paperless-Origin setzen; weitere Provider-Werte optional
 
 # 3. Bauen und starten
 docker compose up -d --build
@@ -61,11 +61,11 @@ open http://localhost:8088
 Beim ersten Start wird automatisch der Laravel Setup-Wizard angezeigt (`/setup`).
 Er fuehrt durch:
 
-1. **Paperless-Verbindung** — URL eintragen und mit Paperless-Benutzername/-Passwort eines Superusers verifizieren
-2. **Direkte Anmeldung** — ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt; danach erfolgt die GUI-Anmeldung mit Paperless-Zugangsdaten
-3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; Wizard-Werte gewinnen bei Konflikten
-4. **Admin-Settings** — AI-Provider/Ollama, Inbox-Tag, Klassifikation, Review, Worker, MCP und Audit-Retention werden in `/admin/settings` gepflegt
-5. **Maintenance und Operations Log** — Poll/Reindex/Einzeldokument-Verarbeitung starten ueber Laravel Maintenance; `/operations-log` zeigt durable Commands, Pipeline Runs, Actor Executions, Webhooks und Audit-Logs.
+1. **Paperless-Verbindung** — den aus Deployment-`PAPERLESS_URL` gepinnten Origin read-only pruefen und mit Benutzername/Passwort eines echten Paperless-Superusers verifizieren; Setup kann kein anderes Ziel waehlen
+2. **Tags und direkte Anmeldung** — Inbox-, optionales Processed- und OCR-Requested-Tag anhand lesbarer Namen waehlen; ArchiBot speichert den Paperless-API-Token pro Benutzer verschluesselt
+3. **Einstellungen importieren** — vorhandene Werte aus `.env`/`/data/config.env` werden einmalig in die Laravel-Datenbank importiert; ein alter `paperless.url`-Wert bleibt nur Migrationsdatum und kann den Deployment-Origin nicht ueberschreiben
+4. **Post-Claim Admin-Settings** — nach erfolgreichem Claim wird direkt `/admin/settings/ai-provider` geoeffnet. Dort bleiben AI-Provider-Endpunkte und Discovery sowie Klassifikations-, Embedding-, OCR-, Review-, Worker-, MCP-, GUI- und Audit-Einstellungen editierbar; der Paperless-Origin bleibt read-only
+5. **Admin-Diagnostik und Maintenance** — Nur ArchiBot-Admins koennen Operations Log, Pipeline Runs, Actor Executions, Webhook Deliveries, Statistiken, Fehler, Embedding-Diagnostik, Maintenance und Audit-Logs direkt aufrufen. Die Seiten zeigen Status, IDs, Zaehler, strukturierte Metadaten, Badges und Ereignis-Timelines; rohe JSON-Payloads/Headers sowie freie Fehler-, Dokument-, OCR- und Prompt-Inhalte werden nicht ausgegeben. Konfigurierbare Provider-Profil- und Modell-IDs erscheinen nur als stabile, nicht rueckrechenbare Referenzen. Poll/Reindex/Einzeldokument-Verarbeitung bleibt ueber die admin-geschuetzte Laravel-Maintenance verfuegbar.
 
 Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung und MCP aktiv.
 
@@ -95,6 +95,36 @@ php artisan serve --host=0.0.0.0 --port=8088
 ```
 
 Vor Commits sollten die relevanten Checks laufen: Python `ruff`/`pytest`, Laravel `composer test`, `npm run lint:check`, `npm run format:check`, `npm run types:check` und `npm run build`.
+
+## Upgrade eines persistenten PostgreSQL-Volumes
+
+Vor einem Upgrade muss ein konsistentes PostgreSQL-Backup erstellt und die
+Laravel-Queue angehalten werden. Die Actor-Fencing-Migration laeuft unter
+PostgreSQL in einer Transaktion. Bei mehreren aktiven Ausfuehrungen derselben
+dauerhaften Quelle waehlt sie unabhaengig vom Actor-Namen deterministisch einen
+Gewinner (laufend vor wartend, danach hoechster Versuch und hoechste ID),
+markiert alle Verlierer als
+`failed_permanent` und schreibt pro Verlierer ein Audit-Ereignis
+`actor.execution.reconciled_duplicate`, bevor die partiellen Unique-Indizes
+angelegt werden. Ein alleiniger `pending`-Gewinner besitzt noch keinen nutzbaren
+Queue-Claim. Die Migration ueberfuehrt einen direkt wiederholbaren Gewinner
+deshalb mit sofort faelligem Zeitpunkt in `retrying`, setzt Command, Pipeline Run
+oder Webhook Delivery in den jeweils sicheren Recovery-Zustand und behaelt bis
+zur Redispatch-Transaktion einen uebereinstimmenden Fence-Token. Bei terminalen
+oder blockierten Quellen und bei Process-Document-Webhooks wird nur der obsolete
+Actor-Versuch beendet; die Quelle bleibt ihrem normalen Gate beziehungsweise der
+Pipeline-Start-Reconciliation ueberlassen. Recovery erzeugt fuer faellige
+Versuche anschliessend genau einen neuen `queued` Claim. Migrationstoken sind feste, deterministische 45-Zeichen-Hashes;
+auch maximale PostgreSQL-`bigint`-IDs koennen die 64-Zeichen-Spalten nicht
+ueberschreiten. Ein Fehler rollt Schema, Statusaenderungen und Audit-Ereignisse
+gemeinsam zurueck; das Volume bleibt auf dem alten Stand.
+
+Nach dem Upgrade sind Migrationstatus, Operations Log und Queue vor dem Neustart
+der Worker zu pruefen. Ein Schema-Rollback entfernt die Fencing-Spalten, aktiviert
+aber bereinigte Altversuche nicht wieder. Fuer einen vollstaendigen Rollback daher
+Container und PostgreSQL-Volume stoppen und das Backup in ein neues/leeres Volume
+wiederherstellen. Niemals ein teilweise aktualisiertes Volume mit einer aelteren
+ArchiBot-Version weiterbetreiben.
 
 ## Naechste Schritte
 

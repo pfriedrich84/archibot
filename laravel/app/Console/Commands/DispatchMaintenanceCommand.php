@@ -2,14 +2,14 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
+use App\Models\AuditLog;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
+use App\Support\OperatorPrincipal;
 use Illuminate\Console\Command as ConsoleCommand;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 
 class DispatchMaintenanceCommand extends ConsoleCommand
 {
@@ -26,13 +26,7 @@ class DispatchMaintenanceCommand extends ConsoleCommand
         $type = $this->normalizeType((string) $this->argument('type'));
         $force = (bool) $this->option('force');
         $limit = $this->normalizedLimit($this->option('limit'));
-        try {
-            $request = $this->adminRequest();
-        } catch (RuntimeException $exception) {
-            $this->error($exception->getMessage());
-
-            return self::FAILURE;
-        }
+        $request = $this->localOperatorRequest();
 
         try {
             validator(
@@ -60,9 +54,22 @@ class DispatchMaintenanceCommand extends ConsoleCommand
                 reprocessReason: $force ? 'manual_force' : null,
                 reprocessMode: $force ? 'manual' : null,
                 forceNewRun: $force,
-                requestedByUserId: $request->user()->id,
+                requestedByUserId: null,
             );
 
+            AuditLog::query()->create([
+                'actor_user_id' => null,
+                'event' => 'maintenance.document_pipeline_requested',
+                'target_type' => 'pipeline_run',
+                'target_id' => (string) $result->pipelineRun->id,
+                'metadata' => [
+                    'actor_principal' => OperatorPrincipal::LOCAL_OPERATOR,
+                    'paperless_document_id' => $documentId,
+                    'force' => $force,
+                ],
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'archibot-local-operator',
+            ]);
             $this->info("Document pipeline run {$result->pipelineRun->id} queued for Paperless document {$documentId}.");
 
             return self::SUCCESS;
@@ -87,19 +94,13 @@ class DispatchMaintenanceCommand extends ConsoleCommand
         return self::SUCCESS;
     }
 
-    private function adminRequest(): Request
+    private function localOperatorRequest(): Request
     {
-        $admin = User::query()->where('is_admin', true)->orderBy('id')->first();
-        if ($admin === null) {
-            throw new RuntimeException('No admin user exists; create an admin account before dispatching maintenance commands.');
-        }
-
         $request = Request::create('/cli/archibot/maintenance-command', 'POST');
-        $request->setUserResolver(fn (): User => $admin);
-        $request->headers->set('User-Agent', 'archibot-cli');
+        $request->headers->set('User-Agent', 'archibot-local-operator');
         $request->server->set('REMOTE_ADDR', '127.0.0.1');
 
-        return $request;
+        return OperatorPrincipal::markLocalOperator($request);
     }
 
     private function normalizeType(string $type): string

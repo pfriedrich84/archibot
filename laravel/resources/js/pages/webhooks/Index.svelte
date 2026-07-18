@@ -1,9 +1,11 @@
 <script module lang="ts">
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
+
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Webhook deliveries',
-                href: '/webhook-deliveries',
+                href: webhookDeliveriesIndex(),
             },
         ],
     };
@@ -13,11 +15,15 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { formatDateTime } from '@/lib/datetime';
+    import { formatDisplayValue } from '@/lib/display';
+    import type { Paginator } from '@/types';
 
     type SummaryEntry = {
         key: string;
-        value: unknown;
+        label: string;
+        value: boolean | number | string | null;
     };
 
     type WebhookDelivery = {
@@ -33,17 +39,11 @@
         processed_at: string | null;
         error: string | null;
         payload_summary: SummaryEntry[];
-        header_summary: SummaryEntry[];
         show_url: string;
         retry_url: string;
         dismiss_url: string;
         can_retry: boolean;
         can_dismiss: boolean;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
     };
 
     let {
@@ -53,9 +53,6 @@
         deliveries: Paginator<WebhookDelivery>;
         isAdmin: boolean;
     } = $props();
-
-    const formatValue = (value: unknown) =>
-        typeof value === 'string' ? value : JSON.stringify(value);
 </script>
 
 <AppHead title="Webhook deliveries" />
@@ -116,37 +113,19 @@
                     </div>
                 {/if}
 
-                {#if delivery.payload_summary.length || delivery.header_summary.length}
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <div class="rounded-md bg-muted/50 p-3">
-                            <div class="font-medium">Payload summary</div>
-                            {#each delivery.payload_summary as entry (entry.key)}
-                                <div
-                                    class="mt-1 break-all text-xs text-muted-foreground"
-                                >
-                                    {entry.key}: {formatValue(entry.value)}
-                                </div>
-                            {:else}
-                                <div class="mt-1 text-xs text-muted-foreground">
-                                    No payload.
-                                </div>
-                            {/each}
-                        </div>
-                        <div class="rounded-md bg-muted/50 p-3">
-                            <div class="font-medium">Header summary</div>
-                            {#each delivery.header_summary as entry (entry.key)}
-                                <div
-                                    class="mt-1 break-all text-xs text-muted-foreground"
-                                >
-                                    {entry.key}: {formatValue(entry.value)}
-                                </div>
-                            {:else}
-                                <div class="mt-1 text-xs text-muted-foreground">
-                                    No headers.
-                                </div>
-                            {/each}
-                        </div>
-                    </div>
+                {#if delivery.payload_summary.length}
+                    <dl
+                        class="grid gap-2 rounded-md bg-muted/50 p-3 text-xs md:grid-cols-2"
+                    >
+                        {#each delivery.payload_summary as entry (entry.key)}
+                            <div>
+                                <dt class="font-medium">{entry.label}</dt>
+                                <dd class="break-all text-muted-foreground">
+                                    {formatDisplayValue(entry.value, entry.key)}
+                                </dd>
+                            </div>
+                        {/each}
+                    </dl>
                 {/if}
 
                 {#if isAdmin && (delivery.can_retry || delivery.can_dismiss)}
@@ -165,7 +144,19 @@
                             </Form>
                         {/if}
                         {#if delivery.can_dismiss}
-                            <Form method="post" action={delivery.dismiss_url}>
+                            <Form
+                                method="post"
+                                action={delivery.dismiss_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
                                 {#snippet children({ processing })}
                                     <button
                                         type="submit"
@@ -185,5 +176,13 @@
                 No webhook deliveries yet.
             </div>
         {/each}
+        <Pagination
+            links={deliveries.links}
+            from={deliveries.from}
+            to={deliveries.to}
+            total={deliveries.total}
+            perPage={deliveries.per_page}
+            label="Webhook delivery pages"
+        />
     </div>
 </div>

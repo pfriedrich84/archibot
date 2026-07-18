@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Webhook deliveries',
-                href: '/webhook-deliveries',
+                href: webhookDeliveriesIndex(),
             },
             {
                 title: 'Delivery detail',
@@ -18,10 +19,12 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
+    import { formatDisplayValue } from '@/lib/display';
 
     type SummaryEntry = {
         key: string;
-        value: unknown;
+        label: string;
+        value: boolean | number | string | null;
     };
 
     type WebhookDelivery = {
@@ -37,10 +40,6 @@
         processed_at: string | null;
         error: string | null;
         payload_summary: SummaryEntry[];
-        header_summary: SummaryEntry[];
-        raw_payload: Record<string, unknown>;
-        normalized_payload: Record<string, unknown>;
-        headers: Record<string, unknown>;
         pipeline_events: {
             id: number;
             event_type: string;
@@ -49,7 +48,7 @@
             paperless_document_id: number | null;
             pipeline_run_id: number | null;
             command_id: number | null;
-            payload: Record<string, unknown>;
+            metadata: SummaryEntry[];
             created_at: string | null;
         }[];
         retry_url: string;
@@ -65,8 +64,6 @@
         delivery: WebhookDelivery;
         isAdmin: boolean;
     } = $props();
-
-    const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 </script>
 
 <AppHead title={`Webhook delivery ${delivery.id}`} />
@@ -103,7 +100,19 @@
                         </Form>
                     {/if}
                     {#if delivery.can_dismiss}
-                        <Form method="post" action={delivery.dismiss_url}>
+                        <Form
+                            method="post"
+                            action={delivery.dismiss_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Dismiss webhook failure ${delivery.id}? It will no longer appear as an active failure.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
                             {#snippet children({ processing })}
                                 <button
                                     type="submit"
@@ -183,9 +192,23 @@
                     {#if event.message}
                         <div class="mt-1 break-words">{event.message}</div>
                     {/if}
-                    <pre class="mt-2 overflow-x-auto text-xs">{pretty(
-                            event.payload,
-                        )}</pre>
+                    {#if event.metadata.length > 0}
+                        <dl class="mt-2 grid gap-1 text-xs sm:grid-cols-2">
+                            {#each event.metadata as entry (entry.key)}
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        {entry.label}
+                                    </dt>
+                                    <dd>
+                                        {formatDisplayValue(
+                                            entry.value,
+                                            entry.key,
+                                        )}
+                                    </dd>
+                                </div>
+                            {/each}
+                        </dl>
+                    {/if}
                 </div>
             {:else}
                 <div class="text-muted-foreground">
@@ -195,26 +218,24 @@
         </div>
     </section>
 
-    <section class="grid gap-4 lg:grid-cols-2">
-        <div class="rounded-xl border">
-            <div class="border-b px-4 py-3 font-semibold">
-                Normalized payload
-            </div>
-            <pre class="overflow-x-auto p-4 text-xs">{pretty(
-                    delivery.normalized_payload,
-                )}</pre>
-        </div>
-        <div class="rounded-xl border">
-            <div class="border-b px-4 py-3 font-semibold">Raw payload</div>
-            <pre class="overflow-x-auto p-4 text-xs">{pretty(
-                    delivery.raw_payload,
-                )}</pre>
-        </div>
-        <div class="rounded-xl border lg:col-span-2">
-            <div class="border-b px-4 py-3 font-semibold">Headers</div>
-            <pre class="overflow-x-auto p-4 text-xs">{pretty(
-                    delivery.headers,
-                )}</pre>
-        </div>
+    <section class="rounded-xl border p-4">
+        <h2 class="mb-3 font-semibold">Delivery metadata</h2>
+        {#if delivery.payload_summary.length > 0}
+            <dl class="grid gap-3 text-sm md:grid-cols-2">
+                {#each delivery.payload_summary as entry (entry.key)}
+                    <div>
+                        <dt class="text-muted-foreground">{entry.label}</dt>
+                        <dd class="font-medium">
+                            {formatDisplayValue(entry.value, entry.key)}
+                        </dd>
+                    </div>
+                {/each}
+            </dl>
+        {:else}
+            <p class="text-sm text-muted-foreground">
+                No allowlisted delivery metadata was recorded. Raw payloads and
+                headers are intentionally not displayed.
+            </p>
+        {/if}
     </section>
 </div>

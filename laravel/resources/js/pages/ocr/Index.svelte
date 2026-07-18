@@ -1,9 +1,11 @@
 <script module lang="ts">
+    import { index as ocrReviewsIndex } from '@/routes/ocr-reviews';
+
     export const layout = {
         breadcrumbs: [
             {
                 title: 'OCR reviews',
-                href: '/ocr-reviews',
+                href: ocrReviewsIndex(),
             },
         ],
     };
@@ -13,19 +15,17 @@
     import { Link } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
+    import { show } from '@/routes/ocr-reviews';
+    import type { Paginator } from '@/types';
 
     type OcrReview = {
         id: number;
         paperless_document_id: number;
         status: string;
         created_at: string | null;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
     };
 
     let { reviews }: { reviews: Paginator<OcrReview> } = $props();
@@ -64,10 +64,7 @@
 
                 <Button variant="outline" asChild>
                     {#snippet children(props)}
-                        <Link
-                            href={`/ocr-reviews/${review.id}`}
-                            class={props.class}
-                        >
+                        <Link href={show(review.id)} class={props.class}>
                             Review
                         </Link>
                     {/snippet}
@@ -78,5 +75,13 @@
                 No accessible OCR reviews are available.
             </div>
         {/each}
+        <Pagination
+            links={reviews.links}
+            from={reviews.from}
+            to={reviews.to}
+            total={reviews.total}
+            perPage={reviews.per_page}
+            label="OCR review pages"
+        />
     </div>
 </div>

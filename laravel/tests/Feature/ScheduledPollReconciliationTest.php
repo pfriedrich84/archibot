@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\RunPythonActorJob;
 use App\Models\Command;
+use App\Models\PipelineEvent;
 use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use Illuminate\Console\Scheduling\Schedule;
@@ -36,6 +37,9 @@ class ScheduledPollReconciliationTest extends TestCase
             'command_id' => $command->id,
             'event_type' => 'scheduler.poll_reconciliation_actor_queued',
         ]);
+        $event = PipelineEvent::query()->where('command_id', $command->id)->oldest()->firstOrFail();
+        $this->assertSame('system_scheduler', $event->payload['actor_principal']);
+        $this->assertNull($event->payload['actor_user_id']);
     }
 
     public function test_scheduled_poll_skips_when_disabled(): void

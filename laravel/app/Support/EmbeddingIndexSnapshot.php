@@ -72,13 +72,12 @@ class EmbeddingIndexSnapshot
 
     private function paperlessDocumentCount(Request $request): int
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()?->paperless_token;
 
-        if (! $paperlessUrl || ! $token) {
+        if (! $token) {
             throw new \RuntimeException('Paperless connection is not configured for this user.');
         }
 
-        return app(PaperlessClient::class, ['baseUrl' => $paperlessUrl])->documentCount($token);
+        return app(PaperlessClient::class)->documentCount($token);
     }
 }

@@ -5,8 +5,8 @@ namespace App\Services\Pipeline;
 use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
+use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +14,10 @@ use Throwable;
 
 class MaintenanceCommandDispatcher
 {
+    public function __construct(
+        private readonly PipelineStartGate $pipelineStartGate,
+    ) {}
+
     public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): Command
     {
         return Cache::lock('archibot:poll-command-dispatch', 120)->block(
@@ -150,18 +154,7 @@ class MaintenanceCommandDispatcher
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): Command
     {
         $limit = $this->normalizedLimit($limit);
-        $embeddingState = EmbeddingIndexState::query()->latest()->first();
-        if ($embeddingState === null) {
-            $embeddingState = EmbeddingIndexState::query()->create([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Reindex requested by admin before an index existed.',
-            ]);
-        } else {
-            $embeddingState->forceFill([
-                'status' => EmbeddingIndexState::STATUS_STALE,
-                'error' => 'Reindex requested by admin.',
-            ])->save();
-        }
+        $embeddingState = $this->pipelineStartGate->markStale('Reindex requested by admin.');
 
         $payload = array_filter([
             'limit' => $limit,
@@ -272,7 +265,7 @@ class MaintenanceCommandDispatcher
             'type' => $type,
             'status' => Command::STATUS_PENDING,
             'payload' => $payload,
-            'created_by_user_id' => $request->user()->id,
+            'created_by_user_id' => OperatorPrincipal::userId($request),
         ]);
     }
 
@@ -285,8 +278,8 @@ class MaintenanceCommandDispatcher
             'level' => $level,
             'message' => $message,
             'payload' => [
-                'actor_user_id' => $request->user()->id,
-                'actor_is_admin' => true,
+                ...OperatorPrincipal::metadata($request),
+                'actor_is_admin' => (bool) OperatorPrincipal::user($request)?->is_admin,
                 'command_id' => $command->id,
                 ...$payload,
             ],
@@ -302,7 +295,8 @@ class MaintenanceCommandDispatcher
             'level' => $level,
             'message' => $message,
             'payload' => [
-                'actor' => 'laravel_scheduler',
+                'actor_principal' => OperatorPrincipal::SYSTEM_SCHEDULER,
+                'actor_user_id' => null,
                 'command_id' => $command->id,
                 ...$payload,
             ],
@@ -313,12 +307,13 @@ class MaintenanceCommandDispatcher
     private function audit(Request $request, string $event, Command $command, array $metadata, string $targetType = 'command'): void
     {
         AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
+            'actor_user_id' => OperatorPrincipal::userId($request),
             'event' => $event,
             'target_type' => $targetType,
             'target_id' => (string) $command->id,
             'metadata' => [
                 'command_id' => $command->id,
+                ...OperatorPrincipal::metadata($request),
                 ...$metadata,
             ],
             'ip_address' => $request->ip(),

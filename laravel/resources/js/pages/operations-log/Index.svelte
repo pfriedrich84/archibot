@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as operationsLogIndex } from '@/routes/operations-log';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Operations Log',
-                href: '/operations-log',
+                href: operationsLogIndex(),
             },
         ],
     };

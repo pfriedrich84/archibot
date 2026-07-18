@@ -31,6 +31,9 @@ ALLOWED_PORTABLE_VALUES = {
     "/api/chat",
     "/chat/completions",
     "/data",
+    # Dependabot's repository-root manifest directory in generated commit
+    # summaries, not a local workstation path.
+    "/laravel",
 }
 
 FORBIDDEN_PATTERNS = {

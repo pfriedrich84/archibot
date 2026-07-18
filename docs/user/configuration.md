@@ -2,7 +2,7 @@
 
 Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend.
 
-> **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
+> **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track; der [RAG-Entwurf](../architecture/authorization-safe-rag-design.md) ist keine Freigabe.
 
 > Hinweis: Die mitgelieferte `.env.example` nutzt ein 6GB-VRAM-Preset
 > (staerkere Embedding/OCR-Modelle). Die Tabellen unten dokumentieren die
@@ -14,18 +14,27 @@ Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Set
 3. Legacy `{DATA_DIR}/config.env` — nur fuer den einmaligen Import beim Setup
 4. Defaults — in Laravel/Python hinterlegt
 
+Ausnahme: `PAPERLESS_URL` ist ein Deployment-Trust-Anchor und hat immer Vorrang vor PostgreSQL und Legacy-Dateien. Setup, Tag-Laden, Login, Admin-Ansicht, alle Laravel-Paperless-Clients und der Python-Runtime-Export verwenden exakt diesen normalisierten Origin. Die Setup-/Admin-UI zeigt ihn read-only; gesendete Overrides werden abgelehnt.
+
 ## Paperless-NGX
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `PAPERLESS_URL` | — | Basis-URL, z.B. `http://paperless:8000` |
+| `PAPERLESS_URL` | — | Zwingender, deployment-eigener Origin, z.B. `http://paperless:8000`. Nur `http(s)://host[:port]`, ohne Credentials, Pfad, Query oder Fragment. Aenderungen erfordern ein bewusstes Deployment-Update und Neustart. |
+| `PAPERLESS_HTTP_TIMEOUT_SECONDS` | `10` | Laravel Connect-/Request-Timeout fuer Paperless-Aufrufe; Connect-Timeout ist maximal 5 Sekunden. |
+| `PAPERLESS_HTTP_MAX_RESPONSE_BYTES` | `2097152` | Maximale tatsaechlich gepufferte/dekodierte Paperless-JSON-Responsegroesse fuer Laravel-Aufrufe; gilt auch ohne `Content-Length` sowie fuer komprimierte/chunked Antworten. |
+| `PAPERLESS_HTTP_MAX_PREVIEW_BYTES` | `52428800` | Separates Limit fuer tatsaechlich gepufferte/dekodierte Dokumentvorschauen. Das groessere, weiterhin endliche Limit verhindert, dass regulaere PDF-Previews am kleineren JSON-Limit scheitern. |
+| `SETUP_RATE_LIMIT_PER_MINUTE` | `5` | Gemeinsames Limit pro Benutzername/IP fuer Setup-Abschluss und Tag-Verifikation; auch ungueltige Versuche zaehlen. |
+| `MODEL_DISCOVERY_RATE_LIMIT_PER_MINUTE` | `10` | Limit pro angemeldetem Admin fuer AI-Modell-Discovery. |
 | `PAPERLESS_INBOX_TAG_ID` | — | ID des Tags `Posteingang`; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag-ID, die nach Commit gesetzt wird; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |
 
 ## AI Provider / Ollama (allgemein)
 
-ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werden Ollama-kompatible Provider und OpenAI-kompatible `/v1`-APIs. Die Setup-UI kann Modelle vom gewaehlten Provider laden; manuelle Eingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
+ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werden Ollama-kompatible Provider und OpenAI-kompatible `/v1`-APIs. Die oeffentlichen Setup- und Tag-Verifikationsfelder sind serverseitig begrenzt (Paperless-URL 2048, Benutzername 150, Passwort/Webhook-Secret 1024 und Reset-Token 255 Zeichen; Tag-IDs muessen positive 32-Bit-Integer sein).
+
+Editierbare AI-Provider-Endpunkte und Modell-Discovery werden erst nach abgeschlossenem Setup in der authentifizierten Admin-Settings-UI angeboten; der oeffentliche Bootstrap nimmt keine frei waehlbaren Provider-Ziele an. Manuelle Modelleingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
 
 Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. ein lokaler OpenAI-kompatibler Embedding-Endpoint plus ein separater OpenAI-kompatibler Judge-Endpoint. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
 
@@ -121,7 +130,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 
 ## Phase 3: Klassifikation
 
-> **Security-Hinweis:** Confidence-basiertes Auto-Commit ist gemaess ADR-0018 deaktiviert. Laravel exportiert den effektiven Wert `0`, Python erzwingt `0`, und alte Environment-, Import- oder PostgreSQL-Werte koennen weder Annahme noch Paperless-Write ausloesen. Das Admin-Feld ist deshalb read-only.
+> **Security-Hinweis:** Confidence-basiertes Auto-Commit ist gemaess ADR-0018 deaktiviert. Laravel exportiert den effektiven Wert `0`, Python erzwingt `0`, und alte Environment-, Import- oder PostgreSQL-Werte koennen weder Annahme noch Paperless-Write ausloesen. Das Admin-Feld ist deshalb read-only. Der [Safe-Automation-Entwurf](../architecture/safe-automation-design.md) beschreibt nur Forschungs- und Freigabe-Gates und aktiviert diese Einstellung nicht.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -142,7 +151,6 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `ARCHIBOT_RECOVERY_INTERVAL_SECONDS` | `30` | Sekunden zwischen Laravel-native Recovery-Scans fuer durable Commands, Runs, Webhooks und Actor Executions. |
 | `ARCHIBOT_STALE_QUEUED_MINUTES` | `5` | Ab wann queued Arbeit ohne aktiven Actor sicher erneut dispatcht werden darf. |
 | `ARCHIBOT_STALE_RUNNING_MINUTES` | `10` | Ab wann ein Actor ohne aktuellen Fortschritt als stale gilt und ueber seine durable Quelle recovered wird. |
-| `ABSURD_DATABASE_URL` | — | Nur noch migration-only Konfiguration bis zum separaten Absurd-Cleanup. Supervisor startet keinen Absurd Worker oder Recovery-Bridge mehr. |
 
 ## Laravel/Svelte GUI
 
@@ -160,9 +168,13 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `QUEUE_CONNECTION` | `database` | Erforderliches Laravel Queue Backend; andere Backends werden beim Start abgelehnt. |
 | `QUEUE_WORKER_TIMEOUT` | `21600` | Maximale Laufzeit eines Laravel Actor-Jobs in Sekunden. |
 | `DB_QUEUE_RETRY_AFTER` | `21720` | Queue-Lease in Sekunden; muss groesser als das sechsstuendige Actor-Timeout bleiben. |
-| `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/` |
+| `APP_PATH_PREFIX` | — | Optionaler Pfadpraefix; leer bedeutet GUI direkt unter `/`, z.B. `archibot` stellt die Oberflaeche unter `/archibot` bereit. Interne Navigation, Setup-/Settings-Aktionen, Vorschauen und API-Aufrufe verwenden den Praefix automatisch. Nach einer Aenderung ist ein Container-Neustart erforderlich. |
 
 Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Posteingang` statt `124`). IDs bleiben nur interne technische Referenzen.
+
+Paginierten Listen fuer Reviews, OCR, Pipeline Runs, Webhooks und Fehler bieten eine gemeinsame Seitennavigation und Seitengroesse. Filter und Sortierung bleiben beim Seitenwechsel erhalten. Globale, barrierearm ausgezeichnete Statusmeldungen bestaetigen erfolgreiche oder fehlgeschlagene Aktionen. Bereits laufende Formulare deaktivieren ihre Schaltflaeche gegen Doppelklicks; Sammel- und destruktive Aktionen nennen Anzahl und Auswirkung in einer Bestaetigung.
+
+Nach dem ersten Setup fuehrt ArchiBot den neuen Administrator zur AI-Provider-Sektion. Falls die Modell-Discovery keine brauchbare `/models`-Liste liefert oder unvollstaendig ist, kann dort fuer Klassifikation, Embeddings, OCR Text/Vision oder Judge eine manuelle Modell-ID eingegeben werden. **Validate model** fuehrt einen kleinen rollenspezifischen Provider-Aufruf aus; erst bei Erfolg wird die ID in das passende Settings-Feld uebernommen. Discovery-Fehler und Modellvalidierungsfehler werden getrennt angezeigt. Anschliessend muessen die Settings gespeichert werden.
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 
@@ -179,7 +191,7 @@ Siehe [Webhook-Doku und Rotations-Runbook](./webhooks.md).
 
 ## MCP Server (optional)
 
-MCP-Transport, Host/Port, Write-Tool-Schalter, Auth-Modus und Rate-Limit koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen.
+MCP-Transport und Host/Port koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen. Seit Hardening-Milestone 2.1 sind alle Tools und Resources retired, bis vollstaendige berechtigungsgebundene Laravel/PostgreSQL-Seams vorliegen; die folgenden Write-, Key- und Classification-Schalter sind daher inert und werden in einem spaeteren Konfigurations-Cleanup entfernt.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -187,12 +199,12 @@ MCP-Transport, Host/Port, Write-Tool-Schalter, Auth-Modus und Rate-Limit koennen
 | `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `sse`, `streamable-http` |
 | `MCP_PORT` | `3001` | Port fuer SSE/HTTP-Transport |
 | `MCP_HOST` | `0.0.0.0` | Bind-Adresse |
-| `MCP_ENABLE_WRITE` | `false` | Write-Tools aktivieren |
-| `MCP_API_KEY` | — | Legacy-API-Key, nur wenn Laravel MCP Auth deaktiviert ist |
-| `MCP_LARAVEL_AUTH_ENABLED` | `true` | MCP-Tokens ueber Laravel pruefen |
+| `MCP_ENABLE_WRITE` | `false` | Inert; es sind keine MCP-Write-Tools registriert |
+| `MCP_API_KEY` | — | Inert fuer registrierte Tools; statische Keys tragen keine verifizierte Benutzeridentitaet |
+| `MCP_LARAVEL_AUTH_ENABLED` | `true` | Muss vor einer zukuenftigen Tool-Rueckkehr aktiv sein; MCP-Tokens ueber Laravel pruefen |
 | `MCP_LARAVEL_PATH` | `/app/laravel` | Pfad zur Laravel-App fuer den lokalen Verifier |
 | `MCP_LARAVEL_PHP_BINARY` | `php` | PHP-Binary fuer den lokalen Verifier |
-| `MCP_CLASSIFY_RATE_LIMIT` | `10` | Max. KI-Klassifikationen pro Stunde (0 = unbegrenzt) |
+| `MCP_CLASSIFY_RATE_LIMIT` | `10` | Inert, solange `classify_document` retired ist |
 
 Details: [MCP-Server-Dokumentation](../developer/mcp.md)
 
@@ -205,6 +217,12 @@ Diese Werte sind bewusst runtime-/deployment-only und werden nicht ueber `/admin
 | `DATA_DIR` | `/data` | Persistentes Datenverzeichnis (DB, Config) |
 | `LOG_LEVEL` | `INFO` | Log-Level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
+## Upgrade bestehender Installationen: gepinnter Paperless-Origin
+
+Vor dem Upgrade muss `PAPERLESS_URL` im Deployment explizit auf den bereits vertrauten Paperless-Origin gesetzt werden. Fehlt der Wert oder enthaelt er Credentials, Pfad, Query oder Fragment, schlagen Setup und Paperless-Verbindungen geschlossen fehl; ArchiBot faellt nicht auf einen gespeicherten Wert zurueck.
+
+Ein bestehender PostgreSQL-Wert `paperless.url` oder `PAPERLESS_URL` in `/data/config.env` wird als Legacy-Migrationsdatum beibehalten, aber nicht mehr als Ziel verwendet. Die Admin-UI zeigt den Deployment-Origin read-only. Jeder verwaltete Python-Runtime-Export ersetzt einen alten Datei-/DB-/Call-Site-Wert durch den Deployment-Origin. Bei einem bewusst geaenderten Paperless-Ziel: Paperless-Workflows pausieren, `PAPERLESS_URL` im Deployment aendern, Container neu starten, Erreichbarkeit und Superuser-Login pruefen und erst dann Workflows fortsetzen. Ein unbeabsichtigter Zielwechsel sollte durch Zuruecksetzen der Deployment-Variable und Neustart zurueckgerollt werden, nicht durch Datenbank-Edits.
+
 ## Settings-UI
 
-Admin-Settings liegen in der Laravel-Oberflaeche unter `/admin/settings`; per-user MCP Tokens unter `/settings/mcp-tokens`. Secrets werden maskiert und write-only gespeichert. Aenderungen werden in der Laravel-Datenbank auditiert.
+Admin-Settings liegen in der Laravel-Oberflaeche unter `/admin/settings`; per-user MCP Tokens unter `/settings/mcp-tokens`. Secrets werden maskiert und write-only gespeichert. Aenderungen werden in der Laravel-Datenbank auditiert. `paperless.url` ist die read-only Ausnahme und wird vom Deployment bestimmt.

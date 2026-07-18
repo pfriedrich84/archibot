@@ -19,6 +19,12 @@ class ReviewSuggestionTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['archibot.paperless_url' => 'https://paperless.example']);
+    }
+
     public function test_authenticated_users_can_view_pending_review_queue(): void
     {
         $user = User::factory()->create(['is_admin' => true]);
@@ -498,7 +504,8 @@ class ReviewSuggestionTest extends TestCase
                 'proposed_storage_path_id' => 66,
                 'proposed_storage_path_name' => 'Edited storage',
             ])
-            ->assertRedirect(route('review.show', $suggestion));
+            ->assertRedirect(route('review.show', $suggestion))
+            ->assertSessionHas('status', 'Review edits saved.');
 
         $suggestion->refresh();
         $this->assertSame('Edited title', $suggestion->proposed_title);
@@ -542,7 +549,8 @@ class ReviewSuggestionTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('review.accept', $suggestion))
-            ->assertRedirect(route('review.index'));
+            ->assertRedirect(route('review.index'))
+            ->assertSessionHas('status', 'Review accepted; the Paperless metadata update was queued.');
 
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $suggestion->refresh()->status);
         $command = Command::query()->firstOrFail();
@@ -564,7 +572,8 @@ class ReviewSuggestionTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('review.reject', $suggestion))
-            ->assertRedirect(route('review.index'));
+            ->assertRedirect(route('review.index'))
+            ->assertSessionHas('status', 'Review rejected; no Paperless metadata was changed.');
 
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $suggestion->refresh()->status);
     }

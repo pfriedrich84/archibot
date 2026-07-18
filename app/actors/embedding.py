@@ -7,16 +7,17 @@ import time
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import (
+from app.execution_lifecycle import (
+    ExecutionLifecycle,
     finish_actor_execution,
-    schedule_actor_execution_retry,
     start_actor_execution,
+    update_actor_execution_progress,
 )
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
@@ -28,8 +29,7 @@ from app.jobs.embedding_index import (
     start_embedding_index_build,
     update_embedding_index_progress,
 )
-from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.progress import ProgressSnapshot
 from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
@@ -163,16 +163,18 @@ async def _build_pgvector_embeddings(
 
 
 def _build_initial_embedding_index_impl(
-    limit: int | None = None, *, command_id: int | None = None
+    limit: int | None = None,
+    *,
+    command_id: int | None = None,
+    actor_name: str = "build_embedding_index",
 ) -> None:
     """Build the initial PostgreSQL/pgvector document embedding index."""
     limit = _coerce_limit(limit)
     started = time.monotonic()
-    actor_name = "build_initial_embedding_index"
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         command_id=command_id,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     build = start_embedding_index_build(
         embedding_model=settings.ollama_embed_model,
@@ -190,7 +192,7 @@ def _build_initial_embedding_index_impl(
         )
         finish_actor_execution(
             actor_execution,
-            status="skipped",
+            status="blocked",
             error_type="embedding_index_already_building",
             error_message=message,
         )
@@ -200,7 +202,7 @@ def _build_initial_embedding_index_impl(
         "embedding index actor started",
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         embedding_index_state_id=build.id,
         limit=limit,
     )
@@ -254,70 +256,22 @@ def _build_initial_embedding_index_impl(
         )
         finish_actor_execution(
             actor_execution,
-            status="succeeded" if failed_count == 0 else "failed",
+            status="succeeded" if failed_count == 0 else "failed_permanent",
             error_type=None if failed_count == 0 else "embedding_documents_failed",
             error_message=None
             if failed_count == 0
             else f"{failed_count} document embeddings failed",
         )
     except Exception as exc:
-        retry_class = classify_exception(exc)
-        attempt = actor_execution.attempt
-        max_attempts = 5
-        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
-            backoff_seconds = retry_backoff_seconds(attempt)
-            detail = str(exc).strip()
-            retry_error = f"Retry scheduled after {type(exc).__name__}."
-            if detail:
-                retry_error = f"Retry scheduled after {type(exc).__name__}: {detail[:900]}"
-            finish_embedding_index_build(
-                build.id,
-                status="failed",
-                error=retry_error,
-            )
-            schedule_actor_execution_retry(
-                actor_execution,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=backoff_seconds,
-                error_message=str(exc)[:1000],
-            )
-            publish_pipeline_event(
-                types.ACTOR_RETRY_SCHEDULED,
-                level="warning",
-                message="Embedding index actor retry scheduled.",
-                payload={
-                    "actor_name": actor_name,
-                    "embedding_index_state_id": build.id,
-                    "retry_class": retry_class.value,
-                    "retry_reason": type(exc).__name__,
-                    "backoff_seconds": backoff_seconds,
-                },
-            )
-            raise
-
+        ExecutionLifecycle(actor_execution).fail(exc)
         finish_embedding_index_build(build.id, status="failed", error=str(exc)[:1000])
-        finish_actor_execution(
-            actor_execution,
-            status="failed",
-            error_type=retry_class.value,
-            error_message=str(exc)[:1000],
-        )
         raise
 
     log.info(
         "embedding index actor completed",
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         embedding_index_state_id=build.id,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    build_initial_embedding_index = queue_backend.actor(queue_name=queue_name("embedding"))(
-        _build_initial_embedding_index_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    build_initial_embedding_index = _build_initial_embedding_index_impl

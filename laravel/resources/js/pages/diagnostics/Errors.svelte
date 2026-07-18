@@ -1,6 +1,8 @@
 <script module lang="ts">
+    import { index as errorsBreadcrumb } from '@/routes/errors';
+
     export const layout = {
-        breadcrumbs: [{ title: 'Errors', href: '/errors' }],
+        breadcrumbs: [{ title: 'Errors', href: errorsBreadcrumb() }],
     };
 </script>
 
@@ -8,19 +10,12 @@
     import { Form } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
-    import { displayEntries } from '@/lib/display';
+    import { formatDisplayValue } from '@/lib/display';
     import { index as errorsIndex } from '@/routes/errors';
-
-    type LegacyError = {
-        id: number;
-        occurred_at: string | null;
-        stage: string | null;
-        document_reference: number | null;
-        message: string;
-        details: Record<string, unknown> | null;
-    };
+    import type { Paginator } from '@/types';
 
     type WebhookError = {
         id: number;
@@ -33,7 +28,11 @@
         received_at: string | null;
         processed_at: string | null;
         error: string | null;
-        payload_summary: { key: string; value: unknown }[];
+        payload_summary: {
+            key: string;
+            label: string;
+            value: boolean | number | string | null;
+        }[];
         show_url: string;
         retry_url: string | null;
         dismiss_url: string | null;
@@ -41,29 +40,15 @@
         can_dismiss: boolean;
     };
 
-    type PaginatorLink = {
-        url: string | null;
-        label: string;
-        active: boolean;
-    };
-
-    type Paginator<T> = {
-        data: T[];
-        total: number;
-        links: PaginatorLink[];
-    };
-
     let {
         filters,
         filterOptions,
         webhookErrors,
-        legacyErrors,
         isAdmin,
     }: {
-        filters: { source: string; status: string };
+        filters: { source: string; status: string; per_page: number };
         filterOptions: { sources: string[]; statuses: string[] };
         webhookErrors: Paginator<WebhookError>;
-        legacyErrors: LegacyError[];
         isAdmin: boolean;
     } = $props();
 
@@ -71,12 +56,6 @@
         value
             .replaceAll('_', ' ')
             .replace(/^./, (character) => character.toUpperCase());
-
-    const formatValue = (value: unknown) =>
-        typeof value === 'string' ? value : JSON.stringify(value);
-
-    const paginationLabel = (value: string) =>
-        value.replace('&laquo;', '‹').replace('&raquo;', '›');
 </script>
 
 <AppHead title="Errors" />
@@ -84,13 +63,13 @@
 <div class="space-y-6">
     <Heading
         title="Errors"
-        description="Diagnose blocked webhook deliveries and recent legacy Python errors from one operations page."
+        description="Diagnose blocked and failed durable webhook deliveries."
     />
 
     <form
         method="get"
         action={errorsIndex().url}
-        class="grid gap-3 rounded-xl border p-4 text-sm md:grid-cols-[1fr_1fr_auto]"
+        class="grid gap-3 rounded-xl border p-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto]"
     >
         <label class="grid gap-1">
             <span class="font-medium">Source</span>
@@ -115,6 +94,19 @@
                     <option value={status} selected={filters.status === status}>
                         {label(status)}
                     </option>
+                {/each}
+            </select>
+        </label>
+        <label class="grid gap-1">
+            <span class="font-medium">Page size</span>
+            <select
+                name="per_page"
+                class="rounded-md border bg-background px-3 py-2"
+            >
+                {#each [10, 25, 50, 100] as size (size)}
+                    <option value={size} selected={filters.per_page === size}
+                        >{size}</option
+                    >
                 {/each}
             </select>
         </label>
@@ -176,9 +168,9 @@
                     </div>
                     {#each delivery.payload_summary as entry (entry.key)}
                         <div class="grid gap-1 sm:grid-cols-[7rem_1fr]">
-                            <dt class="text-muted-foreground">{entry.key}</dt>
+                            <dt class="text-muted-foreground">{entry.label}</dt>
                             <dd class="break-all">
-                                {formatValue(entry.value)}
+                                {formatDisplayValue(entry.value, entry.key)}
                             </dd>
                         </div>
                     {/each}
@@ -198,7 +190,19 @@
                             </Form>
                         {/if}
                         {#if delivery.can_dismiss && delivery.dismiss_url}
-                            <Form method="post" action={delivery.dismiss_url}>
+                            <Form
+                                method="post"
+                                action={delivery.dismiss_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Dismiss webhook failure ${delivery.id}? It will be removed from the active error list.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
                                 {#snippet children({ processing })}
                                     <Button
                                         type="submit"
@@ -218,68 +222,13 @@
             </div>
         {/each}
 
-        {#if webhookErrors.links.length > 3}
-            <nav class="flex flex-wrap gap-2 border-t p-4 text-sm">
-                {#each webhookErrors.links as link, index (`${link.label}-${link.url ?? index}`)}
-                    {#if link.url}
-                        <a
-                            class:font-semibold={link.active}
-                            class="rounded-md border px-3 py-1"
-                            href={link.url}>{paginationLabel(link.label)}</a
-                        >
-                    {:else}
-                        <span class="rounded-md border px-3 py-1 opacity-50"
-                            >{paginationLabel(link.label)}</span
-                        >
-                    {/if}
-                {/each}
-            </nav>
-        {/if}
-    </section>
-
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            {legacyErrors.length} Python classifier error{legacyErrors.length ===
-            1
-                ? ''
-                : 's'}
-        </div>
-
-        {#each legacyErrors as error (error.id)}
-            <article class="space-y-2 border-b p-4 text-sm last:border-b-0">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">
-                        {error.stage ?? 'Classifier'} error
-                    </span>
-                    {#if error.document_reference}
-                        <span class="text-muted-foreground">
-                            document reference {error.document_reference}
-                        </span>
-                    {/if}
-                    {#if error.occurred_at}
-                        <span class="text-muted-foreground">
-                            {formatDateTime(error.occurred_at)}
-                        </span>
-                    {/if}
-                </div>
-                <p class="text-destructive">{error.message}</p>
-                {#if displayEntries(error.details).length > 0}
-                    <dl class="grid gap-1 text-xs">
-                        {#each displayEntries(error.details) as entry (entry.key)}
-                            <div class="grid gap-1 sm:grid-cols-[10rem_1fr]">
-                                <dt class="text-muted-foreground">
-                                    {entry.label}
-                                </dt>
-                                <dd>{entry.value}</dd>
-                            </div>
-                        {/each}
-                    </dl>
-                {/if}
-            </article>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No recent Python classifier errors match the current filters.
-            </div>
-        {/each}
+        <Pagination
+            links={webhookErrors.links}
+            from={webhookErrors.from}
+            to={webhookErrors.to}
+            total={webhookErrors.total}
+            perPage={webhookErrors.per_page}
+            label="Error pages"
+        />
     </section>
 </div>

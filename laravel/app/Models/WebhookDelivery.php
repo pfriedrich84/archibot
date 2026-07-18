@@ -20,6 +20,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'received_at',
     'processed_at',
     'error',
+    'next_retry_at',
+    'lifecycle_version',
+    'active_actor_token',
 ])]
 class WebhookDelivery extends Model
 {
@@ -54,6 +57,7 @@ class WebhookDelivery extends Model
             'headers' => 'array',
             'received_at' => 'datetime',
             'processed_at' => 'datetime',
+            'next_retry_at' => 'datetime',
         ];
     }
 }

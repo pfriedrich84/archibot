@@ -2,11 +2,13 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG), 0.2 (confidence auto-commit) and 0.3 (local-only OCR with live Paperless permissions) are implemented; remaining milestones are pending.
+Status: accepted 13-step maintainer sequence. Steps 1–12 are implemented and accepted for this hardening sequence. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
-This plan records the maintainer decisions from the product-risk and architecture review. It does not claim that the current runtime already satisfies the target controls. Each milestone must ship as a focused, reviewable pull request with current validation evidence.
+Current final CI evidence: PR [#229](https://github.com/pfriedrich84/archibot/pull/229) HEAD `cc0ec96`, [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568) — lint-and-verify, Laravel (468 passed; 26 PostgreSQL-only skipped), Docker build, Grype and Trivy passed. This evidence does not claim live PostgreSQL integration or satisfy the stable-release gates below by itself.
+
+This plan records the maintainer decisions from the product-risk and architecture review. Implementation and acceptance claims are bounded by the recorded evidence and release gates. Each milestone must ship as a focused, reviewable pull request with current validation evidence.
 
 ## Outcomes
 
@@ -150,11 +152,14 @@ Acceptance:
 
 ### 0.5 Restrict and structure diagnostics
 
+Status: implemented. One admin middleware protects every diagnostic route before route-model binding, mutation controllers retain defense-in-depth admin checks, and every browser diagnostic contract (including statistics and embedding snapshots) uses fixed field schemas, source-inventoried canonical application/provider enums, non-leaking `unknown` aggregate buckets, stable non-reversible references for opaque identifiers (including webhook dedupe, request IDs, configurable provider profiles and every model ID), and fixed redaction notices for free-form messages. Canonical actor phases, event codes and explicitly inventoried internal error classes/types remain visible for recovery; arbitrary or merely grammar-conforming stored keys and values do not.
+
 Scope:
 
 - apply one admin middleware/policy to operations log, Pipeline Runs, webhook deliveries, actor executions, errors, embeddings diagnostics, maintenance and audit routes;
 - verify every mutation remains admin-guarded in the controller as defense in depth;
 - replace raw JSON blocks with structured summaries, labeled metadata, event timelines and redacted error fields;
+- validate browser-bound diagnostic scalars against fixed types/source-inventoried enums and replace attacker-controlled webhook event, modified/dedupe, request-ID and equivalent unknown values with stable non-reversible references; never echo configurable model IDs, provider-profile IDs or merely exception-shaped error values;
 - never expose authorization headers, tokens, full document text, prompts or OCR content.
 
 Acceptance:
@@ -165,6 +170,8 @@ Acceptance:
 - structured views preserve the fields needed for retry/recovery diagnosis.
 
 ### 0.6 Harden first-run setup
+
+Status: implemented. Deployment `PAPERLESS_URL` is the immutable bootstrap origin across Laravel and managed Python runtime configuration; setup requires Paperless `is_superuser`, defers AI-provider editing until after claim, bounds public inputs and decoded responses (with a separate finite preview limit), and enforces the request/network controls below. Regression coverage maps to every acceptance item.
 
 Scope:
 
@@ -181,17 +188,18 @@ Scope:
 Acceptance:
 
 - tests prove submitted, stored-database and admin-settings Paperless URL overrides are ignored/rejected across setup, login and Python export;
-- staff-only users cannot complete setup;
+- staff-only users cannot complete setup; explicit `is_superuser: false` is authoritative, while a missing field exhausts documented compatibility fallbacks and then fails closed;
 - redirect chains cannot escape the pinned origin;
-- repeated authentication/model discovery is throttled;
+- response sinks bound actual retained/decoded bytes for compressed and chunked responses, verified through Guzzle against raw gzip and chunk-framed loopback responses, while document previews use a separate, finite preview bound;
+- repeated authentication/model discovery is throttled, and public setup/tag credential and input lengths are bounded before network access;
 - setup still completes against the configured Paperless URL;
-- documentation states that deployment configuration owns the initial Paperless destination.
+- documentation states that deployment configuration owns the initial Paperless destination and documents the response/input limits.
 
 Residual accepted risk: this plan does not add a separate bootstrap token. The pinned Paperless destination and live superuser verification are the bootstrap trust anchors.
 
 ## Milestone 1 — Establish final ownership seams
 
-### 1.1 Inventory callers and freeze legacy expansion
+### 1.1 Inventory callers and freeze legacy expansion — Implemented (Step 7)
 
 Produce a checked inventory for:
 
@@ -203,7 +211,7 @@ Produce a checked inventory for:
 
 For every caller, record its replacement and deletion milestone. Add tests that fail if new productive references to `classifier.db`, `processed_documents`, Absurd or duplicate Pipeline Start are introduced.
 
-### 1.2 Make Laravel the only Pipeline Start owner
+### 1.2 Make Laravel the only Pipeline Start owner — Implemented (Step 7)
 
 Scope:
 
@@ -212,7 +220,9 @@ Scope:
 - define a durable poll-candidate record or versioned result protocol containing candidate ID, Paperless Document ID, normalized modified/content state, Classification Marker disposition, trigger metadata and idempotency key;
 - make a Laravel consumer transaction claim/replay candidates, call `DocumentPipelineStarter`, record the outcome and dispatch only newly created runs;
 - keep one canonical timestamp/content-state normalization implementation;
-- atomically create/coalesce the run and dispatch the Laravel queued actor job;
+- under the shared fence, transactionally create/coalesce and commit the recoverable run, then perform fallible Laravel actor dispatch and a conditional `pending -> queued` transition so reindex/stale transitions cannot interleave and a fast worker's `running` state cannot be overwritten;
+- fence poll claims with UUID tokens and monotonic versions, and condition every terminal/retry write on the active lease;
+- retain candidate audit evidence with restrictive Command deletion semantics and documented export-first persistent-volume rollback limits;
 - return durable outcomes for created, coalesced, blocked and force-created states;
 - delete Python Pipeline Start only after all callers migrate.
 
@@ -221,11 +231,17 @@ Acceptance:
 - concurrent webhook/poll tests create one run;
 - `Z`, offsets and equivalent timestamps normalize identically;
 - explicit manual force reprocess and explicit forced poll create force-new runs, while ordinary starts and non-force retry retain attach/coalescing semantics;
-- enqueue failure leaves recoverable durable state;
+- enqueue is first attempted only after run creation commits; failure leaves a durable pending/recoverable run;
 - a crash before/after candidate persistence, claim, Pipeline Run creation or dispatch replays without duplicate classification;
+- a reclaimed candidate rejects stale-consumer completion/failure writes;
+- deterministic gate-transition and conditional queued-state tests prove stale/reindex ordering and prove post-dispatch bookkeeping cannot overwrite a fast worker's running state;
+- structural guards reject model/query-builder/raw-SQL Pipeline Run creation aliases outside the starter and freeze productive legacy references exactly;
 - no productive Python caller imports `app.jobs.pipeline_start` after deletion.
 
-### 1.3 Introduce the Python execution-lifecycle Module
+### 1.3 Introduce the Python execution-lifecycle Module — Implemented (Step 8)
+
+Status: implemented. `app.execution_lifecycle` is the sole Python actor lifecycle facade and owns durable execution outcomes, retry scheduling, progress reconstruction, sanitization and the versioned protocol consumed by Laravel.
+
 
 The Module must own domain transitions without exposing transport details through its Interface. Required behavior:
 
@@ -247,7 +263,10 @@ Acceptance:
 - version mismatch, malformed outcome and missing outcome fail as transport/protocol errors without corrupting domain state;
 - actor implementations lose duplicated lifecycle/retry boilerplate.
 
-### 1.4 Align Laravel transport outcome handling
+### 1.4 Align Laravel transport outcome handling — Implemented (Step 8)
+
+Status: implemented. Laravel validates actor, durable source and protocol version independently from process exit, leaves Python-owned domain state unchanged on transport failure, and recovery suppresses redispatch while a source-linked execution is active.
+
 
 Scope:
 
@@ -262,11 +281,17 @@ Acceptance:
 
 - real subprocess tests cover exit success, malformed/missing/version-mismatched output, timeout, signal/crash and retryable domain failure across every actor family;
 - transport failure cannot mark a successful/retrying Pipeline Run, Command, Webhook Delivery, Review Suggestion or Actor Execution failed;
-- stale queue jobs can be safely redispatched once.
+- stale queue jobs can be safely redispatched once;
+- PostgreSQL persistent-volume upgrade fixtures prove sole pending command,
+  pipeline and webhook winners become due retry attempts, redispatch, and acquire
+  one fresh fenced claim; maximum-width bigint IDs produce fixed-length migration
+  tokens within the 64-character contract.
 
 ## Milestone 2 — Remove parallel backends
 
 ### 2.1 Migrate CLI and MCP off SQLite
+
+Status: implemented (Step 9). Operator CLI commands now delegate exclusively to Laravel Maintenance/Pipeline/Review/reset commands; the fixed Python actor contract remains isolated in `app.actor_runner`. MCP startup has no local product-state backend, every baseline registration is recorded in the disposition matrix, and all tools/resources are retired because none yet has a complete permission-aware Laravel/PostgreSQL data seam. SQLite-backed reads, direct Paperless reads/mutations, classification/status tools and identity-less resources may return only through the named seams and acceptance tests. Productive classification reads rejected entity names from `entity_approvals`, and process-document/OCR actors store local OCR corrections in `document_ocr_corrections`; actor-source and isolated-data-dir guards forbid `app.db`, `get_conn`, and `classifier.db`. Entity decisions use idempotent queued Laravel commands with pending/stale-running recovery and tested crash boundaries around Paperless create/patch. PostgreSQL integration coverage launches fresh queue-worker processes to terminal outcomes for every CLI/UI operation and compares durable source, actor progress, events, audits, failure state, and side effects.
 
 Scope:
 
@@ -281,13 +306,15 @@ Scope:
 
 Acceptance:
 
-- CLI/UI equivalence tests cover poll, force poll, per-document process, reindex, OCR reindex, reset and review commit;
+- CLI/UI equivalence tests cover poll, force poll, per-document process, full reindex, OCR reindex, embedding reindex, reset and review commit, including durable commands/runs, events, audits, progress/outcomes and restart continuity;
 - a committed MCP disposition matrix names every registered tool/resource, replacement seam, identity/permission rule, durable audit/command behavior and deletion criterion;
 - MCP tests cover every retained tool/resource with allowed and denied identities and PostgreSQL-backed state;
 - productive commands never create/read `classifier.db`;
 - restart tests prove durable state continuity.
 
 ### 2.2 Delete SQLite processing
+
+Status: implemented (Step 10), with final acceptance evidence recorded in PR [#229](https://github.com/pfriedrich84/archibot/pull/229) and [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568). Productive SQLite schemas, repositories, workers, diagnostics, configuration and dependencies are deleted. PostgreSQL/pgvector remain the sole product-state and vector-search stores; reset remains Laravel-owned. Product startup now fails closed for non-PostgreSQL Laravel or Python configuration, while the sole Python SQLite SQL adapter is explicitly injected from a Laravel process-test fixture and is unavailable to product actor, CLI and server paths. A repository-wide deny-by-default guard scans productive source, configuration, manifests, scripts, Docker and supervisor inputs, with exact-rule test/framework exceptions and adversarial new-file, dependency and renamed-schema probes. The retained SQLite references are classified in the [Step 10 disposition](implementation-notes/sqlite-disposition.md), and the committed Graphify artifacts have been regenerated from the candidate tree. Existing `classifier.db` files are left inert on persistent volumes for explicit export, rollback or operator-directed retention rather than being silently deleted.
 
 Delete only after 2.1 passes:
 
@@ -306,6 +333,8 @@ Acceptance:
 - full Python/Laravel suites and a clean-install Docker smoke test pass.
 
 ### 2.3 Remove Absurd
+
+Status: implemented (Step 11), with final acceptance evidence recorded in PR [#229](https://github.com/pfriedrich84/archibot/pull/229) and [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568). The SDK, decorator/bootstrap path, Python event/recovery workers, schema installer, runtime settings, Docker dependency and broker tests are deleted. Plain actor functions remain behind the fixed Laravel-launched allowlist, and a deny-by-default productive-file guard prevents transport reintroduction. Clean installs no longer create the retired schema; upgraded historical schemas remain inert for retention and rollback as documented in the [Step 11 upgrade notes](implementation-notes/absurd-removal.md).
 
 Delete:
 
@@ -326,6 +355,8 @@ Acceptance:
 - Docker contains no Absurd worker process.
 
 ## Milestone 3 — UX consistency before stable release
+
+**Step 12 status: implemented.** Path-prefix behavior, pagination, mutation feedback/confirmation and manual model identifiers are present; this status does not waive the validation matrix or stable-release gates.
 
 ### 3.1 Complete path-prefix support
 
@@ -360,17 +391,21 @@ Milestone acceptance:
 
 ## Milestone 4 — Deliberate redesign tracks
 
-These do not block containment or backend retirement unless their issue explicitly changes priority.
+**Step 13 research/design status (2026-07-18): complete; implementation and re-enable remain unapproved and not started.** The durable deliverables are the [authorization-safe RAG proposal](architecture/authorization-safe-rag-design.md), [Paperless 2.20/v3 OCR/API compatibility research](architecture/paperless-v3-ocr-compatibility-design.md), and [safe-automation experiment design](architecture/safe-automation-design.md). Completion means the investigation, test design, open questions and approval gates are reviewable; it does not claim runtime compatibility work, Chat/RAG, OCR integration/write-back or safe automation.
+
+These tracks do not block containment or backend retirement unless their issue explicitly changes priority.
 
 ### 4.1 Authorization-safe RAG
 
-Tracked in Issue #221. Do not re-enable Chat/RAG until the issue's identity propagation, ACL filtering, revocation, source-redaction and cross-user tests are complete and explicitly approved.
+Research/design deliverable: complete in the [authorization-safe RAG proposal](architecture/authorization-safe-rag-design.md). Tracked in Issue #221. Do not re-enable Chat/RAG until the proposed identity propagation, ACL filtering, revocation, source-redaction and cross-user tests are implemented, pass, and receive the proposal's explicit product/security approvals.
 
 ### 4.2 Paperless-ngx v3 compatibility and OCR investigation
 
-Tracked in Issue #222. Produce a Paperless 2.20/v3 compatibility matrix and API-version negotiation tests. Parser plugins, remote OCR or file versions must not silently reintroduce OCR content write-back or new cloud-data flows.
+Research/design deliverable: complete in the [Paperless 2.20/v3 OCR/API compatibility research](architecture/paperless-v3-ocr-compatibility-design.md). Tracked in Issue #222. The matrix and negotiation/contract-test design are complete; implementation against representative stable versions is not. Parser plugins, remote OCR or file versions must not silently reintroduce OCR content write-back or new cloud-data flows.
 
 ### 4.3 Safe automation eligibility
+
+Research/design deliverable: complete in the [safe-automation experiment design](architecture/safe-automation-design.md). No eligibility implementation, experiment result or re-enable approval is claimed.
 
 Before proposing auto-commit re-enable:
 
@@ -410,22 +445,22 @@ Do not declare a stable multi-user release until:
 - CI Docker, Grype and Trivy checks pass on the release commit;
 - documentation clearly identifies disabled redesign tracks.
 
-## Suggested PR sequence
+## Canonical maintainer sequence and status
 
-1. Disable Chat/RAG.
-2. Suspend auto-commit.
-3. Remove OCR write-back and add OCR authorization.
-4. Require webhook secret.
-5. Harden setup and pin the Paperless origin.
-6. Restrict/structure diagnostics.
-7. Add ownership inventory and regression guards.
-8. Move all Pipeline Start callers to Laravel.
-9. Add Python execution lifecycle and align Laravel transport outcomes.
-10. Migrate CLI/MCP off SQLite.
-11. Delete SQLite processing.
-12. Remove Absurd.
-13. Deliver UX consistency slices.
-14. Complete Issue #222 compatibility research.
-15. Design work for Issue #221 and safe automation only after separate approval.
+This is the only step numbering used for hardening status. Milestone subsections group architecture scope; they do not create extra steps.
 
-PRs 1-6 may be reordered for reviewer availability, but containment must precede redesign. PRs 8-12 are dependency-ordered and should not be collapsed into one large migration.
+1. Disable Chat/RAG — implemented containment; redesign remains disabled.
+2. Suspend auto-commit — implemented containment; safe automation remains disabled.
+3. Remove OCR write-back and add OCR authorization — implemented containment; Paperless v3/OCR compatibility work remains pending.
+4. Require webhook secret — implemented.
+5. Harden setup and pin the Paperless origin — implemented.
+6. Restrict and structure diagnostics — implemented.
+7. Add the ownership inventory/guards and centralize Pipeline Start in Laravel — implemented.
+8. Add the Python execution lifecycle and align Laravel transport outcomes — implemented.
+9. Migrate CLI/MCP off SQLite — implemented; retired MCP surfaces remain absent.
+10. Delete SQLite processing — implemented.
+11. Remove Absurd — implemented.
+12. Deliver the aggregated Milestone 3 UX consistency work — implemented; release validation remains required.
+13. Deliver the aggregated Milestone 4 research/design for Issue #221, Issue #222 and safe automation — research/design complete on 2026-07-18. Authorization-safe RAG runtime work, Paperless v3/API negotiation implementation and safe-automation runtime/canary work are **not implemented or approved**; Chat/RAG, OCR write-back and automatic commits remain disabled.
+
+Steps 1–6 may be reordered for reviewer availability, but containment precedes redesign. Steps 7–11 are dependency-ordered and must not be collapsed into one large migration. There are no hardening Steps 14 or 15.

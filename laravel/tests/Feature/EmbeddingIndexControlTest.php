@@ -9,7 +9,6 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -20,7 +19,6 @@ class EmbeddingIndexControlTest extends TestCase
     public function test_admin_can_queue_embedding_index_build_command(): void
     {
         Queue::fake();
-        Config::set('archibot.absurd_database_url', '');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)
@@ -73,22 +71,6 @@ class EmbeddingIndexControlTest extends TestCase
             ->assertForbidden();
 
         $this->assertDatabaseCount('commands', 0);
-    }
-
-    public function test_absurd_configuration_is_ignored_for_embedding_build_transport(): void
-    {
-        Queue::fake();
-        Config::set('archibot.absurd_database_url', 'postgresql://archibot:archibot@postgres:5432/archibot');
-        $admin = User::factory()->create(['is_admin' => true]);
-
-        $this->actingAs($admin)
-            ->post(route('embedding-index.build'))
-            ->assertRedirect();
-
-        $command = Command::query()->firstOrFail();
-        $this->assertSame(Command::TYPE_EMBEDDING_INDEX_BUILD, $command->type);
-        $this->assertSame(Command::STATUS_QUEUED, $command->status);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->commandId === $command->id);
     }
 
     public function test_admin_can_mark_embedding_index_stale(): void

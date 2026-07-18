@@ -14,9 +14,9 @@ class WebhookDeliveryControlTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_authenticated_user_can_view_webhook_delivery_index(): void
+    public function test_admin_can_view_structured_webhook_delivery_index(): void
     {
-        $user = User::factory()->create(['is_admin' => false]);
+        $user = User::factory()->create(['is_admin' => true]);
         $this->webhookDelivery([
             'event_type' => 'document.created',
             'paperless_document_id' => 99,
@@ -32,14 +32,16 @@ class WebhookDeliveryControlTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('webhooks/Index')
-                ->where('isAdmin', false)
+                ->where('isAdmin', true)
                 ->has('deliveries.data', 1)
                 ->where('deliveries.data.0.event_type', 'document.created')
                 ->where('deliveries.data.0.paperless_document_id', 99)
                 ->where('deliveries.data.0.status', WebhookDelivery::STATUS_PROCESSED)
-                ->where('deliveries.data.0.dedupe_key', 'dedupe-processed')
+                ->where('deliveries.data.0.dedupe_key', 'ref:'.substr(hash('sha256', 'dedupe-processed'), 0, 12))
                 ->where('deliveries.data.0.payload_summary.0.key', 'document_id')
-                ->where('deliveries.data.0.header_summary.0.key', 'x-paperless-event')
+                ->missing('deliveries.data.0.header_summary')
+                ->missing('deliveries.data.0.raw_payload')
+                ->missing('deliveries.data.0.headers')
                 ->where('deliveries.data.0.can_retry', false)
                 ->where('deliveries.data.0.can_dismiss', false)
             );
@@ -50,7 +52,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'Absurd unavailable',
+            'error' => 'Queue transport unavailable',
             'normalized_payload' => ['document_id' => 42, 'event' => 'updated'],
             'headers' => ['x-request-id' => 'req-123'],
         ]);
@@ -60,7 +62,7 @@ class WebhookDeliveryControlTest extends TestCase
             'paperless_document_id' => 42,
             'level' => 'error',
             'message' => 'Delivery failed.',
-            'payload' => ['reason' => 'Absurd unavailable'],
+            'payload' => ['reason' => 'Queue transport unavailable'],
             'created_at' => now(),
         ]);
 
@@ -72,7 +74,7 @@ class WebhookDeliveryControlTest extends TestCase
                 ->where('isAdmin', true)
                 ->where('deliveries.data.0.id', $delivery->id)
                 ->where('deliveries.data.0.status', WebhookDelivery::STATUS_FAILED)
-                ->where('deliveries.data.0.error', 'Absurd unavailable')
+                ->where('deliveries.data.0.error', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
                 ->where('deliveries.data.0.can_retry', true)
                 ->where('deliveries.data.0.can_dismiss', true)
                 ->where('deliveries.data.0.retry_url', route('webhook-deliveries.retry', $delivery))
@@ -85,14 +87,26 @@ class WebhookDeliveryControlTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('webhooks/Show')
                 ->where('delivery.id', $delivery->id)
-                ->where('delivery.raw_payload.document_id', 42)
-                ->where('delivery.normalized_payload.event', 'updated')
-                ->where('delivery.headers.x-request-id', 'req-123')
+                ->missing('delivery.raw_payload')
+                ->missing('delivery.normalized_payload')
+                ->missing('delivery.headers')
+                ->where('delivery.payload_summary.0.key', 'document_id')
+                ->where('delivery.payload_summary.1.key', 'event')
                 ->where('delivery.pipeline_events.0.event_type', 'paperless.delivery.failed')
-                ->where('delivery.pipeline_events.0.payload.reason', 'Absurd unavailable')
+                ->where('delivery.pipeline_events.0.message', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
+                ->where('delivery.pipeline_events.0.metadata', [])
                 ->where('delivery.can_retry', true)
                 ->where('delivery.can_dismiss', true)
             );
+    }
+
+    public function test_non_admin_cannot_view_existing_or_missing_webhook_delivery(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $delivery = $this->webhookDelivery();
+
+        $this->actingAs($user)->get(route('webhook-deliveries.show', $delivery))->assertForbidden();
+        $this->actingAs($user)->get(route('webhook-deliveries.show', 999999))->assertForbidden();
     }
 
     public function test_guest_cannot_view_webhook_delivery_index(): void
@@ -105,7 +119,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'Absurd unavailable',
+            'error' => 'Queue transport unavailable',
             'processed_at' => now(),
         ]);
 

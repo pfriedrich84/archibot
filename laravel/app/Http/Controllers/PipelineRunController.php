@@ -8,6 +8,8 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Services\Pipeline\PipelineLifecycleRecorder;
+use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,14 +18,20 @@ use Inertia\Response;
 
 class PipelineRunController extends Controller
 {
+    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+
     public function index(Request $request): Response
     {
+        $validated = $request->validate(['per_page' => ['nullable', 'integer', 'in:10,25,50,100']]);
+        $perPage = intval($validated['per_page'] ?? 25);
+
         $runs = PipelineRun::query()
             ->with(['command:id,type,status,created_at', 'webhookDelivery:id,source,event_type,status,paperless_document_id,received_at'])
             ->withCount(['events', 'items'])
             ->latest('updated_at')
             ->latest('id')
-            ->paginate(25)
+            ->paginate($perPage)
+            ->withQueryString()
             ->through(fn (PipelineRun $run) => $this->runPayload($request, $run, includeDetails: false));
 
         return Inertia::render('pipeline-runs/Index', [
@@ -63,7 +71,7 @@ class PipelineRunController extends Controller
             'queued',
             'Manual admin retry queued.',
         );
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => $gate['status'],
             'progress_current_phase' => $gate['progress_current_phase'],
             'progress_message' => $gate['progress_message'],
@@ -76,7 +84,7 @@ class PipelineRunController extends Controller
             'error_type' => $gate['error_type'],
             'error' => $gate['error'],
             'finished_at' => null,
-        ])->save();
+        ]);
 
         $this->audit($request, 'pipeline_run.retry_queued', $pipelineRun);
 
@@ -113,7 +121,7 @@ class PipelineRunController extends Controller
             'retry_failed_items',
             "Manual admin retry queued for {$failedItemCount} failed pipeline item(s).",
         );
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => $gate['status'],
             'progress_current_phase' => $gate['progress_current_phase'],
             'progress_message' => $gate['progress_message'],
@@ -127,9 +135,9 @@ class PipelineRunController extends Controller
             'error_type' => $gate['error_type'],
             'error' => $gate['error'],
             'finished_at' => null,
-        ])->save();
+        ]);
 
-        PipelineEvent::query()->create([
+        PipelineLifecycleRecorder::event([
             'pipeline_run_id' => $pipelineRun->id,
             'event_type' => 'job_control.retry_failed_items_requested',
             'paperless_document_id' => $pipelineRun->paperless_document_id,
@@ -160,13 +168,13 @@ class PipelineRunController extends Controller
             PipelineRun::STATUS_RETRYING,
         ], true), 409);
 
-        $pipelineRun->forceFill([
+        $pipelineRun->update([
             'status' => PipelineRun::STATUS_CANCEL_REQUESTED,
             'progress_message' => 'Manual admin cancellation requested.',
             'progress_updated_at' => now(),
             'error_type' => 'cancel_requested',
             'error' => 'Manual admin cancellation requested.',
-        ])->save();
+        ]);
 
         $this->audit($request, 'pipeline_run.cancel_requested', $pipelineRun);
 
@@ -198,35 +206,37 @@ class PipelineRunController extends Controller
 
         $payload = [
             'id' => $run->id,
-            'type' => $run->type,
-            'status' => $run->status,
-            'scope' => $run->scope,
-            'trigger_source' => $run->trigger_source,
+            'type' => $this->diagnostics->typedScalar('pipeline_type', $run->type),
+            'status' => $this->diagnostics->typedScalar('status', $run->status),
+            'scope' => $this->diagnostics->opaqueReference($run->scope),
+            'trigger_source' => $this->diagnostics->typedScalar('trigger_source', $run->trigger_source),
             'paperless_document_id' => $run->paperless_document_id,
             'progress_total' => $run->progress_total,
             'progress_done' => $run->progress_done,
             'progress_failed' => $run->progress_failed,
             'progress_skipped' => $run->progress_skipped,
-            'progress_current_phase' => $run->progress_current_phase,
+            'progress_current_phase' => $run->progress_current_phase === null
+                ? null
+                : $this->diagnostics->typedScalar('phase', $run->progress_current_phase),
             'progress_phase_total' => $run->progress_phase_total,
             'progress_phase_done' => $run->progress_phase_done,
-            'progress_message' => $run->progress_message,
+            'progress_message' => $this->diagnostics->redactedMessage($run->progress_message),
             'progress_updated_at' => $run->progress_updated_at?->toISOString(),
             'retry_count' => $run->retry_count,
             'max_retries' => $run->max_retries,
             'next_retry_at' => $run->next_retry_at?->toISOString(),
             'last_retry_at' => $run->last_retry_at?->toISOString(),
-            'retry_reason' => $run->retry_reason,
-            'retry_mode' => $run->retry_mode,
+            'retry_reason' => $this->diagnostics->redactedMessage($run->retry_reason),
+            'retry_mode' => $run->retry_mode === null ? null : $this->diagnostics->typedScalar('retry_mode', $run->retry_mode),
             'reprocess_requested' => $run->reprocess_requested,
-            'reprocess_reason' => $run->reprocess_reason,
-            'reprocess_mode' => $run->reprocess_mode,
+            'reprocess_reason' => $this->diagnostics->redactedMessage($run->reprocess_reason),
+            'reprocess_mode' => $run->reprocess_mode === null ? null : $this->diagnostics->typedScalar('reprocess_mode', $run->reprocess_mode),
             'started_at' => $run->started_at?->toISOString(),
             'finished_at' => $run->finished_at?->toISOString(),
             'created_at' => $run->created_at?->toISOString(),
             'updated_at' => $run->updated_at?->toISOString(),
-            'error_type' => $run->error_type,
-            'error' => $run->error,
+            'error_type' => $this->diagnostics->errorType($run->error_type),
+            'error' => $this->diagnostics->redactedMessage($run->error),
             'events_count' => $run->events_count ?? $run->events()->count(),
             'items_count' => $run->items_count ?? $run->items()->count(),
             'show_url' => route('pipeline-runs.show', $run),
@@ -238,15 +248,15 @@ class PipelineRunController extends Controller
             'can_cancel' => $canCancel,
             'command' => $run->command ? [
                 'id' => $run->command->id,
-                'type' => $run->command->type,
-                'status' => $run->command->status,
+                'type' => $this->diagnostics->typedScalar('command_type', $run->command->type),
+                'status' => $this->diagnostics->typedScalar('status', $run->command->status),
                 'created_at' => $run->command->created_at?->toISOString(),
             ] : null,
             'webhook_delivery' => $run->webhookDelivery ? [
                 'id' => $run->webhookDelivery->id,
-                'source' => $run->webhookDelivery->source,
-                'event_type' => $run->webhookDelivery->event_type,
-                'status' => $run->webhookDelivery->status,
+                'source' => $this->diagnostics->typedScalar('source', $run->webhookDelivery->source),
+                'event_type' => $this->diagnostics->webhookEventType($run->webhookDelivery->event_type),
+                'status' => $this->diagnostics->typedScalar('status', $run->webhookDelivery->status),
                 'paperless_document_id' => $run->webhookDelivery->paperless_document_id,
                 'show_url' => route('webhook-deliveries.show', $run->webhookDelivery),
             ] : null,
@@ -254,44 +264,44 @@ class PipelineRunController extends Controller
 
         if ($includeDetails) {
             $payload['command'] = $run->command ? array_merge($payload['command'], [
-                'payload' => $run->command->payload ?? [],
+                'metadata' => $this->diagnostics->metadata($run->command->payload),
                 'created_by_user_id' => $run->command->created_by_user_id,
                 'started_at' => $run->command->started_at?->toISOString(),
                 'finished_at' => $run->command->finished_at?->toISOString(),
-                'error' => $run->command->error,
+                'error' => $this->diagnostics->redactedMessage($run->command->error),
             ]) : null;
             $payload['webhook_delivery'] = $run->webhookDelivery ? array_merge($payload['webhook_delivery'], [
-                'dedupe_key' => $run->webhookDelivery->dedupe_key,
-                'request_id' => $run->webhookDelivery->request_id,
+                'dedupe_key' => $this->diagnostics->opaqueReference($run->webhookDelivery->dedupe_key),
+                'request_id' => $this->diagnostics->opaqueReference($run->webhookDelivery->request_id),
                 'received_at' => $run->webhookDelivery->received_at?->toISOString(),
                 'processed_at' => $run->webhookDelivery->processed_at?->toISOString(),
-                'error' => $run->webhookDelivery->error,
+                'error' => $this->diagnostics->redactedMessage($run->webhookDelivery->error),
             ]) : null;
             $payload['events'] = $run->events->map(fn (PipelineEvent $event) => [
                 'id' => $event->id,
-                'event_type' => $event->event_type,
-                'level' => $event->level,
-                'message' => $event->message,
+                'event_type' => $this->diagnostics->diagnosticEventType($event->event_type),
+                'level' => $this->diagnostics->typedScalar('level', $event->level),
+                'message' => $this->diagnostics->redactedMessage($event->message),
                 'paperless_document_id' => $event->paperless_document_id,
                 'webhook_delivery_id' => $event->webhook_delivery_id,
                 'command_id' => $event->command_id,
-                'payload' => $event->payload ?? [],
+                'metadata' => $this->diagnostics->metadata($event->payload),
                 'created_at' => $event->created_at?->toISOString(),
             ])->values();
             $payload['items'] = $run->items->map(fn (PipelineItem $item) => [
                 'id' => $item->id,
                 'paperless_document_id' => $item->paperless_document_id,
-                'item_type' => $item->item_type,
-                'status' => $item->status,
+                'item_type' => $this->diagnostics->typedScalar('item_type', $item->item_type),
+                'status' => $this->diagnostics->typedScalar('status', $item->status),
                 'attempt' => $item->attempt,
                 'max_attempts' => $item->max_attempts,
-                'retry_reason' => $item->retry_reason,
-                'retry_mode' => $item->retry_mode,
+                'retry_reason' => $this->diagnostics->redactedMessage($item->retry_reason),
+                'retry_mode' => $item->retry_mode === null ? null : $this->diagnostics->typedScalar('retry_mode', $item->retry_mode),
                 'next_retry_at' => $item->next_retry_at?->toISOString(),
                 'last_retry_at' => $item->last_retry_at?->toISOString(),
                 'started_at' => $item->started_at?->toISOString(),
                 'finished_at' => $item->finished_at?->toISOString(),
-                'error' => $item->error,
+                'error' => $this->diagnostics->redactedMessage($item->error),
             ])->values();
             $payload['audit_logs'] = $this->linkedAuditLogs($run);
         }
@@ -327,10 +337,12 @@ class PipelineRunController extends Controller
             ->get(['id', 'event', 'target_type', 'target_id', 'metadata', 'created_at'])
             ->map(fn (AuditLog $log) => [
                 'id' => $log->id,
-                'event' => $log->event,
-                'target_type' => $log->target_type,
-                'target_id' => $log->target_id,
-                'metadata' => $log->metadata ?? [],
+                'event' => $this->diagnostics->diagnosticEventType($log->event),
+                'target_type' => in_array($log->target_type, ['pipeline_run', 'webhook_delivery', 'command'], true)
+                    ? $log->target_type
+                    : 'unknown',
+                'target_id' => ctype_digit((string) $log->target_id) ? $log->target_id : $this->diagnostics->opaqueReference($log->target_id),
+                'metadata' => $this->diagnostics->metadata($log->metadata),
                 'created_at' => $log->created_at?->toISOString(),
             ])
             ->values()
@@ -351,7 +363,7 @@ class PipelineRunController extends Controller
      */
     private function audit(Request $request, string $event, PipelineRun $pipelineRun, array $metadata = []): void
     {
-        AuditLog::query()->create([
+        PipelineLifecycleRecorder::audit([
             'actor_user_id' => $request->user()->id,
             'event' => $event,
             'target_type' => 'pipeline_run',

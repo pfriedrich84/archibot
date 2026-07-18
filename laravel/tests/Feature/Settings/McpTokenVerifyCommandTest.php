@@ -75,7 +75,7 @@ class McpTokenVerifyCommandTest extends TestCase
         $this->assertSame(0, $exitCode);
         $payload = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame([
-            'url' => 'https://paperless.example',
+            'url' => 'https://paperless.test',
             'token' => 'paperless-secret-token',
         ], $payload['paperless']);
         $this->assertStringNotContainsString($plainTextToken, Artisan::output());

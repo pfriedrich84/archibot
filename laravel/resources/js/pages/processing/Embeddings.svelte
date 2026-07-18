@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as embeddingsIndex } from '@/routes/embeddings';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Embeddings',
-                href: '/embeddings',
+                href: embeddingsIndex(),
             },
         ],
     };

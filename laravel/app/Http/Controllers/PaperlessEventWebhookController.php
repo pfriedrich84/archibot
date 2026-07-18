@@ -516,7 +516,7 @@ class PaperlessEventWebhookController extends Controller
             ]);
             $candidate->setCreatedAt(now());
             $candidate->setUpdatedAt(now());
-            $created = DB::table($candidate->getTable())->insertOrIgnore($candidate->getAttributes()) === 1;
+            $created = DB::table('webhook_deliveries')->insertOrIgnore($candidate->getAttributes()) === 1;
 
             $delivery = WebhookDelivery::query()
                 ->where('source', 'paperless')

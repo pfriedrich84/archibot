@@ -38,7 +38,7 @@ Any still-required operation must be rebuilt on the durable command/pipeline/act
 
 ## Reset
 
-Destructive reset remains CLI-only and delegates to Laravel/PostgreSQL:
+Destructive reset delegates to the same Laravel/PostgreSQL service used by the confirmation-gated admin Maintenance UI:
 
 ```bash
 archibot reset --yes

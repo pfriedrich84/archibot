@@ -56,7 +56,7 @@ def test_list_review_suggestions_ready_to_commit(monkeypatch):
     assert calls[0][1] == {"limit": 5}
 
 
-def test_build_paperless_patch_respects_storage_path_immutability():
+def test_build_paperless_patch_respects_existing_storage_path_immutability():
     record = review_commit.ReviewCommitRecord(
         id=1,
         paperless_document_id=42,
@@ -79,6 +79,23 @@ def test_build_paperless_patch_respects_storage_path_immutability():
     }
 
 
+def test_build_paperless_patch_sets_absent_storage_path_after_manual_review():
+    record = review_commit.ReviewCommitRecord(
+        id=1,
+        paperless_document_id=42,
+        proposed_title=None,
+        proposed_date=None,
+        proposed_correspondent_id=None,
+        proposed_document_type_id=None,
+        proposed_storage_path_id=3,
+        proposed_tags=[],
+    )
+
+    assert review_commit.build_paperless_patch(
+        record, current_tags=[], current_storage_path=None
+    ) == {"storage_path": 3}
+
+
 @pytest.mark.asyncio
 async def test_commit_review_suggestion_to_paperless_patches_fields():
     patched = []
@@ -87,7 +104,7 @@ async def test_commit_review_suggestion_to_paperless_patches_fields():
         async def get_document(self, document_id):
             return SimpleNamespace(tags=[4], storage_path=None)
 
-        async def patch_document(self, document_id, fields):
+        async def patch_reviewed_document(self, document_id, fields):
             patched.append((document_id, fields))
 
     record = review_commit.ReviewCommitRecord(

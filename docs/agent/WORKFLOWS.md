@@ -30,8 +30,8 @@ From the repository root:
 7. `archibot --help`
 8. `python -m app.cli --help`
 9. `python -c "import app.cli; import app.mcp_server"`
-10. `python -c "from app.db import init_db; init_db()"`
-11. `python -c "from app.pipeline.classifier import _load_system_prompt; assert len(_load_system_prompt()) > 100"`
+10. `python -c "from app.pipeline.classifier import _load_system_prompt; assert len(_load_system_prompt()) > 100"`
+11. `python scripts/check_pipeline_start_ownership.py`
 
 ### Laravel / frontend
 

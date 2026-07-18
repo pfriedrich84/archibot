@@ -2,16 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RunPythonActorJob;
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EntityApproval;
-use App\Models\PipelineEvent;
-use App\Services\Paperless\PaperlessClient;
+use App\Services\EntityApprovalDecisionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,58 +35,66 @@ class EntityApprovalController extends Controller
         ]);
     }
 
-    public function approve(Request $request, string $segment, EntityApproval $entityApproval): RedirectResponse
+    public function approve(Request $request, string $segment, EntityApproval $entityApproval, EntityApprovalDecisionService $decisions): RedirectResponse
     {
         $this->authorizeAdmin($request);
         $this->ensureSegmentMatches($segment, $entityApproval);
 
-        abort_unless($entityApproval->status === EntityApproval::STATUS_PENDING, 409);
+        abort_unless(
+            $entityApproval->status === EntityApproval::STATUS_PENDING
+                || ($entityApproval->status === EntityApproval::STATUS_APPROVED
+                    && $entityApproval->sync_status === EntityApproval::SYNC_STATUS_FAILED),
+            409,
+        );
 
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        $client = new PaperlessClient($paperlessUrl);
-        $paperlessId = match ($entityApproval->type) {
-            EntityApproval::TYPE_TAG => $client->createTag($token, $entityApproval->name),
-            EntityApproval::TYPE_CORRESPONDENT => $client->createCorrespondent($token, $entityApproval->name),
-            EntityApproval::TYPE_DOCUMENT_TYPE => $client->createDocumentType($token, $entityApproval->name),
-            default => abort(404),
-        };
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'approved', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Entity approval could not be queued: '.$exception->getMessage());
+        }
+        $this->audit($request, $entityApproval, 'approved', [
+            'command_id' => $command->id,
+            'outcome' => 'queued',
+        ]);
 
-        $entityApproval->mark(EntityApproval::STATUS_APPROVED, $request->user(), $paperlessId);
-        $this->audit($request, $entityApproval, 'approved', ['paperless_id' => $paperlessId]);
-        $this->queueSync($request, $entityApproval, 'approved');
-
-        return back();
+        return back()->with('status', "Approval for '{$entityApproval->name}' was queued.");
     }
 
-    public function reject(Request $request, string $segment, EntityApproval $entityApproval): RedirectResponse
+    public function reject(Request $request, string $segment, EntityApproval $entityApproval, EntityApprovalDecisionService $decisions): RedirectResponse
     {
         $this->authorizeAdmin($request);
         $this->ensureSegmentMatches($segment, $entityApproval);
 
         abort_unless($entityApproval->status === EntityApproval::STATUS_PENDING, 409);
 
-        $entityApproval->mark(EntityApproval::STATUS_REJECTED, $request->user());
-        $this->audit($request, $entityApproval, 'rejected');
-        $this->queueSync($request, $entityApproval, 'rejected');
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'rejected', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Entity rejection could not be queued: '.$exception->getMessage());
+        }
+        $this->audit($request, $entityApproval, 'rejected', ['command_id' => $command->id, 'outcome' => 'queued']);
 
-        return back();
+        return back()->with('status', "Rejection of '{$entityApproval->name}' was queued.");
     }
 
-    public function unblacklist(Request $request, string $segment, EntityApproval $entityApproval): RedirectResponse
+    public function unblacklist(Request $request, string $segment, EntityApproval $entityApproval, EntityApprovalDecisionService $decisions): RedirectResponse
     {
         $this->authorizeAdmin($request);
         $this->ensureSegmentMatches($segment, $entityApproval);
 
         abort_unless($entityApproval->status === EntityApproval::STATUS_REJECTED, 409);
 
-        $entityApproval->mark(EntityApproval::STATUS_PENDING, $request->user());
-        $this->audit($request, $entityApproval, 'unblacklisted');
-        $this->queueSync($request, $entityApproval, 'unblacklisted');
+        try {
+            $command = $this->enqueueDecision($decisions, $entityApproval, 'unblacklisted', $request);
+        } catch (\DomainException $exception) {
+            return back()->with('error', 'Blocklist removal could not be queued: '.$exception->getMessage());
+        }
+        $this->audit($request, $entityApproval, 'unblacklisted', ['command_id' => $command->id, 'outcome' => 'queued']);
 
-        return back();
+        return back()->with('status', "Blocklist removal for '{$entityApproval->name}' was queued.");
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -132,48 +136,13 @@ class EntityApprovalController extends Controller
         abort_unless((bool) $request->user()->is_admin, 403);
     }
 
-    private function queueSync(Request $request, EntityApproval $entityApproval, string $action): void
-    {
-        $payload = [
-            'entity_approval_id' => $entityApproval->id,
-            'action' => $action,
-            'type' => $entityApproval->type,
-            'name' => $entityApproval->name,
-            'paperless_id' => $entityApproval->paperless_id,
-        ];
-
-        $command = Command::query()->create([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
-            'status' => Command::STATUS_PENDING,
-            'payload' => $payload,
-            'created_by_user_id' => $request->user()->id,
-        ]);
-
-        PipelineEvent::query()->create([
-            'command_id' => $command->id,
-            'event_type' => 'job_control.entity_approval_sync_requested',
-            'level' => 'info',
-            'message' => 'Entity approval sync requested by admin.',
-            'payload' => [
-                'actor_user_id' => $request->user()->id,
-                'command_id' => $command->id,
-                ...$payload,
-            ],
-        ]);
-
-        DB::transaction(function () use ($command, $entityApproval): void {
-            $command = Command::query()->lockForUpdate()->findOrFail($command->id);
-            $entityApproval = EntityApproval::query()->lockForUpdate()->findOrFail($entityApproval->id);
-            if ($command->status !== Command::STATUS_PENDING) {
-                return;
-            }
-
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-            $entityApproval->forceFill([
-                'sync_status' => EntityApproval::SYNC_STATUS_QUEUED,
-            ])->save();
-            dispatch(RunPythonActorJob::syncEntityApproval($command->id));
-        });
+    private function enqueueDecision(
+        EntityApprovalDecisionService $decisions,
+        EntityApproval $entityApproval,
+        string $action,
+        Request $request,
+    ): Command {
+        return $decisions->enqueue($entityApproval, $action, $request->user());
     }
 
     /** @param array<string, mixed> $metadata */
@@ -185,6 +154,7 @@ class EntityApprovalController extends Controller
             'target_type' => 'entity_approval',
             'target_id' => (string) $entityApproval->id,
             'metadata' => [
+                'actor_principal' => 'authenticated_user',
                 'type' => $entityApproval->type,
                 'name' => $entityApproval->name,
                 ...$metadata,

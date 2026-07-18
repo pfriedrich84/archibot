@@ -433,7 +433,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertSame(WebhookDelivery::STATUS_RECEIVED, $delivery->status);
         $this->assertDatabaseCount('pipeline_runs', 0);
 
-        $this->app->instance(DocumentPipelineStarter::class, new DocumentPipelineStarter);
+        $this->app->forgetInstance(DocumentPipelineStarter::class);
         app('router')->getRoutes()->getByName('api.webhooks.paperless')->flushController();
         $this->postJson(route('api.webhooks.paperless'), $payload)
             ->assertOk()

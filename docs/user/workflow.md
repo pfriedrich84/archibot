@@ -23,7 +23,7 @@ in Paperless-NGX.
 6b. Judge-Pass (optional)       Zweiter LLM-Pass prueft/korrigiert bei niedriger
                                 Confidence + vorhandenem Kontext
          |
-7. Vorschlag speichern          Status: "pending" in der suggestions-Tabelle
+7. Vorschlag speichern          Status: "pending" in PostgreSQL review_suggestions
          |
 8. Manuelles Review             Autorisierte Annahme in der GUI (/review)
          |
@@ -83,7 +83,7 @@ Das LLM liefert strukturiertes JSON mit:
 
 OCR-Reviews speichern Original-, Korrektur- und gegebenenfalls freigegebene Text-Snapshots ausschließlich lokal in ArchiBot. Eine Freigabe oder Ablehnung ist eine lokale Entscheidung; sie schreibt keinen Dokumentinhalt nach Paperless und bietet weder Restore noch Retry eines früheren Write-backs. Vor Listen- und Detailanzeige prüft ArchiBot die aktuelle Paperless-Sichtberechtigung, vor Erstellen, Freigeben oder Ablehnen die aktuelle Änderungsberechtigung. Das gilt auch für ArchiBot-Admins; bei Paperless- oder Authentifizierungsfehlern wird der Zugriff verweigert. Bestehende historische OCR-Zeilen und Snapshots bleiben erhalten.
 
-[Issue #222](https://github.com/pfriedrich84/archibot/issues/222) untersucht Paperless-v3-OCR-Kompatibilität, darf diese lokale-only Grenze aber nicht umgehen.
+[Issue #222](https://github.com/pfriedrich84/archibot/issues/222) und die [Paperless-v3-Kompatibilitaetsforschung](../architecture/paperless-v3-ocr-compatibility-design.md) untersuchen API-/OCR-Optionen. Der Entwurf ist keine Integration und darf diese lokale-only Grenze nicht umgehen.
 
 #### Confidence Auto-Commit (deaktiviert)
 
@@ -127,7 +127,8 @@ eine eigene "Judge Verification"-Dauer-Kachel und ein Verdict-Breakdown-Panel.
 ### 5. Commit nach Paperless
 
 Nach Freigabe werden die Metadaten via PATCH an Paperless geschrieben:
-- Titel, Datum, Korrespondent, Dokumenttyp, Speicherpfad werden aktualisiert
+- Titel, Datum, Korrespondent und Dokumenttyp werden aus der manuellen Freigabe aktualisiert.
+- Ein Speicherpfad wird nur ueber diese manuelle Review-Naht gesetzt, wenn Paperless unmittelbar vor dem PATCH live `null` meldet; ein vorhandener Speicherpfad bleibt unveraenderlich.
 - **Tags:** Nur Tags mit bekannter Paperless-ID werden geschrieben. Neue Tags
   landen in der Tag-Whitelist (`/tags`) und muessen erst freigegeben werden.
 - **Inbox-Tag:** Bleibt standardmaessig erhalten (`KEEP_INBOX_TAG=true`).

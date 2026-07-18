@@ -20,7 +20,7 @@ class WebhookDeliveryRecord:
 
 
 def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | None:
-    """Load the normalized state needed by the webhook Absurd actor."""
+    """Load the normalized state needed by the fixed webhook actor."""
     try:
         from sqlalchemy import text
     except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
@@ -114,8 +114,11 @@ def mark_webhook_delivery_status(
     except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image
         raise RuntimeError("sqlalchemy is required for PostgreSQL-backed webhook actors") from exc
 
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("webhook_delivery", webhook_delivery_id)
     statement = text(
-        """
+        f"""
         UPDATE webhook_deliveries
         SET status = CAST(:status AS character varying),
             error = :error,
@@ -125,7 +128,7 @@ def mark_webhook_delivery_status(
                 ELSE processed_at
             END,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :webhook_delivery_id
+        WHERE id = :webhook_delivery_id {fence_sql}
         """
     )
     with engine().begin() as connection:
@@ -136,5 +139,6 @@ def mark_webhook_delivery_status(
                 "status": status,
                 "status_for_lifecycle": status,
                 "error": error,
+                **fence_params,
             },
         )

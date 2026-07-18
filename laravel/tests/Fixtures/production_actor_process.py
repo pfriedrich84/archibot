@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Test-only deterministic adapter around production actor_runner/lifecycle.
+
+Symfony still launches this as its configured Python binary and supplies
+``-m app.actor_runner``. The adapter replaces only productive external work;
+claim activation, lifecycle SQL, source/execution finalization, protocol
+construction, and actor_runner.main are production code.
+"""
+
+from __future__ import annotations
+
+import builtins
+import contextlib
+import json
+import os
+import signal
+import sys
+import time
+
+# Product configuration remains PostgreSQL-only even in this subprocess. The
+# framework fixture injects its isolated database engine and SQL adapter only
+# after importing the closed product configuration; no runtime environment flag
+# can select this adapter in actor/CLI/server code.
+os.environ["DATABASE_URL"] = "postgresql+psycopg://test:test@invalid/archibot_test"
+
+from app import actor_runner
+from app.execution_lifecycle import ExecutionLifecycle, current_invocation_fence
+from app.jobs import actor_execution, commands
+from app.jobs import database as job_database
+
+database = os.environ.get("DB_DATABASE")
+if not database or os.environ.get("DB_CONNECTION") != "sqlite":
+    raise RuntimeError("production actor fixture requires the Laravel SQLite test database")
+
+from sqlalchemy import create_engine  # noqa: E402
+
+
+class SQLiteActorExecutionSql:
+    source_lock_clause = ""
+    retry_timestamp = "datetime(CURRENT_TIMESTAMP, '+' || :backoff_seconds || ' seconds')"
+
+
+job_database._engine = create_engine(f"sqlite:///{database}")
+actor_execution._sql = SQLiteActorExecutionSql()
+
+
+def load_sqlite_command(command_id: int) -> commands.CommandRecord | None:
+    """Decode Laravel's SQLite JSON text as PostgreSQL would decode jsonb."""
+    statement = commands.sql_text(
+        "SELECT id, type, status, payload FROM commands WHERE id = :command_id LIMIT 1"
+    )
+    with job_database.engine().connect() as connection:
+        row = connection.execute(statement, {"command_id": command_id}).mappings().first()
+    if row is None:
+        return None
+    payload = row["payload"] or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if not isinstance(payload, dict):
+        payload = {}
+    return commands.CommandRecord(
+        id=int(row["id"]),
+        type=str(row["type"]),
+        status=str(row["status"]),
+        payload=payload,
+    )
+
+
+# SQLite returns raw JSON text for untyped SQL while production PostgreSQL
+# returns a decoded jsonb mapping. Preserve the production command contract.
+actor_runner.load_command = load_sqlite_command
+
+scenario = os.environ.get("ARCHIBOT_ACTOR_FIXTURE_SCENARIO", "success")
+
+
+def deterministic_actor(*args, **kwargs) -> None:
+    fence = current_invocation_fence()
+    if fence is None:
+        raise RuntimeError("deterministic actor requires the production invocation fence")
+    source_argument = {
+        "pipeline_run": {"pipeline_run_id": fence.source_id},
+        "command": {"command_id": fence.source_id},
+        "webhook_delivery": {"webhook_delivery_id": fence.source_id},
+    }[fence.source_kind]
+    lifecycle = ExecutionLifecycle.start(
+        actor_name=fence.execution_actor_name,
+        queue_name="laravel.database",
+        **source_argument,
+    )
+
+    if scenario == "timeout":
+        time.sleep(5)
+    if scenario == "signal":
+        os.kill(os.getpid(), signal.SIGTERM)
+    if scenario == "crash":
+        os._exit(70)
+    if scenario == "retrying":
+        lifecycle.fail(TimeoutError("deterministic transient failure"))
+        return
+
+    status = {
+        "skipped": "skipped",
+        "blocked": "blocked",
+        "cancelled": "cancelled",
+        "failed-permanent": "failed_permanent",
+    }.get(scenario, "succeeded")
+    lifecycle.finish(
+        status,
+        error_type=None if status == "succeeded" else "deterministic_domain_outcome",
+    )
+
+
+# External actor work and leases are the only replaced seams.
+actor_runner._build_initial_embedding_index_impl = deterministic_actor
+actor_runner._reconcile_inbox_documents_impl = deterministic_actor
+actor_runner._reindex_ocr_documents_impl = deterministic_actor
+actor_runner._handle_document_pipeline_impl = deterministic_actor
+actor_runner._commit_review_suggestion_impl = deterministic_actor
+actor_runner._handle_paperless_webhook_impl = deterministic_actor
+actor_runner.document_actor_lease = lambda: contextlib.nullcontext(object())
+actor_runner.embedding_mutation_lease = lambda: contextlib.nullcontext(object())
+actor_runner.embedding_index_ready = lambda connection: True
+
+# Process/protocol fault cases happen around the genuine final durable outcome.
+original_print = builtins.print
+
+
+def protocol_print(value="", *args, **kwargs):
+    text = str(value)
+    try:
+        candidate = json.loads(text)
+    except (TypeError, ValueError):
+        candidate = None
+    if not isinstance(candidate, dict) or candidate.get("protocol") != "archibot.actor-outcome":
+        return original_print(value, *args, **kwargs)
+    if scenario == "missing":
+        return None
+    if scenario == "malformed":
+        return original_print("not-json", *args, **kwargs)
+    if scenario == "version-mismatch":
+        payload = candidate
+        payload["version"] = 999
+        return original_print(json.dumps(payload, separators=(",", ":")), *args, **kwargs)
+    return original_print(value, *args, **kwargs)
+
+
+builtins.print = protocol_print
+argv = sys.argv[1:]
+if argv[:2] == ["-m", "app.actor_runner"]:
+    argv = argv[2:]
+raise SystemExit(actor_runner.main(argv))

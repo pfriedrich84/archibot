@@ -2,6 +2,7 @@
 
 namespace App\Services\Paperless;
 
+use App\Services\Http\ResponseSizeGuard;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -11,7 +12,15 @@ use Throwable;
 
 class PaperlessClient
 {
-    public function __construct(private readonly string $baseUrl) {}
+    private readonly string $baseUrl;
+
+    private readonly CanonicalPaperlessOrigin $canonicalOrigin;
+
+    public function __construct()
+    {
+        $this->canonicalOrigin = app(CanonicalPaperlessOrigin::class);
+        $this->baseUrl = $this->canonicalOrigin->url();
+    }
 
     /**
      * Authenticate with Paperless username/password and return an API token.
@@ -121,6 +130,64 @@ class PaperlessClient
         return $payload;
     }
 
+    /** @param array<string, mixed> $fields */
+    public function patchDocument(string $token, int $documentId, array $fields): void
+    {
+        $this->patchDocumentFields(
+            $token,
+            $documentId,
+            $fields,
+            ['title', 'created_date', 'correspondent', 'document_type', 'tags'],
+        );
+    }
+
+    /**
+     * Manual-review seam. Storage path may only transition from absent to set.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    public function patchReviewedDocument(string $token, int $documentId, array $fields): void
+    {
+        if (array_key_exists('storage_path', $fields)) {
+            $proposed = $fields['storage_path'];
+            if (! is_int($proposed) || $proposed <= 0) {
+                throw new \InvalidArgumentException('A reviewed Paperless storage path must be a positive ID.');
+            }
+
+            $current = $this->document($token, $documentId);
+            if (! array_key_exists('storage_path', $current)) {
+                throw new \InvalidArgumentException('Paperless must report a null storage path before manual assignment.');
+            }
+            if ($current['storage_path'] !== null) {
+                throw new \InvalidArgumentException('An existing Paperless storage path is immutable.');
+            }
+        }
+
+        $this->patchDocumentFields(
+            $token,
+            $documentId,
+            $fields,
+            ['title', 'created_date', 'correspondent', 'document_type', 'tags', 'storage_path'],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @param  array<int, string>  $safeFields
+     */
+    private function patchDocumentFields(string $token, int $documentId, array $fields, array $safeFields): void
+    {
+        $unexpected = array_diff(array_keys($fields), $safeFields);
+        if ($unexpected !== []) {
+            throw new \InvalidArgumentException('Paperless document PATCH contains prohibited fields.');
+        }
+
+        $response = $this->request($token)->patch("/api/documents/{$documentId}/", $fields);
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not update Paperless document.');
+        }
+    }
+
     public function documentOptions(string $token, int $documentId): Response
     {
         return $this->request($token)->send('OPTIONS', "/api/documents/{$documentId}/");
@@ -159,7 +226,9 @@ class PaperlessClient
 
     public function documentPreview(string $token, int $documentId): Response
     {
-        return $this->request($token)
+        $maxBytes = max(1024, (int) config('archibot.paperless_http_max_preview_bytes', 52428800));
+
+        return $this->request($token, $maxBytes)
             ->accept('*/*')
             ->timeout(120)
             ->get("/api/documents/{$documentId}/preview/");
@@ -212,18 +281,58 @@ class PaperlessClient
         return $this->createEntity($token, '/api/document_types/', $name, 'document type');
     }
 
+    public function findTagByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/tags/', $name, 'tag');
+    }
+
+    public function findCorrespondentByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/correspondents/', $name, 'correspondent');
+    }
+
+    public function findDocumentTypeByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/document_types/', $name, 'document type');
+    }
+
     public function currentUser(string $token, ?string $fallbackUsername = null): PaperlessUser
     {
-        $user = $this->currentUserFromUiSettingsEndpoint($token, $fallbackUsername);
-
-        if ($user instanceof PaperlessUser) {
-            return $user;
+        // Compatibility fallback is intentionally narrow: only a successful
+        // ui_settings response that omits is_superuser, or an explicit 404,
+        // may consult older profile endpoints. All other failures stay closed.
+        try {
+            $uiResponse = $this->request($token)->get('/api/ui_settings/');
+        } catch (ConnectionException $exception) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.', previous: $exception);
         }
 
+        if ($uiResponse->status() !== 404 && ! $uiResponse->successful()) {
+            if ($uiResponse->serverError()) {
+                throw new PaperlessUnavailableException('Paperless server is not reachable.');
+            }
+
+            throw new RuntimeException('Could not fetch Paperless UI settings.');
+        }
+
+        $uiUser = null;
+        if ($uiResponse->successful()) {
+            $uiPayload = $uiResponse->json();
+            if (! is_array($uiPayload)) {
+                throw new RuntimeException('Paperless UI settings response was not JSON.');
+            }
+
+            $uiUser = PaperlessUser::fromUiSettingsPayload($uiPayload, $fallbackUsername);
+            if ($uiUser instanceof PaperlessUser && $uiUser->hasSuperuserField) {
+                return $uiUser;
+            }
+        }
+
+        $profileUsername = $uiUser?->username ?? $fallbackUsername;
         $response = $this->request($token)->get('/api/users/me/');
 
         if ($response->status() === 404) {
-            $user = $this->currentUserFromUsersEndpoint($token, $fallbackUsername);
+            $user = $this->currentUserFromUsersEndpoint($token, $profileUsername);
 
             if ($user instanceof PaperlessUser) {
                 return $user;
@@ -244,17 +353,13 @@ class PaperlessClient
             throw new RuntimeException('Paperless user profile response was not JSON.');
         }
 
-        $user = PaperlessUser::fromPayload($payload, $fallbackUsername);
+        $user = PaperlessUser::fromPayload($payload, $profileUsername);
 
-        if (! $user->isAdmin) {
-            $enrichedUser = $this->currentUserFromUsersEndpoint($token, $user->username);
-
-            if ($enrichedUser instanceof PaperlessUser) {
-                return $enrichedUser;
-            }
+        if ($user->hasSuperuserField) {
+            return $user;
         }
 
-        return $user;
+        return $this->currentUserFromUsersEndpoint($token, $user->username) ?? $user;
     }
 
     private function allowsWriteMethod(Response $response): bool
@@ -297,27 +402,6 @@ class PaperlessClient
         return false;
     }
 
-    private function currentUserFromUiSettingsEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser
-    {
-        try {
-            $response = $this->request($token)->get('/api/ui_settings/');
-        } catch (Throwable) {
-            return null;
-        }
-
-        if (! $response->successful()) {
-            return null;
-        }
-
-        $payload = $response->json();
-
-        if (! is_array($payload)) {
-            return null;
-        }
-
-        return PaperlessUser::fromUiSettingsPayload($payload, $fallbackUsername);
-    }
-
     private function currentUserFromUsersEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser
     {
         if (! $fallbackUsername) {
@@ -342,7 +426,12 @@ class PaperlessClient
             return null;
         }
 
-        return PaperlessUser::fromPayload($payload, $fallbackUsername);
+        $user = PaperlessUser::fromPayload($payload, $fallbackUsername);
+        if (! hash_equals(mb_strtolower($fallbackUsername), mb_strtolower($user->username))) {
+            return null;
+        }
+
+        return $user;
     }
 
     /**
@@ -378,7 +467,7 @@ class PaperlessClient
             }
 
             $next = is_array($payload) ? ($payload['next'] ?? null) : null;
-            $nextPath = is_string($next) && $next !== '' ? $next : null;
+            $nextPath = is_string($next) && $next !== '' ? $this->safePaginationPath($next) : null;
             $query = [];
         }
 
@@ -386,6 +475,50 @@ class PaperlessClient
             ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
+    }
+
+    private function safePaginationPath(string $next): string
+    {
+        if (str_starts_with($next, '/')) {
+            if (str_starts_with($next, '//')) {
+                throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
+            }
+
+            return $next;
+        }
+
+        if (! $this->canonicalOrigin->isSameOriginUrl($next)) {
+            throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
+        }
+
+        $parts = parse_url($next);
+        $path = is_array($parts) ? (string) ($parts['path'] ?? '/') : '/';
+        $query = is_array($parts) && isset($parts['query']) ? '?'.$parts['query'] : '';
+
+        return $path.$query;
+    }
+
+    private function findEntityByName(string $token, string $endpoint, string $name, string $label): ?int
+    {
+        $response = $this->request($token)->get($endpoint, ['name__iexact' => $name, 'page_size' => 2]);
+        if (! $response->successful()) {
+            throw new RuntimeException("Could not look up Paperless {$label}.");
+        }
+        $payload = $response->json();
+        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+        if (! is_array($items)) {
+            throw new RuntimeException("Paperless {$label} lookup response was not JSON.");
+        }
+        foreach ($items as $item) {
+            if (is_array($item)
+                && is_numeric($item['id'] ?? null)
+                && is_string($item['name'] ?? null)
+                && mb_strtolower(trim($item['name'])) === mb_strtolower(trim($name))) {
+                return (int) $item['id'];
+            }
+        }
+
+        return null;
     }
 
     private function createEntity(string $token, string $endpoint, string $name, string $label): int
@@ -405,12 +538,21 @@ class PaperlessClient
         return (int) $id;
     }
 
-    private function request(?string $token = null): PendingRequest
+    private function request(?string $token = null, ?int $maxBytes = null): PendingRequest
     {
-        $request = Http::baseUrl(rtrim($this->baseUrl, '/'))
+        $maxBytes ??= max(1024, (int) config('archibot.paperless_http_max_response_bytes', 2097152));
+        $request = Http::baseUrl($this->baseUrl)
             ->acceptJson()
             ->asJson()
-            ->timeout(10)
+            ->connectTimeout(min(5, max(1, (int) config('archibot.paperless_http_timeout_seconds', 10))))
+            ->timeout(max(1, (int) config('archibot.paperless_http_timeout_seconds', 10)))
+            ->withoutRedirecting()
+            ->withOptions([
+                // Handlers write the decoded entity body to the bounded sink. Keep
+                // decoding explicit so compressed transfer bytes cannot bypass it.
+                'decode_content' => true,
+                'sink' => new ResponseSizeGuard($maxBytes, 'Paperless'),
+            ])
             ->withHeaders(['Accept' => 'application/json; version=5']);
 
         if ($token) {

@@ -45,8 +45,9 @@ class ActiveOperationsSnapshotTest extends TestCase
             ->keyBy('key');
 
         $this->assertSame(3, $items->get("command-{$first->id}")['progress_done']);
-        $this->assertSame('first command', $items->get("command-{$first->id}")['progress_message']);
+        $redacted = 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.';
+        $this->assertSame($redacted, $items->get("command-{$first->id}")['progress_message']);
         $this->assertSame(17, $items->get("command-{$second->id}")['progress_done']);
-        $this->assertSame('second command', $items->get("command-{$second->id}")['progress_message']);
+        $this->assertSame($redacted, $items->get("command-{$second->id}")['progress_message']);
     }
 }

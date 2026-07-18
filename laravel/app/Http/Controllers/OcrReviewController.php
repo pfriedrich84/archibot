@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\OcrReview;
 use App\Services\Paperless\PaperlessClient;
@@ -20,6 +19,7 @@ class OcrReviewController extends Controller
     {
         $user = $request->user();
         abort_unless($user !== null, 403);
+        $validated = $request->validate(['per_page' => ['nullable', 'integer', 'in:10,25,50,100']]);
 
         // Load only identifiers until live Paperless authorization has completed. This
         // prevents inaccessible OCR snapshots from entering memory or paginator data.
@@ -40,7 +40,7 @@ class OcrReviewController extends Controller
             ])
             ->whereIn('paperless_document_id', $visibleDocumentIds)
             ->latest()
-            ->paginate(25)
+            ->paginate((int) ($validated['per_page'] ?? 25))
             ->withQueryString()
             ->through(fn (OcrReview $review) => $this->serialize($review));
 
@@ -78,7 +78,8 @@ class OcrReviewController extends Controller
             'paperless_document_id' => $review->paperless_document_id,
         ]);
 
-        return redirect()->route('ocr-reviews.show', $review);
+        return redirect()->route('ocr-reviews.show', $review)
+            ->with('status', 'OCR correction created for review.');
     }
 
     public function show(Request $request, int $ocrReview): Response
@@ -88,6 +89,10 @@ class OcrReviewController extends Controller
 
         return Inertia::render('ocr/Show', [
             'review' => $this->serialize($review, true),
+            'actions' => [
+                'approve' => route('ocr-reviews.approve', $review),
+                'reject' => route('ocr-reviews.reject', $review),
+            ],
         ]);
     }
 
@@ -133,17 +138,17 @@ class OcrReviewController extends Controller
             'paperless_document_id' => $review->paperless_document_id,
         ]);
 
-        return redirect()->route('ocr-reviews.index');
+        return redirect()->route('ocr-reviews.index')
+            ->with('status', 'OCR correction rejected; Paperless content was not changed.');
     }
 
     private function paperless(Request $request): PaperlessClient
     {
-        $paperlessUrl = AppSetting::getValue('paperless.url');
         $token = $request->user()->paperless_token;
 
-        abort_if(! $paperlessUrl || ! $token, 503, 'Paperless connection is not available.');
+        abort_if(! $token, 503, 'Paperless connection is not available.');
 
-        return app(PaperlessClient::class, ['baseUrl' => $paperlessUrl]);
+        return app(PaperlessClient::class);
     }
 
     private function authorizedLocator(Request $request, int $ocrReviewId, bool $change): OcrReview

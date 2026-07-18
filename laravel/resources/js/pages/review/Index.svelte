@@ -12,14 +12,16 @@
 </script>
 
 <script lang="ts">
-    import { Link } from '@inertiajs/svelte';
+    import { Form, Link } from '@inertiajs/svelte';
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
+    import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
     import { paperlessLabel } from '@/lib/paperless';
     import { toUrl } from '@/lib/utils';
     import { show } from '@/routes/review';
+    import type { Paginator } from '@/types';
 
     type Suggestion = {
         id: number;
@@ -38,11 +40,6 @@
         created_at: string | null;
     };
 
-    type Paginator<T> = {
-        data: T[];
-        total: number;
-    };
-
     let {
         suggestions,
         filters,
@@ -54,11 +51,6 @@
     } = $props();
 
     let selectedIds = $state<number[]>([]);
-
-    const csrfToken = () =>
-        document
-            .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-            ?.getAttribute('content') ?? '';
 
     const toggleSelection = (id: number, checked: boolean) => {
         selectedIds = checked
@@ -137,6 +129,19 @@
             class="h-9 rounded-md border bg-background px-3 text-sm"
         />
         <select
+            name="per_page"
+            aria-label="Items per page"
+            class="h-9 rounded-md border bg-background px-3 text-sm"
+        >
+            {#each [10, 25, 50, 100] as size (size)}
+                <option
+                    value={size}
+                    selected={Number(filters.per_page) === size}
+                    >{size} per page</option
+                >
+            {/each}
+        </select>
+        <select
             name="sort"
             class="h-9 rounded-md border bg-background px-3 text-sm"
         >
@@ -178,40 +183,65 @@
             >
             {#if selectedIds.length > 0}
                 <div class="flex gap-2">
-                    <form method="post" action={actions.bulkAccept}>
-                        <input
-                            type="hidden"
-                            name="_token"
-                            value={csrfToken()}
-                        />
-                        {#each selectedIds as id (id)}
-                            <input
-                                type="hidden"
-                                name="suggestion_ids[]"
-                                value={id}
-                            />
-                        {/each}
-                        <Button type="submit" size="sm"
-                            >Bulk accept ({selectedIds.length})</Button
-                        >
-                    </form>
-                    <form method="post" action={actions.bulkReject}>
-                        <input
-                            type="hidden"
-                            name="_token"
-                            value={csrfToken()}
-                        />
-                        {#each selectedIds as id (id)}
-                            <input
-                                type="hidden"
-                                name="suggestion_ids[]"
-                                value={id}
-                            />
-                        {/each}
-                        <Button type="submit" size="sm" variant="outline"
-                            >Bulk reject ({selectedIds.length})</Button
-                        >
-                    </form>
+                    <Form
+                        method="post"
+                        action={actions.bulkAccept}
+                        onsubmit={(event) => {
+                            if (
+                                !confirm(
+                                    `Accept ${selectedIds.length} selected suggestions and queue their Paperless updates?`,
+                                )
+                            ) {
+                                event.preventDefault();
+                            }
+                        }}
+                    >
+                        {#snippet children({ processing })}
+                            {#each selectedIds as id (id)}
+                                <input
+                                    type="hidden"
+                                    name="suggestion_ids[]"
+                                    value={id}
+                                />
+                            {/each}
+                            <Button
+                                type="submit"
+                                size="sm"
+                                disabled={processing}
+                                >Bulk accept ({selectedIds.length})</Button
+                            >
+                        {/snippet}
+                    </Form>
+                    <Form
+                        method="post"
+                        action={actions.bulkReject}
+                        onsubmit={(event) => {
+                            if (
+                                !confirm(
+                                    `Reject ${selectedIds.length} selected suggestions without changing Paperless documents?`,
+                                )
+                            ) {
+                                event.preventDefault();
+                            }
+                        }}
+                    >
+                        {#snippet children({ processing })}
+                            {#each selectedIds as id (id)}
+                                <input
+                                    type="hidden"
+                                    name="suggestion_ids[]"
+                                    value={id}
+                                />
+                            {/each}
+                            <Button
+                                type="submit"
+                                size="sm"
+                                variant="outline"
+                                disabled={processing}
+                                >Bulk reject ({selectedIds.length})</Button
+                            >
+                        {/snippet}
+                    </Form>
                 </div>
             {/if}
         </div>
@@ -278,5 +308,13 @@
                 No review suggestions match the current filters.
             </div>
         {/each}
+        <Pagination
+            links={suggestions.links}
+            from={suggestions.from}
+            to={suggestions.to}
+            total={suggestions.total}
+            perPage={suggestions.per_page}
+            label="Review queue pages"
+        />
     </div>
 </div>

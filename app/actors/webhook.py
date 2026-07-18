@@ -8,15 +8,16 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import (
+from app.execution_lifecycle import (
+    ExecutionLifecycle,
     finish_actor_execution,
-    schedule_actor_execution_retry,
     start_actor_execution,
+    update_actor_execution_progress,
 )
 from app.jobs.context import worker_id
 from app.jobs.document_embeddings import (
@@ -27,10 +28,8 @@ from app.jobs.document_embeddings import (
     store_document_embedding,
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
-from app.jobs.pipeline_start import start_or_attach_document_pipeline
-from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
-from app.jobs.webhook_delivery import load_webhook_delivery, mark_webhook_delivery_status
+from app.jobs.progress import ProgressSnapshot
+from app.jobs.webhook_delivery import load_webhook_delivery
 from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
 from app.pipeline.trusted_context import is_trusted_document
 
@@ -62,16 +61,6 @@ def validated_webhook_action(action: str | None) -> str:
     if action not in VALID_WEBHOOK_ACTIONS:
         raise InvalidWebhookAction(action or "missing")
     return action
-
-
-def webhook_requests_reprocess(action: str) -> bool:
-    """Return whether the persisted action should force a full document reprocess.
-
-    Automatic Paperless edit/update webhooks are normalized by Laravel to
-    `refresh_embedding`, not `process_document`, so they never force full
-    reprocessing here.
-    """
-    return False
 
 
 async def _refresh_document_embedding_async(paperless_document_id: int) -> EmbeddingRefreshResult:
@@ -187,7 +176,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         event_type=types.ACTOR_STARTED,
         webhook_delivery_id=webhook_delivery_id,
         actor_name=actor_name,
-        queue_name=queue_name("webhook"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         worker_id=worker_id(),
     )
 
@@ -195,20 +184,15 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
     try:
         delivery = load_webhook_delivery(webhook_delivery_id)
         if delivery is None:
-            publish_pipeline_event(
-                types.ACTOR_FAILED,
-                webhook_delivery_id=webhook_delivery_id,
-                level="error",
-                message="Webhook delivery was not found for actor execution.",
-                payload={"actor_name": actor_name},
-            )
+            # The runner emits protocol-failure because no durable execution
+            # exists. Do not synthesize a domain failure event or outcome here.
             return
 
         actor_execution = start_actor_execution(
             actor_name=actor_name,
             webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
-            queue_name=queue_name("webhook"),
+            queue_name=LARAVEL_DATABASE_QUEUE,
         )
         if actor_execution.id is not None:
             update_actor_execution_progress(
@@ -224,12 +208,9 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         try:
             action = validated_webhook_action(delivery.webhook_action)
         except InvalidWebhookAction as exc:
-            mark_webhook_delivery_status(
-                webhook_delivery_id, "failed_permanent", "invalid_webhook_action"
-            )
             finish_actor_execution(
                 actor_execution,
-                status="failed",
+                status="failed_permanent",
                 error_type="invalid_webhook_action",
                 error_message=f"Invalid persisted webhook_action: {exc}",
             )
@@ -268,46 +249,32 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             )
 
         if action == "process_document":
-            reprocess_requested = webhook_requests_reprocess(action)
-            result = start_or_attach_document_pipeline(
-                trigger_source="webhook",
-                paperless_document_id=delivery.paperless_document_id,
-                paperless_modified=delivery.paperless_modified,
-                reprocess_requested=reprocess_requested,
-                reprocess_reason=delivery.event_type if reprocess_requested else None,
-                reprocess_mode="webhook" if reprocess_requested else None,
-                webhook_delivery_id=webhook_delivery_id,
-            )
-            delivery_status = "blocked" if result.status == "blocked" else "processed"
-            mark_webhook_delivery_status(
-                webhook_delivery_id, delivery_status, result.blocked_reason
-            )
-            if actor_execution.id is not None:
-                update_actor_execution_progress(
-                    actor_execution.id,
-                    ProgressSnapshot(
-                        total=3,
-                        done=3,
-                        failed=0 if delivery_status == "processed" else 1,
-                        phase="webhook_finished",
-                        message=f"Webhook process action finished with status {delivery_status}.",
-                    ),
-                    current_item=f"paperless_document:{delivery.paperless_document_id}",
-                )
+            # Productive process-document deliveries are consumed by Laravel
+            # before any Python actor is dispatched. Fail closed if stale queue
+            # data reaches this retired path; Python must never own Pipeline Start.
             finish_actor_execution(
                 actor_execution,
-                status="succeeded" if delivery_status == "processed" else "blocked",
-                error_type=result.blocked_reason,
+                status="failed_permanent",
+                error_type="pipeline_start_owned_by_laravel",
             )
         elif action == "refresh_embedding":
             refresh = refresh_document_embedding(delivery.paperless_document_id)
-            mark_webhook_delivery_status(
-                webhook_delivery_id, refresh.status, refresh.blocked_reason
-            )
+            delivery_status = "dismissed" if refresh.skipped_reason else refresh.status
+            execution_status = {
+                "processed": "succeeded",
+                "blocked": "blocked",
+                "dismissed": "skipped",
+            }.get(delivery_status, "failed_permanent")
             finish_actor_execution(
                 actor_execution,
-                status="succeeded" if refresh.status == "processed" else "blocked",
-                error_type=refresh.blocked_reason or refresh.skipped_reason,
+                status=execution_status,
+                error_type=(
+                    None
+                    if execution_status == "succeeded"
+                    else refresh.blocked_reason
+                    or refresh.skipped_reason
+                    or "unexpected_refresh_status"
+                ),
             )
             if actor_execution.id is not None:
                 update_actor_execution_progress(
@@ -315,7 +282,8 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
                     ProgressSnapshot(
                         total=3,
                         done=3,
-                        failed=0 if refresh.status == "processed" else 1,
+                        failed=0 if delivery_status in {"processed", "dismissed"} else 1,
+                        skipped=1 if delivery_status == "dismissed" else 0,
                         phase="webhook_finished",
                         message=f"Webhook embedding refresh finished with status {refresh.status}.",
                     ),
@@ -331,7 +299,6 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
                 )
         else:
             deleted = _delete_document_embedding(delivery.paperless_document_id)
-            mark_webhook_delivery_status(webhook_delivery_id, "processed", None)
             if actor_execution.id is not None:
                 update_actor_execution_progress(
                     actor_execution.id,
@@ -351,54 +318,8 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
                 deleted_rows=deleted,
             )
     except Exception as exc:
-        retry_class = classify_exception(exc)
-        attempt = 1 if actor_execution is None else actor_execution.attempt
-        retryable = should_retry(retry_class, attempt=attempt, max_attempts=5)
-        mark_webhook_delivery_status(
-            webhook_delivery_id,
-            "failed" if retryable else "failed_permanent",
-            retry_class.value,
-        )
         if actor_execution is not None:
-            if retryable:
-                backoff_seconds = retry_backoff_seconds(attempt)
-                schedule_actor_execution_retry(
-                    actor_execution,
-                    retry_class=retry_class.value,
-                    retry_reason=type(exc).__name__,
-                    backoff_seconds=backoff_seconds,
-                    error_message=str(exc)[:1000],
-                )
-                publish_pipeline_event(
-                    types.ACTOR_RETRY_SCHEDULED,
-                    webhook_delivery_id=webhook_delivery_id,
-                    level="warning",
-                    message="Webhook actor retry scheduled for Laravel recovery.",
-                    payload={
-                        "actor_name": actor_name,
-                        "retry_class": retry_class.value,
-                        "retry_reason": type(exc).__name__,
-                        "backoff_seconds": backoff_seconds,
-                    },
-                )
-            else:
-                finish_actor_execution(
-                    actor_execution,
-                    status="failed_permanent",
-                    error_type=retry_class.value,
-                    error_message=str(exc)[:1000],
-                )
-        publish_pipeline_event(
-            types.ACTOR_FAILED,
-            webhook_delivery_id=webhook_delivery_id,
-            level="error",
-            message="Webhook actor failed before completing the requested webhook action.",
-            payload={
-                "actor_name": actor_name,
-                "error_type": retry_class.value,
-                "retryable": retryable,
-            },
-        )
+            ExecutionLifecycle(actor_execution).fail(exc)
         raise
 
     log.info(
@@ -406,14 +327,6 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         event_type=types.ACTOR_SUCCEEDED,
         webhook_delivery_id=webhook_delivery_id,
         actor_name=actor_name,
-        queue_name=queue_name("webhook"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    handle_paperless_webhook = queue_backend.actor(queue_name=queue_name("webhook"))(
-        _handle_paperless_webhook_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    handle_paperless_webhook = _handle_paperless_webhook_impl

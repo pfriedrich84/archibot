@@ -45,7 +45,8 @@ class McpTokenController extends Controller
 
         return redirect()
             ->route('mcp-tokens.index')
-            ->with('created_mcp_token', $plainTextToken);
+            ->with('created_mcp_token', $plainTextToken)
+            ->with('status', "MCP token '{$token->name}' created. Copy it now; it will not be shown again.");
     }
 
     public function destroy(Request $request, McpToken $mcpToken): RedirectResponse
@@ -56,7 +57,8 @@ class McpTokenController extends Controller
         $mcpToken->revoke();
         $this->audit($request, $mcpToken, 'mcp_token.revoked');
 
-        return redirect()->route('mcp-tokens.index');
+        return redirect()->route('mcp-tokens.index')
+            ->with('status', "MCP token '{$mcpToken->name}' revoked.");
     }
 
     private function audit(Request $request, McpToken $token, string $event): void

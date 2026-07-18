@@ -1,9 +1,10 @@
 <script module lang="ts">
+    import { index as pipelineRunsIndex } from '@/routes/pipeline-runs';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Pipeline runs',
-                href: '/pipeline-runs',
+                href: pipelineRunsIndex(),
             },
             {
                 title: 'Run detail',
@@ -19,8 +20,13 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { formatDateTime } from '@/lib/datetime';
+    import { formatDisplayValue } from '@/lib/display';
 
-    type JsonObject = Record<string, unknown>;
+    type MetadataEntry = {
+        key: string;
+        label: string;
+        value: boolean | number | string | null;
+    };
 
     type PipelineEvent = {
         id: number;
@@ -30,7 +36,7 @@
         paperless_document_id: number | null;
         webhook_delivery_id: number | null;
         command_id: number | null;
-        payload: JsonObject;
+        metadata: MetadataEntry[];
         created_at: string | null;
     };
 
@@ -55,7 +61,7 @@
         event: string;
         target_type: string;
         target_id: string;
-        metadata: JsonObject;
+        metadata: MetadataEntry[];
         created_at: string | null;
     };
 
@@ -100,7 +106,7 @@
             id: number;
             type: string;
             status: string;
-            payload?: JsonObject;
+            metadata?: MetadataEntry[];
             created_by_user_id?: number | null;
             started_at?: string | null;
             finished_at?: string | null;
@@ -132,8 +138,6 @@
         run: Run;
         isAdmin: boolean;
     } = $props();
-
-    const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 
     onMount(() => {
         const interval = window.setInterval(() => {
@@ -196,7 +200,19 @@
                         </Form>
                     {/if}
                     {#if run.can_cancel}
-                        <Form method="post" action={run.cancel_url}>
+                        <Form
+                            method="post"
+                            action={run.cancel_url}
+                            onsubmit={(event) => {
+                                if (
+                                    !confirm(
+                                        `Cancel pipeline run ${run.id}? Remaining queued work will not start.`,
+                                    )
+                                ) {
+                                    event.preventDefault();
+                                }
+                            }}
+                        >
                             {#snippet children({ processing })}
                                 <button
                                     type="submit"
@@ -305,9 +321,20 @@
                         <dd class="font-medium">{run.command.error ?? '—'}</dd>
                     </div>
                 </dl>
-                <pre class="mt-3 overflow-x-auto text-xs">{pretty(
-                        run.command.payload ?? {},
-                    )}</pre>
+                {#if run.command.metadata?.length}
+                    <dl class="mt-3 grid gap-1 text-xs sm:grid-cols-2">
+                        {#each run.command.metadata as entry (entry.key)}
+                            <div>
+                                <dt class="text-muted-foreground">
+                                    {entry.label}
+                                </dt>
+                                <dd>
+                                    {formatDisplayValue(entry.value, entry.key)}
+                                </dd>
+                            </div>
+                        {/each}
+                    </dl>
+                {/if}
             {:else}
                 <div class="text-sm text-muted-foreground">
                     No command is linked to this run yet.
@@ -385,9 +412,23 @@
                     {#if event.message}<div class="mt-1 break-words">
                             {event.message}
                         </div>{/if}
-                    <pre class="mt-2 overflow-x-auto text-xs">{pretty(
-                            event.payload,
-                        )}</pre>
+                    {#if event.metadata.length > 0}
+                        <dl class="mt-2 grid gap-1 text-xs sm:grid-cols-2">
+                            {#each event.metadata as entry (entry.key)}
+                                <div>
+                                    <dt class="text-muted-foreground">
+                                        {entry.label}
+                                    </dt>
+                                    <dd>
+                                        {formatDisplayValue(
+                                            entry.value,
+                                            entry.key,
+                                        )}
+                                    </dd>
+                                </div>
+                            {/each}
+                        </dl>
+                    {/if}
                 </div>
             {:else}
                 <div class="text-muted-foreground">
@@ -443,9 +484,23 @@
                             {formatDateTime(log.created_at)} · {log.target_type}
                             {log.target_id}
                         </div>
-                        <pre class="mt-2 overflow-x-auto text-xs">{pretty(
-                                log.metadata,
-                            )}</pre>
+                        {#if log.metadata.length > 0}
+                            <dl class="mt-2 grid gap-1 text-xs">
+                                {#each log.metadata as entry (entry.key)}
+                                    <div>
+                                        <dt class="text-muted-foreground">
+                                            {entry.label}
+                                        </dt>
+                                        <dd>
+                                            {formatDisplayValue(
+                                                entry.value,
+                                                entry.key,
+                                            )}
+                                        </dd>
+                                    </div>
+                                {/each}
+                            </dl>
+                        {/if}
                     </div>
                 {:else}
                     <div class="text-muted-foreground">

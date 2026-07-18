@@ -356,54 +356,20 @@ class TestSplitTextByPages:
 
 
 # ---------------------------------------------------------------------------
-# OCR cache (using real SQLite via conftest)
+# OCR cache delegates to the shared PostgreSQL repository
 # ---------------------------------------------------------------------------
 class TestOcrCache:
-    def test_cache_round_trip(self, tmp_path):
-        """Cache stores and retrieves corrected text."""
-        db_path = tmp_path / "test.db"
-        with patch("app.pipeline.ocr_correction.settings") as s:
-            s.db_path = db_path
-
-            with patch("app.pipeline.ocr_correction.get_conn") as mock_conn:
-                # Use a real in-memory sqlite connection for this test
-                import sqlite3
-
-                conn = sqlite3.connect(":memory:")
-                conn.row_factory = sqlite3.Row
-                conn.execute(
-                    """CREATE TABLE doc_ocr_cache (
-                        document_id INTEGER PRIMARY KEY,
-                        corrected_content TEXT NOT NULL,
-                        ocr_mode TEXT NOT NULL,
-                        num_corrections INTEGER NOT NULL DEFAULT 0,
-                        corrected_at TEXT NOT NULL DEFAULT (datetime('now'))
-                    )"""
-                )
-
-                from contextlib import contextmanager
-
-                @contextmanager
-                def fake_conn():
-                    yield conn
-
-                mock_conn.side_effect = fake_conn
-
-                # No cache yet
-                assert get_cached_ocr(42) is None
-
-                # Store
-                cache_ocr_correction(42, "corrected text", "vision_full", 5)
-
-                # Retrieve
-                cached = get_cached_ocr(42)
-                assert cached == "corrected text"
-
-                # Overwrite
-                cache_ocr_correction(42, "updated", "text", 2)
-                assert get_cached_ocr(42) == "updated"
-
-                conn.close()
+    def test_cache_repository_contract(self):
+        with (
+            patch("app.pipeline.ocr_correction.store_ocr_correction") as store,
+            patch(
+                "app.pipeline.ocr_correction.cached_ocr_correction", return_value="fixed"
+            ) as load,
+        ):
+            cache_ocr_correction(42, "fixed", "vision_full", 5)
+            assert get_cached_ocr(42) == "fixed"
+        store.assert_called_once_with(42, "fixed", "vision_full", 5)
+        load.assert_called_once_with(42)
 
 
 # ---------------------------------------------------------------------------
@@ -411,11 +377,9 @@ class TestOcrCache:
 # ---------------------------------------------------------------------------
 class TestBatchCorrectDocuments:
     @pytest.mark.asyncio
-    async def test_fetches_from_paperless(self, tmp_db):
+    async def test_fetches_from_paperless(self):
         """batch_correct_documents should fetch documents from Paperless API,
-        not from the local doc_embedding_meta table."""
-        from tests.conftest import _mock_get_conn
-
+        from the Paperless API rather than any retired local processing store."""
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
         doc2 = PaperlessDocument(id=2, title="Doc 2", content="?" * 100, tags=[])
 
@@ -430,10 +394,8 @@ class TestBatchCorrectDocuments:
 
         with (
             patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
-            patch(
-                "app.pipeline.ocr_correction.get_conn",
-                lambda: _mock_get_conn(tmp_db),
-            ),
+            patch("app.pipeline.ocr_correction.cached_ocr_document_ids", return_value=set()),
+            patch("app.pipeline.ocr_correction.store_ocr_correction"),
             patch("app.pipeline.ocr_correction.settings") as mock_settings,
         ):
             mock_settings.max_doc_chars = 8000
@@ -447,24 +409,10 @@ class TestBatchCorrectDocuments:
         mock_paperless.list_all_documents.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skips_cached_docs(self, tmp_db):
-        """Documents already in doc_ocr_cache should be skipped (force=False)."""
-        from tests.conftest import _mock_get_conn
-
+    async def test_skips_cached_docs(self):
+        """Documents already in PostgreSQL should be skipped (force=False)."""
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
         doc2 = PaperlessDocument(id=2, title="Doc 2", content="?" * 100, tags=[])
-
-        # Pre-populate cache for doc 1
-        import sqlite3
-
-        conn = sqlite3.connect(str(tmp_db))
-        conn.execute(
-            "INSERT INTO doc_ocr_cache (document_id, corrected_content, ocr_mode, num_corrections)"
-            " VALUES (?, ?, ?, ?)",
-            (1, "already cached", "text", 1),
-        )
-        conn.commit()
-        conn.close()
 
         mock_paperless = AsyncMock()
         mock_paperless.list_all_documents = AsyncMock(return_value=[doc1, doc2])
@@ -477,10 +425,8 @@ class TestBatchCorrectDocuments:
 
         with (
             patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
-            patch(
-                "app.pipeline.ocr_correction.get_conn",
-                lambda: _mock_get_conn(tmp_db),
-            ),
+            patch("app.pipeline.ocr_correction.cached_ocr_document_ids", return_value={1}),
+            patch("app.pipeline.ocr_correction.store_ocr_correction"),
             patch("app.pipeline.ocr_correction.settings") as mock_settings,
         ):
             mock_settings.max_doc_chars = 8000
@@ -494,23 +440,9 @@ class TestBatchCorrectDocuments:
         assert corrected == 1
 
     @pytest.mark.asyncio
-    async def test_force_processes_cached(self, tmp_db):
+    async def test_force_processes_cached(self):
         """With force=True, even cached documents should be processed."""
-        from tests.conftest import _mock_get_conn
-
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
-
-        # Pre-populate cache for doc 1
-        import sqlite3
-
-        conn = sqlite3.connect(str(tmp_db))
-        conn.execute(
-            "INSERT INTO doc_ocr_cache (document_id, corrected_content, ocr_mode, num_corrections)"
-            " VALUES (?, ?, ?, ?)",
-            (1, "already cached", "text", 1),
-        )
-        conn.commit()
-        conn.close()
 
         mock_paperless = AsyncMock()
         mock_paperless.list_all_documents = AsyncMock(return_value=[doc1])
@@ -523,10 +455,8 @@ class TestBatchCorrectDocuments:
 
         with (
             patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
-            patch(
-                "app.pipeline.ocr_correction.get_conn",
-                lambda: _mock_get_conn(tmp_db),
-            ),
+            patch("app.pipeline.ocr_correction.cached_ocr_document_ids", return_value=set()),
+            patch("app.pipeline.ocr_correction.store_ocr_correction"),
             patch("app.pipeline.ocr_correction.settings") as mock_settings,
         ):
             mock_settings.max_doc_chars = 8000
@@ -540,10 +470,8 @@ class TestBatchCorrectDocuments:
         assert corrected == 1
 
     @pytest.mark.asyncio
-    async def test_force_bypasses_clean_text_heuristic(self, tmp_db):
+    async def test_force_bypasses_clean_text_heuristic(self):
         """With force=True, batch OCR refresh should call the model for clean text."""
-        from tests.conftest import _mock_get_conn
-
         clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
         doc = PaperlessDocument(id=1, title="Doc 1", content=clean, tags=[])
 
@@ -559,10 +487,8 @@ class TestBatchCorrectDocuments:
 
         with (
             patch("app.pipeline.ocr_correction.effective_ocr_mode", return_value="text"),
-            patch(
-                "app.pipeline.ocr_correction.get_conn",
-                lambda: _mock_get_conn(tmp_db),
-            ),
+            patch("app.pipeline.ocr_correction.cached_ocr_document_ids", return_value=set()),
+            patch("app.pipeline.ocr_correction.store_ocr_correction"),
             patch("app.pipeline.ocr_correction.settings") as mock_settings,
         ):
             mock_settings.max_doc_chars = 8000
