@@ -6,7 +6,7 @@ This document records the current event-driven ArchiBot job-control model and th
 
 `worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active event-driven slice uses durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
 
-Steps 9–11 removed productive SQLite processing and the former Python queue transport, decorators, workers, schema installer and dependencies. ADR-0017 makes the Laravel/PostgreSQL model below the sole runtime path. Existing historical queue schema objects may remain inert on upgraded volumes solely for retention and rollback; they are never created on a clean install or used by current code.
+Productive SQLite processing and the former Python queue transport, decorators, workers, schema installer and dependencies are removed. ADR-0017 makes the Laravel/PostgreSQL model below the sole runtime path. Existing historical queue schema objects may remain inert on upgraded volumes solely for retention and rollback; they are never created on a clean install or used by current code.
 
 ## Current event-driven durable model
 

@@ -78,7 +78,7 @@ PostgreSQL is the source of truth for progress, retries, audit and recovery stat
 
 The source-link migration cannot safely infer a command or webhook delivery for non-pipeline actor attempts created by older releases. It marks any such in-flight `running` or `retrying` execution `failed_permanent` with `error_type=source_link_unavailable_after_upgrade`. After upgrading, operators should inspect those rows and rerun the corresponding maintenance command or webhook from the operations UI only after confirming that the old actor process has stopped. The migration does not guess links or replay ambiguous work.
 
-ADR-0015 and ADR-0017 govern the final transport: Laravel Database Queues and fixed Python actor commands are the only productive path. The previous Python queue backend, SDK, schema installer, workers and configuration have been removed. Existing historical schema objects on upgraded volumes are inert; see the [Step 11 upgrade notes](../implementation-notes/absurd-removal.md).
+ADR-0015 and ADR-0017 govern the final transport: Laravel Database Queues and fixed Python actor commands are the only productive path. The previous Python queue backend, SDK, schema installer, workers and configuration have been removed. Existing historical schema objects on upgraded volumes are inert; see the [retired transport upgrade notes](../implementation-notes/absurd-removal.md).
 
 ## Paperless webhook setup
 
@@ -205,7 +205,7 @@ Recovery behavior:
 - exhausted or unlinked actor retries fail permanently instead of looping forever;
 - `cancel_requested` pipeline runs without a live actor are finalized as `cancelled`;
 - embedding-blocked runs are released when the embedding index is complete;
-- auto-accepted review suggestions create durable pending `review_commit` commands that Laravel recovery dispatches;
+- authorized manually accepted review suggestions create durable pending `review_commit` commands that Laravel recovery dispatches;
 - pending embedding, poll, reindex and OCR reindex commands are bridged to actors.
 
 Document actor retry classification uses bounded default backoff for retryable failures such as transient network/provider/Paperless errors, rate limiting and recoverable processing failures. Permanent validation or missing-document failures should not retry forever.

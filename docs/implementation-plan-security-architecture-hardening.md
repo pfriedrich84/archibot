@@ -2,13 +2,13 @@
 
 ## Status and baseline
 
-Status: accepted 13-step maintainer sequence. Steps 1–12 are implemented and accepted for this hardening sequence. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval.
+**Completed historical implementation record. Do not use this document as active sequencing or a task list.** Steps 1–12 are implemented and accepted. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval. Current authority lives in accepted ADRs, architecture docs, agent rules and the trust-boundary register.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
 Current final CI evidence: PR [#229](https://github.com/pfriedrich84/archibot/pull/229) HEAD `cc0ec96`, [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568) — lint-and-verify, Laravel (468 passed; 26 PostgreSQL-only skipped), Docker build, Grype and Trivy passed. This evidence does not claim live PostgreSQL integration or satisfy the stable-release gates below by itself.
 
-This plan records the maintainer decisions from the product-risk and architecture review. Implementation and acceptance claims are bounded by the recorded evidence and release gates. Each milestone must ship as a focused, reviewable pull request with current validation evidence.
+This record preserves the maintainer decisions from the product-risk and architecture review and the evidence used to deliver them. Implementation and acceptance claims are bounded by the recorded evidence and release gates. The milestone language below is historical, not an instruction to reopen completed work.
 
 ## Outcomes
 
@@ -445,9 +445,9 @@ Do not declare a stable multi-user release until:
 - CI Docker, Grype and Trivy checks pass on the release commit;
 - documentation clearly identifies disabled redesign tracks.
 
-## Canonical maintainer sequence and status
+## Completed maintainer sequence
 
-This is the only step numbering used for hardening status. Milestone subsections group architecture scope; they do not create extra steps.
+This numbering is retained only to explain delivery history. Milestone subsections group the completed architecture scope; they do not define current work.
 
 1. Disable Chat/RAG — implemented containment; redesign remains disabled.
 2. Suspend auto-commit — implemented containment; safe automation remains disabled.
@@ -463,4 +463,4 @@ This is the only step numbering used for hardening status. Milestone subsections
 12. Deliver the aggregated Milestone 3 UX consistency work — implemented; release validation remains required.
 13. Deliver the aggregated Milestone 4 research/design for Issue #221, Issue #222 and safe automation — research/design complete on 2026-07-18. Authorization-safe RAG runtime work, Paperless v3/API negotiation implementation and safe-automation runtime/canary work are **not implemented or approved**; Chat/RAG, OCR write-back and automatic commits remain disabled.
 
-Steps 1–6 may be reordered for reviewer availability, but containment precedes redesign. Steps 7–11 are dependency-ordered and must not be collapsed into one large migration. There are no hardening Steps 14 or 15.
+The sequence was delivered containment-first and dependency-ordered. Future work must follow current ADRs and architecture docs rather than extending this completed sequence.

@@ -18,7 +18,7 @@ Paperless Webhooks / Laravel UI / 600-second reconciliation
   -> Python document processing and provider integrations
 ```
 
-Laravel queues are transport only. PostgreSQL pipeline records are the product state. Absurd is superseded by ADR-0015, `worker_jobs` is retired by ADR-0016, and [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) makes Laravel the sole Pipeline Start/transport owner while Python owns domain lifecycle. ADR-0018 confidence auto-commit containment is implemented; do not restore model/judge-authorized writes. Active ordering comes from the [hardening plan](../implementation-plan-security-architecture-hardening.md).
+Laravel queues are transport only. PostgreSQL pipeline records are the product state. The retired Python queue transport is superseded by ADR-0015, `worker_jobs` is retired by ADR-0016, and [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md) makes Laravel the sole Pipeline Start/transport owner while Python owns domain lifecycle. ADR-0018 confidence auto-commit containment is implemented; do not restore model/judge-authorized writes. Accepted ADRs and current architecture docs define active behavior.
 
 ## Load context by task
 
@@ -26,7 +26,7 @@ First follow the task-triggered routing in [`AGENTS.md`](../../AGENTS.md). For m
 
 | Change area | Required context |
 | --- | --- |
-| Overall target or phase sequencing | [Hardening plan](../implementation-plan-security-architecture-hardening.md), [event-driven detail plan](../implementation-plan-event-driven-archibot.md), and [current phase status](../implementation-notes/event-driven-phase-status.md) |
+| Overall target or remaining runtime work | [event-driven detail plan](../implementation-plan-event-driven-archibot.md), [current phase status](../implementation-notes/event-driven-phase-status.md), accepted ADRs, and relevant architecture docs |
 | Queue transport, actor runner, or superseded runtime cleanup | [ADR-0015](../decisions/0015-use-laravel-database-queues-for-event-transport.md), [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), [ADR-0017](../decisions/0017-single-durable-orchestration-and-execution-ownership.md), and [job-control model](../architecture/job-control-model.md) |
 | Webhooks or polling | [Webhook/polling coordination](../architecture/webhook-polling-coordination.md), [ADR-0005](../decisions/0005-use-webhooks-as-primary-trigger.md), and [ADR-0007](../decisions/0007-keep-periodic-polling-with-webhook-dedupe-locks.md) |
 | Embedding startup/readiness | [Embedding gate](../architecture/embedding-readiness-gate.md) and [ADR-0006](../decisions/0006-require-complete-embedding-index-before-document-processing.md) |
@@ -71,15 +71,9 @@ For delegation, handoff, evidence and interruption recovery, use:
 
 Do not restate their full contracts in task prompts or committed phase notes.
 
-## Current migration priority
+## Known runtime follow-ups
 
-Use the implementation plan and phase status for current detail. Unless the task explicitly narrows scope, prefer this order:
-
-1. Validate the Laravel-only supervised runtime: scheduled 600-second reconciliation, source-linked recovery, cancellation, bounded retry attempts and manual review-commit command handoff.
-2. Complete actual full-reindex and remaining CLI/UI backend parity.
-3. Remove Absurd dependencies, schema, configuration, compatibility wrappers and obsolete tests now that Supervisor no longer starts Absurd workers or recovery.
-4. Validate clean-install Docker runtime and end-to-end recovery without Absurd or `worker_jobs`.
-5. Remove or mark remaining stale transport documentation.
+Use the phase status and current architecture docs for current detail. The known follow-ups are full-reindex behavior, finite actor/process timeout policy, and deployment-specific release evidence for PostgreSQL restart, scheduler timing, backup, rollback and Paperless integration. They are independent scoped tasks, not a migration phase sequence. Retired state/transport paths must remain absent and disabled redesign tracks must remain contained.
 
 ## Validation and completion
 

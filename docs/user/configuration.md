@@ -191,7 +191,7 @@ Siehe [Webhook-Doku und Rotations-Runbook](./webhooks.md).
 
 ## MCP Server (optional)
 
-MCP-Transport und Host/Port koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen. Seit Hardening-Milestone 2.1 sind alle Tools und Resources retired, bis vollstaendige berechtigungsgebundene Laravel/PostgreSQL-Seams vorliegen; die folgenden Write-, Key- und Classification-Schalter sind daher inert und werden in einem spaeteren Konfigurations-Cleanup entfernt.
+MCP-Transport und Host/Port koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen. Alle Tools und Resources sind derzeit retired, bis vollstaendige berechtigungsgebundene Laravel/PostgreSQL-Seams vorliegen; die folgenden Write-, Key- und Classification-Schalter sind daher inert und werden in einem spaeteren Konfigurations-Cleanup entfernt.
 
 | Variable | Default | Beschreibung |
 |---|---|---|

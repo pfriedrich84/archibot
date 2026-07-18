@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**Research deliverable complete; compatibility implementation is not started.** This is the design record for [Issue #222](https://github.com/pfriedrich84/archibot/issues/222) and hardening plan 4.2. Every integration choice below is a **proposal** until separately approved and implemented. It does not enable remote OCR, install a parser plugin, upload a file version, or permit ArchiBot to write Paperless document `content`.
+**Research deliverable complete; compatibility implementation is not started.** This is the design record for [Issue #222](https://github.com/pfriedrich84/archibot/issues/222). Every integration choice below is a **proposal** until separately approved and implemented. It does not enable remote OCR, install a parser plugin, upload a file version, or permit ArchiBot to write Paperless document `content`.
 
 The invariant remains: ArchiBot OCR corrections are local review data. Paperless is authoritative for source files, versions, metadata, permissions and effective content. No new cloud data flow is approved.
 

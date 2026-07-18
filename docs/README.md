@@ -16,13 +16,13 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 
 - [`developer/architecture.md`](developer/architecture.md) — Architektur, Datenfluss, Komponenten.
 - [`developer/cli.md`](developer/cli.md) — CLI-Kommandos fuer Pipeline, Reindex, Reset.
-- [`developer/mcp.md`](developer/mcp.md) — MCP-Server, Tools, Auth und Integration.
+- [`developer/mcp.md`](developer/mcp.md) — dormant MCP-Integrationspunkt, Auth und Rueckkehrkriterien fuer derzeit deaktivierte Registrierungen.
 - [`decisions/`](decisions/) — Architecture Decision Records.
 
-## Event-driven Migration
+## Architektur- und Migrationsnachweise
 
-- [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — historischer Migrationsplan; ADR-0015, ADR-0017, ADR-0018 und der Hardening-Plan ersetzen veraltete Transport-, Runtime-Ownership-, Backend- und Write-Authorization-Vorgaben.
-- [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) — akzeptierte Security-, Runtime-Ownership-, Backend-Retirement- und UX-Hardening-Reihenfolge.
+- [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — historischer Migrationsplan; aktuelle ADRs und Architektur-Dokumente ersetzen veraltete Transport-, Runtime-Ownership-, Backend- und Write-Authorization-Vorgaben.
+- [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) — abgeschlossener Implementierungsnachweis fuer Security, Runtime-Ownership, Backend-Retirement und UX.
 - [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization.
 - [`decisions/`](decisions/) — akzeptierte Architekturentscheidungen.
 - [`governance/repository-governance.md`](governance/repository-governance.md) — Repository-Governance fuer den Umbau.

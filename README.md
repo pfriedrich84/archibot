@@ -6,13 +6,13 @@
 
 > **Hinweis:** ArchiBot ist aktuell in aktiver Entwicklung. Es gibt noch keinen stabilen Release.
 >
-> **Security-Status:** Die 13 Schritte des [Security- und Architektur-Hardening](./docs/implementation-plan-security-architecture-hardening.md) sind implementiert und CI-validiert. Chat/RAG bleibt fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. Confidence-basiertes Auto-Commit bleibt gemaess ADR-0018 ebenfalls deaktiviert: alte Env-, Import- oder Datenbankwerte sind wirkungslos, und jede Klassifikation bleibt bis zur manuellen Freigabe pending. Diese Implementierungsfreigabe ist noch kein stabiler Release; die Release-Gates im Hardening-Plan gelten weiterhin.
+> **Sicherheitsstatus:** Chat/RAG ist fuer alle Benutzer deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Track fuer ein berechtigungssicheres Redesign und eine moegliche Wiederaktivierung. Confidence-basiertes Auto-Commit ist gemaess ADR-0018 ebenfalls deaktiviert: alte Env-, Import- oder Datenbankwerte sind wirkungslos, und jede Klassifikation bleibt bis zur manuellen Freigabe pending.
 
 <p align="center">
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
 </p>
 
-KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App und PostgreSQL/pgvector. Der event-driven Queue-Pfad wird auf Laravel Database Queues mit festen Python-Actor-Kommandos migriert; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
+KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App und PostgreSQL/pgvector. Der event-driven Queue-Pfad nutzt Laravel Database Queues mit festen Python-Actor-Kommandos; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach ausdruecklicher manueller Freigabe in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
@@ -32,7 +32,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 - 🗄️ PostgreSQL-State mit vollständigem Audit-Trail
 - 🔁 Idempotent: verarbeitet jedes Dokument nur einmal
 - 🔒 Chat/RAG ist vollständig deaktiviert; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track
-- 🔌 MCP Server: Paperless-NGX + KI-Klassifikation als Tools für Claude Code und andere KI-Assistenten (optional)
+- 🔌 Optionaler MCP-Prozess als Integrationspunkt; Tools und Resources bleiben bis zu berechtigungssicheren Laravel/PostgreSQL-Seams deaktiviert
 - 🚀 Laravel/Svelte Setup-Wizard: Geführtes Onboarding beim ersten Start (`/setup`) mit direkter Paperless-NGX-Anmeldung
 - 📥 Inbox-View: Posteingang mit Dokumenten-Karten (`/inbox`)
 - 🏷️ Entity-Freigaben: Tags, Korrespondenten und Dokumenttypen in Laravel verwalten (`/tags`, `/correspondents`, `/doctypes`)
@@ -132,7 +132,7 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 | **[Konfiguration](./docs/user/configuration.md)** | Alle Umgebungsvariablen im Detail |
 | **[Review-Workflow](./docs/user/workflow.md)** | Klassifikation, Review, Tag-Management |
 | **[CLI Commands](./docs/developer/cli.md)** | Manuelle Pipeline-Steuerung und Container-Reset |
-| **[MCP Server](./docs/developer/mcp.md)** | KI-Tools für Claude Code und andere Assistenten |
+| **[MCP Server](./docs/developer/mcp.md)** | Dormanter Integrationspunkt und Rueckkehrkriterien fuer derzeit deaktivierte Tools/Resources |
 | **[Deployment](./docs/user/deployment.md)** | Dockhand, Reverse Proxy, Backup |
 | **[Architektur](./docs/developer/architecture.md)** | Datenfluss-Diagramme und System-Kontext |
 | **[Webhooks](./docs/user/webhooks.md)** | Sofortige Verarbeitung statt Polling |

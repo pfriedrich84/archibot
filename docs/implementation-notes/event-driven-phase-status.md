@@ -2,12 +2,12 @@
 
 ## Evidence identity
 
-- Status date: 2026-07-17
+- Status date: 2026-07-18
 - Implementation baseline inspected: the repository tree at the commit containing this status file
 - Scope: repository-file inspection of queue transport, actor runners, durable models, runtime configuration and migration docs
 - Runtime/live-service validation: not performed for this status refresh
 
-This file records current implementation state and migration debt. It is not a second architecture plan. Active sequencing lives in [`docs/implementation-plan-security-architecture-hardening.md`](../implementation-plan-security-architecture-hardening.md); the event-driven plan supplies subordinate migration detail and accepted ADRs remain authoritative.
+This file records current implementation state and remaining product debt. It is not a second architecture plan. Accepted ADRs and current architecture docs are authoritative; implementation plans preserve delivery history only.
 
 ## Current target
 
@@ -27,7 +27,7 @@ The active event transport is Laravel database queues invoking fixed, allowliste
 - Webhook ingestion validates and persists deliveries, deduplicates input and creates/attaches durable document runs without synchronous OCR/LLM processing.
 - Embedding readiness, document pipeline start/attach, retry/recovery state, progress, reprocess metadata and Laravel-triggered review commits use durable PostgreSQL records.
 - Laravel UI exposes durable pipeline, webhook, maintenance, review and operations controls with admin boundaries on job-control actions.
-- Step 9 completed CLI/UI parity: maintenance, reset and review commit delegate to Laravel/PostgreSQL durable seams. Entity decisions are PostgreSQL-owned and the Python/SQLite entity-sync actor is retired.
+- CLI/UI parity is implemented: maintenance, reset and review commit delegate to Laravel/PostgreSQL durable seams. Entity decisions are PostgreSQL-owned and the Python/SQLite entity-sync actor is retired.
 
 ### Laravel queued actor transport
 
@@ -73,30 +73,14 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 
 ## Confirmed transition state
 
-Security containment milestones 0.1–0.6 and ownership Steps 7–10 are implemented as recorded in the hardening plan. Step 11 removes the retired Python queue transport completely from productive code and configuration: actor modules are plain functions, Laravel Database Queues are the sole transport, Laravel recovery owns redispatch, and clean installs have no retired queue schema migration. Existing historical schema objects are left inert for rollback rather than dropped automatically; see [the Step 11 upgrade notes](absurd-removal.md).
+The event-driven cutover is complete in productive code: actor modules are plain functions, Laravel Database Queues are the sole transport, Laravel owns scheduling, Pipeline Start and redispatch, Python owns fenced domain lifecycle, and clean installs create neither legacy SQLite processing state nor the retired queue schema. Existing historical queue-schema objects and `classifier.db` files remain inert for explicit retention or rollback; see the [queue transport removal notes](absurd-removal.md) and [SQLite disposition](sqlite-disposition.md).
 
-Step 11 acceptance still requires current full-suite, clean-install Docker and image-security evidence for the candidate patch. Full Reindex behavior and finite actor/process timeout policy remain separate follow-ups outside this removal slice.
+Repository CI validates the Python and Laravel suites, frontend gates, clean Docker build, dependency checks, Graphify artifacts, and available image-security scanners. Live PostgreSQL/Paperless deployment exercises remain release evidence rather than incomplete implementation work.
 
-## Next safe milestones
+## Remaining product follow-ups
 
-1. **Step 11 acceptance evidence**
-   - Run the full Python/Laravel suites, clean-install Docker/PostgreSQL migration and process smoke, dependency checks, and available image security scanners.
-   - Verify scheduled poll, webhook, manual review commit, embedding build and source-linked recovery enqueue only `RunPythonActorJob`/Laravel jobs.
-   - Regenerate and validate the Graphify artifacts from the candidate tree.
-
-2. **Remaining product follow-ups**
-   - Complete full Reindex behavior and finite actor/process timeout policy in separately reviewed slices.
-   - Keep disabled redesign tracks contained until their explicit approval gates pass.
-
-## Validation requirements for this milestone
-
-Required repository evidence:
-
-- focused Python actor/auto-commit/source-link tests;
-- Laravel schedule, recovery, retry, cancellation, migration and actor-job tests;
-- Supervisor regression proof that no Python queue/recovery worker program starts;
-- Markdown links, Python/Laravel lint and full relevant CI checks.
-
-A clean-install Docker/PostgreSQL/Paperless smoke remains external runtime evidence. Until it is run, end-to-end scheduler timing, restart behavior and dual-dispatch exclusion remain `INCONCLUSIVE` at live-service level even when repository tests pass.
+- Complete full Reindex behavior and finite actor/process timeout policy in separately reviewed slices.
+- Keep disabled redesign tracks contained until their explicit approval gates pass.
+- Exercise deployment-specific upgrade, backup, rollback, scheduler timing and Paperless integration before a stable release.
 
 Use the checks from [`docs/agent/CHECKS.md`](../agent/CHECKS.md) and record current, revision-bound results under [`docs/agent/CONTEXT_AND_EVIDENCE.md`](../agent/CONTEXT_AND_EVIDENCE.md).
