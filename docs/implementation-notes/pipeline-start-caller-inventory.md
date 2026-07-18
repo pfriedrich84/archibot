@@ -59,31 +59,20 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 The former `app/db.py`, `app/api_data.py`, `app/indexer.py`, `app/job_events.py`, `app/vector_store.py`, `app/worker.py`, `app/pipeline/committer.py`, `app/pipeline/document_processing.py` and Laravel `LegacyPythonState` service were deleted. Their processing, suggestion, vector/search, processed-document, poll-cycle, timing, error and audit tables have no productive reader or writer. PostgreSQL/pgvector repositories, Laravel scheduling, durable Pipeline Events/Audit Logs and authorized Review/Entity services are the replacements. `app/config.py` no longer defines or inspects a local database path, and reset remains exclusively `php artisan archibot:reset` through `ArchibotResetService`.
 
 See [SQLite disposition and upgrade notes](sqlite-disposition.md) for the classification of every retained reference and persistent-volume behavior.
-## Absurd/lifecycle inventory
+## Retired queue transport inventory (Step 11)
 
-| File | Current caller/reference | Replacement/deletion milestone |
-| --- | --- | --- |
-| `app/absurd_queue.py` | Absurd SDK backend implementation. | Hardening 1.5: delete backend/dependency. |
-| `app/actors/__init__.py` | Imports queue backend/decorator compatibility. | Hardening 1.5. |
-| `app/actors/document.py` | Exposes only the implementation imported by the fixed Laravel actor runner; the Absurd wrapper was removed so legacy recovery cannot bypass the shared fence. | Hardening 1.3: consolidate lifecycle transitions. |
-| `app/actors/embedding.py` | Exposes only the implementation imported by the fixed Laravel actor runner; the Absurd wrapper was removed so build/reindex cannot bypass the exclusive fence. | Hardening 1.3: consolidate lifecycle transitions. |
-| `app/actors/maintenance.py` | Same compatibility decorator; productive candidate discovery is fixed-command invocation. | Hardening 1.3/1.5. |
-| `app/actors/review.py` | Same compatibility decorator. | Hardening 1.3/1.5. |
-| `app/actors/webhook.py` | Same compatibility decorator and stale process-document guard. | Hardening 1.3/1.5. |
-| `app/event_worker.py` | Unsupervised transitional Absurd worker/recovery entry point. | Hardening 1.5: delete launcher. |
-| `app/actor_runner.py` | Fixed Laravel-launched actor CLI and the only productive importer/caller of private document/build implementations; uses PostgreSQL repositories only. | Retain fixed runner. |
-| `app/jobs/pipeline_runs.py` | Existing-run lifecycle reads/updates only; all insertion/start helpers were removed. | Hardening 1.3 consolidates lifecycle transitions; never restore creation here. |
-| Laravel `EntityApprovalDecisionService` | PostgreSQL-owned approval/blacklist decisions, durable command/events, Review Suggestion resolution, and retroactive Paperless application. | Productive entity approval never invokes Python or `classifier.db`; the former sync actor is retired. |
-| `app/jobs/idempotency.py` | Webhook/command key helpers only; the Python Pipeline Start dedupe key was removed. | Retain non-start helpers; never restore Pipeline Start ownership. |
-| `app/jobs/recovery.py` | Transitional recovery remains for non-document legacy actors, but document/build/reindex enqueue helpers fail closed and the scan never redispatches them. | Hardening 1.3/1.5: delete after remaining Laravel recovery parity. |
-| `laravel/database/migrations/2026_06_05_000000_install_absurd_queue_schema.php` | Transitional Absurd schema. | Hardening 1.5 clean-install removal migration. |
-| `laravel/database/sql/absurd.sql` | Transitional schema source. | Hardening 1.5 delete. |
-| `.github/workflows/ci.yml` | No Python SQLite initialization remains. Laravel's isolated test job uses an ephemeral SQLite database as test infrastructure only. | Retain test-only harness; it is not product state. |
-| `scripts/event_driven_smoke.py` | Imports fixed actors and PostgreSQL repositories without initializing local state. | Retain dependency-light contract smoke. |
-| `pyproject.toml` | Declares transitional Absurd dependency. | Hardening 1.5 remove with runtime/schema references. |
-| `constraints.txt` | Pins transitional Absurd dependency. | Hardening 1.5 remove with `pyproject.toml`. |
-| `Dockerfile` | Absurd dependency remains installed. | Hardening 1.5 remove with schema/runtime references. |
-| `docker/supervisord.conf` | Productive runtime launches Laravel `queue:work`, not event worker. | Retain Laravel worker; verify no Absurd process before 1.5 deletion. |
+The former Python queue backend, decorator/bootstrap compatibility, event and recovery workers, SDK dependency, environment/settings, vendored SQL, installation migration and broker tests are deleted. Actor modules now expose plain functions imported only by the fixed `app.actor_runner` allowlist. Laravel's `RunPythonActorJob`, database queue worker, scheduler and durable recovery dispatcher are the sole productive transport/recovery path.
+
+Clean installs create no historical queue schema. Existing schemas are left inert to preserve rollback evidence; see [Step 11 queue transport removal and upgrade notes](absurd-removal.md). The repository-wide structural guard rejects backend, SDK, environment and worker-process reintroduction in productive files.
+
+| Retained seam | Final responsibility |
+| --- | --- |
+| `app/actor_runner.py` | Fixed Laravel-launched command allowlist; the only productive importer/caller of actor implementations. |
+| `app/actors/*.py` | Plain Python domain functions with PostgreSQL lifecycle state; no decorator, client, spawn or worker bootstrap. |
+| `App\Jobs\RunPythonActorJob` | Small durable-ID Laravel database queue payload and eligibility/claim boundary. |
+| `App\Services\Pipeline\PipelineRecoveryDispatcher` | Laravel-native source-linked recovery and redispatch for every actor family. |
+| `docker/supervisord.conf` | Laravel queue worker, scheduler and durable recovery loop; no Python queue process. |
+| `scripts/event_driven_smoke.py` | Dependency-light import/allowlist smoke with no broker SDK. |
 
 ## Structural freeze
 

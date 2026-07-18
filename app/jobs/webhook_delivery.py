@@ -20,7 +20,7 @@ class WebhookDeliveryRecord:
 
 
 def load_webhook_delivery(webhook_delivery_id: int) -> WebhookDeliveryRecord | None:
-    """Load the normalized state needed by the webhook Absurd actor."""
+    """Load the normalized state needed by the fixed webhook actor."""
     try:
         from sqlalchemy import text
     except ModuleNotFoundError as exc:  # pragma: no cover - dependency is installed in target image

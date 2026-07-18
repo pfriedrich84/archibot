@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
@@ -176,7 +176,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         event_type=types.ACTOR_STARTED,
         webhook_delivery_id=webhook_delivery_id,
         actor_name=actor_name,
-        queue_name=queue_name("webhook"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         worker_id=worker_id(),
     )
 
@@ -192,7 +192,7 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
             actor_name=actor_name,
             webhook_delivery_id=webhook_delivery_id,
             paperless_document_id=delivery.paperless_document_id,
-            queue_name=queue_name("webhook"),
+            queue_name=LARAVEL_DATABASE_QUEUE,
         )
         if actor_execution.id is not None:
             update_actor_execution_progress(
@@ -327,14 +327,6 @@ def _handle_paperless_webhook_impl(webhook_delivery_id: int) -> None:
         event_type=types.ACTOR_SUCCEEDED,
         webhook_delivery_id=webhook_delivery_id,
         actor_name=actor_name,
-        queue_name=queue_name("webhook"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    handle_paperless_webhook = queue_backend.actor(queue_name=queue_name("webhook"))(
-        _handle_paperless_webhook_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    handle_paperless_webhook = _handle_paperless_webhook_impl

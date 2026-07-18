@@ -9,6 +9,7 @@ from scripts.check_pipeline_start_ownership import (
     scan_php,
     scan_python,
     scan_repository,
+    scan_retired_transport,
     scan_sqlite_product_state,
     scan_text,
 )
@@ -31,6 +32,12 @@ def test_step_10_guard_denies_new_files_requirements_and_renamed_legacy_schema(t
         "scripts/rebuild": "PRAGMA custom_future_setting=ON; CREATE TABLE archived_poll_cycles(id INTEGER);\n",
         "config/runtime.yaml": "repository: processed_documents\n",
         "manifest.json": '{"query": "CREATE TABLE IF NOT EXISTS suggestions (document_id INTEGER)"}\n',
+        "workers/renamed-runtime": "dependency=absurd-sdk\ncommand=python -m app.event_worker start-workers\n",
+        "requirements-queue.txt": "absurd_queue dependency\n",
+        "config/queue.env": "ABSURD_QUEUE_URL=postgresql://queue\n",
+        "scripts/import-worker": "import absurd_queue\n",
+        "docker/supervisor/queue.conf": "command=/opt/AbsurdQueue/bin/absurd-worker\n",
+        "manifest-queue.json": '{"transport": "absurd"}\n',
     }
     for relative, source in probes.items():
         path = tmp_path / relative
@@ -52,6 +59,8 @@ def test_step_10_guard_denies_new_files_requirements_and_renamed_legacy_schema(t
         "legacy suggestions table restored",
         "retired SQLite vector dependency restored",
         "retired scheduler dependency restored",
+        "retired queue transport restored",
+        "retired Python recovery worker restored",
     }
 
 
@@ -69,7 +78,7 @@ def test_step_10_guard_exceptions_are_exact_path_and_exact_rule():
 
 def test_legacy_freeze_rejects_extra_references_in_an_existing_file():
     baseline = load_legacy_fingerprint_baseline()
-    relative = "app/absurd_queue.py"
+    relative = "AGENTS.md"
     original = (ROOT / relative).read_text(encoding="utf-8")
 
     extra_distinct = legacy_reference_fingerprints(
@@ -85,6 +94,45 @@ def test_legacy_freeze_rejects_extra_references_in_an_existing_file():
     for actual in (extra_distinct, extra_duplicate, extra_absurd):
         assert actual != baseline
         assert actual - baseline
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import absurd_queue\n",
+        "ABSURD_QUEUE_URL=postgresql://queue\n",
+        "absurd_queue dependency\n",
+        "AbsurdQueue\n",
+        "absurd-queue\n",
+        "/srv/queue/AbsUrD/worker\n",
+        'transport = "absurd"\n',
+    ],
+)
+def test_removed_transport_guard_rejects_case_insensitive_substring_variants(source):
+    violations = scan_retired_transport("config/productive-probe", source)
+
+    assert {item.rule for item in violations} == {"retired queue transport restored"}
+
+
+def test_removed_transport_guard_policy_exception_is_exact_and_cannot_hide_same_file_bypass():
+    policy_line = next(
+        line
+        for line in (ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines()
+        if "absurd" in line.lower()
+    )
+
+    assert scan_retired_transport("AGENTS.md", policy_line) == []
+    assert scan_retired_transport("config/AGENTS.md", policy_line)
+    assert scan_retired_transport("AGENTS.md", policy_line + "\nABSURD_QUEUE_URL=x")
+    assert scan_retired_transport("AGENTS.md", policy_line + " absurd_queue")
+
+
+def test_removed_transport_guard_scanner_path_has_no_blanket_exception():
+    violations = scan_retired_transport(
+        "scripts/check_pipeline_start_ownership.py", "dependency = 'absurd_queue'"
+    )
+
+    assert {item.rule for item in violations} == {"retired queue transport restored"}
 
 
 def test_python_structural_policy_rejects_direct_or_aliased_fenced_actor_execution():

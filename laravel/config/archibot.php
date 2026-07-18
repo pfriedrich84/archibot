@@ -16,5 +16,4 @@ return [
     'paperless_webhook_rate_limit_per_minute' => (int) env('PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE', 60),
     'paperless_webhook_development_bypass' => env('PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS', false),
     'poll_interval_seconds' => env('POLL_INTERVAL_SECONDS', 600),
-    'absurd_database_url' => env('ABSURD_DATABASE_URL', env('DATABASE_URL', '')),
 ];

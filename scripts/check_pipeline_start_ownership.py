@@ -31,6 +31,23 @@ PHP_REVIEWED_DYNAMIC_SQL_OWNERS = {
 
 LEGACY_FINGERPRINT_BASELINE = Path(__file__).with_name("pipeline_start_legacy_fingerprints.json")
 
+RETIRED_QUEUE_NAME = "abs" + "urd"
+RETIRED_TRANSPORT_PATTERNS = {
+    "retired queue transport restored": re.compile(RETIRED_QUEUE_NAME, re.IGNORECASE),
+    "retired Python recovery worker restored": re.compile(
+        r"\bapp[./]jobs[./]recovery\b|\bstart[_-]workers\b|\bevent-recovery-bridge\b",
+        re.IGNORECASE,
+    ),
+}
+# Full-line digests make policy exceptions exact without repeating forbidden
+# vocabulary in the scanner. A second occurrence, changed line, renamed policy
+# file, or unrelated content in the same file remains denied.
+RETIRED_TRANSPORT_LINE_EXCEPTIONS = {
+    "AGENTS.md": {
+        "88e72a9da9b68475fa0581136b118bcdec005705267e1ea88590e85c4864de1c": 1,
+    },
+}
+
 SQLITE_PRODUCT_PATTERNS = {
     "SQLite runtime/API restored": re.compile(
         r"\bsqlite3?\b|\bsqlite(?:\+[a-z0-9_]+)?://|\bphp[-_]sqlite3\b",
@@ -78,7 +95,8 @@ SQLITE_SCAN_EXCEPTIONS = {
 
 LEGACY_PATTERN = re.compile(
     r"app\.db|app\.vector_store|app\.pipeline\.(?:document_processing|committer)|"
-    r"app\.absurd_queue|\babsurd\b|absurd[-_]sdk|LegacyPythonState|classifier\.db|"
+    + RETIRED_QUEUE_NAME
+    + r"|LegacyPythonState|classifier\.db|"
     r"processed_documents|doc_embeddings|doc_embedding_meta|"
     r"(?:FROM|INTO|UPDATE|JOIN|DELETE\s+FROM)\s+suggestions\b",
     re.IGNORECASE,
@@ -1943,6 +1961,23 @@ def scan_php(relative: str, text: str) -> list[Violation]:
     return violations
 
 
+def scan_retired_transport(relative: str, text: str) -> list[Violation]:
+    """Deny every retired queue-name substring in productive repository text."""
+    exception_counts = Counter(RETIRED_TRANSPORT_LINE_EXCEPTIONS.get(relative, {}))
+    lines = text.splitlines()
+    violations: list[Violation] = []
+    for rule, pattern in RETIRED_TRANSPORT_PATTERNS.items():
+        for match in pattern.finditer(text):
+            line_number = _line(text, match.start())
+            line_text = lines[line_number - 1] if line_number <= len(lines) else ""
+            digest = hashlib.sha256(line_text.encode()).hexdigest()
+            if exception_counts[digest] > 0:
+                exception_counts[digest] -= 1
+                continue
+            violations.append(Violation(relative, line_number, rule))
+    return violations
+
+
 def scan_sqlite_product_state(relative: str, text: str) -> list[Violation]:
     """Deny retired SQLite/runtime state across every productive repository file."""
     exempt_rules = SQLITE_SCAN_EXCEPTIONS.get(relative, set())
@@ -1965,6 +2000,7 @@ def scan_repository(root: Path) -> tuple[list[Violation], Counter[tuple[str, str
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        violations.extend(scan_retired_transport(relative, text))
         violations.extend(scan_sqlite_product_state(relative, text))
         if relative not in {
             "scripts/check_pipeline_start_ownership.py",

@@ -332,6 +332,8 @@ Acceptance:
 
 ### 2.3 Remove Absurd
 
+Status: implementation complete in the Step 11 working tree; acceptance pending. The SDK, decorator/bootstrap path, Python event/recovery workers, schema installer, runtime settings, Docker dependency and broker tests are deleted. Plain actor functions remain behind the fixed Laravel-launched allowlist, and a deny-by-default productive-file guard prevents transport reintroduction. Clean installs no longer create the retired schema; upgraded historical schemas remain inert for retention and rollback as documented in the [Step 11 upgrade notes](implementation-notes/absurd-removal.md). Change this status to implemented only after the full Python/Laravel suites, clean-install Docker/process smoke, dependency gates and available image-security scans pass for the candidate patch.
+
 Delete:
 
 - Absurd SDK and constraints;

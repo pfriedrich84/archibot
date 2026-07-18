@@ -144,7 +144,7 @@ Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](i
 - Actor Executions sind mit Command, Pipeline Run oder Webhook Delivery verknuepft; Laravel Recovery behandelt stale/rertryable Attempts, Cancellation und Entity Sync ueber diese Quelle.
 - Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Nur autorisierte manuelle Annahme erzeugt einen `review_commit` Command; Confidence-Auto-Commit ist gemaess ADR-0018 entfernt.
 - `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
-- Absurd-Code, SDK, Konfiguration, Schema und Tests bleiben als nicht gestartetes Cleanup-Delta. Full-Reindex-, CLI-Paritaets- und Runtime-Timeout-Luecken bleiben offen.
+- Der fruehere Python Queue-Transport, SDK, Konfiguration, Clean-Install-Schema und zugehoerige Tests sind im Step-11-Kandidaten entfernt. Bestehende historische Schemaobjekte bleiben fuer Retention/Rollback inert. Full-Reindex- und Runtime-Timeout-Luecken bleiben offen.
 
 ## Verbleibende Migration
 
@@ -157,18 +157,9 @@ Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](i
 - Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
 - Verbleibende GUI-ueberlappende CLI-Aktionen auf denselben Laravel-/PostgreSQL-Backendpfad bringen.
 
-### 2. Absurd-Reste entfernen
+### 2. Queue-Transport-Cleanup — Implementierung abgeschlossen, Acceptance pending
 
-Nach nachgewiesener Paritaet in einem fokussierten Cleanup-Patch entfernen:
-
-- Absurd SDK und Dependency-Pins;
-- `ABSURD_DATABASE_URL` und Absurd-Konfiguration;
-- Absurd Queue Adapter, Event Worker und Actor-Wrapper-Abhaengigkeiten;
-- vendored Absurd SQL und Installationsmigration;
-- Absurd Supervisor Worker/Recovery Programs;
-- ausschliesslich Absurd-bezogene Tests und Dokumentation.
-
-Der Cleanup darf Python Processing Actors nicht entfernen; nur der superseded Transport und seine Kompatibilitaet verschwinden.
+Der Step-11-Kandidat entfernt SDK, Konfiguration, Adapter, Event-/Recovery-Worker, Decorators, vendored SQL, Installationsmigration und transportbezogene Tests. Python Processing Actors bleiben als plain Functions hinter dem festen Laravel Runner erhalten. Acceptance erfordert noch die Full-Suite-, Clean-Install-Docker- und Image-Security-Gates aus dem Hardening-Plan; Upgrade und Rollback stehen in den [Step-11-Notizen](implementation-notes/absurd-removal.md).
 
 ### 3. Runtime- und End-to-End-Nachweis
 
@@ -177,7 +168,7 @@ Der Cleanup darf Python Processing Actors nicht entfernen; nur der superseded Tr
 - Restart/Recovery fuer pending und retrying Arbeit.
 - Automatische Polling-Reconciliation nach 600 Sekunden ueber denselben Pipeline-Startpfad.
 - Embedding Gate, Reprocess, Retry, Cancel und Berechtigungen.
-- Docker Health/Readiness und Operations UI ohne Absurd oder `worker_jobs`.
+- Docker Health/Readiness und Operations UI ohne superseded Queue-/`worker_jobs`-Runtime.
 
 ### 4. Dokumentationsabschluss
 
@@ -188,7 +179,7 @@ Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governa
 | Risiko | Gegenmassnahme |
 | --- | --- |
 | Dual Dispatch erzeugt doppelte Verarbeitung | Ein Transport-Owner pro Flow, durable Dedupe Keys, fokussierte Dispatch-Tests |
-| Reconciliation regressiert beim Absurd-Cleanup | Laravel Scheduler-/Due-/Dedupe-Tests und Docker-Smoke als Cleanup-Gate behalten |
+| Reconciliation regressiert beim Queue-Cleanup | Laravel Scheduler-/Due-/Dedupe-Tests und Docker-Smoke als Cleanup-Gate behalten |
 | Queue Payload wird zur zweiten State Source | Nur IDs transportieren; Optionen aus PostgreSQL laden |
 | Langer Python Actor blockiert Worker | Timeouts, Heartbeats, Cancel und Recovery gegen reale Laufzeiten pruefen |
 | Webhooks gehen bei Dispatch-Fehler verloren | Erst persistieren, Fehler durable markieren, non-2xx fuer Paperless Retry |
@@ -200,7 +191,7 @@ Nach dem Runtime-Cutover alle aktiven User-, Developer-, Operations- und Governa
 Die Migration ist abgeschlossen, wenn:
 
 - Laravel Database Queues der einzige produktive Event-Transport sind.
-- Kein Absurd SDK, Schema, Worker, Recovery-Prozess, Environment Contract oder aktiver Codepfad verbleibt.
+- Kein superseded Queue-SDK, Clean-Install-Schema, Worker, Recovery-Prozess, Environment Contract oder aktiver Codepfad verbleibt; historische Upgrade-Schemaobjekte sind inert dokumentiert.
 - `worker_jobs` nicht als Tabelle, Modell, Route, UI oder Backend-Kompatibilitaet existiert.
 - Webhooks primaer und automatische 600-Sekunden-Reconciliation reparierend ueber denselben Startpfad arbeiten.
 - Alle Queue Jobs nur allowlisted Actor-Namen und durable IDs verwenden.

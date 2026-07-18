@@ -2,17 +2,11 @@
 
 ## Purpose
 
-This document records the current event-driven ArchiBot job-control slice and the rules that prevent drift back to retired worker-job paths. It does not claim that every productive CLI/MCP/runtime path has completed migration.
+This document records the current event-driven ArchiBot job-control model and the rules that prevent drift back to retired worker-job and queue paths.
 
 `worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active event-driven slice uses durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
 
-Until the milestones in [the security and architecture hardening plan](../implementation-plan-security-architecture-hardening.md) are complete, known parallel productive paths remain:
-
-- legacy SQLite processing/search used by parts of Python CLI and MCP;
-- Absurd actor decorators, queue workers, recovery bridge, schema and dependencies;
-- legacy lifecycle helpers that remain only behind the canonical Python execution-lifecycle facade.
-
-ADR-0017 makes the Laravel/PostgreSQL model below the sole target and requires deletion of those parallel paths after parity migration.
+Steps 9–11 removed productive SQLite processing and the former Python queue transport, decorators, workers, schema installer and dependencies. ADR-0017 makes the Laravel/PostgreSQL model below the sole runtime path. Existing historical queue schema objects may remain inert on upgraded volumes solely for retention and rollback; they are never created on a clean install or used by current code.
 
 ## Current event-driven durable model
 

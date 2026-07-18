@@ -10,7 +10,6 @@ use App\Models\PipelineRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -114,7 +113,6 @@ class MaintenanceTest extends TestCase
     public function test_maintenance_controls_route_all_productive_actions_to_commands(): void
     {
         Queue::fake();
-        Config::set('archibot.absurd_database_url', '');
         $admin = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($admin)

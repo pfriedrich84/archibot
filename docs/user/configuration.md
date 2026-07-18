@@ -151,7 +151,6 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `ARCHIBOT_RECOVERY_INTERVAL_SECONDS` | `30` | Sekunden zwischen Laravel-native Recovery-Scans fuer durable Commands, Runs, Webhooks und Actor Executions. |
 | `ARCHIBOT_STALE_QUEUED_MINUTES` | `5` | Ab wann queued Arbeit ohne aktiven Actor sicher erneut dispatcht werden darf. |
 | `ARCHIBOT_STALE_RUNNING_MINUTES` | `10` | Ab wann ein Actor ohne aktuellen Fortschritt als stale gilt und ueber seine durable Quelle recovered wird. |
-| `ABSURD_DATABASE_URL` | — | Nur noch migration-only Konfiguration bis zum separaten Absurd-Cleanup. Supervisor startet keinen Absurd Worker oder Recovery-Bridge mehr. |
 
 ## Laravel/Svelte GUI
 

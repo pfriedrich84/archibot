@@ -52,7 +52,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'Absurd unavailable',
+            'error' => 'Queue transport unavailable',
             'normalized_payload' => ['document_id' => 42, 'event' => 'updated'],
             'headers' => ['x-request-id' => 'req-123'],
         ]);
@@ -62,7 +62,7 @@ class WebhookDeliveryControlTest extends TestCase
             'paperless_document_id' => 42,
             'level' => 'error',
             'message' => 'Delivery failed.',
-            'payload' => ['reason' => 'Absurd unavailable'],
+            'payload' => ['reason' => 'Queue transport unavailable'],
             'created_at' => now(),
         ]);
 
@@ -119,7 +119,7 @@ class WebhookDeliveryControlTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $delivery = $this->webhookDelivery([
             'status' => WebhookDelivery::STATUS_FAILED,
-            'error' => 'Absurd unavailable',
+            'error' => 'Queue transport unavailable',
             'processed_at' => now(),
         ]);
 

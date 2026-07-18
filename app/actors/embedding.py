@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.absurd_queue import queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
@@ -174,7 +174,7 @@ def _build_initial_embedding_index_impl(
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         command_id=command_id,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     build = start_embedding_index_build(
         embedding_model=settings.ollama_embed_model,
@@ -202,7 +202,7 @@ def _build_initial_embedding_index_impl(
         "embedding index actor started",
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         embedding_index_state_id=build.id,
         limit=limit,
     )
@@ -271,7 +271,7 @@ def _build_initial_embedding_index_impl(
         "embedding index actor completed",
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
-        queue_name=queue_name("embedding"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         embedding_index_state_id=build.id,
         duration_ms=int((time.monotonic() - started) * 1000),
     )

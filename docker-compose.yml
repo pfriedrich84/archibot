@@ -23,8 +23,6 @@ services:
       DB_USERNAME: ${DB_USERNAME:-archibot}
       DB_PASSWORD: ${DB_PASSWORD:-archibot}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}
-      ABSURD_DATABASE_URL: ${ABSURD_DATABASE_URL:-${DATABASE_URL:-postgresql+psycopg://archibot:archibot@postgres:5432/archibot}}
-      ARCHIBOT_QUEUE_PREFIX: ${ARCHIBOT_QUEUE_PREFIX:-archibot}
       # Required unless first-run setup stores the encrypted global webhook.secret setting.
       PAPERLESS_WEBHOOK_SECRET: ${PAPERLESS_WEBHOOK_SECRET:-}
       PAPERLESS_WEBHOOK_MAX_BYTES: ${PAPERLESS_WEBHOOK_MAX_BYTES:-262144}

@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.config import settings
@@ -49,13 +49,13 @@ def _reconcile_inbox_documents_impl(
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         command_id=command_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     log.info(
         "poll reconciliation actor started",
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         limit=limit,
         force=force,
     )
@@ -161,7 +161,7 @@ def _reconcile_inbox_documents_impl(
         "poll reconciliation actor succeeded",
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
 
@@ -175,14 +175,14 @@ def _reindex_ocr_documents_impl(
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         command_id=command_id,
-        queue_name=queue_name("blocking"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     mode = effective_ocr_mode()
     log.info(
         "ocr reindex actor started",
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
-        queue_name=queue_name("blocking"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         command_id=command_id,
         limit=limit,
         force=force,
@@ -254,18 +254,6 @@ def _reindex_ocr_documents_impl(
         "ocr reindex actor succeeded",
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
-        queue_name=queue_name("blocking"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    reconcile_inbox_documents = queue_backend.actor(queue_name=queue_name("io"))(
-        _reconcile_inbox_documents_impl
-    )
-    reindex_ocr_documents = queue_backend.actor(queue_name=queue_name("blocking"))(
-        _reindex_ocr_documents_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    reconcile_inbox_documents = _reconcile_inbox_documents_impl
-    reindex_ocr_documents = _reindex_ocr_documents_impl

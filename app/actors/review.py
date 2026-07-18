@@ -7,7 +7,7 @@ import time
 
 import structlog
 
-from app.absurd_queue import queue_backend, queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.clients.paperless import PaperlessClient
 from app.events import types
 from app.events.publish import publish_pipeline_event
@@ -50,7 +50,7 @@ def _commit_review_suggestion_impl(
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         command_id=command_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     log.info(
         "review commit actor started",
@@ -58,7 +58,7 @@ def _commit_review_suggestion_impl(
         actor_name=actor_name,
         review_suggestion_id=review_suggestion_id,
         command_id=command_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
 
     if actor_execution.id is not None:
@@ -139,14 +139,6 @@ def _commit_review_suggestion_impl(
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
         review_suggestion_id=review_suggestion_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )
-
-
-if queue_backend is not None:
-    commit_review_suggestion = queue_backend.actor(queue_name=queue_name("io"))(
-        _commit_review_suggestion_impl
-    )
-else:  # pragma: no cover - lets local imports work before deps are installed
-    commit_review_suggestion = _commit_review_suggestion_impl

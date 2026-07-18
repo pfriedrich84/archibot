@@ -2,7 +2,7 @@
 """Local smoke checks for the event-driven Archibot migration.
 
 This script is intentionally dependency-light: it verifies that the event-driven
-Python contracts import and that queue names/config-derived defaults are sane.
+Python contracts import and that the fixed Laravel actor boundary is available.
 It does not require live PostgreSQL, Paperless or AI-provider services.
 """
 
@@ -22,7 +22,7 @@ MODULES = [
     "app.actors.maintenance",
     "app.actors.review",
     "app.actors.webhook",
-    "app.event_worker",
+    "app.actor_runner",
     "app.jobs.actor_execution",
     "app.jobs.document_embeddings",
     "app.jobs.embedding_gate",
@@ -30,7 +30,6 @@ MODULES = [
     "app.jobs.pipeline_items",
     "app.jobs.pipeline_runs",
     "app.jobs.progress",
-    "app.jobs.recovery",
     "app.jobs.review_commit",
     "app.jobs.review_suggestions",
     "app.jobs.webhook_delivery",
@@ -38,22 +37,20 @@ MODULES = [
 
 
 def main() -> int:
-    from app.absurd_queue import queue_name
+    from app.actors import LARAVEL_DATABASE_QUEUE
     from app.config import settings
 
     for module in MODULES:
         importlib.import_module(module)
 
-    expected_prefix = settings.archibot_queue_prefix
-    queues = [queue_name(name) for name in ["webhook", "io", "embedding", "blocking"]]
-    if not all(name.startswith(expected_prefix + ".") for name in queues):
-        raise SystemExit(f"queue prefix mismatch: {queues!r}")
+    if LARAVEL_DATABASE_QUEUE != "laravel.database":
+        raise SystemExit(f"unexpected actor transport label: {LARAVEL_DATABASE_QUEUE!r}")
 
     if settings.poll_interval_seconds < 0:
         raise SystemExit("poll_interval_seconds must not be negative")
 
     print("event-driven smoke checks passed")
-    print("queues=" + ",".join(queues))
+    print("transport=" + LARAVEL_DATABASE_QUEUE)
     return 0
 
 

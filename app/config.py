@@ -98,11 +98,6 @@ class Settings(BaseSettings):
 
     # --- Event-driven pipeline ---
     database_url: str = "postgresql+psycopg://archibot:archibot@postgres:5432/archibot"
-    absurd_database_url: str = Field(
-        default="",
-        validation_alias=AliasChoices("ABSURD_DATABASE_URL"),
-    )
-    archibot_queue_prefix: str = "archibot"
     paperless_webhook_secret: str = ""
 
     # --- Worker ---

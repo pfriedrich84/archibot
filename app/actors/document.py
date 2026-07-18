@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from app.absurd_queue import queue_name
+from app.actors import LARAVEL_DATABASE_QUEUE
 from app.ai_provider.factory import create_ai_provider
 from app.clients.paperless import PaperlessClient
 from app.events import types
@@ -310,14 +310,14 @@ def _handle_document_pipeline_impl(
     actor_execution = start_actor_execution(
         actor_name=actor_name,
         pipeline_run_id=pipeline_run_id,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
     log.info(
         "document actor started",
         event_type=types.ACTOR_STARTED,
         pipeline_run_id=pipeline_run_id,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
     )
 
     run = None
@@ -544,6 +544,6 @@ def _handle_document_pipeline_impl(
         event_type=types.ACTOR_SUCCEEDED,
         pipeline_run_id=pipeline_run_id,
         actor_name=actor_name,
-        queue_name=queue_name("io"),
+        queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )

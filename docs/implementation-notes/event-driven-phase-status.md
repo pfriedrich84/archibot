@@ -66,44 +66,27 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 ## Confirmed Laravel runtime cutover
 
 - `laravel/routes/console.php` registers a one-minute due-check; `POLL_INTERVAL_SECONDS` still controls the actual reconciliation interval and `0` disables it.
-- Supervisor starts `laravel-queue-worker`, `laravel-scheduler`, and `laravel-durable-recovery`; it no longer starts `app.event_worker` or an Absurd recovery bridge.
+- Supervisor starts `laravel-queue-worker`, `laravel-scheduler`, and `laravel-durable-recovery`; no Python queue or recovery worker exists.
 - Scheduled polls skip active or recently completed scheduled poll Commands and dispatch through `RunPythonActorJob::pollReconciliation`.
 - Laravel Recovery handles source-linked stale/retryable Actor Executions with bounded attempts, safe cancellation finalization, stale running Commands, Entity Approval sync, and fresh webhook dispatch suppression.
 - Confidence-based Python auto-commit is removed under ADR-0018. Only an authorized manual acceptance creates and dispatches a durable `review_commit` Command through Laravel.
 
-## Confirmed transition debt
+## Confirmed transition state
 
-Security containment milestone 0 is only partially implemented. Step 0.1 disables Chat/RAG for every user and preserves its stored rows without exposure; [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) is the only redesign/re-enable track. Step 0.2 implements ADR-0018: stale confidence thresholds are forced to zero across Laravel export and Python, and model/judge output remains pending for manual review. Step 0.3 removes Laravel OCR content write-back, restore, retry and auto-write configuration while retaining local snapshots; every OCR exposure and mutation now fails closed against live Paperless document permission without an ArchiBot-admin bypass. Step 0.4 is implemented: both webhook aliases require a non-empty effective secret, enforce constant-time authentication plus request-size and rate limits before persistence, and keep the development bypass fail-closed outside local/development environments.
+Security containment milestones 0.1–0.6 and ownership Steps 7–10 are implemented as recorded in the hardening plan. Step 11 removes the retired Python queue transport completely from productive code and configuration: actor modules are plain functions, Laravel Database Queues are the sole transport, Laravel recovery owns redispatch, and clean installs have no retired queue schema migration. Existing historical schema objects are left inert for rollback rather than dropped automatically; see [the Step 11 upgrade notes](absurd-removal.md).
 
-Absurd is no longer a supervised runtime owner, but cleanup remains:
-
-- `app/absurd_queue.py`, `app/event_worker.py`, and Absurd-decorated compatibility wrappers;
-- `absurd-sdk` in Python dependency files and Docker installation;
-- `ABSURD_DATABASE_URL`, queue-prefix compatibility, vendored SQL, and the install migration;
-- Absurd-specific tests and historical documentation references.
-
-The runtime still needs a clean-install/live-service proof after these changes. Full Reindex behavior, two CLI parity gaps, and finite actor/process timeout policy also remain open.
+Step 11 acceptance still requires current full-suite, clean-install Docker and image-security evidence for the candidate patch. Full Reindex behavior and finite actor/process timeout policy remain separate follow-ups outside this removal slice.
 
 ## Next safe milestones
 
-0. **Security containment**
-   - Continue the remaining independent hardening-plan milestone 0 PRs after completed Chat/RAG, confidence auto-commit, local-only permission-scoped OCR containment and webhook ingress hardening: restrict/structure diagnostics (0.5), then harden first-run setup and its pinned Paperless origin (0.6).
-   - Do not begin redesign work or claim full milestone-0 containment before the remaining applicable slices land.
+1. **Step 11 acceptance evidence**
+   - Run the full Python/Laravel suites, clean-install Docker/PostgreSQL migration and process smoke, dependency checks, and available image security scanners.
+   - Verify scheduled poll, webhook, manual review commit, embedding build and source-linked recovery enqueue only `RunPythonActorJob`/Laravel jobs.
+   - Regenerate and validate the Graphify artifacts from the candidate tree.
 
-1. **Runtime and recovery proof**
-   - Map every producer to one `RunPythonActorJob` factory and one allowlisted `app.actor_runner` command.
-   - Run focused Laravel/Python suites plus a clean-install Docker smoke with PostgreSQL.
-   - Verify scheduled poll due/disabled/overlap behavior, restart recovery, source-linked retries, cancellation, and no supervised Absurd process.
-   - Verify a durable record cannot be launched through both transports.
-   - Complete full reindex behavior, CLI/UI backend parity, and the missing Laravel recovery cases identified above.
-
-2. **Absurd cleanup**
-   - Remove SDK/config/schema/migration/supervisor/code/test remnants in a focused patch after parity.
-   - Keep Python processing actors and the fixed Laravel-to-Python command boundary.
-
-3. **Remaining parity and documentation sweep**
-   - Run clean-install Docker, queue worker, webhook, polling, restart/recovery and operations UI smoke checks without Absurd.
-   - Update remaining active user/developer/operations docs and generated graph artifacts.
+2. **Remaining product follow-ups**
+   - Complete full Reindex behavior and finite actor/process timeout policy in separately reviewed slices.
+   - Keep disabled redesign tracks contained until their explicit approval gates pass.
 
 ## Validation requirements for this milestone
 
@@ -111,7 +94,7 @@ Required repository evidence:
 
 - focused Python actor/auto-commit/source-link tests;
 - Laravel schedule, recovery, retry, cancellation, migration and actor-job tests;
-- Supervisor regression proof that no Absurd worker/recovery program starts;
+- Supervisor regression proof that no Python queue/recovery worker program starts;
 - Markdown links, Python/Laravel lint and full relevant CI checks.
 
 A clean-install Docker/PostgreSQL/Paperless smoke remains external runtime evidence. Until it is run, end-to-end scheduler timing, restart behavior and dual-dispatch exclusion remain `INCONCLUSIVE` at live-service level even when repository tests pass.

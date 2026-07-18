@@ -1,1 +1,1 @@
-"""Shared job helpers for Absurd actors."""
+"""Shared durable job-state helpers for fixed Python actors."""

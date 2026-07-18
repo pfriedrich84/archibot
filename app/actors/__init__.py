@@ -1,3 +1,3 @@
-"""Queue-backed actor package for the event-driven Archibot pipeline."""
+"""Plain Python actor implementations invoked by Laravel database queue jobs."""
 
-from app.absurd_queue import broker as broker
+LARAVEL_DATABASE_QUEUE = "laravel.database"

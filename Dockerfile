@@ -73,7 +73,6 @@ RUN pip install --upgrade pip setuptools wheel \
         "httpx>=0.27.0" \
         "pydantic>=2.9.0,<=2.12.5" \
         "pydantic-settings>=2.14.2,<=2.14.2" \
-        "absurd-sdk" \
         "sqlalchemy>=2.0.0,<3.0.0" \
         "psycopg[binary]>=3.2.0,<4.0.0" \
         "pgvector>=0.3.0,<1.0.0" \

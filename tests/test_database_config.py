@@ -44,7 +44,7 @@ def test_product_engine_rejects_non_postgresql_url_before_create_engine(monkeypa
     assert called is False
 
 
-@pytest.mark.parametrize("module", ["app.actor_runner", "app.event_worker", "app.cli"])
+@pytest.mark.parametrize("module", ["app.actor_runner", "app.cli"])
 def test_product_entry_points_fail_closed_for_sqlite_database_url(module):
     result = _run_module_with_database_url(module, "sqlite:///:memory:")
 
