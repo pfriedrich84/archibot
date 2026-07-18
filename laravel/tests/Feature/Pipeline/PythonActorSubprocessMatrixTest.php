@@ -11,12 +11,17 @@ use App\Services\Actors\PythonActorRunner;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use Throwable;
 
 class PythonActorSubprocessMatrixTest extends TestCase
 {
     private string $databasePath;
+
+    private string|false $originalDatabaseConnection;
+
+    private string|false $originalDatabasePath;
 
     protected function setUp(): void
     {
@@ -30,6 +35,8 @@ class PythonActorSubprocessMatrixTest extends TestCase
             $this->fail('Unable to create the actor matrix database fixture.');
         }
         $this->databasePath = $path;
+        $this->originalDatabaseConnection = getenv('DB_CONNECTION');
+        $this->originalDatabasePath = getenv('DB_DATABASE');
         putenv('DB_CONNECTION=sqlite');
         putenv("DB_DATABASE={$this->databasePath}");
         Config::set('database.default', 'sqlite');
@@ -44,10 +51,15 @@ class PythonActorSubprocessMatrixTest extends TestCase
         if (isset($this->databasePath) && is_file($this->databasePath)) {
             unlink($this->databasePath);
         }
-        putenv('DB_DATABASE');
-        putenv('DB_CONNECTION');
+        $this->restoreEnvironment('DB_DATABASE', $this->originalDatabasePath ?? false);
+        $this->restoreEnvironment('DB_CONNECTION', $this->originalDatabaseConnection ?? false);
 
         parent::tearDown();
+    }
+
+    private function restoreEnvironment(string $key, string|false $value): void
+    {
+        putenv($value === false ? $key : "{$key}={$value}");
     }
 
     /** @return array<string, array{string, string}> */
@@ -77,9 +89,7 @@ class PythonActorSubprocessMatrixTest extends TestCase
         return $cases;
     }
 
-    /**
-     * @dataProvider matrix
-     */
+    #[DataProvider('matrix')]
     public function test_every_actor_family_uses_the_real_process_contract(
         string $kind,
         string $type,

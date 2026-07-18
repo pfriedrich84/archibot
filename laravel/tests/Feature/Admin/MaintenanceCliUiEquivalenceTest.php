@@ -9,6 +9,7 @@ use App\Models\PipelineRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class MaintenanceCliUiEquivalenceTest extends TestCase
@@ -16,12 +17,11 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * @dataProvider commandCases
-     *
      * @param  array<string, mixed>  $uiPayload
      * @param  array<string, mixed>  $cliArguments
      * @param  array<int, string>  $eventTypes
      */
+    #[DataProvider('commandCases')]
     public function test_cli_and_ui_commands_share_durable_outcome_progress_and_audit(
         array $uiPayload,
         array $cliArguments,
@@ -70,8 +70,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         }
 
         $ids = [$uiCommand->id, $cliCommand->id];
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
 
         $this->assertSame(2, Command::query()->whereIn('id', $ids)->where('status', Command::STATUS_QUEUED)->count());
         $this->assertSame(count($eventTypes) * 2, PipelineEvent::query()->whereIn('command_id', $ids)->count());
@@ -141,8 +140,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         $this->assertDatabaseCount('commands', 0);
 
         $auditId = $uiAudit->id;
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
 
         $this->assertDatabaseHas('audit_logs', [
             'id' => $auditId,
@@ -152,7 +150,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         $this->assertDatabaseCount('commands', 0);
     }
 
-    /** @dataProvider documentCases */
+    #[DataProvider('documentCases')]
     public function test_cli_and_ui_document_processing_share_restart_durable_progress_and_outcome(bool $force): void
     {
         Queue::fake();
@@ -192,8 +190,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         $this->assertNull($runs[1]->requested_by_user_id);
 
         $ids = $runs->pluck('id')->all();
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
 
         $this->assertSame(2, PipelineRun::query()->whereIn('id', $ids)
             ->where('status', PipelineRun::STATUS_BLOCKED)

@@ -175,6 +175,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
         $delivery->timestamps = false;
         $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+        Queue::shouldReceive('connection')->once()->andReturnSelf();
         Queue::shouldReceive('push')->once()->andReturnUsing(function (): never {
             $this->assertDatabaseHas('pipeline_runs', [
                 'status' => PipelineRun::STATUS_PENDING,
@@ -575,6 +576,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'status' => ActorExecution::STATUS_RUNNING,
             'attempt' => 1,
             'max_attempts' => 5,
+            'source_version' => 0,
             'started_at' => now()->subMinutes(11),
             'progress_updated_at' => now()->subMinutes(11),
         ]);
@@ -605,6 +607,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'status' => ActorExecution::STATUS_RUNNING,
             'attempt' => 5,
             'max_attempts' => 5,
+            'source_version' => 0,
             'started_at' => now()->subMinutes(11),
             'progress_updated_at' => now()->subMinutes(11),
         ]);
@@ -713,7 +716,8 @@ class PipelineRecoveryDispatcherTest extends TestCase
 
         $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
         Queue::assertNothingPushed();
-        $this->assertSame(ActorExecution::STATUS_SUCCEEDED, $execution->fresh()->status);
+        $this->assertSame(ActorExecution::STATUS_SKIPPED, $execution->fresh()->status);
+        $this->assertSame('superseded_by_terminal_source', $execution->fresh()->error_type);
         $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
     }
 

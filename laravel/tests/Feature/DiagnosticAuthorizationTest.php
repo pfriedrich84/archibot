@@ -184,9 +184,9 @@ class DiagnosticAuthorizationTest extends TestCase
             )
             ->where('status.active_provider_roles.1.provider', 'ollama')
         );
-        $response->assertDontSee('token_secret_123', escaped: false);
-        $response->assertDontSee('secret-actor-name', escaped: false);
-        $response->assertDontSee('secret-dashboard-delivery', escaped: false);
+        $response->assertDontSee('token_secret_123', escape: false);
+        $response->assertDontSee('secret-actor-name', escape: false);
+        $response->assertDontSee('secret-dashboard-delivery', escape: false);
     }
 
     public function test_dashboard_replaces_paperless_exception_text_with_fixed_safe_text(): void
@@ -207,8 +207,8 @@ class DiagnosticAuthorizationTest extends TestCase
             ->where('status.paperless_available', false)
             ->where('status.paperless_error', 'Paperless server is not reachable.')
         );
-        $response->assertDontSee('top-secret', escaped: false);
-        $response->assertDontSee('private document title', escaped: false);
+        $response->assertDontSee('top-secret', escape: false);
+        $response->assertDontSee('private document title', escape: false);
     }
 
     public function test_allowed_metadata_keys_and_webhook_summary_cannot_carry_sensitive_strings(): void
@@ -253,10 +253,10 @@ class DiagnosticAuthorizationTest extends TestCase
         );
 
         foreach ([$auditResponse, $webhookResponse] as $response) {
-            $response->assertDontSee('top-secret', escaped: false);
-            $response->assertDontSee('webhook-secret', escaped: false);
-            $response->assertDontSee('private OCR content', escaped: false);
-            $response->assertDontSee('private document content', escaped: false);
+            $response->assertDontSee('top-secret', escape: false);
+            $response->assertDontSee('webhook-secret', escape: false);
+            $response->assertDontSee('private OCR content', escape: false);
+            $response->assertDontSee('private document content', escape: false);
         }
     }
 
@@ -377,7 +377,7 @@ class DiagnosticAuthorizationTest extends TestCase
                 'PHASE_SECRET', 'RETRY_MODE_SECRET', 'COMMAND_TYPE_SECRET', 'COMMAND_PAYLOAD_SECRET',
                 'MAINTENANCE_EVENT_SECRET', 'MAINTENANCE_METADATA_SECRET', 'sk-prod-secret123',
             ] as $forbidden) {
-                $response->assertDontSee($forbidden, escaped: false);
+                $response->assertDontSee($forbidden, escape: false);
             }
         }
 

@@ -66,6 +66,7 @@ class EntityApprovalTest extends TestCase
     public function test_admin_can_approve_pending_entity_and_create_it_in_paperless(): void
     {
         Http::fake([
+            'paperless.test/api/tags/?*' => Http::response(['results' => []]),
             'paperless.test/api/tags/' => Http::response(['id' => 77, 'name' => 'Accounting'], 201),
         ]);
 
@@ -110,6 +111,7 @@ class EntityApprovalTest extends TestCase
     public function test_approval_resolves_postgresql_suggestions_and_patches_committed_document(): void
     {
         Http::fake([
+            'paperless.test/api/correspondents/?*' => Http::response(['results' => []]),
             'paperless.test/api/correspondents/' => Http::response(['id' => 88], 201),
             'paperless.test/api/documents/42/' => Http::response([], 200),
         ]);
@@ -141,6 +143,7 @@ class EntityApprovalTest extends TestCase
     public function test_tag_approval_only_updates_matching_postgresql_suggestions(): void
     {
         Http::fake([
+            'paperless.test/api/tags/?*' => Http::response(['results' => []]),
             'paperless.test/api/tags/' => Http::response(['id' => 77], 201),
             'paperless.test/api/documents/42/' => Http::response([], 200),
         ]);
@@ -173,7 +176,10 @@ class EntityApprovalTest extends TestCase
 
     public function test_entity_application_failure_is_durable_without_sqlite_fallback(): void
     {
-        Http::fake(['paperless.test/api/tags/' => Http::response([], 500)]);
+        Http::fake([
+            'paperless.test/api/tags/?*' => Http::response(['results' => []]),
+            'paperless.test/api/tags/' => Http::response([], 500),
+        ]);
         $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
         $entity = EntityApproval::factory()->create(['type' => EntityApproval::TYPE_TAG, 'name' => 'Accounting']);
 
@@ -213,6 +219,7 @@ class EntityApprovalTest extends TestCase
     public function test_failed_retroactive_application_can_retry_without_duplicate_paperless_entity(): void
     {
         Http::fake([
+            'paperless.test/api/tags/?*' => Http::response(['results' => []]),
             'paperless.test/api/tags/' => Http::response(['id' => 77], 201),
             'paperless.test/api/documents/42/' => Http::response([], 500),
         ]);
@@ -267,8 +274,7 @@ class EntityApprovalTest extends TestCase
         $this->execute($command);
         $commandId = $command->id;
 
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
 
         $this->assertDatabaseHas('entity_approvals', [
             'id' => $entity->id,
@@ -378,7 +384,8 @@ class EntityApprovalTest extends TestCase
             ->assertRedirect();
         $this->actingAs($admin)
             ->post(route('entities.reject', ['segment' => 'tags', 'entityApproval' => $entity]))
-            ->assertConflict();
+            ->assertRedirect()
+            ->assertSessionHas('error', 'Entity rejection could not be queued: entity_decision_conflict: active action approved conflicts with requested action rejected');
 
         $this->assertDatabaseCount('commands', 1);
     }
@@ -416,7 +423,10 @@ class EntityApprovalTest extends TestCase
     public function test_stale_approval_delivery_cannot_make_remote_calls_or_overwrite_newer_rejection(): void
     {
         Queue::fake();
-        Http::fake(['paperless.test/api/tags/' => Http::response(['id' => 77], 201)]);
+        Http::fake([
+            'paperless.test/api/tags/?*' => Http::response(['results' => []]),
+            'paperless.test/api/tags/' => Http::response(['id' => 77], 201),
+        ]);
         $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
         $entity = EntityApproval::factory()->create(['type' => EntityApproval::TYPE_TAG, 'name' => 'Accounting']);
         $service = app(EntityApprovalDecisionService::class);

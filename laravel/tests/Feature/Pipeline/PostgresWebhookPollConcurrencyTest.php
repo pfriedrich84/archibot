@@ -22,6 +22,15 @@ class PostgresWebhookPollConcurrencyTest extends TestCase
 {
     use DatabaseMigrations;
 
+    protected function setUp(): void
+    {
+        if (getenv('DB_CONNECTION') !== 'pgsql') {
+            $this->markTestSkipped('Requires PostgreSQL session advisory locks and process contention.');
+        }
+
+        parent::setUp();
+    }
+
     public function test_simultaneous_webhook_and_poll_transactions_contend_and_coalesce(): void
     {
         if (DB::getDriverName() !== 'pgsql') {

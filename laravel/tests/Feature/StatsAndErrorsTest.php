@@ -64,6 +64,7 @@ class StatsAndErrorsTest extends TestCase
             'event_type' => 'document.updated',
             'dedupe_key' => 'stats-adversarial',
             'payload_hash' => hash('sha256', 'stats-adversarial'),
+            'raw_payload' => [],
             'status' => 'WEBHOOK_STATUS_STATS_SECRET',
             'received_at' => now(),
         ]);
@@ -93,7 +94,7 @@ class StatsAndErrorsTest extends TestCase
 
         foreach (['STATUS_STATS_SECRET', 'VERDICT_STATS_SECRET', 'TYPE_STATS_SECRET',
             'WEBHOOK_STATUS_STATS_SECRET', 'PIPELINE_TYPE_STATS_SECRET', 'ACTOR_STATS_SECRET'] as $secret) {
-            $response->assertDontSee($secret, escaped: false);
+            $response->assertDontSee($secret, escape: false);
         }
     }
 

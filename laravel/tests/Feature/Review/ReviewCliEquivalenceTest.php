@@ -64,8 +64,7 @@ class ReviewCliEquivalenceTest extends TestCase
         Queue::assertPushed(RunPythonActorJob::class, 2);
 
         $commandIds = [$uiSuggestion->commit_command_id, $cliSuggestion->commit_command_id];
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
         $this->assertSame(2, Command::query()->whereIn('id', $commandIds)->where('status', Command::STATUS_QUEUED)->count());
         $this->assertSame(4, PipelineEvent::query()->whereIn('command_id', $commandIds)->count());
     }
@@ -99,8 +98,7 @@ class ReviewCliEquivalenceTest extends TestCase
             ->assertSuccessful();
         $commandId = $suggestion->refresh()->commit_command_id;
 
-        $this->app->flush();
-        $this->refreshApplication();
+        $this->restartApplicationPreservingDatabase();
 
         $this->assertDatabaseHas('commands', [
             'id' => $commandId,

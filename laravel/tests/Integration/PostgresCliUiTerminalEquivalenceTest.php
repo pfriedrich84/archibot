@@ -14,6 +14,7 @@ use App\Services\ArchibotResetService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
@@ -40,7 +41,7 @@ class PostgresCliUiTerminalEquivalenceTest extends TestCase
         app(ArchibotResetService::class)->reset();
     }
 
-    /** @dataProvider maintenanceCases */
+    #[DataProvider('maintenanceCases')]
     public function test_ui_and_cli_actor_commands_reach_equivalent_terminal_state_after_worker_restart(
         array $uiPayload,
         array $cliArguments,
@@ -73,7 +74,7 @@ class PostgresCliUiTerminalEquivalenceTest extends TestCase
         $this->assertSame(0, DB::table('jobs')->count(), 'fresh worker must consume both durable jobs');
     }
 
-    /** @dataProvider maintenanceCases */
+    #[DataProvider('maintenanceCases')]
     public function test_ui_and_cli_actor_failures_are_terminally_equivalent_after_worker_restart(
         array $uiPayload,
         array $cliArguments,

@@ -25,7 +25,9 @@ $environment = [
     'DB_DATABASE' => ':memory:',
     'DB_URL' => '',
     'CACHE_STORE' => 'array',
-    'QUEUE_CONNECTION' => 'sync',
+    'QUEUE_CONNECTION' => 'database',
+    'QUEUE_WORKER_TIMEOUT' => '30',
+    'DB_QUEUE_RETRY_AFTER' => '90',
     'SESSION_DRIVER' => 'array',
 ];
 foreach ($environment as $key => $value) {
@@ -34,6 +36,7 @@ foreach ($environment as $key => $value) {
     $_SERVER[$key] = $value;
 }
 
+require dirname(__DIR__, 2).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 

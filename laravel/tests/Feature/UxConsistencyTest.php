@@ -77,6 +77,8 @@ class UxConsistencyTest extends TestCase
 
         config(['archibot.path_prefix' => '/archibot/']);
         $this->assertSame('/archibot', $middleware->share($request)['appPathPrefix']);
+
+        config(['archibot.path_prefix' => '']);
     }
 
     public function test_fresh_processes_execute_prefix_sensitive_http_and_form_flows_for_both_prefixes(): void

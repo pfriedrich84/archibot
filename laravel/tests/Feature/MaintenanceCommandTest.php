@@ -155,6 +155,11 @@ class MaintenanceCommandTest extends TestCase
 
         $this->assertDatabaseCount('embedding_index_state', 0);
         $this->assertDatabaseCount('document_embeddings', 0);
-        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'maintenance.reset_completed',
+            'target_type' => 'system',
+            'target_id' => 'archibot',
+        ]);
+        $this->assertDatabaseCount('audit_logs', 1);
     }
 }

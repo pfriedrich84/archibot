@@ -201,14 +201,14 @@ class EmbeddingsTest extends TestCase
             ->where('latestEmbeddingBuildCommand.type', Command::TYPE_EMBEDDING_INDEX_BUILD)
         );
 
-        $response->assertDontSee('sk-prod-secret123', escaped: false);
+        $response->assertDontSee('sk-prod-secret123', escape: false);
 
         foreach (['SNAPSHOT_ID_SECRET', 'SNAPSHOT_STATUS_SECRET',
             'DIMENSIONS_SECRET', 'DOCUMENT_COUNT_SECRET', 'KNOWN_SECRET', 'EMBEDDED_SECRET',
             'ROWS_SECRET', 'PGVECTOR_SECRET', 'MISSING_SECRET', 'FAILED_SECRET', 'STARTED_SECRET',
             'COMPLETED_SECRET', 'SNAPSHOT_ERROR_SECRET', 'COUNT_ERROR_SECRET', 'READY_SECRET',
             'ARBITRARY_SECRET', 'COMMAND_STATUS_SECRET', 'COMMAND_ERROR_SECRET'] as $secret) {
-            $response->assertDontSee($secret, escaped: false);
+            $response->assertDontSee($secret, escape: false);
         }
     }
 

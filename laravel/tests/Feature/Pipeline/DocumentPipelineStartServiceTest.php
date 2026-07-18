@@ -43,6 +43,7 @@ class DocumentPipelineStartServiceTest extends TestCase
     public function test_enqueue_failure_leaves_pending_run_for_recovery(): void
     {
         EmbeddingIndexState::query()->create(['status' => 'complete']);
+        Queue::shouldReceive('connection')->once()->andReturnSelf();
         Queue::shouldReceive('push')->once()->andReturnUsing(function (): never {
             $this->assertDatabaseHas('pipeline_runs', [
                 'paperless_document_id' => 42,
@@ -75,6 +76,7 @@ class DocumentPipelineStartServiceTest extends TestCase
     public function test_post_dispatch_queued_transition_cannot_overwrite_fast_worker_running_state(): void
     {
         EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
+        Queue::shouldReceive('connection')->once()->andReturnSelf();
         Queue::shouldReceive('push')->once()->andReturnUsing(function (RunPythonActorJob $job): void {
             PipelineRun::query()->whereKey($job->commandId)->update([
                 'status' => PipelineRun::STATUS_RUNNING,

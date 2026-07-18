@@ -16,6 +16,15 @@ class PostgresPipelineFenceTest extends TestCase
 {
     use DatabaseMigrations;
 
+    protected function setUp(): void
+    {
+        if (getenv('DB_CONNECTION') !== 'pgsql') {
+            $this->markTestSkipped('Requires PostgreSQL session advisory locks.');
+        }
+
+        parent::setUp();
+    }
+
     public function test_embedding_mutation_waits_for_complete_document_actor_lease(): void
     {
         if (DB::getDriverName() !== 'pgsql') {

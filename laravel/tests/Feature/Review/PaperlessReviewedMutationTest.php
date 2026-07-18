@@ -5,6 +5,7 @@ namespace Tests\Feature\Review;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class PaperlessReviewedMutationTest extends TestCase
@@ -26,7 +27,7 @@ class PaperlessReviewedMutationTest extends TestCase
             && $request['title'] === 'Reviewed');
     }
 
-    /** @dataProvider prohibitedFields */
+    #[DataProvider('prohibitedFields')]
     public function test_ocr_content_file_and_version_fields_are_rejected_before_dispatch(string $field): void
     {
         Http::fake();
@@ -54,7 +55,7 @@ class PaperlessReviewedMutationTest extends TestCase
         ];
     }
 
-    /** @dataProvider invalidStoragePathAssignments */
+    #[DataProvider('invalidStoragePathAssignments')]
     public function test_storage_path_requires_a_positive_integer_before_dispatch(mixed $value): void
     {
         Http::fake();

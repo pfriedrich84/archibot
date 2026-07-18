@@ -48,8 +48,13 @@ class AdminSettingsTest extends TestCase
         Config::set('archibot.paperless_webhook_development_bypass', true);
         $this->app->detectEnvironment(fn (): string => 'local');
         Log::spy();
-
-        (new AppServiceProvider($this->app))->boot();
+        $database = Config::get('database.default');
+        try {
+            Config::set('database.default', 'pgsql');
+            (new AppServiceProvider($this->app))->boot();
+        } finally {
+            Config::set('database.default', $database);
+        }
 
         Log::shouldHaveReceived('warning')->once()->with(
             'Paperless webhook authentication development bypass is active.',
@@ -378,7 +383,7 @@ class AdminSettingsTest extends TestCase
             Http::assertSent(fn ($request) => str_ends_with($request->url(), '/chat/completions')
                 && $request['model'] === "manual/{$role}-model");
         }
-        Http::assertSent(fn ($request) => $request['model'] === 'manual/ocr_vision-model'
+        Http::assertSent(fn ($request) => ($request['model'] ?? null) === 'manual/ocr_vision-model'
             && $request['messages'][0]['content'][1]['type'] === 'image_url'
             && $this->isExpectedVisionFixture(substr($request['messages'][0]['content'][1]['image_url']['url'], strlen('data:image/png;base64,')))
             && ! str_contains($request['messages'][0]['content'][0]['text'], 'A7K9'));

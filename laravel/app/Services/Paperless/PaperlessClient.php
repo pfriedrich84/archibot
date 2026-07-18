@@ -301,7 +301,11 @@ class PaperlessClient
         // Compatibility fallback is intentionally narrow: only a successful
         // ui_settings response that omits is_superuser, or an explicit 404,
         // may consult older profile endpoints. All other failures stay closed.
-        $uiResponse = $this->request($token)->get('/api/ui_settings/');
+        try {
+            $uiResponse = $this->request($token)->get('/api/ui_settings/');
+        } catch (ConnectionException $exception) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.', previous: $exception);
+        }
 
         if ($uiResponse->status() !== 404 && ! $uiResponse->successful()) {
             if ($uiResponse->serverError()) {

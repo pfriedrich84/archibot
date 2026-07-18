@@ -9,15 +9,51 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
 use RuntimeException;
 use Tests\TestCase;
 
 class RunPythonActorJobTest extends TestCase
 {
-    use RefreshDatabase;
+    private string $databasePath;
+
+    private string|false $originalDatabaseConnection;
+
+    private string|false $originalDatabasePath;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $path = tempnam(sys_get_temp_dir(), 'archibot-actor-job-');
+        if ($path === false) {
+            $this->fail('Unable to create the actor job database fixture.');
+        }
+        $this->databasePath = $path;
+        $this->originalDatabaseConnection = getenv('DB_CONNECTION');
+        $this->originalDatabasePath = getenv('DB_DATABASE');
+        putenv('DB_CONNECTION=sqlite');
+        putenv("DB_DATABASE={$this->databasePath}");
+        Config::set('database.default', 'sqlite');
+        Config::set('database.connections.sqlite.database', $this->databasePath);
+        DB::purge('sqlite');
+        Artisan::call('migrate:fresh', ['--force' => true]);
+    }
+
+    protected function tearDown(): void
+    {
+        DB::purge('sqlite');
+        if (isset($this->databasePath) && is_file($this->databasePath)) {
+            unlink($this->databasePath);
+        }
+        $this->restoreEnvironment('DB_DATABASE', $this->originalDatabasePath ?? false);
+        $this->restoreEnvironment('DB_CONNECTION', $this->originalDatabaseConnection ?? false);
+
+        parent::tearDown();
+    }
 
     public function test_embedding_actor_job_runs_fixed_python_actor_command(): void
     {
@@ -463,6 +499,11 @@ PHP);
             'pipeline_dedupe_key' => "dedupe-{$dedupeSuffix}",
             'coalesced_sources' => ['manual'],
         ]);
+    }
+
+    private function restoreEnvironment(string $key, string|false $value): void
+    {
+        putenv($value === false ? $key : "{$key}={$value}");
     }
 
     private function writeActorStub(string $body): string

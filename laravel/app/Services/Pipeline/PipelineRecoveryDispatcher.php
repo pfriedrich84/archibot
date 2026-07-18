@@ -7,6 +7,7 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
+use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use Illuminate\Support\Facades\Cache;
