@@ -23,10 +23,10 @@ import time
 # can select this adapter in actor/CLI/server code.
 os.environ["DATABASE_URL"] = "postgresql+psycopg://test:test@invalid/archibot_test"
 
-from app import actor_runner  # noqa: E402
-from app.execution_lifecycle import ExecutionLifecycle, current_invocation_fence  # noqa: E402
-from app.jobs import actor_execution, database as job_database  # noqa: E402
-
+from app import actor_runner
+from app.execution_lifecycle import ExecutionLifecycle, current_invocation_fence
+from app.jobs import actor_execution, commands
+from app.jobs import database as job_database
 
 database = os.environ.get("DB_DATABASE")
 if not database or os.environ.get("DB_CONNECTION") != "sqlite":
@@ -42,6 +42,33 @@ class SQLiteActorExecutionSql:
 
 job_database._engine = create_engine(f"sqlite:///{database}")
 actor_execution._sql = SQLiteActorExecutionSql()
+
+
+def load_sqlite_command(command_id: int) -> commands.CommandRecord | None:
+    """Decode Laravel's SQLite JSON text as PostgreSQL would decode jsonb."""
+    statement = commands.sql_text(
+        "SELECT id, type, status, payload FROM commands WHERE id = :command_id LIMIT 1"
+    )
+    with job_database.engine().connect() as connection:
+        row = connection.execute(statement, {"command_id": command_id}).mappings().first()
+    if row is None:
+        return None
+    payload = row["payload"] or {}
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if not isinstance(payload, dict):
+        payload = {}
+    return commands.CommandRecord(
+        id=int(row["id"]),
+        type=str(row["type"]),
+        status=str(row["status"]),
+        payload=payload,
+    )
+
+
+# SQLite returns raw JSON text for untyped SQL while production PostgreSQL
+# returns a decoded jsonb mapping. Preserve the production command contract.
+actor_runner.load_command = load_sqlite_command
 
 scenario = os.environ.get("ARCHIBOT_ACTOR_FIXTURE_SCENARIO", "success")
 

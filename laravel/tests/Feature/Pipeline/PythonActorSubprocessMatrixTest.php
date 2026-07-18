@@ -113,16 +113,19 @@ class PythonActorSubprocessMatrixTest extends TestCase
         chmod($fixture, 0755);
         Config::set('archibot.python_binary', $fixture);
         Config::set('archibot_workers.queue_worker_timeout', 1);
-        putenv("ARCHIBOT_ACTOR_FIXTURE_SCENARIO={$scenario}");
-        [$job, $source] = $this->sourceAndJob($kind, $type);
-
-        $thrown = null;
+        $originalScenario = getenv('ARCHIBOT_ACTOR_FIXTURE_SCENARIO');
+        $this->setEnvironment('ARCHIBOT_ACTOR_FIXTURE_SCENARIO', $scenario);
         try {
-            $job->handle(app(PythonActorRunner::class));
-        } catch (Throwable $exception) {
-            $thrown = $exception;
+            [$job, $source] = $this->sourceAndJob($kind, $type);
+
+            $thrown = null;
+            try {
+                $job->handle(app(PythonActorRunner::class));
+            } catch (Throwable $exception) {
+                $thrown = $exception;
+            }
         } finally {
-            putenv('ARCHIBOT_ACTOR_FIXTURE_SCENARIO');
+            $this->restoreEnvironment('ARCHIBOT_ACTOR_FIXTURE_SCENARIO', $originalScenario);
         }
 
         // Reopen the parent PDO after the child exits so assertions observe
@@ -131,6 +134,9 @@ class PythonActorSubprocessMatrixTest extends TestCase
         DB::reconnect('sqlite');
         $source->refresh();
         $execution = ActorExecution::query()->latest('id')->firstOrFail();
+        if (in_array($scenario, ['success', 'skipped', 'blocked', 'cancelled', 'retrying', 'failed-permanent'], true)) {
+            $this->assertNull($thrown, $this->unexpectedExceptionMessage($scenario, $thrown));
+        }
         $eventSourceColumn = match ($kind) {
             'document' => 'pipeline_run_id',
             'webhook' => 'webhook_delivery_id',
@@ -143,11 +149,9 @@ class PythonActorSubprocessMatrixTest extends TestCase
             'event_type' => 'actor.started',
         ]);
         if ($scenario === 'success') {
-            $this->assertNull($thrown);
             $this->assertSame($kind === 'webhook' ? 'processed' : 'succeeded', $source->status);
             $this->assertSame(ActorExecution::STATUS_SUCCEEDED, $execution->status);
         } elseif (in_array($scenario, ['skipped', 'blocked', 'cancelled', 'retrying', 'failed-permanent'], true)) {
-            $this->assertNull($thrown);
             $expectedSourceStatus = match ([$kind, $scenario]) {
                 ['webhook', 'skipped'] => 'dismissed',
                 ['webhook', 'cancelled'], ['webhook', 'failed-permanent'] => 'failed_permanent',
@@ -185,6 +189,20 @@ class PythonActorSubprocessMatrixTest extends TestCase
                 $this->assertSame(ActorExecution::STATUS_RUNNING, $execution->status);
             }
         }
+    }
+
+    private function unexpectedExceptionMessage(string $scenario, ?Throwable $exception): string
+    {
+        if ($exception === null) {
+            return '';
+        }
+
+        return sprintf(
+            '%s unexpectedly threw %s: %s',
+            $scenario,
+            $exception::class,
+            $exception->getMessage(),
+        );
     }
 
     /** @return array{RunPythonActorJob, Command|PipelineRun|WebhookDelivery} */
