@@ -339,60 +339,6 @@ class DiagnosticPresenter
         return $safe;
     }
 
-    /** Sanitize the complete legacy SQLite statistics boundary. */
-    public function legacyStats(mixed $stats): array
-    {
-        if (! is_array($stats) || ($stats['available'] ?? null) !== true) {
-            return ['available' => false];
-        }
-
-        $totals = [];
-        foreach (['processed_documents', 'embedded_documents', 'total_errors', 'total_commits', 'auto_commits'] as $key) {
-            $totals[$key] = $this->nonNegativeInteger($stats['totals'][$key] ?? null);
-        }
-
-        $phaseHealth = [];
-        foreach (is_array($stats['phase_health'] ?? null) ? $stats['phase_health'] : [] as $phase => $values) {
-            $safePhase = $this->canonicalValue('phase', $phase) ?? 'unknown';
-            $values = is_array($values) ? $values : [];
-            $total = $this->nonNegativeInteger($values['total'] ?? null);
-            $errors = $this->nonNegativeInteger($values['errors'] ?? null);
-            $avgMs = $this->nonNegativeInteger($values['avg_ms'] ?? null);
-            $existing = $phaseHealth[$safePhase] ?? ['total' => 0, 'errors' => 0, 'weighted_ms' => 0];
-            $combinedTotal = $existing['total'] + $total;
-            $combinedErrors = $existing['errors'] + $errors;
-            $phaseHealth[$safePhase] = [
-                'total' => $combinedTotal,
-                'errors' => $combinedErrors,
-                'weighted_ms' => $existing['weighted_ms'] + ($avgMs * $total),
-            ];
-        }
-        foreach ($phaseHealth as &$values) {
-            $values = [
-                'total' => $values['total'],
-                'errors' => $values['errors'],
-                'avg_ms' => $values['total'] > 0 ? (int) round($values['weighted_ms'] / $values['total']) : 0,
-                'error_rate_pct' => $values['total'] > 0
-                    ? round(min(100, ($values['errors'] / $values['total']) * 100), 1)
-                    : 0.0,
-            ];
-        }
-        unset($values);
-        ksort($phaseHealth);
-
-        return [
-            'available' => true,
-            'totals' => $totals,
-            'status_counts' => $this->typedCounts(is_array($stats['status_counts'] ?? null) ? $stats['status_counts'] : [], 'status'),
-            'judge_counts' => $this->typedCounts(is_array($stats['judge_counts'] ?? null) ? $stats['judge_counts'] : [], 'judge_verdict'),
-            'confidence_distribution' => $this->allowlistedCounts(
-                is_array($stats['confidence_distribution'] ?? null) ? $stats['confidence_distribution'] : [],
-                ['0-19', '20-39', '40-59', '60-79', '80-100', 'unscored'],
-            ),
-            'phase_health' => $phaseHealth,
-        ];
-    }
-
     public function opaqueReference(mixed $value): ?string
     {
         if (! is_string($value) || trim($value) === '') {

@@ -1,4 +1,4 @@
-"""Correspondent proposal operations retired; direct SQLite and Paperless mutations are forbidden."""
+"""Correspondent proposal operations remain retired pending an authorized PostgreSQL seam."""
 
 from __future__ import annotations
 

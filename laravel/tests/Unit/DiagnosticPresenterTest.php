@@ -165,33 +165,6 @@ class DiagnosticPresenterTest extends TestCase
                 'ACTOR_SECRET' => ['STATUS_SECRET' => 5],
             ], 'actor_name', 'status'),
         );
-
-        $legacy = $presenter->legacyStats([
-            'available' => true,
-            'totals' => ['processed_documents' => 7, 'total_errors' => 'secret'],
-            'status_counts' => ['committed' => 2, 'STATUS_SECRET' => 1],
-            'judge_counts' => ['agree' => 4, 'VERDICT_SECRET' => 1],
-            'confidence_distribution' => ['80-100' => 2, 'BUCKET_SECRET' => 9],
-            'phase_health' => [
-                'classify' => ['total' => 3, 'errors' => 1, 'avg_ms' => 20, 'error_rate_pct' => 33.3],
-                'PHASE_SECRET' => ['total' => 2, 'errors' => 2, 'avg_ms' => 5, 'error_rate_pct' => 100],
-                'OTHER_PHASE_SECRET' => ['total' => 3, 'errors' => 0, 'avg_ms' => 15, 'error_rate_pct' => 0],
-            ],
-        ]);
-
-        $this->assertSame(7, $legacy['totals']['processed_documents']);
-        $this->assertSame(0, $legacy['totals']['total_errors']);
-        $this->assertSame(['committed' => 2, 'unknown' => 1], $legacy['status_counts']);
-        $this->assertSame(['agree' => 4, 'unknown' => 1], $legacy['judge_counts']);
-        $this->assertSame(['80-100' => 2, 'unknown' => 9], $legacy['confidence_distribution']);
-        $this->assertArrayHasKey('classify', $legacy['phase_health']);
-        $this->assertSame([
-            'total' => 5,
-            'errors' => 2,
-            'avg_ms' => 11,
-            'error_rate_pct' => 40.0,
-        ], $legacy['phase_health']['unknown']);
-        $this->assertStringNotContainsString('SECRET', json_encode($legacy, JSON_THROW_ON_ERROR));
     }
 
     public function test_embedding_snapshot_types_every_field_and_references_model_ids(): void

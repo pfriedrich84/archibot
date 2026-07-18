@@ -11,7 +11,8 @@ import pytest
 
 from app.clients.ollama import OllamaClient
 from app.config import settings
-from app.db import EMBED_DIM
+
+EMBED_DIM = settings.ollama_embed_dim_resolved
 
 
 def _make_response(

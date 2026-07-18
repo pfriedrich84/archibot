@@ -1,4 +1,4 @@
-"""SQLite-free judge seam used by the durable document actor."""
+"""Judge seam used by the durable document actor."""
 
 from __future__ import annotations
 

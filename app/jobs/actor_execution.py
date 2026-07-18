@@ -10,6 +10,17 @@ from app.jobs.database import engine
 
 
 @dataclass(frozen=True)
+class _PostgresqlActorExecutionSql:
+    """Closed productive SQL dialect; tests may replace this module-local adapter."""
+
+    source_lock_clause = " FOR UPDATE"
+    retry_timestamp = "CURRENT_TIMESTAMP + (:backoff_seconds * INTERVAL '1 second')"
+
+
+_sql = _PostgresqlActorExecutionSql()
+
+
+@dataclass(frozen=True)
 class ActorExecutionHandle:
     id: int | None
     actor_name: str
@@ -80,11 +91,10 @@ def start_actor_execution(
             )
         source_kind, table, column, source_id = selected[0]
         with engine().begin() as connection:
-            lock_clause = "" if connection.dialect.name == "sqlite" else " FOR UPDATE"
             source = (
                 connection.execute(
                     sql_text(
-                        f"SELECT status, lifecycle_version, active_actor_token FROM {table} WHERE id = :source_id{lock_clause}"
+                        f"SELECT status, lifecycle_version, active_actor_token FROM {table} WHERE id = :source_id{_sql.source_lock_clause}"
                     ),
                     {"source_id": source_id},
                 )
@@ -265,14 +275,8 @@ def _release_source_fence(
     }[handle.source_kind]
     if backoff_seconds is None:
         retry_assignment = ", next_retry_at = NULL"
-    elif connection.dialect.name == "sqlite":
-        retry_assignment = (
-            ", next_retry_at = datetime(CURRENT_TIMESTAMP, '+' || :backoff_seconds || ' seconds')"
-        )
     else:
-        retry_assignment = (
-            ", next_retry_at = CURRENT_TIMESTAMP + (:backoff_seconds * INTERVAL '1 second')"
-        )
+        retry_assignment = f", next_retry_at = {_sql.retry_timestamp}"
     connection.execute(
         sql_text(f"""UPDATE {table} SET active_actor_token = NULL {retry_assignment}, updated_at = CURRENT_TIMESTAMP
             WHERE id = :source_id AND lifecycle_version = :source_version
@@ -365,18 +369,12 @@ def schedule_actor_execution_retry(
         return False
 
     duration_ms = int((time.monotonic() - handle.started_monotonic) * 1000)
-    dialect_name = getattr(getattr(engine(), "dialect", None), "name", "postgresql")
-    retry_timestamp = (
-        "datetime(CURRENT_TIMESTAMP, '+' || :backoff_seconds || ' seconds')"
-        if dialect_name == "sqlite"
-        else "CURRENT_TIMESTAMP + (:backoff_seconds * INTERVAL '1 second')"
-    )
     statement = sql_text(f"""
         UPDATE actor_executions
         SET status = 'retrying', finished_at = CURRENT_TIMESTAMP,
             duration_ms = :duration_ms, retry_reason = :retry_reason,
             retry_mode = 'automatic', last_retry_at = CURRENT_TIMESTAMP,
-            next_retry_at = {retry_timestamp},
+            next_retry_at = {_sql.retry_timestamp},
             error_type = :retry_class, error_message = :error_message,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :actor_execution_id AND status = 'running'

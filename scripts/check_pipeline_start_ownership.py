@@ -31,6 +31,51 @@ PHP_REVIEWED_DYNAMIC_SQL_OWNERS = {
 
 LEGACY_FINGERPRINT_BASELINE = Path(__file__).with_name("pipeline_start_legacy_fingerprints.json")
 
+SQLITE_PRODUCT_PATTERNS = {
+    "SQLite runtime/API restored": re.compile(
+        r"\bsqlite3?\b|\bsqlite(?:\+[a-z0-9_]+)?://|\bphp[-_]sqlite3\b",
+        re.IGNORECASE,
+    ),
+    "SQLite file-backed state restored": re.compile(
+        r"(?:[\"'=:/]|\b(?:path|file|database)\s*[:=]\s*)[^\s\"']*\.db\b",
+        re.IGNORECASE,
+    ),
+    "SQLite-specific DDL restored": re.compile(
+        r"\bPRAGMA\b(?!\s*:\s*no\s+cover)|\bsqlite_(?:master|schema|sequence)\b|\bAUTOINCREMENT\b|"
+        r"\bWITHOUT\s+ROWID\b|\bCREATE\s+VIRTUAL\s+TABLE\b[^;]*\bUSING\s+(?:fts5|vec0)\b",
+        re.IGNORECASE,
+    ),
+    "legacy processed-document state restored": re.compile(
+        r"\bprocessed_documents\b|\bpoll_cycles\b", re.IGNORECASE
+    ),
+    "legacy suggestions table restored": re.compile(
+        r"\b(?:FROM|INTO|UPDATE|JOIN|DELETE\s+FROM)\s+(?!review_)suggestions\b|"
+        r"\bTABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?!review_)suggestions\b",
+        re.IGNORECASE,
+    ),
+    "retired SQLite vector dependency restored": re.compile(r"\bsqlite[-_]vec\b", re.IGNORECASE),
+    "retired scheduler dependency restored": re.compile(r"\bAPScheduler\b", re.IGNORECASE),
+}
+# Exact-path, exact-rule exceptions only. A file exempted for framework/test
+# SQLite vocabulary remains subject to every legacy schema/dependency rule.
+# All new/renamed productive files are scanned with no allowlist.
+SQLITE_SCAN_EXCEPTIONS = {
+    ".github/workflows/ci.yml": {"SQLite runtime/API restored"},  # isolated Laravel test job
+    "laravel/config/database.php": {  # stock definition; provider blocks product use
+        "SQLite runtime/API restored"
+    },
+    "laravel/database/.gitignore": {  # framework-local test file ignore
+        "SQLite runtime/API restored"
+    },
+    "laravel/phpunit.xml": {"SQLite runtime/API restored"},  # injected PHPUnit adapter
+    "laravel/app/Services/Pipeline/PipelineStartGate.php": {  # test-dialect explanation
+        "SQLite runtime/API restored"
+    },
+    # The scanner must spell its own forbidden vocabulary; this does not exempt
+    # any other script or any future rule added to this mapping.
+    "scripts/check_pipeline_start_ownership.py": set(SQLITE_PRODUCT_PATTERNS),
+}
+
 LEGACY_PATTERN = re.compile(
     r"app\.db|app\.vector_store|app\.pipeline\.(?:document_processing|committer)|"
     r"app\.absurd_queue|\babsurd\b|absurd[-_]sdk|LegacyPythonState|classifier\.db|"
@@ -413,6 +458,7 @@ class Violation:
 EXCLUDED_PARTS = {
     ".agent-evidence",
     ".git",
+    "build",
     ".graphify",
     ".pi",
     ".pytest_cache",
@@ -1897,15 +1943,29 @@ def scan_php(relative: str, text: str) -> list[Violation]:
     return violations
 
 
+def scan_sqlite_product_state(relative: str, text: str) -> list[Violation]:
+    """Deny retired SQLite/runtime state across every productive repository file."""
+    exempt_rules = SQLITE_SCAN_EXCEPTIONS.get(relative, set())
+    violations: list[Violation] = []
+    for rule, pattern in SQLITE_PRODUCT_PATTERNS.items():
+        if rule in exempt_rules:
+            continue
+        for match in pattern.finditer(text):
+            violations.append(Violation(relative, _line(text, match.start()), rule))
+    return violations
+
+
 def scan_repository(root: Path) -> tuple[list[Violation], Counter[tuple[str, str]]]:
     violations: list[Violation] = []
     legacy_matches: Counter[tuple[str, str]] = Counter()
+
     for path in productive_files(root):
         relative = path.relative_to(root).as_posix()
         try:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        violations.extend(scan_sqlite_product_state(relative, text))
         if relative not in {
             "scripts/check_pipeline_start_ownership.py",
             "scripts/pipeline_start_legacy_fingerprints.json",

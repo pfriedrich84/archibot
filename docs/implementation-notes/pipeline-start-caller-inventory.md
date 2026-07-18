@@ -1,6 +1,6 @@
 # Pipeline Start caller inventory and freeze
 
-Status: Step 7 / hardening plan 1.1 and 1.2 implemented on the working tree based on `bbf25d8` (2026-07-18). This file-by-file inventory was checked over `app/`, `laravel/app/`, scheduler/supervisor configuration, MCP registration and migrations. The deny-by-default regression guard is `tests/test_pipeline_start_ownership.py`.
+Status: Steps 7–9 implemented; the Step 10 deletion candidate is complete but hardening plan 2.2 acceptance remains pending its required full-suite and clean-install Docker gates. This file-by-file inventory was checked over `app/`, `laravel/app/`, scheduler/supervisor configuration, MCP registration, migrations, dependencies, CI and tests. The deny-by-default regression guard is `tests/test_pipeline_start_ownership.py`.
 
 ## Productive Pipeline Start ownership
 
@@ -54,27 +54,11 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 | `app/mcp_tools/system.py` | Global status registration retired in Step 9. | No return before admin-only PostgreSQL diagnostics seam exists. |
 | `app/mcp_tools/tags.py` | Proposal registrations retired in Step 9. | No return before an admin-authorized PostgreSQL entity seam exists. |
 
-## Legacy state/vector inventory
+## Retired SQLite state/vector inventory (Step 10)
 
-| File | Current legacy role | Replacement/deletion milestone |
-| --- | --- | --- |
-| `app/db.py` | SQLite schema/connection owner for processing, suggestions and vectors. | Hardening 1.4 after export/parity tests. |
-| `app/config.py` | Legacy SQLite path/table defaults. | Hardening 1.4. |
-| `app/api_data.py` | SQLite processing/suggestion reads. | Hardening 1.4. |
-| `app/cli.py` | Operator-only Laravel delegation; no SQLite or worker JSON contract. | Step 9 complete; fixed actor execution remains isolated in `app.actor_runner`. |
-| `app/indexer.py` | Legacy DB-dependent indexing compatibility. | Hardening 1.4, replaced by pgvector actors. |
-| `app/job_events.py` | Legacy DB-dependent local events. | Hardening 1.3/1.4, replaced by pipeline events. |
-| `app/vector_store.py` | SQLite `doc_embeddings`, metadata and FTS read/write helpers. | Hardening 1.4: `document_embeddings`/pgvector, then delete file. |
-| `app/worker.py` | Legacy scheduler/poll path and `_has_embedding_index` SQLite fallback. | Hardening 1.4/1.5: Laravel scheduler/queue and durable gate only, then delete worker launcher. |
-| `app/pipeline/classifier.py` | Legacy DB context reads. | Hardening 1.4. |
-| `app/pipeline/committer.py` | SQLite suggestion/processed state mutations. | Hardening 1.4 after authorized review-command parity. |
-| `app/pipeline/document_processing.py` | SQLite suggestion/processing persistence. | Hardening 1.4 after PostgreSQL review parity. |
-| `app/pipeline/ocr_correction.py` | Legacy DB settings/state reads. | Hardening 1.4. |
-| `laravel/app/Services/LegacyPythonState.php` | Reads `classifier.db` for transitional UI diagnostics. | Hardening 1.4; remove service. |
-| `laravel/app/Http/Controllers/ErrorsController.php` | Calls `LegacyPythonState`. | Hardening 1.4: PostgreSQL diagnostics. |
-| `laravel/app/Http/Controllers/StatsController.php` | Calls `LegacyPythonState`. | Hardening 1.4: PostgreSQL stats. |
-| `laravel/app/Support/DiagnosticPresenter.php` | Keeps legacy state names displayable during migration. | Remove legacy vocabulary after hardening 1.4 data migration. |
+The former `app/db.py`, `app/api_data.py`, `app/indexer.py`, `app/job_events.py`, `app/vector_store.py`, `app/worker.py`, `app/pipeline/committer.py`, `app/pipeline/document_processing.py` and Laravel `LegacyPythonState` service were deleted. Their processing, suggestion, vector/search, processed-document, poll-cycle, timing, error and audit tables have no productive reader or writer. PostgreSQL/pgvector repositories, Laravel scheduling, durable Pipeline Events/Audit Logs and authorized Review/Entity services are the replacements. `app/config.py` no longer defines or inspects a local database path, and reset remains exclusively `php artisan archibot:reset` through `ArchibotResetService`.
 
+See [SQLite disposition and upgrade notes](sqlite-disposition.md) for the classification of every retained reference and persistent-volume behavior.
 ## Absurd/lifecycle inventory
 
 | File | Current caller/reference | Replacement/deletion milestone |
@@ -87,15 +71,15 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 | `app/actors/review.py` | Same compatibility decorator. | Hardening 1.3/1.5. |
 | `app/actors/webhook.py` | Same compatibility decorator and stale process-document guard. | Hardening 1.3/1.5. |
 | `app/event_worker.py` | Unsupervised transitional Absurd worker/recovery entry point. | Hardening 1.5: delete launcher. |
-| `app/actor_runner.py` | Fixed Laravel-launched actor CLI and the only productive importer/caller of private document/build implementations; imports legacy DB setup compatibility. | Retain fixed runner; remove DB compatibility in hardening 1.4. |
+| `app/actor_runner.py` | Fixed Laravel-launched actor CLI and the only productive importer/caller of private document/build implementations; uses PostgreSQL repositories only. | Retain fixed runner. |
 | `app/jobs/pipeline_runs.py` | Existing-run lifecycle reads/updates only; all insertion/start helpers were removed. | Hardening 1.3 consolidates lifecycle transitions; never restore creation here. |
 | Laravel `EntityApprovalDecisionService` | PostgreSQL-owned approval/blacklist decisions, durable command/events, Review Suggestion resolution, and retroactive Paperless application. | Productive entity approval never invokes Python or `classifier.db`; the former sync actor is retired. |
 | `app/jobs/idempotency.py` | Webhook/command key helpers only; the Python Pipeline Start dedupe key was removed. | Retain non-start helpers; never restore Pipeline Start ownership. |
 | `app/jobs/recovery.py` | Transitional recovery remains for non-document legacy actors, but document/build/reindex enqueue helpers fail closed and the scan never redispatches them. | Hardening 1.3/1.5: delete after remaining Laravel recovery parity. |
 | `laravel/database/migrations/2026_06_05_000000_install_absurd_queue_schema.php` | Transitional Absurd schema. | Hardening 1.5 clean-install removal migration. |
 | `laravel/database/sql/absurd.sql` | Transitional schema source. | Hardening 1.5 delete. |
-| `.github/workflows/ci.yml` | Initializes transitional SQLite state for legacy compatibility tests. | Hardening 1.4: remove after PostgreSQL parity coverage replaces those tests. |
-| `scripts/event_driven_smoke.py` | Transitional smoke script imports legacy SQLite state; it does not launch document/build actors. | Hardening 1.4: replace with PostgreSQL/Laravel smoke path. |
+| `.github/workflows/ci.yml` | No Python SQLite initialization remains. Laravel's isolated test job uses an ephemeral SQLite database as test infrastructure only. | Retain test-only harness; it is not product state. |
+| `scripts/event_driven_smoke.py` | Imports fixed actors and PostgreSQL repositories without initializing local state. | Retain dependency-light contract smoke. |
 | `pyproject.toml` | Declares transitional Absurd dependency. | Hardening 1.5 remove with runtime/schema references. |
 | `constraints.txt` | Pins transitional Absurd dependency. | Hardening 1.5 remove with `pyproject.toml`. |
 | `Dockerfile` | Absurd dependency remains installed. | Hardening 1.5 remove with schema/runtime references. |

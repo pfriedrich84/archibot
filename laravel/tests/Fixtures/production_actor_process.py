@@ -17,13 +17,31 @@ import signal
 import sys
 import time
 
-# Share Laravel's file-backed SQLite fixture with the Python child.
-database = os.environ.get("DB_DATABASE")
-if database and os.environ.get("DB_CONNECTION") == "sqlite":
-    os.environ["DATABASE_URL"] = f"sqlite:///{database}"
+# Product configuration remains PostgreSQL-only even in this subprocess. The
+# framework fixture injects its isolated database engine and SQL adapter only
+# after importing the closed product configuration; no runtime environment flag
+# can select this adapter in actor/CLI/server code.
+os.environ["DATABASE_URL"] = "postgresql+psycopg://test:test@invalid/archibot_test"
 
 from app import actor_runner  # noqa: E402
 from app.execution_lifecycle import ExecutionLifecycle, current_invocation_fence  # noqa: E402
+from app.jobs import actor_execution, database as job_database  # noqa: E402
+
+
+database = os.environ.get("DB_DATABASE")
+if not database or os.environ.get("DB_CONNECTION") != "sqlite":
+    raise RuntimeError("production actor fixture requires the Laravel SQLite test database")
+
+from sqlalchemy import create_engine  # noqa: E402
+
+
+class SQLiteActorExecutionSql:
+    source_lock_clause = ""
+    retry_timestamp = "datetime(CURRENT_TIMESTAMP, '+' || :backoff_seconds || ' seconds')"
+
+
+job_database._engine = create_engine(f"sqlite:///{database}")
+actor_execution._sql = SQLiteActorExecutionSql()
 
 scenario = os.environ.get("ARCHIBOT_ACTOR_FIXTURE_SCENARIO", "success")
 

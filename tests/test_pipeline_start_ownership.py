@@ -5,9 +5,11 @@ import pytest
 from scripts.check_pipeline_start_ownership import (
     legacy_reference_fingerprints,
     load_legacy_fingerprint_baseline,
+    productive_files,
     scan_php,
     scan_python,
     scan_repository,
+    scan_sqlite_product_state,
     scan_text,
 )
 
@@ -21,9 +23,53 @@ def test_productive_pipeline_start_and_legacy_inventory_freeze_is_clean():
     assert legacy_matches == load_legacy_fingerprint_baseline()
 
 
+def test_step_10_guard_denies_new_files_requirements_and_renamed_legacy_schema(tmp_path):
+    probes = {
+        "app/new_store.py": "import sqlite3\nconnection = sqlite3.connect('/data/new-state.db')\n",
+        "requirements-extra.txt": "sqlite-vec>=0.1.3\nAPScheduler>=3.10\n",
+        "docker/renamed-worker.conf": "command=python /app/run.py --database=/data/renamed.db\n",
+        "scripts/rebuild": "PRAGMA custom_future_setting=ON; CREATE TABLE archived_poll_cycles(id INTEGER);\n",
+        "config/runtime.yaml": "repository: processed_documents\n",
+        "manifest.json": '{"query": "CREATE TABLE IF NOT EXISTS suggestions (document_id INTEGER)"}\n',
+    }
+    for relative, source in probes.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+
+    violations, _legacy_matches = scan_repository(tmp_path)
+    violating_paths = {item.path for item in violations}
+
+    assert set(probes) <= violating_paths
+    assert {path.relative_to(tmp_path).as_posix() for path in productive_files(tmp_path)} >= set(
+        probes
+    )
+    assert {item.rule for item in violations} >= {
+        "SQLite runtime/API restored",
+        "SQLite file-backed state restored",
+        "SQLite-specific DDL restored",
+        "legacy processed-document state restored",
+        "legacy suggestions table restored",
+        "retired SQLite vector dependency restored",
+        "retired scheduler dependency restored",
+    }
+
+
+def test_step_10_guard_exceptions_are_exact_path_and_exact_rule():
+    assert scan_sqlite_product_state("laravel/phpunit.xml", 'DB_CONNECTION="sqlite"') == []
+    assert scan_sqlite_product_state("new/phpunit.xml", 'DB_CONNECTION="sqlite"')
+    assert scan_sqlite_product_state("app/framework-copy.php", "'driver' => 'sqlite'")
+
+    # Test/framework files may spell their injected adapter, but cannot hide a
+    # restored productive schema or retired dependency in the same file.
+    phpunit_probe = 'DB_CONNECTION="sqlite"\nrepository=processed_documents\n'
+    violations = scan_sqlite_product_state("laravel/phpunit.xml", phpunit_probe)
+    assert {item.rule for item in violations} == {"legacy processed-document state restored"}
+
+
 def test_legacy_freeze_rejects_extra_references_in_an_existing_file():
     baseline = load_legacy_fingerprint_baseline()
-    relative = "app/db.py"
+    relative = "app/absurd_queue.py"
     original = (ROOT / relative).read_text(encoding="utf-8")
 
     extra_distinct = legacy_reference_fingerprints(

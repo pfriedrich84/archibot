@@ -8,7 +8,6 @@ use App\Models\EntityApproval;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\WebhookDelivery;
-use App\Services\LegacyPythonState;
 use App\Support\DiagnosticPresenter;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
@@ -20,7 +19,7 @@ class StatsController extends Controller
 {
     public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
 
-    public function __invoke(LegacyPythonState $legacyPythonState): Response
+    public function __invoke(): Response
     {
         return Inertia::render('stats/Index', [
             'review' => [
@@ -43,7 +42,6 @@ class StatsController extends Controller
             'actorStatusCounts' => $this->diagnostics->typedCounts($this->countsBy(ActorExecution::class, 'status'), 'status'),
             'actorNameMatrix' => $this->diagnostics->typedMatrix($this->matrixCounts(ActorExecution::class, 'actor_name', 'status'), 'actor_name', 'status'),
             'dailyActivity' => $this->dailyActivity(),
-            'python' => $this->diagnostics->legacyStats($legacyPythonState->stats()),
         ]);
     }
 

@@ -23,7 +23,7 @@ in Paperless-NGX.
 6b. Judge-Pass (optional)       Zweiter LLM-Pass prueft/korrigiert bei niedriger
                                 Confidence + vorhandenem Kontext
          |
-7. Vorschlag speichern          Status: "pending" in der suggestions-Tabelle
+7. Vorschlag speichern          Status: "pending" in PostgreSQL review_suggestions
          |
 8. Manuelles Review             Autorisierte Annahme in der GUI (/review)
          |

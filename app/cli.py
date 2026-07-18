@@ -1,8 +1,6 @@
 """Operator CLI delegating every product action to Laravel/PostgreSQL.
 
 Python actor execution has a separate fixed entry point (``app.actor_runner``).
-This module intentionally never initializes or reads the retired SQLite product
-state.
 """
 
 from __future__ import annotations
@@ -14,7 +12,7 @@ from pathlib import Path
 
 import structlog
 
-from app.config import settings
+from app.config import assert_product_database_config, settings
 
 COMMANDS: dict[str, str] = {
     "reindex": "Queue full reindex through Laravel Maintenance",
@@ -121,6 +119,7 @@ def _positive_int(raw: str, label: str) -> int:
 
 
 def main() -> None:
+    assert_product_database_config()
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: python -m app.cli <command>\n")
         print("Commands:")

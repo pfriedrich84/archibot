@@ -46,6 +46,12 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
+        $testDatabaseAdapterActive = app()->environment('testing')
+            && class_exists(\PHPUnit\Framework\TestCase::class);
+        if (config('database.default') !== 'pgsql' && ! $testDatabaseAdapterActive) {
+            throw new LogicException('ArchiBot product startup requires PostgreSQL.');
+        }
+
         if (config('queue.default') !== 'database') {
             throw new LogicException('Archibot requires QUEUE_CONNECTION=database for atomic durable dispatch.');
         }

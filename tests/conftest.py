@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,66 +14,8 @@ os.environ.setdefault("PAPERLESS_TOKEN", "test-token")
 os.environ.setdefault("PAPERLESS_INBOX_TAG_ID", "99")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
 
-from app.db import EMBED_DIM, SCHEMA
+from app.config import settings
 from app.models import PaperlessDocument, PaperlessEntity
-
-
-@pytest.fixture()
-def tmp_db(tmp_path: Path) -> Path:
-    """Create a temporary SQLite DB with the full schema applied (without sqlite-vec)."""
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    # Strip virtual tables — they require extensions not available in tests
-    # (vec0 requires sqlite-vec, FTS5 may not be compiled into all builds)
-    # We keep all other tables including doc_embedding_meta
-    import re
-
-    schema_no_vec = re.sub(
-        r"CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings.*?;",
-        "",
-        SCHEMA,
-        flags=re.DOTALL,
-    )
-    schema_no_vec = re.sub(
-        r"CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts.*?;",
-        "",
-        schema_no_vec,
-        flags=re.DOTALL,
-    )
-    conn.executescript(schema_no_vec)
-    conn.close()
-    return db_path
-
-
-@pytest.fixture()
-def db_conn(tmp_db: Path) -> Iterator[sqlite3.Connection]:
-    """Yield a connection to the temp DB."""
-    conn = sqlite3.connect(str(tmp_db))
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-@contextmanager
-def _mock_get_conn(db_path: Path) -> Iterator[sqlite3.Connection]:
-    """Replacement for app.db.get_conn that uses the test DB."""
-    conn = sqlite3.connect(str(db_path), isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-@pytest.fixture()
-def patch_db(tmp_db: Path, monkeypatch: pytest.MonkeyPatch):
-    """Monkeypatch get_conn to use the test database."""
-    monkeypatch.setattr("app.db.get_conn", lambda: _mock_get_conn(tmp_db))
-    # Also patch wherever get_conn is imported directly
-    monkeypatch.setattr("app.pipeline.committer.get_conn", lambda: _mock_get_conn(tmp_db))
 
 
 @pytest.fixture()
@@ -185,5 +123,5 @@ def mock_ollama() -> AsyncMock:
             "reasoning": "Erkannt als Stromrechnung",
         }
     )
-    client.embed = AsyncMock(return_value=[0.1] * EMBED_DIM)
+    client.embed = AsyncMock(return_value=[0.1] * settings.ollama_embed_dim_resolved)
     return client

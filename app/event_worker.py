@@ -13,6 +13,7 @@ import time
 import structlog
 
 from app import execution_lifecycle
+from app.config import assert_product_database_config
 from app.jobs.recovery import run_recovery_scan
 
 log = structlog.get_logger(__name__)
@@ -50,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    assert_product_database_config()
     args = build_parser().parse_args(argv)
     if args.command == "recovery-scan":
         run_recovery_loop(interval_seconds=args.interval_seconds, once=args.once, limit=args.limit)

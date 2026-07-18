@@ -9,6 +9,12 @@ export CACHE_STORE="${CACHE_STORE:-database}"
 export SESSION_DRIVER="${SESSION_DRIVER:-database}"
 export ARCHIBOT_PYTHON_BINARY="${ARCHIBOT_PYTHON_BINARY:-python}"
 
+if [ "$DB_CONNECTION" != "pgsql" ]; then
+    echo "ArchiBot requires DB_CONNECTION=pgsql for product startup." >&2
+    exit 1
+fi
+"$ARCHIBOT_PYTHON_BINARY" -c "from app.config import assert_product_database_config; assert_product_database_config()"
+
 wait_for_tcp() {
     name="$1"
     host="$2"

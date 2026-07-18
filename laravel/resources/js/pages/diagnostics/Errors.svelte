@@ -10,17 +10,8 @@
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
-    import { displayEntries, formatDisplayValue } from '@/lib/display';
+    import { formatDisplayValue } from '@/lib/display';
     import { index as errorsIndex } from '@/routes/errors';
-
-    type LegacyError = {
-        id: number;
-        occurred_at: string | null;
-        stage: string | null;
-        document_reference: number | null;
-        message: string;
-        details: Record<string, unknown> | null;
-    };
 
     type WebhookError = {
         id: number;
@@ -61,13 +52,11 @@
         filters,
         filterOptions,
         webhookErrors,
-        legacyErrors,
         isAdmin,
     }: {
         filters: { source: string; status: string };
         filterOptions: { sources: string[]; statuses: string[] };
         webhookErrors: Paginator<WebhookError>;
-        legacyErrors: LegacyError[];
         isAdmin: boolean;
     } = $props();
 
@@ -85,7 +74,7 @@
 <div class="space-y-6">
     <Heading
         title="Errors"
-        description="Diagnose blocked webhook deliveries and recent legacy Python errors from one operations page."
+        description="Diagnose blocked and failed durable webhook deliveries."
     />
 
     <form
@@ -236,51 +225,5 @@
                 {/each}
             </nav>
         {/if}
-    </section>
-
-    <section class="rounded-xl border">
-        <div class="border-b px-4 py-3 text-sm text-muted-foreground">
-            {legacyErrors.length} Python classifier error{legacyErrors.length ===
-            1
-                ? ''
-                : 's'}
-        </div>
-
-        {#each legacyErrors as error (error.id)}
-            <article class="space-y-2 border-b p-4 text-sm last:border-b-0">
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">
-                        {error.stage ?? 'Classifier'} error
-                    </span>
-                    {#if error.document_reference}
-                        <span class="text-muted-foreground">
-                            document reference {error.document_reference}
-                        </span>
-                    {/if}
-                    {#if error.occurred_at}
-                        <span class="text-muted-foreground">
-                            {formatDateTime(error.occurred_at)}
-                        </span>
-                    {/if}
-                </div>
-                <p class="text-destructive">{error.message}</p>
-                {#if displayEntries(error.details).length > 0}
-                    <dl class="grid gap-1 text-xs">
-                        {#each displayEntries(error.details) as entry (entry.key)}
-                            <div class="grid gap-1 sm:grid-cols-[10rem_1fr]">
-                                <dt class="text-muted-foreground">
-                                    {entry.label}
-                                </dt>
-                                <dd>{entry.value}</dd>
-                            </div>
-                        {/each}
-                    </dl>
-                {/if}
-            </article>
-        {:else}
-            <div class="p-8 text-center text-muted-foreground">
-                No recent Python classifier errors match the current filters.
-            </div>
-        {/each}
     </section>
 </div>

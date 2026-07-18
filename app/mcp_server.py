@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from app.config import settings
+from app.config import assert_product_database_config, settings
 from app.mcp_tools._deps import Deps
 
 
@@ -33,8 +33,9 @@ def _configure_logging() -> None:
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[Deps]:
-    """Start without initializing SQLite or a privileged global Paperless client."""
+    """Start without a product-state backend or privileged global Paperless client."""
     del server
+    assert_product_database_config()
     _configure_logging()
     yield Deps()
 

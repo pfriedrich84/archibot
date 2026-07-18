@@ -39,7 +39,6 @@ pydantic-core<=2.47.0
 # pydantic-settings 2.14.2 fixes GHSA-4xgf-cpjx-pc3j (secrets-dir symlink escape).
 pydantic-settings>=2.14.2,<=2.14.2
 rpds-py<2026.5.1
-sqlite-vec<=0.1.9
 pymupdf<=1.28.0
 ruff<=0.15.21
 structlog<=25.5.0

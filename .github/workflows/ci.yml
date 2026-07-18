@@ -92,9 +92,6 @@ jobs:
       - name: Graphify artifact check
         run: python scripts/check_graphify_artifacts.py
 
-      - name: DB schema check
-        run: python -c "from app.db import init_db; init_db()"
-
       - name: Agent docs link check
         run: |
           python - <<'PY'

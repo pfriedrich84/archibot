@@ -14,6 +14,7 @@ from typing import NoReturn
 
 import structlog
 
+from app.config import assert_product_database_config
 from app.execution_lifecycle import (
     DomainOutcome,
     DomainStatus,
@@ -455,6 +456,7 @@ def _invocation(args: argparse.Namespace):
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    assert_product_database_config()
     args = build_parser().parse_args(argv)
     invoke, source_id, actor_name, source_kind, execution_actor_name = _invocation(args)
     fence = InvocationFence(

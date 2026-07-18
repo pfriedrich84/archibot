@@ -312,6 +312,8 @@ Acceptance:
 
 ### 2.2 Delete SQLite processing
 
+Status: implementation complete in the Step 10 working tree; acceptance pending. Productive SQLite schemas, repositories, workers, diagnostics, configuration and dependencies are deleted. PostgreSQL/pgvector remain the sole product-state and vector-search stores; reset remains Laravel-owned. Product startup now fails closed for non-PostgreSQL Laravel or Python configuration, while the sole Python SQLite SQL adapter is explicitly injected from a Laravel process-test fixture and is unavailable to product actor, CLI and server paths. A repository-wide deny-by-default guard scans productive source, configuration, manifests, scripts, Docker and supervisor inputs, with exact-rule test/framework exceptions and adversarial new-file, dependency and renamed-schema probes. The retained SQLite references are classified in the [Step 10 disposition](implementation-notes/sqlite-disposition.md), and the committed Graphify artifacts have been regenerated from the candidate tree. Existing `classifier.db` files are left inert on persistent volumes for explicit export, rollback or operator-directed retention rather than being silently deleted. Change this status to implemented only after the full Python/Laravel suites and clean-install Docker smoke acceptance below pass for the candidate patch.
+
 Delete only after 2.1 passes:
 
 - legacy processing tables and migrations;

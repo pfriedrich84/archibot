@@ -9,7 +9,6 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Models\WebhookDelivery;
-use App\Services\LegacyPythonState;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -77,20 +76,6 @@ class StatsAndErrorsTest extends TestCase
         ActorExecution::query()->create(['actor_name' => 'ACTOR_STATS_SECRET', 'status' => 'ACTOR_STATUS_STATS_SECRET']);
         ActorExecution::query()->create(['actor_name' => 'build_initial_embedding_index', 'status' => ActorExecution::STATUS_RUNNING]);
 
-        $this->mock(LegacyPythonState::class, function ($mock): void {
-            $mock->shouldReceive('stats')->once()->andReturn([
-                'available' => true,
-                'totals' => ['processed_documents' => 5],
-                'status_counts' => ['committed' => 2, 'LEGACY_STATUS_SECRET' => 1],
-                'judge_counts' => ['corrected' => 3, 'LEGACY_VERDICT_SECRET' => 1],
-                'confidence_distribution' => ['80-100' => 2, 'LEGACY_BUCKET_SECRET' => 1],
-                'phase_health' => [
-                    'review_commit_paperless' => ['total' => 2, 'errors' => 0, 'avg_ms' => 15, 'error_rate_pct' => 0],
-                    'LEGACY_PHASE_SECRET' => ['total' => 1, 'errors' => 1, 'avg_ms' => 2, 'error_rate_pct' => 100],
-                ],
-            ]);
-        });
-
         $response = $this->actingAs($admin)->get(route('stats.index'));
         $response->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('reviewStatusCounts.pending', 1)
@@ -103,20 +88,16 @@ class StatsAndErrorsTest extends TestCase
             ->where('actorStatusCounts.unknown', 1)
             ->where('actorNameMatrix.build_initial_embedding_index.running', 1)
             ->where('actorNameMatrix.unknown.unknown', 1)
-            ->where('python.status_counts.committed', 2)
-            ->where('python.judge_counts.corrected', 3)
-            ->where('python.phase_health.review_commit_paperless.total', 2)
-            ->where('python.phase_health.unknown.total', 1)
+            ->missing('python')
         );
 
         foreach (['STATUS_STATS_SECRET', 'VERDICT_STATS_SECRET', 'TYPE_STATS_SECRET',
-            'WEBHOOK_STATUS_STATS_SECRET', 'PIPELINE_TYPE_STATS_SECRET', 'ACTOR_STATS_SECRET', 'LEGACY_STATUS_SECRET',
-            'LEGACY_VERDICT_SECRET', 'LEGACY_BUCKET_SECRET', 'LEGACY_PHASE_SECRET'] as $secret) {
+            'WEBHOOK_STATUS_STATS_SECRET', 'PIPELINE_TYPE_STATS_SECRET', 'ACTOR_STATS_SECRET'] as $secret) {
             $response->assertDontSee($secret, escaped: false);
         }
     }
 
-    public function test_errors_page_reports_webhook_and_legacy_errors_with_durable_operations(): void
+    public function test_errors_page_reports_durable_webhook_errors(): void
     {
         $user = User::factory()->create(['is_admin' => true]);
         WebhookDelivery::query()->create([
@@ -135,7 +116,7 @@ class StatsAndErrorsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('diagnostics/Errors')
-                ->where('filterOptions.sources', ['all', 'webhook', 'legacy'])
+                ->where('filterOptions.sources', ['all', 'webhook'])
                 ->where('webhookErrors.data.0.error', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
             );
     }

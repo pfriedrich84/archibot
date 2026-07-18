@@ -40,7 +40,7 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 - Dashboard: deeper phase-level historical analytics and deployment-specific checks beyond lightweight `/healthz` probes.
 - Inbox: local poll/reprocess controls are not directly embedded in the Inbox page; controls live in Dashboard/Maintenance.
 - Review Detail: raw/original debugging snapshots may need fuller exposure if operators still rely on them.
-- Embeddings: page still reads legacy Python SQLite metadata; final state should use PostgreSQL/pgvector and pipeline-run state.
+- Embeddings: page reads PostgreSQL/pgvector metadata and durable command/pipeline state; the legacy Python SQLite metadata seam was removed in hardening Step 10.
 - Stats: detailed phase timing/error-rate analytics remain deferred to pipeline events or a later explicit decision.
 - Errors: acknowledgement/assignment/export workflow is not implemented; current page focuses on diagnostics and existing retry/dismiss navigation.
 - Chat/RAG is disabled for every user; historical chat rows remain stored but are not exposed. Issue #221 is the only redesign/re-enable track.

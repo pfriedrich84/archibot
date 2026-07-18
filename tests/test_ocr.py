@@ -377,9 +377,9 @@ class TestOcrCache:
 # ---------------------------------------------------------------------------
 class TestBatchCorrectDocuments:
     @pytest.mark.asyncio
-    async def test_fetches_from_paperless(self, tmp_db):
+    async def test_fetches_from_paperless(self):
         """batch_correct_documents should fetch documents from Paperless API,
-        not from the local doc_embedding_meta table."""
+        from the Paperless API rather than any retired local processing store."""
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
         doc2 = PaperlessDocument(id=2, title="Doc 2", content="?" * 100, tags=[])
 
@@ -409,7 +409,7 @@ class TestBatchCorrectDocuments:
         mock_paperless.list_all_documents.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_skips_cached_docs(self, tmp_db):
+    async def test_skips_cached_docs(self):
         """Documents already in PostgreSQL should be skipped (force=False)."""
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
         doc2 = PaperlessDocument(id=2, title="Doc 2", content="?" * 100, tags=[])
@@ -440,7 +440,7 @@ class TestBatchCorrectDocuments:
         assert corrected == 1
 
     @pytest.mark.asyncio
-    async def test_force_processes_cached(self, tmp_db):
+    async def test_force_processes_cached(self):
         """With force=True, even cached documents should be processed."""
         doc1 = PaperlessDocument(id=1, title="Doc 1", content="?" * 100, tags=[])
 
@@ -470,7 +470,7 @@ class TestBatchCorrectDocuments:
         assert corrected == 1
 
     @pytest.mark.asyncio
-    async def test_force_bypasses_clean_text_heuristic(self, tmp_db):
+    async def test_force_bypasses_clean_text_heuristic(self):
         """With force=True, batch OCR refresh should call the model for clean text."""
         clean = "Sehr geehrte Damen und Herren, wir bestaetigen den Eingang. " * 3
         doc = PaperlessDocument(id=1, title="Doc 1", content=clean, tags=[])

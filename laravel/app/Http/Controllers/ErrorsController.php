@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\WebhookDelivery;
-use App\Services\LegacyPythonState;
 use App\Support\DiagnosticPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -14,7 +13,7 @@ class ErrorsController extends Controller
 {
     public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
 
-    public function __invoke(Request $request, LegacyPythonState $legacyPythonState): Response
+    public function __invoke(Request $request): Response
     {
         $webhookStatuses = [
             WebhookDelivery::STATUS_FAILED,
@@ -23,7 +22,7 @@ class ErrorsController extends Controller
         ];
 
         $validated = $request->validate([
-            'source' => ['nullable', Rule::in(['all', 'webhook', 'legacy'])],
+            'source' => ['nullable', Rule::in(['all', 'webhook'])],
             'status' => ['nullable', Rule::in(array_merge(['all'], $webhookStatuses))],
         ]);
 
@@ -47,22 +46,10 @@ class ErrorsController extends Controller
                 'status' => $status,
             ],
             'filterOptions' => [
-                'sources' => ['all', 'webhook', 'legacy'],
+                'sources' => ['all', 'webhook'],
                 'statuses' => array_values(array_unique(array_merge(['all'], $webhookStatuses))),
             ],
             'webhookErrors' => $webhookErrors,
-            'legacyErrors' => in_array($source, ['all', 'legacy'], true)
-                ? collect($legacyPythonState->recentErrors(25))->map(fn (array $error): array => [
-                    'id' => is_int($error['id'] ?? null) && $error['id'] >= 0 ? $error['id'] : null,
-                    'occurred_at' => $this->diagnostics->timestamp($error['occurred_at'] ?? null),
-                    'stage' => $this->diagnostics->typedScalar('phase', $error['stage'] ?? null),
-                    'document_reference' => is_int($error['document_reference'] ?? null) && $error['document_reference'] >= 0
-                        ? $error['document_reference']
-                        : null,
-                    'message' => $this->diagnostics->redactedMessage($error['message'] ?? null),
-                    'details' => [],
-                ])->values()->all()
-                : [],
             'isAdmin' => $isAdmin,
         ]);
     }

@@ -192,27 +192,4 @@ async def apply_runtime_changes(app: Any, changed: dict[str, Any]) -> list[str]:
         app.state.ollama = create_ai_provider()
         actions.append("AI provider client recreated")
 
-    # Keep worker module refs in sync after client recreation.
-    if (changed_keys & paperless_fields) or (changed_keys & ollama_fields):
-        from app.worker import set_clients
-
-        set_clients(getattr(app.state, "paperless", None), getattr(app.state, "ollama", None))
-        actions.append("Worker clients updated")
-
-    # --- Scheduler ---
-    if "poll_interval_seconds" in changed_keys:
-        scheduler = getattr(app.state, "scheduler", None)
-        if settings.poll_interval_seconds <= 0:
-            if scheduler:
-                scheduler.pause_job("poll_inbox")
-                actions.append("Automatic polling disabled")
-        elif scheduler:
-            scheduler.reschedule_job(
-                "poll_inbox",
-                trigger="interval",
-                seconds=settings.poll_interval_seconds,
-            )
-            scheduler.resume_job("poll_inbox")
-            actions.append(f"Poll interval changed to {settings.poll_interval_seconds}s")
-
     return actions

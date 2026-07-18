@@ -2,9 +2,6 @@
   ".env.example": {
     "a1e26c26e38be8beb614": 1
   },
-  ".github/workflows/ci.yml": {
-    "c198d5fbc17d289f33d8": 1
-  },
   "AGENTS.md": {
     "1e385a10bc106670a9d5": 1
   },
@@ -45,51 +42,9 @@
   "app/actors/webhook.py": {
     "608d7c1db94c1b1ef092": 1
   },
-  "app/api_data.py": {
-    "0620ca432d3390d1eeb6": 1,
-    "07cb179d45c6404ea47f": 1,
-    "09e69b49f5a554b48722": 1,
-    "1be93e27d53d4b48a185": 2,
-    "233488ed718d27ca68a3": 2,
-    "459a0301e9fffe24d2e4": 1,
-    "6f9d1474a759adc4ca29": 2,
-    "894553e9fac27c51b590": 1,
-    "b582be32bbbefb6b0ee5": 1,
-    "b6df44ba70dadba36175": 1,
-    "bc62298a67b9a156c022": 1,
-    "e082af873416132d2043": 2
-  },
-  "app/config.py": {
-    "4ea86bac1ee5c22c332f": 1,
-    "71e118dbf061a4f7ce83": 1,
-    "abf572fd72f7e83829f0": 1
-  },
-  "app/db.py": {
-    "018c869340a6896c7f81": 1,
-    "20e669d78f6401513a17": 1,
-    "323cb4c2a0e5dc4c29c1": 1,
-    "3dfc97f7c32d07ef2fec": 1,
-    "6707bb2c63de65ce5672": 1,
-    "71e118dbf061a4f7ce83": 3,
-    "7625a5feef334b6bdfe3": 1,
-    "840e58363c0c30843611": 1,
-    "847d305edd12f40b0edb": 1,
-    "b23d84b28970a0b62199": 1,
-    "b5ebffc5990584f0f7a6": 1,
-    "b6d9fec43531b194c653": 1,
-    "c2ad3aea540f4a644cd6": 1,
-    "ef65dea5234898eacb44": 1,
-    "ff32113a67878a547bbc": 1
-  },
   "app/event_worker.py": {
     "7b3077379b2fab2c5a2f": 1,
     "f5a9500563810ab570cf": 1
-  },
-  "app/indexer.py": {
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/job_events.py": {
-    "f67b78aaca2138ccf596": 1
   },
   "app/jobs/__init__.py": {
     "6996dc0fac0cf2873ede": 1
@@ -100,62 +55,10 @@
   "app/jobs/webhook_delivery.py": {
     "918ce2bf8f8ca56c931b": 1
   },
-  "app/pipeline/committer.py": {
-    "1be93e27d53d4b48a185": 3,
-    "2f4940f004662ceecc8c": 1,
-    "48c64c4a7089303ff0a2": 1,
-    "6373e349d0e711cc0b94": 1,
-    "ad46b1e3a0c90abca09c": 1,
-    "b92ba18d4da4ddd45729": 1,
-    "d176670a443b14e843a7": 1,
-    "da064e0b8118c8df727b": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/pipeline/document_processing.py": {
-    "61c3f6649354472130af": 1,
-    "6d3bbf3c3943b4d841e4": 2,
-    "8bf63f027b6eb9e83acb": 1,
-    "e2fba1fd41523738e23f": 1
-  },
-  "app/vector_store.py": {
-    "20e669d78f6401513a17": 1,
-    "254439fa79014e21511f": 1,
-    "33409e896e996d45fad7": 1,
-    "517aa355add600b3bf3c": 1,
-    "82d215cca26efba4a1bd": 1,
-    "bdda4582a7fb81bcc672": 1,
-    "e36b791dba8b85cf6a64": 1
-  },
-  "app/worker.py": {
-    "2110f3853ca46b541a1c": 1,
-    "3392e43027b0258b0528": 1,
-    "7c716fabdde5e275d617": 1,
-    "f67b78aaca2138ccf596": 1
-  },
   "constraints.txt": {
     "a09bb8d06ca4ab467fdb": 2,
     "b9f883b2a90e095769c0": 1,
     "c10aeff77e7acb6ec74e": 1
-  },
-  "laravel/app/Http/Controllers/ErrorsController.php": {
-    "59a50a9e18d09ed8de89": 1,
-    "70d7c771fc2f9bfbd22b": 1,
-    "865114b1d0ad72176ab3": 2
-  },
-  "laravel/app/Http/Controllers/StatsController.php": {
-    "0ac58d24fdfd4f1b5ffd": 2,
-    "49d408f274cb935f914a": 1,
-    "70d7c771fc2f9bfbd22b": 1
-  },
-  "laravel/app/Services/LegacyPythonState.php": {
-    "0c909fbdc7acdf7c2185": 2,
-    "1be93e27d53d4b48a185": 1,
-    "311fbd6b7dd100d74725": 1,
-    "50f2e4f271a39ce1320c": 1,
-    "6d3542a3a108ae71515c": 1
-  },
-  "laravel/app/Support/DiagnosticPresenter.php": {
-    "6426800947e5ce7eb3fb": 1
   },
   "laravel/database/migrations/2026_06_05_000000_install_absurd_queue_schema.php": {
     "19a220cbf5753012c0df": 1,

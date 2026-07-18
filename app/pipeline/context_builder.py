@@ -28,8 +28,7 @@ log = structlog.get_logger(__name__)
 def store_embedding(doc: PaperlessDocument, embedding: list[float]) -> None:
     """Persist a pre-computed embedding in PostgreSQL/pgvector.
 
-    This function keeps the legacy import Interface, but the implementation no
-    longer writes sqlite-vec or FTS tables.
+    The implementation writes through the shared pgvector repository.
     """
     if not is_trusted_document(doc):
         return
