@@ -63,7 +63,7 @@ class PipelineRecoveryDispatcher
         $failedPermanent = 0;
 
         ActorExecution::query()
-            ->where('status', ActorExecution::STATUS_RUNNING)
+            ->whereIn('status', [ActorExecution::STATUS_QUEUED, ActorExecution::STATUS_RUNNING])
             ->whereRaw('COALESCE(progress_updated_at, started_at, updated_at) <= ?', [$this->staleRunningCutoff()])
             ->oldest('started_at')
             ->oldest('id')
@@ -117,7 +117,7 @@ class PipelineRecoveryDispatcher
         return DB::transaction(function () use ($selected): string {
             $execution = ActorExecution::query()->lockForUpdate()->find($selected->id);
             if ($execution === null
-                || $execution->status !== ActorExecution::STATUS_RUNNING
+                || ! in_array($execution->status, [ActorExecution::STATUS_QUEUED, ActorExecution::STATUS_RUNNING], true)
                 || $this->reconcileActorExecutionToTerminalSource($execution)
                 || $this->isActorProcessAlive($execution)) {
                 return 'ignored';
@@ -155,8 +155,11 @@ class PipelineRecoveryDispatcher
             PipelineRun::query()
                 ->whereKey($execution->pipeline_run_id)
                 ->where('status', PipelineRun::STATUS_RUNNING)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where('active_actor_token', $execution->execution_token)
                 ->update([
                     'status' => PipelineRun::STATUS_RETRYING,
+                    'active_actor_token' => null,
                     'next_retry_at' => now(),
                     'retry_reason' => 'worker_recovery_stale_actor',
                     'error_type' => 'worker_recovery_stale_actor',
@@ -167,18 +170,24 @@ class PipelineRecoveryDispatcher
             Command::query()
                 ->whereKey($execution->command_id)
                 ->where('status', Command::STATUS_RUNNING)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where('active_actor_token', $execution->execution_token)
                 ->update([
-                    'status' => Command::STATUS_FAILED,
+                    'status' => Command::STATUS_PENDING,
+                    'active_actor_token' => null,
                     'error' => 'worker_recovery_stale_actor',
-                    'finished_at' => now(),
+                    'finished_at' => null,
                     'updated_at' => now(),
                 ]);
         } elseif ($execution->webhook_delivery_id !== null) {
             WebhookDelivery::query()
                 ->whereKey($execution->webhook_delivery_id)
                 ->where('status', WebhookDelivery::STATUS_RUNNING)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where('active_actor_token', $execution->execution_token)
                 ->update([
                     'status' => WebhookDelivery::STATUS_FAILED,
+                    'active_actor_token' => null,
                     'error' => 'recoverable_processing',
                     'updated_at' => now(),
                 ]);
@@ -437,12 +446,18 @@ class PipelineRecoveryDispatcher
 
         Command::query()
             ->where('status', Command::STATUS_PENDING)
+            ->where(function ($query): void {
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+            })
             ->whereIn('type', $this->recoverableCommandTypes())
             ->oldest('updated_at')
             ->oldest('id')
             ->limit($limit)
             ->get()
             ->each(function (Command $command) use (&$recovered): void {
+                if ($this->hasActiveCommandActor($command)) {
+                    return;
+                }
                 if ($this->redispatchCommand(
                     $command,
                     'recovery.command_actor_redispatched',
@@ -532,6 +547,9 @@ class PipelineRecoveryDispatcher
             ->limit($limit)
             ->get()
             ->each(function (PipelineRun $run) use (&$recovered): void {
+                if ($this->hasActivePipelineActor($run)) {
+                    return;
+                }
                 if ($this->redispatchDocumentRun(
                     $run,
                     'recovery.document_actor_redispatched',
@@ -657,6 +675,9 @@ class PipelineRecoveryDispatcher
 
         WebhookDelivery::query()
             ->where('status', WebhookDelivery::STATUS_FAILED)
+            ->where(function ($query): void {
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+            })
             ->whereIn('error', $this->retryableWebhookErrors())
             ->whereDoesntHave('events', function ($query): void {
                 $query->where('event_type', 'recovery.failed_webhook_actor_redispatched')
@@ -975,42 +996,41 @@ class PipelineRecoveryDispatcher
 
     private function reconcileActorExecutionToTerminalSource(ActorExecution $execution): bool
     {
-        $status = null;
+        $terminal = false;
         if ($execution->pipeline_run_id !== null) {
             $sourceStatus = PipelineRun::query()->whereKey($execution->pipeline_run_id)->value('status');
-            $status = match ($sourceStatus) {
-                PipelineRun::STATUS_SUCCEEDED => ActorExecution::STATUS_SUCCEEDED,
-                PipelineRun::STATUS_CANCELLED => ActorExecution::STATUS_CANCELLED,
-                PipelineRun::STATUS_FAILED_PERMANENT => ActorExecution::STATUS_FAILED_PERMANENT,
-                default => null,
-            };
+            $terminal = in_array($sourceStatus, [
+                PipelineRun::STATUS_SUCCEEDED,
+                PipelineRun::STATUS_CANCELLED,
+                PipelineRun::STATUS_FAILED_PERMANENT,
+            ], true);
         } elseif ($execution->command_id !== null) {
             $sourceStatus = Command::query()->whereKey($execution->command_id)->value('status');
-            $status = match ($sourceStatus) {
-                Command::STATUS_SUCCEEDED => ActorExecution::STATUS_SUCCEEDED,
-                Command::STATUS_FAILED_PERMANENT => ActorExecution::STATUS_FAILED_PERMANENT,
-                default => null,
-            };
+            $terminal = in_array($sourceStatus, [
+                Command::STATUS_SUCCEEDED,
+                Command::STATUS_FAILED_PERMANENT,
+            ], true);
         } elseif ($execution->webhook_delivery_id !== null) {
             $sourceStatus = WebhookDelivery::query()->whereKey($execution->webhook_delivery_id)->value('status');
-            $status = match ($sourceStatus) {
-                WebhookDelivery::STATUS_PROCESSED => ActorExecution::STATUS_SUCCEEDED,
-                WebhookDelivery::STATUS_DISMISSED => ActorExecution::STATUS_SKIPPED,
-                WebhookDelivery::STATUS_FAILED_PERMANENT => ActorExecution::STATUS_FAILED_PERMANENT,
-                default => null,
-            };
+            $terminal = in_array($sourceStatus, [
+                WebhookDelivery::STATUS_PROCESSED,
+                WebhookDelivery::STATUS_DISMISSED,
+                WebhookDelivery::STATUS_FAILED_PERMANENT,
+            ], true);
         }
 
-        if ($status === null) {
+        if (! $terminal) {
             return false;
         }
 
+        // A transport row with no Python final record must never be promoted
+        // to success from source state. It is only suppressed as stale work.
         $execution->update([
-            'status' => $status,
+            'status' => ActorExecution::STATUS_SKIPPED,
             'finished_at' => $execution->finished_at ?? now(),
             'next_retry_at' => null,
-            'error_type' => $status === ActorExecution::STATUS_SUCCEEDED ? null : $execution->error_type,
-            'error_message' => $status === ActorExecution::STATUS_SUCCEEDED ? null : $execution->error_message,
+            'error_type' => 'superseded_by_terminal_source',
+            'error_message' => 'Stale actor transport was suppressed because its source is already terminal.',
         ]);
         $this->recordActorRecoveryEvent(
             $execution,
@@ -1082,6 +1102,11 @@ class PipelineRecoveryDispatcher
         if ($execution->pipeline_run_id !== null) {
             PipelineRun::query()
                 ->whereKey($execution->pipeline_run_id)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where(function ($query) use ($execution): void {
+                    $query->where('active_actor_token', $execution->execution_token)
+                        ->orWhereNull('active_actor_token');
+                })
                 ->whereNotIn('status', [
                     PipelineRun::STATUS_SUCCEEDED,
                     PipelineRun::STATUS_CANCELLED,
@@ -1099,6 +1124,11 @@ class PipelineRecoveryDispatcher
         } elseif ($execution->command_id !== null) {
             Command::query()
                 ->whereKey($execution->command_id)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where(function ($query) use ($execution): void {
+                    $query->where('active_actor_token', $execution->execution_token)
+                        ->orWhereNull('active_actor_token');
+                })
                 ->whereNotIn('status', [Command::STATUS_SUCCEEDED, Command::STATUS_FAILED_PERMANENT])
                 ->update([
                     'status' => Command::STATUS_FAILED_PERMANENT,
@@ -1109,6 +1139,11 @@ class PipelineRecoveryDispatcher
         } elseif ($execution->webhook_delivery_id !== null) {
             WebhookDelivery::query()
                 ->whereKey($execution->webhook_delivery_id)
+                ->where('lifecycle_version', $execution->source_version)
+                ->where(function ($query) use ($execution): void {
+                    $query->where('active_actor_token', $execution->execution_token)
+                        ->orWhereNull('active_actor_token');
+                })
                 ->whereNotIn('status', [
                     WebhookDelivery::STATUS_PROCESSED,
                     WebhookDelivery::STATUS_DISMISSED,

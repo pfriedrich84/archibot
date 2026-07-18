@@ -11,14 +11,13 @@ from app.absurd_queue import queue_backend, queue_name
 from app.clients.paperless import PaperlessClient
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import (
+from app.execution_lifecycle import (
+    ExecutionLifecycle,
     finish_actor_execution,
-    schedule_actor_execution_retry,
     start_actor_execution,
+    update_actor_execution_progress,
 )
-from app.jobs.commands import mark_command_status
-from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.progress import ProgressSnapshot
 from app.jobs.review_commit import (
     commit_review_suggestion_to_paperless,
     load_review_commit,
@@ -62,8 +61,6 @@ def _commit_review_suggestion_impl(
         queue_name=queue_name("io"),
     )
 
-    if command_id is not None:
-        mark_command_status(command_id, "running")
     if actor_execution.id is not None:
         update_actor_execution_progress(
             actor_execution.id,
@@ -85,10 +82,10 @@ def _commit_review_suggestion_impl(
                 payload={"review_suggestion_id": review_suggestion_id},
             )
             finish_actor_execution(
-                actor_execution, status="skipped", error_type="review_suggestion_not_found"
+                actor_execution,
+                status="failed_permanent",
+                error_type="review_suggestion_not_found",
             )
-            if command_id is not None:
-                mark_command_status(command_id, "failed_permanent", "review_suggestion_not_found")
             return
 
         mark_review_commit_status(review_suggestion_id, "running")
@@ -116,8 +113,6 @@ def _commit_review_suggestion_impl(
                 ),
                 current_item=f"paperless_document:{record.paperless_document_id}",
             )
-        if command_id is not None:
-            mark_command_status(command_id, "succeeded")
         publish_pipeline_event(
             types.REVIEW_COMMIT_SUCCEEDED,
             paperless_document_id=record.paperless_document_id,
@@ -130,45 +125,13 @@ def _commit_review_suggestion_impl(
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
-        retry_class = classify_exception(exc)
-        attempt = actor_execution.attempt
-        max_attempts = 5
-        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
-            backoff_seconds = retry_backoff_seconds(attempt)
-            mark_review_commit_status(review_suggestion_id, "retrying", retry_class.value)
-            if command_id is not None:
-                mark_command_status(command_id, "pending", retry_class.value)
-            schedule_actor_execution_retry(
-                actor_execution,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=backoff_seconds,
-                error_message=str(exc)[:1000],
+        disposition = ExecutionLifecycle(actor_execution).fail(exc)
+        if disposition.retrying:
+            mark_review_commit_status(
+                review_suggestion_id, "retrying", disposition.retry_class.value
             )
-            publish_pipeline_event(
-                types.ACTOR_RETRY_SCHEDULED,
-                level="warning",
-                message="Review commit actor retry scheduled.",
-                payload={
-                    "actor_name": actor_name,
-                    "review_suggestion_id": review_suggestion_id,
-                    "command_id": command_id,
-                    "retry_class": retry_class.value,
-                    "retry_reason": type(exc).__name__,
-                    "backoff_seconds": backoff_seconds,
-                },
-            )
-            raise
-
-        mark_review_commit_status(review_suggestion_id, "failed", retry_class.value)
-        if command_id is not None:
-            mark_command_status(command_id, "failed", retry_class.value)
-        finish_actor_execution(
-            actor_execution,
-            status="failed",
-            error_type=retry_class.value,
-            error_message=str(exc)[:1000],
-        )
+        else:
+            mark_review_commit_status(review_suggestion_id, "failed", disposition.retry_class.value)
         raise
 
     log.info(

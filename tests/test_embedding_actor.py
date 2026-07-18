@@ -98,8 +98,7 @@ def test_embedding_actor_schedules_retry_for_transient_build_failure(monkeypatch
         lambda *args, **kwargs: finishes.append((args, kwargs)),
     )
     monkeypatch.setattr(
-        embedding,
-        "schedule_actor_execution_retry",
+        "app.execution_lifecycle.execution_store.schedule_actor_execution_retry",
         lambda *args, **kwargs: retries.append((args, kwargs)),
     )
     monkeypatch.setattr(
@@ -119,7 +118,7 @@ def test_embedding_actor_schedules_retry_for_transient_build_failure(monkeypatch
             (55,),
             {
                 "status": "failed",
-                "error": "Retry scheduled after ConnectionError: ollama unavailable",
+                "error": "ollama unavailable",
             },
         )
     ]
@@ -129,8 +128,7 @@ def test_embedding_actor_schedules_retry_for_transient_build_failure(monkeypatch
         "backoff_seconds": 30,
         "error_message": "ollama unavailable",
     }
-    assert events[-1][0] == ("actor.retry_scheduled",)
-    assert events[-1][1]["payload"]["embedding_index_state_id"] == 55
+    assert all(event[0] != ("actor.retry_scheduled",) for event in events)
 
 
 @pytest.mark.asyncio
@@ -346,6 +344,6 @@ def test_embedding_actor_skips_when_build_already_running(monkeypatch):
     embedding._build_initial_embedding_index_impl(limit=12)
 
     assert build_calls == []
-    assert actor_finishes[0][1]["status"] == "skipped"
+    assert actor_finishes[0][1]["status"] == "blocked"
     assert actor_finishes[0][1]["error_type"] == "embedding_index_already_building"
     assert events[0][1]["payload"]["already_running"] is True

@@ -13,14 +13,14 @@ from app.clients.paperless import PaperlessClient
 from app.config import settings
 from app.events import types
 from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import (
+from app.execution_lifecycle import (
+    ExecutionLifecycle,
     finish_actor_execution,
-    schedule_actor_execution_retry,
     start_actor_execution,
+    update_actor_execution_progress,
 )
 from app.jobs.poll_candidates import persist_poll_candidate
-from app.jobs.progress import ProgressSnapshot, update_actor_execution_progress
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.progress import ProgressSnapshot
 from app.jobs.review_suggestions import classified_document_ids
 from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
@@ -154,37 +154,7 @@ def _reconcile_inbox_documents_impl(
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
-        retry_class = classify_exception(exc)
-        attempt = actor_execution.attempt
-        max_attempts = 5
-        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
-            backoff_seconds = retry_backoff_seconds(attempt)
-            schedule_actor_execution_retry(
-                actor_execution,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=backoff_seconds,
-                error_message=str(exc)[:1000],
-            )
-            publish_pipeline_event(
-                types.ACTOR_RETRY_SCHEDULED,
-                level="warning",
-                message="Polling reconciliation actor retry scheduled.",
-                payload={
-                    "actor_name": actor_name,
-                    "retry_class": retry_class.value,
-                    "retry_reason": type(exc).__name__,
-                    "backoff_seconds": backoff_seconds,
-                },
-            )
-            raise
-
-        finish_actor_execution(
-            actor_execution,
-            status="failed",
-            error_type=retry_class.value,
-            error_message=str(exc)[:1000],
-        )
+        ExecutionLifecycle(actor_execution).fail(exc)
         raise
 
     log.info(
@@ -277,38 +247,7 @@ def _reindex_ocr_documents_impl(
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
-        retry_class = classify_exception(exc)
-        attempt = actor_execution.attempt
-        max_attempts = 5
-        if should_retry(retry_class, attempt=attempt, max_attempts=max_attempts):
-            backoff_seconds = retry_backoff_seconds(attempt)
-            schedule_actor_execution_retry(
-                actor_execution,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=backoff_seconds,
-                error_message=str(exc)[:1000],
-            )
-            publish_pipeline_event(
-                types.ACTOR_RETRY_SCHEDULED,
-                command_id=command_id,
-                level="warning",
-                message="OCR reindex actor retry scheduled.",
-                payload={
-                    "actor_name": actor_name,
-                    "retry_class": retry_class.value,
-                    "retry_reason": type(exc).__name__,
-                    "backoff_seconds": backoff_seconds,
-                },
-            )
-            raise
-
-        finish_actor_execution(
-            actor_execution,
-            status="failed",
-            error_type=retry_class.value,
-            error_message=str(exc)[:1000],
-        )
+        ExecutionLifecycle(actor_execution).fail(exc)
         raise
 
     log.info(

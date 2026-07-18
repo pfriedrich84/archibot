@@ -31,7 +31,6 @@ def test_webhook_action_validation_accepts_only_laravel_normalized_actions():
 
 def test_webhook_actor_refuses_retired_python_pipeline_start_path(monkeypatch):
     events = []
-    statuses = []
     actor_finishes = []
     progresses = _capture_progress(monkeypatch)
 
@@ -66,15 +65,8 @@ def test_webhook_actor_refuses_retired_python_pipeline_start_path(monkeypatch):
         "finish_actor_execution",
         lambda *args, **kwargs: actor_finishes.append((args, kwargs)),
     )
-    monkeypatch.setattr(
-        webhook,
-        "mark_webhook_delivery_status",
-        lambda *args: statuses.append(args),
-    )
-
     webhook._handle_paperless_webhook_impl(123)
 
-    assert statuses == [(123, "failed_permanent", "pipeline_start_owned_by_laravel")]
     assert events[0][0] == ("webhook.normalized",)
     assert events[0][1]["webhook_delivery_id"] == 123
     assert events[0][1]["paperless_document_id"] == 42
@@ -89,7 +81,6 @@ def test_webhook_actor_refuses_retired_python_pipeline_start_path(monkeypatch):
 
 
 def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
-    statuses = []
     actor_finishes = []
     refreshes = []
     progresses = _capture_progress(monkeypatch)
@@ -128,15 +119,8 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
             or webhook.EmbeddingRefreshResult(status="processed")
         ),
     )
-    monkeypatch.setattr(
-        webhook,
-        "mark_webhook_delivery_status",
-        lambda *args: statuses.append(args),
-    )
-
     webhook._handle_paperless_webhook_impl(321)
 
-    assert statuses == [(321, "processed", None)]
     assert refreshes == [7]
     assert actor_finishes[0][1] == {"status": "succeeded", "error_type": None}
     assert [call[0][1].phase for call in progresses] == [
@@ -148,7 +132,6 @@ def test_webhook_actor_refreshes_embedding_for_updated_events(monkeypatch):
 
 def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypatch):
     events = []
-    statuses = []
     actor_finishes = []
     _capture_progress(monkeypatch)
 
@@ -182,15 +165,8 @@ def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypat
         "finish_actor_execution",
         lambda *args, **kwargs: actor_finishes.append((args, kwargs)),
     )
-    monkeypatch.setattr(
-        webhook,
-        "mark_webhook_delivery_status",
-        lambda *args: statuses.append(args),
-    )
-
     webhook._handle_paperless_webhook_impl(654)
 
-    assert statuses == [(654, "failed_permanent", "invalid_webhook_action")]
     assert events == [
         (
             ("webhook.invalid_action",),
@@ -211,13 +187,12 @@ def test_webhook_actor_marks_invalid_persisted_action_failed_permanent(monkeypat
             },
         )
     ]
-    assert actor_finishes[0][1]["status"] == "failed"
+    assert actor_finishes[0][1]["status"] == "failed_permanent"
     assert actor_finishes[0][1]["error_type"] == "invalid_webhook_action"
 
 
 def test_webhook_actor_schedules_transient_failure_for_laravel_recovery(monkeypatch):
     events = []
-    statuses = []
     retries = []
     _capture_progress(monkeypatch)
     monkeypatch.setattr(
@@ -246,13 +221,7 @@ def test_webhook_actor_schedules_transient_failure_for_laravel_recovery(monkeypa
         lambda paperless_document_id: (_ for _ in ()).throw(TimeoutError("slow")),
     )
     monkeypatch.setattr(
-        webhook,
-        "mark_webhook_delivery_status",
-        lambda *args: statuses.append(args),
-    )
-    monkeypatch.setattr(
-        webhook,
-        "schedule_actor_execution_retry",
+        "app.execution_lifecycle.execution_store.schedule_actor_execution_retry",
         lambda *args, **kwargs: retries.append((args, kwargs)),
     )
     monkeypatch.setattr(
@@ -264,13 +233,11 @@ def test_webhook_actor_schedules_transient_failure_for_laravel_recovery(monkeypa
     with pytest.raises(TimeoutError, match="slow"):
         webhook._handle_paperless_webhook_impl(655)
 
-    assert statuses == [(655, "failed", "transient_network")]
     assert retries[0][1]["backoff_seconds"] == 120
-    assert any(event[0] == ("actor.retry_scheduled",) for event in events)
+    assert all(event[0] != ("actor.retry_scheduled",) for event in events)
 
 
 def test_webhook_actor_leaves_pre_execution_transient_failure_recoverable(monkeypatch):
-    statuses = []
     monkeypatch.setattr(
         webhook,
         "load_webhook_delivery",
@@ -289,20 +256,15 @@ def test_webhook_actor_leaves_pre_execution_transient_failure_recoverable(monkey
         "start_actor_execution",
         lambda **kwargs: (_ for _ in ()).throw(TimeoutError("tracking unavailable")),
     )
-    monkeypatch.setattr(
-        webhook,
-        "mark_webhook_delivery_status",
-        lambda *args: statuses.append(args),
-    )
     monkeypatch.setattr(webhook, "publish_pipeline_event", lambda *args, **kwargs: None)
 
     with pytest.raises(TimeoutError, match="tracking unavailable"):
         webhook._handle_paperless_webhook_impl(656)
 
-    assert statuses == [(656, "failed", "transient_network")]
+    # No lifecycle was claimed, so no domain state may be synthesized.
 
 
-def test_webhook_actor_emits_failure_event_for_missing_delivery(monkeypatch):
+def test_webhook_actor_does_not_synthesize_domain_failure_for_missing_delivery(monkeypatch):
     events = []
 
     monkeypatch.setattr(webhook, "load_webhook_delivery", lambda webhook_delivery_id: None)
@@ -314,14 +276,7 @@ def test_webhook_actor_emits_failure_event_for_missing_delivery(monkeypatch):
 
     webhook._handle_paperless_webhook_impl(404)
 
-    assert events == [
-        (
-            ("actor.failed",),
-            {
-                "webhook_delivery_id": 404,
-                "level": "error",
-                "message": "Webhook delivery was not found for actor execution.",
-                "payload": {"actor_name": "handle_paperless_webhook"},
-            },
-        )
-    ]
+    # With no source there can be no fenced durable execution. The outer
+    # runner emits protocol-failure and Laravel rejects it; the actor must not
+    # invent a domain event or successful outcome.
+    assert events == []

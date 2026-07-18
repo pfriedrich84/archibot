@@ -10,8 +10,7 @@ Until the milestones in [the security and architecture hardening plan](../implem
 
 - legacy SQLite processing/search used by parts of Python CLI and MCP;
 - Absurd actor decorators, queue workers, recovery bridge, schema and dependencies;
-- Python Pipeline Start used by polling beside Laravel Pipeline Start;
-- lifecycle/retry transitions split between Python domain actors and Laravel transport handling.
+- legacy lifecycle helpers that remain only behind the canonical Python execution-lifecycle facade.
 
 ADR-0017 makes the Laravel/PostgreSQL model below the sole target and requires deletion of those parallel paths after parity migration.
 
@@ -57,10 +56,14 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 ### `commands`
 
 ```text
-pending -> queued -> running -> succeeded
-pending|queued|running -> failed
-failed -> queued   (safe redispatch/retry where supported)
+pending -> queued -> running -> succeeded|skipped|failed_permanent
+running -> pending       (retry scheduled with next_retry_at)
+failed -> queued         (explicit safe redispatch where supported)
 ```
+
+`failed_permanent` is terminal. `pending` with a future `next_retry_at` is the
+actual command retry/backoff representation; it must not be displayed as an
+immediately runnable queued command.
 
 Command payloads are the durable source of truth for actor options such as `limit`, OCR `force`, review suggestion id, or entity approval id. Actor runner invocations should pass only stable ids (`--command-id`, `--pipeline-run-id`, `--webhook-delivery-id`) and load options from PostgreSQL.
 
@@ -75,13 +78,13 @@ pending
   -> partially_failed
   -> failed
 
-pending|blocked|queued|running
-  -> cancelling
+pending|blocked|queued|running|retrying
+  -> cancel_requested
   -> cancelled
 
-failed|partially_failed
-  -> retrying
-  -> queued
+running -> retrying -> running
+running -> failed_permanent
+failed|partially_failed -> queued   (explicit operator retry)
 ```
 
 State meanings:
@@ -93,13 +96,26 @@ State meanings:
 | `queued` | Actor work has been enqueued or is ready to be enqueued. |
 | `running` | At least one actor execution is actively processing the run. |
 | `retrying` | Failed work is being prepared for a new attempt. |
-| `cancelling` | Admin cancellation has been requested and actors should stop cooperatively. |
+| `cancel_requested` | Admin cancellation has been requested and actors should stop cooperatively. |
 | `cancelled` | Cancellation completed and no more work should run. |
 | `succeeded` | All required work completed. |
 | `partially_failed` | Some work completed and some failed, with durable details in events/items. |
-| `failed` | The run cannot continue without retry or operator action. |
+| `failed` | A non-terminal legacy/operator-visible failure that may be explicitly retried. |
+| `failed_permanent` | The bounded attempt budget or a permanent domain condition ended the run; no automatic retry is allowed. |
 
 `pipeline_events` should explain every significant transition and progress update.
+Actor executions use `pending -> queued -> running -> succeeded|skipped|blocked|retrying|failed_permanent|cancelled`;
+`pending` is retained in the transition contract for pre-fence compatibility,
+but the PostgreSQL fencing upgrade never leaves a pending winner active: it
+atomically converts a directly retryable winner to a due `retrying` attempt and
+a safe source recovery state. It suppresses only the obsolete attempt when its
+source is terminal, blocked, or a process-document webhook owned by Pipeline
+Start reconciliation.
+Laravel recovery then redispatches one new `queued` claim. A retrying attempt is
+terminal as an attempt, while the durable source carries the due time for a
+later, separately fenced attempt. Migration fences use fixed-length deterministic
+tokens so maximum-width bigint source and execution IDs still fit the 64-character
+contract.
 
 ## Ownership rules
 
@@ -115,20 +131,23 @@ Laravel is the operations console. It owns:
 - retry, cancellation and durable recovery controls;
 - user-visible status, progress and logs read from PostgreSQL.
 
-### Python owns document processing logic
+### Python owns document processing and domain execution lifecycle
 
 Python owns:
 
 - Paperless document processing behavior;
 - OCR correction and embedding/classification logic;
 - review suggestion generation;
-- LLM/provider integration through the processing layer.
+- LLM/provider integration through the processing layer;
+- the single `app.execution_lifecycle` facade for durable actor attempts, idempotent resume, item-derived progress, bounded domain retry/backoff, terminal transitions and sanitized outcome metadata.
+
+Every fixed actor emits one final version-1 JSON record with protocol name `archibot.actor-outcome`. Its status is one of `succeeded`, `skipped`, `blocked`, `cancelled`, `retrying`, `failed-permanent` or `protocol-failure`, and its source contains only a durable `command`, `pipeline_run` or `webhook_delivery` id. Laravel validates that record and its source independently from process exit. A missing, malformed, mismatched-version or wrong-source record is a transport/protocol failure; it cannot rewrite Python-selected pending, blocked, retrying or terminal domain state.
 
 Laravel reaches Python through fixed, allowlisted actor commands. Operator-facing CLI commands that overlap GUI actions must not call the direct processing functions as an alternate backend; they must delegate to Laravel Maintenance.
 
 ### PostgreSQL is the source of truth
 
-PostgreSQL stores durable command, pipeline, event, item, actor, webhook and audit state. Laravel queues are transport only. Recovery must redispatch from durable records rather than reconstruct work from queue state.
+PostgreSQL stores durable command, pipeline, event, item, actor, webhook and audit state. Laravel queues are transport only. Recovery selects due retries and stale sources only when no active source-linked actor execution exists, then redispatches using the durable id. It does not reconstruct domain state from queue payloads or process output.
 
 ## Retired temporary model
 

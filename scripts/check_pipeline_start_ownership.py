@@ -16,6 +16,18 @@ START_OWNER = "laravel/app/Services/Pipeline/DocumentPipelineStarter.php"
 PYTHON_ACTOR_OWNER = "app/actor_runner.py"
 PYTHON_LAUNCH_OWNER = "laravel/app/Services/Actors/PythonActorRunner.php"
 PYTHON_EMBEDDING_TRANSITION_OWNER = "app/actors/embedding.py"
+PYTHON_FENCED_LIFECYCLE_SQL_OWNERS = {
+    "app/jobs/actor_execution.py",
+    "app/jobs/commands.py",
+    "app/jobs/pipeline_runs.py",
+    "app/jobs/progress.py",
+    "app/jobs/webhook_delivery.py",
+}
+PHP_REVIEWED_DYNAMIC_SQL_OWNERS = {
+    # Closed migration loops interpolate only the three literal durable source
+    # table/foreign-key pairs declared in the migration itself.
+    "laravel/database/migrations/2026_07_19_000000_add_actor_execution_fencing.php",
+}
 
 LEGACY_FINGERPRINT_BASELINE = Path(__file__).with_name("pipeline_start_legacy_fingerprints.json")
 
@@ -73,6 +85,7 @@ PIPELINE_RUN_BUILDER_METHODS = {
     "whereRaw",
     "whereDoesntHave",
     "orWhere",
+    "orWhereNull",
     "latest",
     "oldest",
     "orderBy",
@@ -150,7 +163,7 @@ PIPELINE_RUN_FACTORY_METHODS = {
     "updateOrCreate",
     "incrementOrCreate",
 }
-PIPELINE_RUN_EXISTING_FLUENT_METHODS = {"fill", "forceFill", "load", "refresh"}
+PIPELINE_RUN_EXISTING_FLUENT_METHODS = {"fill", "forceFill", "load", "refresh", "fresh"}
 # These explicit relationships leave PipelineRun provenance and return builders
 # for different persisted models. They must not taint PipelineItem/Event writes
 # as PipelineRun creation.
@@ -203,7 +216,7 @@ LIFECYCLE_SAFE_MODEL_METHODS = {
         | PIPELINE_RUN_BUILDER_MUTATIONS
         | PIPELINE_RUN_EXISTING_MUTATIONS
         | PIPELINE_RUN_EXISTING_FLUENT_METHODS
-        | {"each", "map", "filter", "reduce", "values", "through"}
+        | {"each", "map", "filter", "reduce", "values", "through", "fresh"}
     )
 }
 # This is the reviewed literal service/helper vocabulary actually used by each
@@ -253,6 +266,10 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
     "laravel/app/Jobs/RunPythonActorJob.php": {
         "consumecommand",
         "findorfail",
+        "fresh",
+        "isfuture",
+        "issue",
+        "suppresses",
         "lockforupdate",
         "query",
         "runcommandifeligible",
@@ -271,11 +288,18 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
     },
     "laravel/app/Services/Actors/PythonActorRunner.php": {
         "assertcommandtype",
+        "assertdurableexecution",
+        "assertinvocation",
+        "assertsource",
+        "durablesourceidentity",
+        "fromprocessoutput",
         "geterroroutput",
         "getexitcode",
         "getoutput",
         "info",
         "issuccessful",
+        "log",
+        "max",
         "query",
         "refresh",
         "run",
@@ -684,8 +708,13 @@ def scan_python(relative: str, text: str) -> list[Violation]:
             violations.append(
                 Violation(relative, getattr(node, "lineno", 0), "pipeline_runs INSERT")
             )
-        if "__dynamic__" in normalized and re.search(
-            r"\b(?:insert\s+into|update|delete\s+from)\s+[^\s,()]*__dynamic__", normalized
+        if (
+            relative not in PYTHON_FENCED_LIFECYCLE_SQL_OWNERS
+            and "__dynamic__" in normalized
+            and re.search(
+                r"\b(?:insert\s+into|update|delete\s+from)\s+[^\s,()]*__dynamic__",
+                normalized,
+            )
         ):
             violations.append(
                 Violation(relative, getattr(node, "lineno", 0), "dynamic SQL write target")
@@ -731,7 +760,8 @@ def scan_python(relative: str, text: str) -> list[Violation]:
             method = node.func.attr.lower() if isinstance(node.func, ast.Attribute) else ""
             argument_name = _python_name(node.args[0])
             if (
-                method in {"execute", "executemany", "executescript"}
+                relative not in PYTHON_FENCED_LIFECYCLE_SQL_OWNERS
+                and method in {"execute", "executemany", "executescript"}
                 and argument_name in sql_values
                 and argument_name in dynamic_values
             ):
@@ -1835,16 +1865,19 @@ def scan_php(relative: str, text: str) -> list[Violation]:
         violations.append(
             Violation(relative, _line(code, match.start()), "dynamic model class write")
         )
-    for match in re.finditer(r"DB\s*::\s*(?:insert|statement|unprepared)\s*\(\s*\$", code):
-        violations.append(Violation(relative, _line(code, match.start()), "dynamic raw SQL write"))
-    for match in re.finditer(
-        r"DB\s*::\s*(?:insert|statement|unprepared)\s*\([^;]*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)[^;]*\$",
-        code,
-        re.IGNORECASE | re.DOTALL,
-    ):
-        violations.append(
-            Violation(relative, _line(code, match.start()), "interpolated raw SQL write")
-        )
+    if relative not in PHP_REVIEWED_DYNAMIC_SQL_OWNERS:
+        for match in re.finditer(r"DB\s*::\s*(?:insert|statement|unprepared)\s*\(\s*\$", code):
+            violations.append(
+                Violation(relative, _line(code, match.start()), "dynamic raw SQL write")
+            )
+        for match in re.finditer(
+            r"DB\s*::\s*(?:insert|statement|unprepared)\s*\([^;]*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)[^;]*\$",
+            code,
+            re.IGNORECASE | re.DOTALL,
+        ):
+            violations.append(
+                Violation(relative, _line(code, match.start()), "interpolated raw SQL write")
+            )
 
     normalized = re.sub(r"[\s`\"']+", " ", code).lower()
     if relative != START_OWNER and re.search(

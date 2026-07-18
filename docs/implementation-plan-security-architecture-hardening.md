@@ -2,7 +2,7 @@
 
 ## Status and baseline
 
-Status: accepted plan; implementation in progress. Containment 0.1 (Chat/RAG), 0.2 (confidence auto-commit), 0.3 (local-only OCR with live Paperless permissions), 0.4 (webhook authentication), 0.5 (admin-only structured diagnostics), and 0.6 (first-run setup hardening) are implemented; remaining milestones are pending.
+Status: accepted plan; implementation in progress. Containment 0.1–0.6 and Milestone 1.1–1.4 are implemented; remaining milestones are pending.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
@@ -236,7 +236,10 @@ Acceptance:
 - structural guards reject model/query-builder/raw-SQL Pipeline Run creation aliases outside the starter and freeze productive legacy references exactly;
 - no productive Python caller imports `app.jobs.pipeline_start` after deletion.
 
-### 1.3 Introduce the Python execution-lifecycle Module
+### 1.3 Introduce the Python execution-lifecycle Module — Implemented (Step 8)
+
+Status: implemented. `app.execution_lifecycle` is the sole Python actor lifecycle facade and owns durable execution outcomes, retry scheduling, progress reconstruction, sanitization and the versioned protocol consumed by Laravel.
+
 
 The Module must own domain transitions without exposing transport details through its Interface. Required behavior:
 
@@ -258,7 +261,10 @@ Acceptance:
 - version mismatch, malformed outcome and missing outcome fail as transport/protocol errors without corrupting domain state;
 - actor implementations lose duplicated lifecycle/retry boilerplate.
 
-### 1.4 Align Laravel transport outcome handling
+### 1.4 Align Laravel transport outcome handling — Implemented (Step 8)
+
+Status: implemented. Laravel validates actor, durable source and protocol version independently from process exit, leaves Python-owned domain state unchanged on transport failure, and recovery suppresses redispatch while a source-linked execution is active.
+
 
 Scope:
 
@@ -273,7 +279,11 @@ Acceptance:
 
 - real subprocess tests cover exit success, malformed/missing/version-mismatched output, timeout, signal/crash and retryable domain failure across every actor family;
 - transport failure cannot mark a successful/retrying Pipeline Run, Command, Webhook Delivery, Review Suggestion or Actor Execution failed;
-- stale queue jobs can be safely redispatched once.
+- stale queue jobs can be safely redispatched once;
+- PostgreSQL persistent-volume upgrade fixtures prove sole pending command,
+  pipeline and webhook winners become due retry attempts, redispatch, and acquire
+  one fresh fenced claim; maximum-width bigint IDs produce fixed-length migration
+  tokens within the 64-character contract.
 
 ## Milestone 2 — Remove parallel backends
 

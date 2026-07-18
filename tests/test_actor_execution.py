@@ -99,6 +99,8 @@ def test_finish_actor_execution_updates_status(monkeypatch):
         "duration_ms": 2500,
         "error_type": "RuntimeError",
         "error_message": "boom",
+        "execution_token": None,
+        "source_version": None,
     }
 
 
@@ -128,6 +130,8 @@ def test_schedule_actor_execution_retry_updates_retry_metadata(monkeypatch):
         "retry_reason": "TimeoutError",
         "backoff_seconds": 30,
         "error_message": "slow",
+        "execution_token": None,
+        "source_version": None,
     }
 
 
@@ -143,6 +147,8 @@ def test_list_stale_running_actor_executions_returns_records(monkeypatch):
             "actor_name": "handle_document_pipeline",
             "attempt": 2,
             "max_attempts": 5,
+            "execution_token": "stale-token",
+            "source_version": 7,
         }
     ]
     monkeypatch.setattr(actor_execution, "engine", lambda: FakeEngine(calls, rows=rows))
@@ -163,21 +169,8 @@ def test_list_stale_running_actor_executions_returns_records(monkeypatch):
             actor_name="handle_document_pipeline",
             attempt=2,
             max_attempts=5,
+            execution_token="stale-token",
+            source_version=7,
         )
     ]
     assert calls[0][1] == {"stale_after_seconds": 123, "limit": 5}
-
-
-def test_mark_stale_actor_execution_recovered_updates_retry_state(monkeypatch):
-    calls = []
-    monkeypatch.setattr(actor_execution, "engine", lambda: FakeEngine(calls))
-    monkeypatch.setattr(actor_execution, "sql_text", lambda statement: statement)
-
-    actor_execution.mark_stale_actor_execution_recovered(77)
-
-    assert calls[0][1] == {
-        "actor_execution_id": 77,
-        "status": "retrying",
-        "error_type": "worker_recovery_stale_actor",
-        "error_message": "Actor execution was left running and recovered after worker restart.",
-    }

@@ -116,15 +116,18 @@ def list_pending_review_commit_commands(limit: int = 100) -> list[CommandRecord]
 
 def mark_command_status(command_id: int, status: str, error: str | None = None) -> None:
     """Persist command execution bridge status."""
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("command", command_id)
     statement = sql_text(
-        """
+        f"""
         UPDATE commands
         SET status = CAST(:status AS character varying),
             started_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('queued', 'running') AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
             finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'failed_permanent') THEN CURRENT_TIMESTAMP ELSE finished_at END,
             error = :error,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :command_id
+        WHERE id = :command_id {fence_sql}
         """
     )
     with engine().begin() as connection:
@@ -135,5 +138,6 @@ def mark_command_status(command_id: int, status: str, error: str | None = None) 
                 "status": status,
                 "status_for_lifecycle": status,
                 "error": error,
+                **fence_params,
             },
         )

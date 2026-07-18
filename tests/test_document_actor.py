@@ -9,7 +9,6 @@ from app.models import ClassificationResult, PaperlessDocument
 
 
 def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypatch):
-    statuses = []
     item_finishes = []
     pipeline_progress = []
     actor_progress = []
@@ -48,9 +47,15 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
         "finish_pipeline_item",
         lambda *args, **kwargs: item_finishes.append((args, kwargs)),
     )
-    monkeypatch.setattr(
-        document, "progress_from_pipeline_items", lambda pipeline_run_id: (1, 1, 0, 0)
-    )
+
+    def record_progress(**kwargs):
+        snapshot = SimpleNamespace(total=1, done=1, failed=0, skipped=0)
+        pipeline_progress.append((kwargs["pipeline_run_id"], snapshot))
+        actor_progress.append(
+            ((kwargs["actor_execution_id"], snapshot), {"current_item": kwargs.get("current_item")})
+        )
+
+    monkeypatch.setattr(document, "_update_item_derived_progress", record_progress)
 
     class FakeCoroutine:
         def close(self):
@@ -76,19 +81,6 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
         lambda **kwargs: StoredReviewSuggestion(id=77, status="pending"),
     )
     monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: statuses.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
-        document, "update_pipeline_run_progress", lambda *args: pipeline_progress.append(args)
-    )
-    monkeypatch.setattr(
-        document,
-        "update_actor_execution_progress",
-        lambda *args, **kwargs: actor_progress.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
         document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
     )
     monkeypatch.setattr(
@@ -97,14 +89,6 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
 
     document._handle_document_pipeline_impl(123)
 
-    assert statuses[0] == (
-        (123,),
-        {
-            "status": "running",
-            "phase": "paperless_fetch",
-            "message": "Fetching document from Paperless.",
-        },
-    )
     assert item_finishes == [
         ((9,), {"status": "succeeded"}),
         ((9,), {"status": "succeeded"}),
@@ -122,8 +106,7 @@ def test_document_actor_fetches_classifies_and_stores_review_suggestion(monkeypa
     assert events[4][0] == ("document.classified",)
     assert events[5][0] == ("document.judge.completed",)
     assert events[6][0] == ("document.review_suggestion.stored",)
-    assert statuses[1][1]["status"] == "succeeded"
-    assert statuses[1][1]["phase"] == "review_suggestion"
+    # The lifecycle facade atomically owns both execution and source terminal state.
     assert finishes[0][1]["status"] == "succeeded"
 
 
@@ -152,11 +135,6 @@ def test_document_actor_schedules_retry_for_transient_failure(monkeypatch):
             max_retries=5,
         ),
     )
-    monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: None,
-    )
     monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
     monkeypatch.setattr(document, "is_pipeline_run_cancel_requested", lambda pipeline_run_id: False)
     monkeypatch.setattr(
@@ -176,9 +154,20 @@ def test_document_actor_schedules_retry_for_transient_failure(monkeypatch):
         document, "run_async", lambda coroutine: (_ for _ in ()).throw(TimeoutError("slow"))
     )
     monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_retrying",
-        lambda *args, **kwargs: retries.append((args, kwargs)),
+        document.ExecutionLifecycle,
+        "fail",
+        lambda self, exc, **kwargs: (
+            retries.append((type(exc).__name__, kwargs))
+            or type(
+                "Disposition",
+                (),
+                {
+                    "retrying": True,
+                    "retry_class": type("RetryClass", (), {"value": "transient_network"})(),
+                    "backoff_seconds": 30,
+                },
+            )()
+        ),
     )
     monkeypatch.setattr(
         document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
@@ -189,25 +178,14 @@ def test_document_actor_schedules_retry_for_transient_failure(monkeypatch):
 
     document._handle_document_pipeline_impl(123)
 
-    assert retries[0] == (
-        (123,),
-        {
-            "retry_class": "transient_network",
-            "retry_reason": "TimeoutError",
-            "backoff_seconds": 30,
-            "phase": "document_actor",
-            "message": "Document actor retry scheduled in 30 seconds.",
-        },
-    )
-    assert finishes[-1][1]["status"] == "retrying"
-    assert finishes[-1][1]["error_type"] == "transient_network"
-    assert events[-1][0] == ("actor.retry_scheduled",)
+    assert retries == [("TimeoutError", {"max_attempts": 5})]
+    assert finishes == []
+    assert all(event[0] != ("actor.retry_scheduled",) for event in events)
 
 
 def test_document_actor_cancellation_during_external_failure_suppresses_retry(monkeypatch):
     retries = []
     finishes = []
-    cancelled = []
     items = []
     cancellation_checks = 0
 
@@ -231,7 +209,6 @@ def test_document_actor_cancellation_during_external_failure_suppresses_retry(mo
             max_retries=5,
         ),
     )
-    monkeypatch.setattr(document, "mark_pipeline_run_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(document, "ensure_embedding_index_ready", lambda: True)
 
     def cancellation_requested(pipeline_run_id):
@@ -262,23 +239,13 @@ def test_document_actor_cancellation_during_external_failure_suppresses_retry(mo
         document, "run_async", lambda coroutine: (_ for _ in ()).throw(TimeoutError("slow"))
     )
     monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_cancelled",
-        lambda pipeline_run_id: cancelled.append(pipeline_run_id),
-    )
-    monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_retrying",
-        lambda *args, **kwargs: retries.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
         document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
     )
     monkeypatch.setattr(document, "publish_pipeline_event", lambda *args, **kwargs: None)
 
     document._handle_document_pipeline_impl(123)
 
-    assert cancelled == [123]
+    # Cancellation is committed through the lifecycle facade, not a separate source write.
     assert retries == []
     assert items[-1][1]["status"] == "skipped"
     assert finishes[-1][1]["status"] == "cancelled"
@@ -313,17 +280,18 @@ def test_document_actor_fails_when_run_is_missing(monkeypatch):
                 ),
             ),
             {
-                "status": "failed",
+                "status": "failed_permanent",
                 "error_type": "pipeline_run_not_found",
                 "error_message": "Document pipeline run was not found.",
             },
         )
     ]
-    assert events[0][0] == ("actor.failed",)
+    # Canonical actor failure emission belongs to ExecutionLifecycle; the
+    # domain actor must not duplicate it.
+    assert events == []
 
 
 def test_document_actor_rechecks_embedding_gate_before_fetch(monkeypatch):
-    statuses = []
     finishes = []
     events = []
     fetches = []
@@ -356,11 +324,6 @@ def test_document_actor_rechecks_embedding_gate_before_fetch(monkeypatch):
         lambda paperless_document_id: fetches.append(paperless_document_id),
     )
     monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: statuses.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
         document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
     )
     monkeypatch.setattr(
@@ -370,18 +333,6 @@ def test_document_actor_rechecks_embedding_gate_before_fetch(monkeypatch):
     document._handle_document_pipeline_impl(123)
 
     assert fetches == []
-    assert statuses == [
-        (
-            (123,),
-            {
-                "status": "blocked",
-                "phase": "blocked",
-                "message": "Waiting for embedding index to complete.",
-                "error_type": "embedding_index_not_ready",
-                "error": "Waiting for embedding index to complete.",
-            },
-        )
-    ]
     assert finishes[0][1]["status"] == "blocked"
     assert finishes[0][1]["error_type"] == "embedding_index_not_ready"
     assert events[0][0] == ("pipeline.blocked.embedding_index_not_ready",)
@@ -446,8 +397,8 @@ def test_document_actor_classification_uses_pgvector_context(monkeypatch):
 
 def test_document_actor_keeps_adversarial_confidence_100_judge_result_pending(monkeypatch):
     events = []
-    statuses = []
     stored = []
+    finishes = []
 
     monkeypatch.setattr(
         document,
@@ -475,17 +426,10 @@ def test_document_actor_keeps_adversarial_confidence_100_judge_result_pending(mo
         document, "start_pipeline_item", lambda **kwargs: PipelineItemRecord(id=9, status="running")
     )
     monkeypatch.setattr(document, "finish_pipeline_item", lambda *args, **kwargs: None)
+    monkeypatch.setattr(document, "update_item_derived_progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        document, "progress_from_pipeline_items", lambda pipeline_run_id: (3, 3, 0, 0)
+        document, "finish_actor_execution", lambda *args, **kwargs: finishes.append((args, kwargs))
     )
-    monkeypatch.setattr(document, "update_pipeline_run_progress", lambda *args: None)
-    monkeypatch.setattr(document, "update_actor_execution_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        document,
-        "mark_pipeline_run_status",
-        lambda *args, **kwargs: statuses.append((args, kwargs)),
-    )
-    monkeypatch.setattr(document, "finish_actor_execution", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         document, "publish_pipeline_event", lambda *args, **kwargs: events.append((args, kwargs))
     )
@@ -524,8 +468,7 @@ def test_document_actor_keeps_adversarial_confidence_100_judge_result_pending(mo
 
     assert stored[0]["result"].confidence == 100
     assert stored[0]["judge_verdict"] == "agree"
-    assert statuses[-1][1]["status"] == "succeeded"
-    assert statuses[-1][1]["phase"] == "review_suggestion"
+    assert finishes[-1][1]["status"] == "succeeded"
     assert not any("auto_commit" in event[0][0] for event in events)
 
 

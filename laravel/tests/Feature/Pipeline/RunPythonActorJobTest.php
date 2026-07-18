@@ -3,6 +3,7 @@
 namespace Tests\Feature\Pipeline;
 
 use App\Jobs\RunPythonActorJob;
+use App\Models\ActorExecution;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
@@ -47,7 +48,7 @@ PHP);
         ], $argv);
 
         $command->refresh();
-        $this->assertSame(Command::STATUS_SUCCEEDED, $command->status);
+        $this->assertSame(Command::STATUS_RUNNING, $command->status);
 
         @unlink($capturePath);
         @unlink($script);
@@ -102,7 +103,7 @@ PHP);
 
         RunPythonActorJob::documentPipeline($run->id)->handle($runner);
 
-        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_RUNNING, $run->fresh()->status);
     }
 
     public function test_recovery_retry_is_delegated_to_the_child_owned_lease_protocol(): void
@@ -114,7 +115,7 @@ PHP);
 
         RunPythonActorJob::documentPipeline($run->id)->handle($runner);
 
-        $this->assertSame(PipelineRun::STATUS_RETRYING, $run->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_RUNNING, $run->fresh()->status);
     }
 
     public function test_manual_retry_is_delegated_without_laravel_claiming_the_python_lease(): void
@@ -127,7 +128,7 @@ PHP);
 
         RunPythonActorJob::documentPipeline($run->id)->handle($runner);
 
-        $this->assertSame(PipelineRun::STATUS_QUEUED, $run->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_RUNNING, $run->fresh()->status);
     }
 
     public function test_embedding_build_is_delegated_without_parent_exclusive_lease_transfer(): void
@@ -330,9 +331,40 @@ PHP);
         $duplicate->handle(app(PythonActorRunner::class));
 
         $this->assertSame("run\n", file_get_contents($capturePath));
-        $this->assertSame(Command::STATUS_SUCCEEDED, $command->fresh()->status);
+        $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
         @unlink($capturePath);
         @unlink($script);
+    }
+
+    public function test_duplicate_pipeline_jobs_create_only_one_active_attempt(): void
+    {
+        $run = $this->documentRun(PipelineRun::STATUS_QUEUED, 'duplicate-claim');
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('runDocumentPipeline')->once();
+        });
+
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+
+        $this->assertSame(PipelineRun::STATUS_RUNNING, $run->fresh()->status);
+        $this->assertSame(1, ActorExecution::query()
+            ->where('pipeline_run_id', $run->id)
+            ->where('actor_name', PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE)
+            ->count());
+    }
+
+    public function test_future_pipeline_retry_is_not_claimed_before_backoff_is_due(): void
+    {
+        $run = $this->documentRun(PipelineRun::STATUS_RETRYING, 'future-backoff');
+        $run->forceFill(['next_retry_at' => now()->addMinute()])->save();
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('runDocumentPipeline');
+        });
+
+        RunPythonActorJob::documentPipeline($run->id)->handle($runner);
+
+        $this->assertSame(PipelineRun::STATUS_RETRYING, $run->fresh()->status);
+        $this->assertDatabaseCount('actor_executions', 0);
     }
 
     public function test_queued_job_does_not_replay_terminal_command(): void
@@ -358,7 +390,7 @@ PHP);
         @unlink($script);
     }
 
-    public function test_document_pipeline_actor_job_marks_run_failed_when_process_fails_before_python_state_update(): void
+    public function test_document_pipeline_protocol_failure_does_not_overwrite_domain_state(): void
     {
         $script = $this->writeActorStub(<<<'PHP'
 fwrite(STDERR, 'document actor failed');
@@ -379,20 +411,20 @@ PHP);
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('failed with exit code 7');
+        $this->expectExceptionMessage('outcome protocol record is missing');
 
         try {
             RunPythonActorJob::documentPipeline($pipelineRun->id)->handle(app(PythonActorRunner::class));
         } finally {
             $pipelineRun->refresh();
-            $this->assertSame(PipelineRun::STATUS_FAILED, $pipelineRun->status);
-            $this->assertSame('actor_process_failed', $pipelineRun->error_type);
-            $this->assertSame('document actor failed', $pipelineRun->error);
+            $this->assertSame(PipelineRun::STATUS_RUNNING, $pipelineRun->status);
+            $this->assertNull($pipelineRun->error_type);
+            $this->assertNull($pipelineRun->error);
             @unlink($script);
         }
     }
 
-    public function test_embedding_actor_job_marks_command_failed_when_process_fails(): void
+    public function test_embedding_protocol_failure_does_not_overwrite_domain_state(): void
     {
         $script = $this->writeActorStub(<<<'PHP'
 fwrite(STDERR, 'actor failed');
@@ -408,14 +440,14 @@ PHP);
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('failed with exit code 7');
+        $this->expectExceptionMessage('outcome protocol record is missing');
 
         try {
             RunPythonActorJob::embeddingIndexBuild($command->id)->handle(app(PythonActorRunner::class));
         } finally {
             $command->refresh();
-            $this->assertSame(Command::STATUS_FAILED, $command->status);
-            $this->assertSame('actor failed', $command->error);
+            $this->assertSame(Command::STATUS_RUNNING, $command->status);
+            $this->assertNull($command->error);
             @unlink($script);
         }
     }
@@ -436,7 +468,56 @@ PHP);
     private function writeActorStub(string $body): string
     {
         $script = tempnam(storage_path('framework/testing'), 'archibot-actor-');
-        file_put_contents($script, "#!/usr/bin/env php\n<?php\n".$body);
+        // Assertions inspect only the fixed durable-id command prefix; fencing
+        // arguments are validated below against the persisted execution.
+        $body = str_replace('json_encode($argv)', 'json_encode(array_slice($argv, 0, 6))', $body);
+        file_put_contents($script, "#!/usr/bin/env php\n<?php\n".$body.<<<'PHP'
+
+$options = [];
+for ($index = 4; $index < count($argv) - 1; $index += 2) {
+    $options[$argv[$index]] = $argv[$index + 1];
+}
+$executionId = (int) ($options['--actor-execution-id'] ?? 0);
+$attempt = (int) ($options['--attempt'] ?? 0);
+$sourceId = (int) ($options['--command-id'] ?? $options['--pipeline-run-id'] ?? $options['--delivery-id'] ?? 0);
+
+require getcwd().'/laravel/vendor/autoload.php';
+$app = require getcwd().'/laravel/bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+App\Models\ActorExecution::query()->whereKey($executionId)->update(['status' => 'running']);
+App\Models\ActorExecution::query()->whereKey($executionId)->update([
+    'status' => 'succeeded',
+    'finished_at' => now(),
+]);
+
+$actorCommand = $argv[3] ?? '';
+$sourceKind = match ($actorCommand) {
+    'process-document' => 'pipeline_run',
+    'handle-webhook' => 'webhook_delivery',
+    default => 'command',
+};
+$actor = match ($actorCommand) {
+    'build-embedding-index' => 'build_embedding_index',
+    'process-document' => 'handle_document_pipeline',
+    'reconcile-poll' => 'reconcile_inbox_documents',
+    'reindex' => 'reindex',
+    'reindex-ocr' => 'reindex_ocr',
+    'handle-webhook' => 'handle_paperless_webhook',
+    'commit-review' => 'commit_review_suggestion',
+    'sync-entity-approval' => 'sync_entity_approval',
+};
+echo json_encode([
+    'protocol' => 'archibot.actor-outcome',
+    'version' => 1,
+    'status' => 'succeeded',
+    'actor' => $actor,
+    'source' => ['kind' => $sourceKind, 'id' => $sourceId],
+    'actor_execution_id' => $executionId,
+    'attempt' => $attempt,
+    'retry_at' => null,
+    'error_type' => null,
+]).PHP_EOL;
+PHP);
         chmod($script, 0755);
 
         return $script;

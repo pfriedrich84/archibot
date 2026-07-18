@@ -120,7 +120,8 @@ def test_poll_reconciliation_schedules_retry_for_transient_fetch_failure(monkeyp
     monkeypatch.setattr(maintenance, "_fetch_inbox_documents", fake_fetch)
     monkeypatch.setattr(maintenance, "update_actor_execution_progress", lambda *a, **k: None)
     monkeypatch.setattr(
-        maintenance, "schedule_actor_execution_retry", lambda *a, **k: retries.append((a, k))
+        "app.execution_lifecycle.execution_store.schedule_actor_execution_retry",
+        lambda *a, **k: retries.append((a, k)),
     )
     monkeypatch.setattr(maintenance, "publish_pipeline_event", lambda *a, **k: None)
 

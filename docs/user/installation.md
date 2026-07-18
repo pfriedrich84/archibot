@@ -96,6 +96,36 @@ php artisan serve --host=0.0.0.0 --port=8088
 
 Vor Commits sollten die relevanten Checks laufen: Python `ruff`/`pytest`, Laravel `composer test`, `npm run lint:check`, `npm run format:check`, `npm run types:check` und `npm run build`.
 
+## Upgrade eines persistenten PostgreSQL-Volumes
+
+Vor einem Upgrade muss ein konsistentes PostgreSQL-Backup erstellt und die
+Laravel-Queue angehalten werden. Die Actor-Fencing-Migration laeuft unter
+PostgreSQL in einer Transaktion. Bei mehreren aktiven Ausfuehrungen derselben
+dauerhaften Quelle waehlt sie unabhaengig vom Actor-Namen deterministisch einen
+Gewinner (laufend vor wartend, danach hoechster Versuch und hoechste ID),
+markiert alle Verlierer als
+`failed_permanent` und schreibt pro Verlierer ein Audit-Ereignis
+`actor.execution.reconciled_duplicate`, bevor die partiellen Unique-Indizes
+angelegt werden. Ein alleiniger `pending`-Gewinner besitzt noch keinen nutzbaren
+Queue-Claim. Die Migration ueberfuehrt einen direkt wiederholbaren Gewinner
+deshalb mit sofort faelligem Zeitpunkt in `retrying`, setzt Command, Pipeline Run
+oder Webhook Delivery in den jeweils sicheren Recovery-Zustand und behaelt bis
+zur Redispatch-Transaktion einen uebereinstimmenden Fence-Token. Bei terminalen
+oder blockierten Quellen und bei Process-Document-Webhooks wird nur der obsolete
+Actor-Versuch beendet; die Quelle bleibt ihrem normalen Gate beziehungsweise der
+Pipeline-Start-Reconciliation ueberlassen. Recovery erzeugt fuer faellige
+Versuche anschliessend genau einen neuen `queued` Claim. Migrationstoken sind feste, deterministische 45-Zeichen-Hashes;
+auch maximale PostgreSQL-`bigint`-IDs koennen die 64-Zeichen-Spalten nicht
+ueberschreiten. Ein Fehler rollt Schema, Statusaenderungen und Audit-Ereignisse
+gemeinsam zurueck; das Volume bleibt auf dem alten Stand.
+
+Nach dem Upgrade sind Migrationstatus, Operations Log und Queue vor dem Neustart
+der Worker zu pruefen. Ein Schema-Rollback entfernt die Fencing-Spalten, aktiviert
+aber bereinigte Altversuche nicht wieder. Fuer einen vollstaendigen Rollback daher
+Container und PostgreSQL-Volume stoppen und das Backup in ein neues/leeres Volume
+wiederherstellen. Niemals ein teilweise aktualisiertes Volume mit einer aelteren
+ArchiBot-Version weiterbetreiben.
+
 ## Naechste Schritte
 
 - [Konfiguration](./configuration.md) — Alle Umgebungsvariablen im Detail

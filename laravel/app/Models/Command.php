@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['type', 'status', 'payload', 'created_by_user_id', 'started_at', 'finished_at', 'error', 'created_at', 'updated_at'])]
+#[Fillable(['type', 'status', 'payload', 'created_by_user_id', 'started_at', 'finished_at', 'error', 'next_retry_at', 'lifecycle_version', 'active_actor_token', 'created_at', 'updated_at'])]
 class Command extends Model
 {
     public const TYPE_EMBEDDING_INDEX_BUILD = 'embedding_index_build';
@@ -26,11 +26,15 @@ class Command extends Model
 
     public const STATUS_RUNNING = 'running';
 
+    public const STATUS_BLOCKED = 'blocked';
+
     public const STATUS_SUCCEEDED = 'succeeded';
 
     public const STATUS_FAILED = 'failed';
 
     public const STATUS_FAILED_PERMANENT = 'failed_permanent';
+
+    public const STATUS_SKIPPED = 'skipped';
 
     /**
      * @return array<int, string>
@@ -46,6 +50,7 @@ class Command extends Model
             'payload' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'next_retry_at' => 'datetime',
         ];
     }
 }

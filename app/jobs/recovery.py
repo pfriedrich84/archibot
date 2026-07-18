@@ -1,265 +1,81 @@
-"""Recovery scan skeleton for restart-safe Absurd workers."""
+"""Compatibility facade for Python recovery transitions.
+
+Productive redispatch through Absurd was retired by ADR-0017. Laravel database
+queues claim every actor family. This module remains only for old CLI imports and
+delegates all permitted transition work to :mod:`app.execution_lifecycle`.
+"""
 
 from __future__ import annotations
 
 import structlog
 
-from app.actors.maintenance import reconcile_inbox_documents, reindex_ocr_documents
-from app.actors.review import commit_review_suggestion
-from app.actors.webhook import handle_paperless_webhook
-from app.events import types
-from app.events.publish import publish_pipeline_event
-from app.jobs.actor_execution import (
-    list_stale_running_actor_executions,
-    mark_stale_actor_execution_recovered,
-)
-from app.jobs.commands import (
-    list_pending_embedding_build_commands,
-    list_pending_ocr_reindex_commands,
-    list_pending_poll_reconciliation_commands,
-    list_pending_reindex_commands,
-    list_pending_review_commit_commands,
-    mark_command_status,
-)
-from app.jobs.embedding_gate import ensure_embedding_index_ready
-from app.jobs.pipeline_runs import (
-    list_cancel_requested_pipeline_run_ids,
-    list_due_retrying_document_pipeline_run_ids,
-    list_pending_document_pipeline_run_ids,
-    mark_pipeline_run_cancelled,
-)
-from app.jobs.review_commit import mark_review_commit_status
-from app.jobs.webhook_delivery import (
-    list_embedding_blocked_webhook_delivery_ids,
-    list_queued_webhook_delivery_ids,
-    mark_webhook_delivery_status,
-)
+from app import execution_lifecycle
 
 log = structlog.get_logger(__name__)
 
 
 def enqueue_embedding_build_command(command_id: int, limit: int | None = None) -> None:
-    """Reject the retired Python recovery path for fenced embedding mutation."""
-    raise RuntimeError("Embedding build recovery is Laravel-owned and requires its exclusive fence")
+    execution_lifecycle.retired_python_dispatch("embedding build recovery")
 
 
 def enqueue_poll_reconciliation_command(command_id: int, limit: int | None = None) -> None:
-    """Enqueue an admin-requested polling reconciliation command."""
-    _enqueue_command_actor(command_id, reconcile_inbox_documents, limit)
+    execution_lifecycle.retired_python_dispatch("poll reconciliation recovery")
 
 
 def enqueue_reindex_command(command_id: int, limit: int | None = None) -> None:
-    """Reject the retired Python recovery path for fenced reindex mutation."""
-    raise RuntimeError("Reindex recovery is Laravel-owned and requires its exclusive fence")
+    execution_lifecycle.retired_python_dispatch("reindex recovery")
 
 
 def enqueue_ocr_reindex_command(
     command_id: int, limit: int | None = None, *, force: bool = False
 ) -> None:
-    """Enqueue an admin-requested OCR reindex command."""
-    mark_command_status(command_id, "queued")
-    try:
-        send = getattr(reindex_ocr_documents, "send", None)
-        if send is not None:
-            send(command_id=command_id, limit=limit, force=force)
-            return
-
-        reindex_ocr_documents(command_id=command_id, limit=limit, force=force)
-    except Exception as exc:
-        mark_command_status(command_id, "pending", f"enqueue_failed:{type(exc).__name__}")
-        raise
-
-
-def _enqueue_command_actor(command_id: int, actor, limit: int | None = None) -> None:
-    """Mark a durable command queued and restore pending if Absurd enqueue fails."""
-    mark_command_status(command_id, "queued")
-    try:
-        send = getattr(actor, "send", None)
-        if send is not None:
-            send(limit)
-            return
-
-        actor(limit)
-    except Exception as exc:
-        mark_command_status(command_id, "pending", f"enqueue_failed:{type(exc).__name__}")
-        raise
+    execution_lifecycle.retired_python_dispatch("OCR reindex recovery")
 
 
 def enqueue_review_commit(review_suggestion_id: int, command_id: int | None = None) -> None:
-    """Enqueue one accepted review suggestion for Paperless commit."""
-    mark_review_commit_status(review_suggestion_id, "queued")
-    send = getattr(commit_review_suggestion, "send", None)
-    if send is not None:
-        if command_id is None:
-            send(review_suggestion_id)
-        else:
-            send(review_suggestion_id, command_id)
-        return
-
-    if command_id is None:
-        commit_review_suggestion(review_suggestion_id)
-    else:
-        commit_review_suggestion(review_suggestion_id, command_id)
+    execution_lifecycle.retired_python_dispatch("review commit recovery")
 
 
 def enqueue_review_commit_command(command_id: int, review_suggestion_id: int) -> None:
-    """Mark a durable review-commit command queued and enqueue its actor."""
-    mark_command_status(command_id, "queued")
-    try:
-        enqueue_review_commit(review_suggestion_id, command_id)
-    except Exception as exc:
-        mark_command_status(command_id, "pending", f"enqueue_failed:{type(exc).__name__}")
-        raise
+    execution_lifecycle.retired_python_dispatch("review commit command recovery")
 
 
 def enqueue_document_pipeline_run(pipeline_run_id: int) -> None:
-    """Reject the retired Python recovery path for fenced document execution."""
-    raise RuntimeError("Document actor recovery is Laravel-owned and requires its shared fence")
+    execution_lifecycle.retired_python_dispatch("document recovery")
 
 
 def enqueue_webhook_delivery(webhook_delivery_id: int) -> None:
-    """Enqueue one persisted webhook delivery for Absurd processing.
-
-    In production `handle_paperless_webhook` is an Absurd actor and exposes
-    `.send(...)`. In local/test environments without Absurd configured the
-    fallback is the plain implementation function, so call it directly.
-    """
-    send = getattr(handle_paperless_webhook, "send", None)
-    if send is not None:
-        send(webhook_delivery_id)
-        return
-
-    handle_paperless_webhook(webhook_delivery_id)
+    execution_lifecycle.retired_python_dispatch("webhook recovery")
 
 
 def recover_stale_actor_executions(
     *, stale_after_seconds: int = 900, limit: int = 100
 ) -> tuple[int, int]:
-    """Recover actor executions left running by worker/container crashes.
-
-    This legacy scan records stale attempts only. Laravel recovery owns every
-    redispatch so document actors can execute only under its shared fence.
-    """
-    recovered = 0
-    requeued = 0
-    for execution in list_stale_running_actor_executions(
-        stale_after_seconds=stale_after_seconds,
-        limit=limit,
-    ):
-        mark_stale_actor_execution_recovered(execution.id)
-        recovered += 1
-        publish_pipeline_event(
-            types.ACTOR_RECOVERED_STALE,
-            pipeline_run_id=execution.pipeline_run_id,
-            paperless_document_id=execution.paperless_document_id,
-            level="warning",
-            message="Stale actor execution recovered after worker restart.",
-            payload={
-                "actor_execution_id": execution.id,
-                "actor_name": execution.actor_name,
-                "retry_mode": "recovery",
-            },
-        )
-
-    return recovered, requeued
+    return (
+        execution_lifecycle.recover_stale_executions(
+            stale_after_seconds=stale_after_seconds, limit=limit
+        ),
+        0,
+    )
 
 
 def finalize_cancel_requested_runs(limit: int = 100) -> int:
-    """Finalize admin cancellation requests that are safe for recovery to close."""
-    pipeline_run_ids = list_cancel_requested_pipeline_run_ids(limit=limit)
-    for pipeline_run_id in pipeline_run_ids:
-        mark_pipeline_run_cancelled(pipeline_run_id)
-        publish_pipeline_event(
-            types.PIPELINE_CANCELLED,
-            pipeline_run_id=pipeline_run_id,
-            level="warning",
-            message="Pipeline run cancelled by admin request.",
-        )
-
-    return len(pipeline_run_ids)
+    return execution_lifecycle.finalize_cancel_requests(limit=limit)
 
 
 def release_embedding_blocked_runs(limit: int = 100) -> int:
-    """Leave blocked runs to Laravel recovery and its fenced execution path."""
     return 0
 
 
 def release_embedding_blocked_webhooks(limit: int = 100) -> int:
-    """Move embedding-refresh webhook deliveries back to queued when safe."""
-    if not ensure_embedding_index_ready():
-        return 0
-
-    webhook_delivery_ids = list_embedding_blocked_webhook_delivery_ids(limit=limit)
-    for webhook_delivery_id in webhook_delivery_ids:
-        mark_webhook_delivery_status(webhook_delivery_id, "queued", None)
-        publish_pipeline_event(
-            types.PIPELINE_UNBLOCKED_EMBEDDING_READY,
-            webhook_delivery_id=webhook_delivery_id,
-            message="Webhook delivery released because the embedding index is complete.",
-        )
-
-    return len(webhook_delivery_ids)
+    return 0
 
 
 def run_recovery_scan(limit: int = 100) -> None:
-    """Scan durable state and requeue safe stuck work."""
-    recovered_actors, recovered_actor_requeues = recover_stale_actor_executions(limit=limit)
-    cancelled_runs = finalize_cancel_requested_runs(limit=limit)
-
-    webhooks_released = release_embedding_blocked_webhooks(limit=limit)
-    webhook_delivery_ids = list_queued_webhook_delivery_ids(limit=limit)
-    for webhook_delivery_id in webhook_delivery_ids:
-        enqueue_webhook_delivery(webhook_delivery_id)
-
-    # Observe only; Laravel recovery dispatches these fenced RunPythonActorJob
-    # paths. This scan must never claim or mutate them.
-    pipeline_runs_requeued = 0
-    pending_pipeline_run_ids = list_pending_document_pipeline_run_ids(limit=limit)
-    retrying_pipeline_run_ids = list_due_retrying_document_pipeline_run_ids(limit=limit)
-    embedding_build_commands = list_pending_embedding_build_commands(limit=limit)
-
-    poll_reconciliation_commands = list_pending_poll_reconciliation_commands(limit=limit)
-    for command in poll_reconciliation_commands:
-        limit_value = command.payload.get("limit")
-        enqueue_poll_reconciliation_command(
-            command.id,
-            limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
-        )
-
-    reindex_commands = list_pending_reindex_commands(limit=limit)
-
-    ocr_reindex_commands = list_pending_ocr_reindex_commands(limit=limit)
-    for command in ocr_reindex_commands:
-        limit_value = command.payload.get("limit")
-        enqueue_ocr_reindex_command(
-            command.id,
-            limit=int(limit_value) if isinstance(limit_value, int) and limit_value > 0 else None,
-            force=bool(command.payload.get("force", False)),
-        )
-
-    review_commit_commands = list_pending_review_commit_commands(limit=limit)
-    for command in review_commit_commands:
-        review_suggestion_id = command.payload.get("review_suggestion_id")
-        if isinstance(review_suggestion_id, int) and review_suggestion_id > 0:
-            enqueue_review_commit_command(command.id, review_suggestion_id)
-        else:
-            mark_command_status(command.id, "failed_permanent", "missing_review_suggestion_id")
-
+    recovered, cancelled = execution_lifecycle.run_recovery_transition_scan(limit=limit)
     log.info(
-        "recovery scan completed",
-        actor_executions_recovered=recovered_actors,
-        actor_executions_requeued=recovered_actor_requeues,
-        pipeline_runs_cancelled=cancelled_runs,
-        pipeline_runs_requeued=pipeline_runs_requeued
-        + len(pending_pipeline_run_ids)
-        + len(retrying_pipeline_run_ids)
-        + recovered_actor_requeues,
-        webhook_deliveries_released=webhooks_released,
-        webhook_deliveries_requeued=len(webhook_delivery_ids),
-        embedding_build_commands_requeued=len(embedding_build_commands),
-        poll_reconciliation_commands_requeued=len(poll_reconciliation_commands),
-        reindex_commands_requeued=len(reindex_commands),
-        ocr_reindex_commands_requeued=len(ocr_reindex_commands),
-        review_commit_commands_requeued=len(review_commit_commands),
-        review_commits_requeued=0,
+        "python recovery transition scan completed; Laravel owns redispatch",
+        actor_executions_recovered=recovered,
+        pipeline_runs_cancelled=cancelled,
+        redispatched=0,
     )

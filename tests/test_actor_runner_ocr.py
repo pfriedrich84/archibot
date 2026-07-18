@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 
 from app.actor_runner import ActorRunnerError, run_reindex_ocr_command
+from app.execution_lifecycle import DomainOutcome, DomainStatus
 from app.jobs.commands import CommandRecord
 
 
 def test_run_reindex_ocr_command_uses_durable_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    statuses: list[tuple[int, str, str | None]] = []
     calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(
@@ -20,17 +20,16 @@ def test_run_reindex_ocr_command_uses_durable_payload(monkeypatch: pytest.Monkey
         ),
     )
     monkeypatch.setattr(
-        "app.actor_runner.mark_command_status",
-        lambda command_id, status, error=None: statuses.append((command_id, status, error)),
-    )
-    monkeypatch.setattr(
         "app.actor_runner._reindex_ocr_documents_impl",
         lambda **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        "app.actor_runner.outcome_for_source",
+        lambda **kwargs: DomainOutcome(DomainStatus.SUCCEEDED, "reindex_ocr", "command", 42, 9, 1),
     )
 
     run_reindex_ocr_command(42)
 
-    assert statuses == [(42, "running", None), (42, "succeeded", None)]
     assert calls == [{"command_id": 42, "limit": 7, "force": True}]
 
 

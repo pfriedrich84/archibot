@@ -111,8 +111,11 @@ def mark_pipeline_run_cancelled(
     pipeline_run_id: int, message: str = "Pipeline run cancelled by admin request."
 ) -> None:
     """Finalize a cancellation request durably."""
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("pipeline_run", pipeline_run_id)
     statement = sql_text(
-        """
+        f"""
         UPDATE pipeline_runs
         SET status = 'cancelled',
             progress_message = :message,
@@ -121,11 +124,13 @@ def mark_pipeline_run_cancelled(
             error = :message,
             finished_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :pipeline_run_id
+        WHERE id = :pipeline_run_id {fence_sql}
         """
     )
     with engine().begin() as connection:
-        connection.execute(statement, {"pipeline_run_id": pipeline_run_id, "message": message})
+        connection.execute(
+            statement, {"pipeline_run_id": pipeline_run_id, "message": message, **fence_params}
+        )
 
 
 def list_pending_document_pipeline_run_ids(limit: int = 100) -> list[int]:
@@ -175,8 +180,11 @@ def mark_pipeline_run_retrying(
     message: str | None = None,
 ) -> None:
     """Schedule a durable retry for a document pipeline run."""
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("pipeline_run", pipeline_run_id)
     statement = sql_text(
-        """
+        f"""
         UPDATE pipeline_runs
         SET status = 'retrying',
             retry_count = retry_count + 1,
@@ -191,7 +199,7 @@ def mark_pipeline_run_retrying(
             error = :retry_reason,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
-          AND status NOT IN ('cancel_requested', 'cancelled')
+          AND status NOT IN ('cancel_requested', 'cancelled') {fence_sql}
         """
     )
     with engine().begin() as connection:
@@ -204,6 +212,7 @@ def mark_pipeline_run_retrying(
                 "backoff_seconds": backoff_seconds,
                 "phase": phase,
                 "message": message,
+                **fence_params,
             },
         )
 
@@ -218,8 +227,11 @@ def mark_pipeline_run_status(
     error: str | None = None,
 ) -> None:
     """Update high-level pipeline run status and operator-facing state."""
+    from app.execution_lifecycle import source_fence
+
+    fence_sql, fence_params = source_fence("pipeline_run", pipeline_run_id)
     statement = sql_text(
-        """
+        f"""
         UPDATE pipeline_runs
         SET status = CAST(:status AS character varying),
             progress_current_phase = COALESCE(:phase, progress_current_phase),
@@ -228,10 +240,10 @@ def mark_pipeline_run_status(
             error_type = :error_type,
             error = :error,
             started_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) = 'running' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
-            finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'blocked') THEN CURRENT_TIMESTAMP ELSE finished_at END,
+            finished_at = CASE WHEN CAST(:status_for_lifecycle AS character varying) IN ('succeeded', 'failed', 'failed_permanent', 'blocked', 'cancelled') THEN CURRENT_TIMESTAMP ELSE finished_at END,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :pipeline_run_id
-          AND status NOT IN ('cancel_requested', 'cancelled')
+          AND status NOT IN ('cancel_requested', 'cancelled') {fence_sql}
         """
     )
     with engine().begin() as connection:
@@ -245,6 +257,7 @@ def mark_pipeline_run_status(
                 "message": message,
                 "error_type": error_type,
                 "error": error,
+                **fence_params,
             },
         )
 

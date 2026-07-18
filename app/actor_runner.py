@@ -16,24 +16,25 @@ from typing import NoReturn
 import structlog
 from sqlalchemy import text as sql_text
 
-from app.actors.document import _handle_document_pipeline_impl
-from app.actors.embedding import _build_initial_embedding_index_impl
-from app.actors.maintenance import _reconcile_inbox_documents_impl, _reindex_ocr_documents_impl
-from app.actors.review import _commit_review_suggestion_impl
-from app.actors.webhook import _handle_paperless_webhook_impl
-from app.jobs.actor_execution import (
+from app.execution_lifecycle import (
+    DomainOutcome,
+    DomainStatus,
+    ExecutionLifecycle,
+    InvocationFence,
     finish_actor_execution,
-    schedule_actor_execution_retry,
+    outcome_for_source,
+    protocol_failure,
+    reset_invocation_fence,
+    set_invocation_fence,
     start_actor_execution,
 )
-from app.jobs.commands import CommandRecord, load_command, mark_command_status
+from app.jobs.commands import CommandRecord, load_command
 from app.jobs.database import engine
 from app.jobs.pipeline_fence import (
     document_actor_lease,
     embedding_index_ready,
     embedding_mutation_lease,
 )
-from app.jobs.retry import classify_exception, retry_backoff_seconds, should_retry
 
 log = structlog.get_logger(__name__)
 
@@ -47,6 +48,45 @@ SYNC_ENTITY_APPROVAL_COMMAND_TYPE = "sync_entity_approval"
 
 class ActorRunnerError(RuntimeError):
     """Raised when a fixed actor command cannot be executed safely."""
+
+
+# Keep actor imports behind the protocol boundary. Optional/legacy integration
+# imports must not prevent the fixed runner from emitting a protocol-failure
+# record when configuration or database bootstrap fails.
+def _build_initial_embedding_index_impl(**kwargs):
+    from app.actors.embedding import _build_initial_embedding_index_impl as invoke
+
+    return invoke(**kwargs)
+
+
+def _reconcile_inbox_documents_impl(**kwargs):
+    from app.actors.maintenance import _reconcile_inbox_documents_impl as invoke
+
+    return invoke(**kwargs)
+
+
+def _reindex_ocr_documents_impl(**kwargs):
+    from app.actors.maintenance import _reindex_ocr_documents_impl as invoke
+
+    return invoke(**kwargs)
+
+
+def _handle_document_pipeline_impl(pipeline_run_id: int, **kwargs):
+    from app.actors.document import _handle_document_pipeline_impl as invoke
+
+    return invoke(pipeline_run_id, **kwargs)
+
+
+def _commit_review_suggestion_impl(review_suggestion_id: int, command_id: int | None = None):
+    from app.actors.review import _commit_review_suggestion_impl as invoke
+
+    return invoke(review_suggestion_id, command_id)
+
+
+def _handle_paperless_webhook_impl(webhook_delivery_id: int):
+    from app.actors.webhook import _handle_paperless_webhook_impl as invoke
+
+    return invoke(webhook_delivery_id)
 
 
 def _fail(message: str) -> NoReturn:
@@ -116,7 +156,6 @@ def run_embedding_index_build_command(command_id: int) -> None:
 
     limit = _payload_limit(command)
     with embedding_mutation_lease():
-        mark_command_status(command.id, "running")
         log.info(
             "embedding actor command started",
             command_id=command.id,
@@ -126,7 +165,6 @@ def run_embedding_index_build_command(command_id: int) -> None:
         try:
             _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
         except Exception as exc:
-            mark_command_status(command.id, "failed", _exception_summary(exc))
             log.warning(
                 "embedding actor command failed",
                 command_id=command.id,
@@ -137,9 +175,9 @@ def run_embedding_index_build_command(command_id: int) -> None:
             )
             raise
 
-        mark_command_status(command.id, "succeeded")
+        _finalize_command_from_execution(command.id, "build_embedding_index")
         log.info(
-            "embedding actor command succeeded",
+            "embedding actor command finished",
             command_id=command.id,
             command_type=command.type,
         )
@@ -154,12 +192,18 @@ def _load_typed_command(command_id: int, expected_type: str) -> CommandRecord:
     return command
 
 
+def _finalize_command_from_execution(command_id: int, actor_name: str) -> DomainOutcome:
+    outcome = outcome_for_source(actor_name=actor_name, source_kind="command", source_id=command_id)
+    if outcome is None or outcome.status is DomainStatus.PROTOCOL_FAILURE:
+        raise ActorRunnerError("Actor execution did not produce a durable domain outcome")
+    return outcome
+
+
 def run_poll_reconciliation_command(command_id: int) -> None:
     """Run polling reconciliation from the durable command payload."""
     command = _load_typed_command(command_id, POLL_RECONCILIATION_COMMAND_TYPE)
     limit = _payload_limit(command)
     force = _payload_bool(command, "force")
-    mark_command_status(command.id, "running")
     log.info(
         "poll reconciliation actor command started",
         command_id=command.id,
@@ -168,11 +212,10 @@ def run_poll_reconciliation_command(command_id: int) -> None:
     )
     try:
         _reconcile_inbox_documents_impl(limit=limit, force=force, command_id=command.id)
-    except Exception as exc:
-        mark_command_status(command.id, "failed", _exception_summary(exc))
+    except Exception:
         raise
-    mark_command_status(command.id, "succeeded")
-    log.info("poll reconciliation actor command succeeded", command_id=command.id)
+    _finalize_command_from_execution(command.id, "reconcile_inbox_documents")
+    log.info("poll reconciliation actor command finished", command_id=command.id)
 
 
 def run_reindex_command(command_id: int) -> None:
@@ -180,15 +223,15 @@ def run_reindex_command(command_id: int) -> None:
     command = _load_typed_command(command_id, REINDEX_COMMAND_TYPE)
     limit = _payload_limit(command)
     with embedding_mutation_lease():
-        mark_command_status(command.id, "running")
         log.info("reindex actor command started", command_id=command.id, limit=limit)
         try:
-            _build_initial_embedding_index_impl(limit=limit, command_id=command.id)
-        except Exception as exc:
-            mark_command_status(command.id, "failed", _exception_summary(exc))
+            _build_initial_embedding_index_impl(
+                limit=limit, command_id=command.id, actor_name="reindex"
+            )
+        except Exception:
             raise
-        mark_command_status(command.id, "succeeded")
-        log.info("reindex actor command succeeded", command_id=command.id)
+        _finalize_command_from_execution(command.id, "reindex")
+        log.info("reindex actor command finished", command_id=command.id)
 
 
 def run_reindex_ocr_command(command_id: int) -> None:
@@ -196,7 +239,6 @@ def run_reindex_ocr_command(command_id: int) -> None:
     command = _load_typed_command(command_id, REINDEX_OCR_COMMAND_TYPE)
     limit = _payload_limit(command)
     force = _payload_bool(command, "force")
-    mark_command_status(command.id, "running")
     log.info(
         "ocr reindex actor command started",
         command_id=command.id,
@@ -205,11 +247,10 @@ def run_reindex_ocr_command(command_id: int) -> None:
     )
     try:
         _reindex_ocr_documents_impl(command_id=command.id, limit=limit, force=force)
-    except Exception as exc:
-        mark_command_status(command.id, "failed", _exception_summary(exc))
+    except Exception:
         raise
-    mark_command_status(command.id, "succeeded")
-    log.info("ocr reindex actor command succeeded", command_id=command.id)
+    _finalize_command_from_execution(command.id, "reindex_ocr")
+    log.info("ocr reindex actor command finished", command_id=command.id)
 
 
 def run_sync_entity_approval_command(command_id: int) -> None:
@@ -238,7 +279,6 @@ def run_sync_entity_approval_command(command_id: int) -> None:
         command_id=command.id,
         queue_name="laravel.database",
     )
-    mark_command_status(command.id, "running")
     log.info(
         "entity approval sync actor command started",
         command_id=command.id,
@@ -249,32 +289,9 @@ def run_sync_entity_approval_command(command_id: int) -> None:
         init_db()
         asyncio.run(cmd_sync_entity_approval(action, entity_type, name, paperless_id))
     except Exception as exc:
-        error = _exception_summary(exc)
-        retry_class = classify_exception(exc)
-        retryable = should_retry(retry_class, attempt=actor_execution.attempt, max_attempts=5)
-        mark_command_status(
-            command.id,
-            "failed" if retryable else "failed_permanent",
-            error,
-        )
+        ExecutionLifecycle(actor_execution).fail(exc)
         _mark_entity_approval_sync_status(entity_approval_id, "failed")
-        if retryable:
-            schedule_actor_execution_retry(
-                actor_execution,
-                retry_class=retry_class.value,
-                retry_reason=type(exc).__name__,
-                backoff_seconds=retry_backoff_seconds(actor_execution.attempt),
-                error_message=error,
-            )
-        else:
-            finish_actor_execution(
-                actor_execution,
-                status="failed_permanent",
-                error_type=retry_class.value,
-                error_message=error,
-            )
         raise
-    mark_command_status(command.id, "succeeded")
     _mark_entity_approval_sync_status(entity_approval_id, "synced")
     finish_actor_execution(actor_execution, status="succeeded")
     log.info("entity approval sync actor command succeeded", command_id=command.id)
@@ -436,37 +453,158 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durable commands.id for a review_commit command",
     )
 
+    for actor_parser in (
+        embedding,
+        document,
+        poll,
+        reindex,
+        ocr_reindex,
+        webhook,
+        sync_entity,
+        review,
+    ):
+        actor_parser.add_argument("--execution-token", required=True)
+        actor_parser.add_argument("--source-version", required=True, type=int)
+        actor_parser.add_argument("--actor-execution-id", required=True, type=int)
+        actor_parser.add_argument("--attempt", required=True, type=int)
     return parser
+
+
+def _invocation(args: argparse.Namespace):
+    """Return callable, durable identity, protocol actor and execution actor."""
+    if args.command == "build-embedding-index":
+        return (
+            run_embedding_index_build_command,
+            args.command_id,
+            "build_embedding_index",
+            "command",
+            "build_embedding_index",
+        )
+    if args.command == "process-document":
+        return (
+            run_document_pipeline,
+            args.pipeline_run_id,
+            "handle_document_pipeline",
+            "pipeline_run",
+            "handle_document_pipeline",
+        )
+    if args.command == "reconcile-poll":
+        return (
+            run_poll_reconciliation_command,
+            args.command_id,
+            "reconcile_inbox_documents",
+            "command",
+            "reconcile_inbox_documents",
+        )
+    if args.command == "reindex":
+        return (
+            run_reindex_command,
+            args.command_id,
+            "reindex",
+            "command",
+            "reindex",
+        )
+    if args.command == "reindex-ocr":
+        return (
+            run_reindex_ocr_command,
+            args.command_id,
+            "reindex_ocr",
+            "command",
+            "reindex_ocr",
+        )
+    if args.command == "handle-webhook":
+        return (
+            run_webhook_delivery,
+            args.delivery_id,
+            "handle_paperless_webhook",
+            "webhook_delivery",
+            "handle_paperless_webhook",
+        )
+    if args.command == "commit-review":
+        return (
+            run_review_commit_command,
+            args.command_id,
+            "commit_review_suggestion",
+            "command",
+            "commit_review_suggestion",
+        )
+    if args.command == "sync-entity-approval":
+        return (
+            run_sync_entity_approval_command,
+            args.command_id,
+            "sync_entity_approval",
+            "command",
+            "sync_entity_approval",
+        )
+    raise ActorRunnerError(f"Unsupported actor command: {args.command}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "build-embedding-index":
-        run_embedding_index_build_command(args.command_id)
-        return 0
-    if args.command == "process-document":
-        run_document_pipeline(args.pipeline_run_id)
-        return 0
-    if args.command == "reconcile-poll":
-        run_poll_reconciliation_command(args.command_id)
-        return 0
-    if args.command == "reindex":
-        run_reindex_command(args.command_id)
-        return 0
-    if args.command == "reindex-ocr":
-        run_reindex_ocr_command(args.command_id)
-        return 0
-    if args.command == "handle-webhook":
-        run_webhook_delivery(args.delivery_id)
-        return 0
-    if args.command == "commit-review":
-        run_review_commit_command(args.command_id)
-        return 0
-    if args.command == "sync-entity-approval":
-        run_sync_entity_approval_command(args.command_id)
-        return 0
+    invoke, source_id, actor_name, source_kind, execution_actor_name = _invocation(args)
+    fence = InvocationFence(
+        actor_name=actor_name,
+        execution_actor_name=execution_actor_name,
+        source_kind=source_kind,
+        source_id=source_id,
+        execution_token=args.execution_token,
+        source_version=args.source_version,
+        actor_execution_id=args.actor_execution_id,
+        attempt=args.attempt,
+    )
+    token = set_invocation_fence(fence)
+    failure: BaseException | None = None
+    try:
+        try:
+            invoke(source_id)
+        except BaseException as exc:  # always emit one final protocol record
+            failure = exc
 
-    raise ActorRunnerError(f"Unsupported actor command: {args.command}")
+        try:
+            outcome = outcome_for_source(
+                actor_name=actor_name,
+                source_kind=source_kind,
+                source_id=source_id,
+                execution_actor_name=execution_actor_name,
+                execution_token=args.execution_token,
+                source_version=args.source_version,
+            )
+        except Exception as exc:
+            outcome = protocol_failure(
+                actor_name=actor_name,
+                source_kind=source_kind,
+                source_id=source_id,
+                error_type=f"outcome_read_failed:{type(exc).__name__}",
+            )
+        if outcome is None:
+            # Never infer success or failure from return/exit. No matching
+            # durable final execution is itself a protocol failure.
+            outcome = protocol_failure(
+                actor_name=actor_name,
+                source_kind=source_kind,
+                source_id=source_id,
+                error_type=(
+                    f"execution_missing:{type(failure).__name__}"
+                    if failure is not None
+                    else "execution_missing"
+                ),
+            )
+
+        if failure is not None:
+            log.warning(
+                "actor invocation ended with domain exception",
+                actor_name=actor_name,
+                source_kind=source_kind,
+                source_id=source_id,
+                outcome=outcome.status.value,
+                error_type=type(failure).__name__,
+            )
+        # This must be the one final stdout record: Laravel rejects chatter
+        # after it and more than one protocol record.
+        print(outcome.encode(), flush=True)
+        return 1 if failure is not None or outcome.status is DomainStatus.PROTOCOL_FAILURE else 0
+    finally:
+        reset_invocation_fence(token)
 
 
 if __name__ == "__main__":  # pragma: no cover

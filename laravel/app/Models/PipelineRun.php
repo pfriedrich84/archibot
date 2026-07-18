@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'max_retries', 'next_retry_at', 'last_retry_at', 'retry_reason', 'retry_mode',
     'retry_of_run_id', 'reprocess_requested', 'reprocess_reason', 'reprocess_mode',
     'reprocess_of_run_id', 'requested_by_user_id', 'started_at', 'finished_at',
-    'error_type', 'error',
+    'error_type', 'error', 'lifecycle_version', 'active_actor_token',
 ])]
 class PipelineRun extends Model
 {
