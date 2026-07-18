@@ -30,7 +30,7 @@ class PythonActorSubprocessMatrixTest extends TestCase
             $this->fail('Unable to create the actor matrix database fixture.');
         }
         $this->databasePath = $path;
-        putenv("DB_CONNECTION=sqlite");
+        putenv('DB_CONNECTION=sqlite');
         putenv("DB_DATABASE={$this->databasePath}");
         Config::set('database.default', 'sqlite');
         Config::set('database.connections.sqlite.database', $this->databasePath);

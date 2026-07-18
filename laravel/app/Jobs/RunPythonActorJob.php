@@ -185,5 +185,4 @@ class RunPythonActorJob implements ShouldQueue
             $runner->runWebhookDelivery($delivery, $claim);
         }
     }
-
 }

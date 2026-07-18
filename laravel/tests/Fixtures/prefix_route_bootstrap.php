@@ -1,5 +1,18 @@
 <?php
 
+use App\Models\EntityApproval;
+use App\Models\McpToken;
+use App\Models\OcrReview;
+use App\Models\ReviewSuggestion;
+use App\Models\User;
+use App\Services\Paperless\PaperlessDocumentPermissions;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+
 // Executed by UxConsistencyTest in a fresh PHP process so configuration,
 // routes, middleware, controllers, and URL generation all use this prefix
 // from initial bootstrap.
@@ -22,95 +35,95 @@ foreach ($environment as $key => $value) {
 }
 
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Kernel::class)->bootstrap();
 
 config([
     'archibot.testing_setup_complete' => true,
     'archibot.paperless_url' => 'http://paperless.test',
 ]);
-Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-Illuminate\Support\Facades\Queue::fake();
+Artisan::call('migrate', ['--force' => true]);
+Queue::fake();
 
-$user = App\Models\User::factory()->create([
+$user = User::factory()->create([
     'is_admin' => true,
     'email_verified_at' => now(),
     'paperless_token' => 'safe-prefix-test-token',
 ]);
-Illuminate\Support\Facades\Auth::login($user);
+Auth::login($user);
 
 $app->instance(
-    App\Services\Paperless\PaperlessDocumentPermissions::class,
-    new class extends App\Services\Paperless\PaperlessDocumentPermissions
+    PaperlessDocumentPermissions::class,
+    new class extends PaperlessDocumentPermissions
     {
-        public function canViewDocument(App\Models\User $user, int $paperlessDocumentId): bool
+        public function canViewDocument(User $user, int $paperlessDocumentId): bool
         {
             return true;
         }
 
-        public function canChangeDocument(App\Models\User $user, int $paperlessDocumentId): bool
+        public function canChangeDocument(User $user, int $paperlessDocumentId): bool
         {
             return true;
         }
 
-        public function assertCanViewDocument(App\Models\User $user, int $paperlessDocumentId): void {}
+        public function assertCanViewDocument(User $user, int $paperlessDocumentId): void {}
 
-        public function assertCanChangeDocument(App\Models\User $user, int $paperlessDocumentId): void {}
+        public function assertCanChangeDocument(User $user, int $paperlessDocumentId): void {}
     },
 );
 
-Illuminate\Support\Facades\Http::fake(function (Illuminate\Http\Client\Request $request) {
+Http::fake(function (Illuminate\Http\Client\Request $request) {
     $url = $request->url();
 
     if (str_contains($url, 'ollama.test/api/tags')) {
-        return Illuminate\Support\Facades\Http::response([
+        return Http::response([
             'models' => [['name' => 'safe-model']],
         ]);
     }
     if (str_contains($url, 'ollama.test/api/chat')) {
-        return Illuminate\Support\Facades\Http::response([
+        return Http::response([
             'message' => ['content' => 'ARCHIBOT_OK'],
         ]);
     }
     if (str_contains($url, '/preview/')) {
-        return Illuminate\Support\Facades\Http::response('%PDF-prefix-matrix', 200, [
+        return Http::response('%PDF-prefix-matrix', 200, [
             'Content-Type' => 'application/pdf',
         ]);
     }
     if (str_contains($url, '/api/tags/')) {
-        return Illuminate\Support\Facades\Http::response(['results' => []]);
+        return Http::response(['results' => []]);
     }
     if (preg_match('#/api/documents/\d+/?#', $url)) {
-        return Illuminate\Support\Facades\Http::response([
+        return Http::response([
             'id' => 501,
             'content' => 'Original safe fixture content',
         ]);
     }
 
-    return Illuminate\Support\Facades\Http::response([], 404);
+    return Http::response([], 404);
 });
 
-$acceptSuggestion = App\Models\ReviewSuggestion::factory()->create([
+$acceptSuggestion = ReviewSuggestion::factory()->create([
     'paperless_document_id' => 501,
 ]);
-$rejectSuggestion = App\Models\ReviewSuggestion::factory()->create([
+$rejectSuggestion = ReviewSuggestion::factory()->create([
     'paperless_document_id' => 502,
 ]);
-$previewSuggestion = App\Models\ReviewSuggestion::factory()->create([
+$previewSuggestion = ReviewSuggestion::factory()->create([
     'paperless_document_id' => 503,
 ]);
-$ocrReview = App\Models\OcrReview::query()->create([
+$ocrReview = OcrReview::query()->create([
     'paperless_document_id' => 504,
     'dedupe_key' => 'prefix-existing-ocr',
     'original_content' => 'old',
     'ocr_content' => 'corrected',
-    'status' => App\Models\OcrReview::STATUS_PENDING,
+    'status' => OcrReview::STATUS_PENDING,
     'created_by_user_id' => $user->id,
 ]);
-$entity = App\Models\EntityApproval::factory()->create([
-    'type' => App\Models\EntityApproval::TYPE_TAG,
+$entity = EntityApproval::factory()->create([
+    'type' => EntityApproval::TYPE_TAG,
     'name' => 'Prefix matrix tag',
 ]);
-$mcpToken = App\Models\McpToken::factory()->create(['user_id' => $user->id]);
+$mcpToken = McpToken::factory()->create(['user_id' => $user->id]);
 
 $routeParameters = [
     'review.show' => [$previewSuggestion],
@@ -162,7 +175,7 @@ $dispatch = static function (
         $server['HTTP_X_INERTIA'] = 'true';
         $server['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
     }
-    $request = Illuminate\Http\Request::create($uri, $method, $parameters, [], [], $server);
+    $request = Request::create($uri, $method, $parameters, [], [], $server);
     $response = $httpKernel->handle($request);
     $body = $response->getContent() ?: '';
     $urls = [];

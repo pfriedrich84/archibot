@@ -5,7 +5,6 @@
  *
  * Usage: php raw_http_server.php <gzip|chunked|chunked-under-limit> <ready-file>
  */
-
 $scenario = $argv[1] ?? '';
 $readyFile = $argv[2] ?? '';
 $server = stream_socket_server('tcp://127.0.0.1:0', $errorNumber, $errorMessage);

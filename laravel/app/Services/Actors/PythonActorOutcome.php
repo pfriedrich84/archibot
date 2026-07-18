@@ -8,6 +8,7 @@ use RuntimeException;
 final readonly class PythonActorOutcome
 {
     public const PROTOCOL = 'archibot.actor-outcome';
+
     public const VERSION = 1;
 
     /** @var array<int, string> */
@@ -121,6 +122,7 @@ final readonly class PythonActorOutcome
     {
         try {
             new DateTimeImmutable($value);
+
             return trim($value) !== '';
         } catch (\Throwable) {
             return false;

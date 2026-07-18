@@ -4,6 +4,7 @@ namespace App\Services\Pipeline;
 
 use App\Models\PipelineEvent;
 use App\Models\PollCandidate;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -86,7 +87,7 @@ class PollCandidateConsumer
         });
     }
 
-    /** @param \Illuminate\Database\Eloquent\Builder<PollCandidate> $query */
+    /** @param Builder<PollCandidate> $query */
     private function consumeQuery($query, int $limit): array
     {
         $counts = ['completed' => 0, 'skipped' => 0, 'failed' => 0];
@@ -210,7 +211,7 @@ class PollCandidateConsumer
         ]) === 1;
     }
 
-    /** @return \Illuminate\Database\Eloquent\Builder<PollCandidate> */
+    /** @return Builder<PollCandidate> */
     private function claimedQuery(PollCandidateLease $lease)
     {
         return PollCandidate::query()

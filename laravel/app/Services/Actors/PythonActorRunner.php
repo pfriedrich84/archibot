@@ -13,11 +13,17 @@ use Symfony\Component\Process\Process;
 class PythonActorRunner
 {
     public const ACTOR_BUILD_EMBEDDING_INDEX = 'build_embedding_index';
+
     public const ACTOR_HANDLE_DOCUMENT_PIPELINE = 'handle_document_pipeline';
+
     public const ACTOR_COMMIT_REVIEW_SUGGESTION = 'commit_review_suggestion';
+
     public const ACTOR_POLL_RECONCILIATION = 'reconcile_inbox_documents';
+
     public const ACTOR_REINDEX = 'reindex';
+
     public const ACTOR_REINDEX_OCR = 'reindex_ocr';
+
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
     public function runEmbeddingIndexBuild(Command $command, ActorInvocationClaim $claim): void

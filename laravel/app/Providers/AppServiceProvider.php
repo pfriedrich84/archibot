@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use LogicException;
+use PHPUnit\Framework\TestCase;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,7 +48,7 @@ class AppServiceProvider extends ServiceProvider
         Date::use(CarbonImmutable::class);
 
         $testDatabaseAdapterActive = app()->environment('testing')
-            && class_exists(\PHPUnit\Framework\TestCase::class);
+            && class_exists(TestCase::class);
         if (config('database.default') !== 'pgsql' && ! $testDatabaseAdapterActive) {
             throw new LogicException('ArchiBot product startup requires PostgreSQL.');
         }

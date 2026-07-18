@@ -248,12 +248,10 @@ class PostgresActorFencingUpgradeTest extends TestCase
         $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
         $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $webhook->fresh()->status);
         Queue::assertPushed(RunPythonActorJob::class, 1);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool =>
-            $job->actorName === PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE
             && $job->commandId === $run->id
         );
-        Queue::assertNotPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool =>
-            $job->actorName === PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK
+        Queue::assertNotPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK
         );
     }
 

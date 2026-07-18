@@ -342,8 +342,7 @@ class AdminSettingsTest extends TestCase
                 && str_starts_with($visionImage, 'data:image/png;base64,')
                 && $this->isExpectedVisionFixture(substr($visionImage, strlen('data:image/png;base64,')));
 
-            return Http::response(['choices' => [['message' => ['content' =>
-                $request['model'] === 'manual/ocr_vision-model' && $visionPassed
+            return Http::response(['choices' => [['message' => ['content' => $request['model'] === 'manual/ocr_vision-model' && $visionPassed
                     ? 'VISION_OK:A7K9'
                     : 'ARCHIBOT_OK',
             ]]]]);
@@ -398,8 +397,7 @@ class AdminSettingsTest extends TestCase
             $visionImage = $request['messages'][0]['images'][0] ?? null;
             $visionPassed = is_string($visionImage) && $this->isExpectedVisionFixture($visionImage);
 
-            return Http::response(['message' => ['content' =>
-                $request['model'] === 'manual-ocr_vision' && $visionPassed
+            return Http::response(['message' => ['content' => $request['model'] === 'manual-ocr_vision' && $visionPassed
                     ? 'VISION_OK:A7K9'
                     : 'ARCHIBOT_OK',
             ]]);

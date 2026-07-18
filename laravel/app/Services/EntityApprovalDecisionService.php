@@ -101,6 +101,7 @@ class EntityApprovalDecisionService
         if ($dispatchRequired) {
             ApplyEntityApprovalCommand::dispatch($command->id)->afterCommit();
         }
+
         return $command;
     }
 
@@ -256,6 +257,7 @@ class EntityApprovalDecisionService
             default => throw new \RuntimeException('Unsupported entity approval type.'),
         };
         $this->afterPaperlessEntityCreated($entity, $created);
+
         return $created;
     }
 
@@ -278,7 +280,8 @@ class EntityApprovalDecisionService
             throw new \RuntimeException('Approved entity application requires a Paperless id.');
         }
         $suggestions = $this->matchingSuggestions($entity)->get();
-        $updated = 0; $patched = 0;
+        $updated = 0;
+        $patched = 0;
         foreach ($suggestions as $suggestion) {
             $this->assertCurrentDecision($entity, $command);
             $fields = [];
@@ -287,11 +290,15 @@ class EntityApprovalDecisionService
                 $matched = false;
                 $tags = collect($suggestion->proposed_tags ?? [])->map(function ($tag) use ($entity, &$matched) {
                     if (is_array($tag) && mb_strtolower((string) ($tag['name'] ?? '')) === mb_strtolower($entity->name)) {
-                        $tag['id'] = $entity->paperless_id; $matched = true;
+                        $tag['id'] = $entity->paperless_id;
+                        $matched = true;
                     }
+
                     return $tag;
                 })->all();
-                if (! $matched) { continue; }
+                if (! $matched) {
+                    continue;
+                }
                 $suggestionUpdates['proposed_tags'] = $tags;
                 $fields['tags'] = collect($tags)->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
             } elseif ($entity->type === EntityApproval::TYPE_CORRESPONDENT) {
@@ -315,6 +322,7 @@ class EntityApprovalDecisionService
             $suggestion->forceFill($suggestionUpdates)->save();
             $updated++;
         }
+
         return [$updated, $patched];
     }
 
@@ -360,6 +368,7 @@ class EntityApprovalDecisionService
     private function matchingSuggestions(EntityApproval $entity)
     {
         $query = ReviewSuggestion::query()->whereIn('status', [ReviewSuggestion::STATUS_PENDING, ReviewSuggestion::STATUS_ACCEPTED]);
+
         return match ($entity->type) {
             EntityApproval::TYPE_TAG => $query->whereNotNull('proposed_tags'),
             EntityApproval::TYPE_CORRESPONDENT => $query->whereNull('proposed_correspondent_id')->whereRaw('LOWER(proposed_correspondent_name) = LOWER(?)', [$entity->name]),

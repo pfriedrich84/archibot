@@ -7,6 +7,7 @@ use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
+use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\User;
 use App\Models\WebhookDelivery;
@@ -314,7 +315,7 @@ class DiagnosticAuthorizationTest extends TestCase
             'retry_mode' => 'manual.RETRY_MODE_SECRET',
             'error_type' => $maliciousErrorType,
         ]);
-        \App\Models\PipelineEvent::query()->create([
+        PipelineEvent::query()->create([
             'pipeline_run_id' => $run->id,
             'webhook_delivery_id' => $delivery->id,
             'event_type' => $maliciousPipelineEvent,
@@ -396,7 +397,7 @@ class DiagnosticAuthorizationTest extends TestCase
             'paperless_document_id' => 42,
             'progress_current_phase' => 'review_commit_paperless',
         ]);
-        \App\Models\PipelineEvent::query()->create([
+        PipelineEvent::query()->create([
             'pipeline_run_id' => $run->id,
             'event_type' => 'poll.reconciliation.completed',
             'level' => 'info',

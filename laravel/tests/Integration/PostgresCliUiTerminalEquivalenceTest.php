@@ -234,6 +234,7 @@ class PostgresCliUiTerminalEquivalenceTest extends TestCase
     private function commandTerminalSnapshot(Command $command): array
     {
         $execution = ActorExecution::query()->where('command_id', $command->id)->latest()->firstOrFail();
+
         return [
             'command_status' => $command->status,
             'command_error' => $command->error,
@@ -285,6 +286,7 @@ class PostgresCliUiTerminalEquivalenceTest extends TestCase
     private function pipelineTerminalSnapshot(PipelineRun $run): array
     {
         $execution = ActorExecution::query()->where('pipeline_run_id', $run->id)->latest()->firstOrFail();
+
         return [
             'run_status' => $run->status,
             'run_error_type' => $run->error_type,

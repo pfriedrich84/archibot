@@ -86,5 +86,4 @@ class ErrorsController extends Controller
             'can_dismiss' => $canControl,
         ];
     }
-
 }

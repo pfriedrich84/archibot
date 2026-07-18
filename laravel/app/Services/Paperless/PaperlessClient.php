@@ -144,7 +144,7 @@ class PaperlessClient
     /**
      * Manual-review seam. Storage path may only transition from absent to set.
      *
-     * @param array<string, mixed> $fields
+     * @param  array<string, mixed>  $fields
      */
     public function patchReviewedDocument(string $token, int $documentId, array $fields): void
     {
@@ -172,8 +172,8 @@ class PaperlessClient
     }
 
     /**
-     * @param array<string, mixed> $fields
-     * @param array<int, string> $safeFields
+     * @param  array<string, mixed>  $fields
+     * @param  array<int, string>  $safeFields
      */
     private function patchDocumentFields(string $token, int $documentId, array $fields, array $safeFields): void
     {
@@ -513,6 +513,7 @@ class PaperlessClient
                 return (int) $item['id'];
             }
         }
+
         return null;
     }
 
