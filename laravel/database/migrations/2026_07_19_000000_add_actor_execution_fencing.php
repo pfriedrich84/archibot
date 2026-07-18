@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /** PostgreSQL can atomically roll back this upgrade, including DDL. */
-    public bool $withinTransaction = true;
+    public $withinTransaction = true;
 
     public function up(): void
     {
