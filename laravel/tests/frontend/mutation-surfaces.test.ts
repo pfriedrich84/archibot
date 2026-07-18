@@ -126,6 +126,13 @@ describe('all changed mutation surfaces', () => {
             paperlessUrl: 'https://paperless.test',
             actions: { store: '/setup', paperlessTags: '/setup/tags' },
         });
+        expect(
+            (
+                screen.getByRole('button', {
+                    name: 'AI providers, available after setup completion',
+                }) as HTMLButtonElement
+            ).disabled,
+        ).toBe(true);
         expect(await submitEveryFormOnce(setup, 1)).toEqual([
             { action: '/setup', method: 'post' },
         ]);
