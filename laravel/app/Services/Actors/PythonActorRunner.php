@@ -18,7 +18,6 @@ class PythonActorRunner
     public const ACTOR_POLL_RECONCILIATION = 'reconcile_inbox_documents';
     public const ACTOR_REINDEX = 'reindex';
     public const ACTOR_REINDEX_OCR = 'reindex_ocr';
-    public const ACTOR_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
     public function runEmbeddingIndexBuild(Command $command, ActorInvocationClaim $claim): void
@@ -43,12 +42,6 @@ class PythonActorRunner
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX_OCR);
         $this->runCommandActor($command, $claim, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
-    }
-
-    public function runSyncEntityApproval(Command $command, ActorInvocationClaim $claim): void
-    {
-        $this->assertCommandType($command, Command::TYPE_SYNC_ENTITY_APPROVAL);
-        $this->runCommandActor($command, $claim, self::ACTOR_SYNC_ENTITY_APPROVAL, ['sync-entity-approval', '--command-id', (string) $command->id]);
     }
 
     public function runWebhookDelivery(WebhookDelivery $delivery, ActorInvocationClaim $claim): void

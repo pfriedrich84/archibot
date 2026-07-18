@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import (
     _clamp_confidence,
@@ -13,6 +15,12 @@ from app.pipeline.classifier import (
     _resolve_entity_name,
     build_user_prompt,
 )
+
+
+@pytest.fixture(autouse=True)
+def _postgres_blacklist_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep prompt unit tests isolated from the shared PostgreSQL service."""
+    monkeypatch.setattr("app.pipeline.classifier.rejected_entity_names", lambda _kind: [])
 
 
 # ---------------------------------------------------------------------------
@@ -186,19 +194,17 @@ class TestBuildUserPrompt:
         sample_doctypes: list[PaperlessEntity],
         sample_storage_paths: list[PaperlessEntity],
         sample_tags: list[PaperlessEntity],
-        patch_db,
-        db_conn,
-        tmp_db,
         monkeypatch,
     ):
-        from tests.conftest import _mock_get_conn
-
-        monkeypatch.setattr("app.pipeline.classifier.get_conn", lambda: _mock_get_conn(tmp_db))
+        names = {
+            "tag": ["SpamTag"],
+            "correspondent": ["Blocked Sender"],
+            "document_type": ["Blocked Type"],
+        }
+        monkeypatch.setattr(
+            "app.pipeline.classifier.rejected_entity_names", lambda kind: names[kind]
+        )
         monkeypatch.setattr("app.pipeline.classifier.settings.classification_max_tags", 2)
-        db_conn.execute("INSERT INTO tag_blacklist (name) VALUES ('SpamTag')")
-        db_conn.execute("INSERT INTO correspondent_blacklist (name) VALUES ('Blocked Sender')")
-        db_conn.execute("INSERT INTO doctype_blacklist (name) VALUES ('Blocked Type')")
-        db_conn.commit()
 
         prompt = build_user_prompt(
             target=sample_doc,
@@ -215,6 +221,18 @@ class TestBuildUserPrompt:
         assert "Blocked Sender" in prompt
         assert "Blocked Type" in prompt
         assert "maximal 2" in prompt
+
+    def test_blacklist_repository_failure_blocks_classification_prompt(
+        self,
+        sample_doc: PaperlessDocument,
+        monkeypatch,
+    ):
+        def unavailable(_kind: str):
+            raise RuntimeError("postgres blacklist unavailable")
+
+        monkeypatch.setattr("app.pipeline.classifier.rejected_entity_names", unavailable)
+        with pytest.raises(RuntimeError, match="postgres blacklist unavailable"):
+            build_user_prompt(sample_doc, [], [], [], [], [])
 
     def test_no_context_docs(
         self,

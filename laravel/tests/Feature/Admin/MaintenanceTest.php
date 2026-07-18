@@ -27,37 +27,30 @@ class MaintenanceTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_maintenance_page_no_longer_exposes_reset_controls(): void
+    public function test_admin_ui_reset_uses_shared_backend_with_confirmation_and_audit(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
+        Command::query()->create(['type' => Command::TYPE_REINDEX, 'status' => Command::STATUS_SUCCEEDED, 'payload' => []]);
 
-        $this->actingAs($admin)
-            ->get(route('admin.maintenance.index'))
-            ->assertOk()
-            ->assertDontSee('Queue database reset')
-            ->assertDontSee('RESET CONFIG');
+        $this->actingAs($admin)->post(route('admin.maintenance.reset'), ['confirmation' => 'wrong'])
+            ->assertSessionHasErrors('confirmation');
+        $this->assertSame(1, Command::query()->count());
 
-        $this->assertStringNotContainsString('reset.form', file_get_contents(resource_path('js/pages/admin/Maintenance.svelte')));
+        $this->actingAs($admin)->post(route('admin.maintenance.reset'), ['confirmation' => 'RESET'])
+            ->assertRedirect(route('admin.maintenance.index'));
+        $this->assertSame(0, Command::query()->count());
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'event' => 'maintenance.reset_completed',
+            'target_type' => 'system',
+        ]);
     }
 
-    public function test_gui_reset_route_is_removed_for_admin_and_non_admin_users(): void
+    public function test_non_admin_cannot_use_ui_reset(): void
     {
-        Queue::fake();
-        $admin = User::factory()->create(['is_admin' => true]);
         $user = User::factory()->create(['is_admin' => false]);
-
-        $this->actingAs($admin)
-            ->post('/admin/maintenance/reset', ['confirmation' => 'RESET'])
-            ->assertNotFound();
-
-        $this->actingAs($user)
-            ->post('/admin/maintenance/reset', ['confirmation' => 'RESET'])
-            ->assertNotFound();
-
-        Queue::assertNothingPushed();
-        $this->assertDatabaseMissing('audit_logs', [
-            'event' => 'maintenance.reset_requested',
-        ]);
+        $this->actingAs($user)->post(route('admin.maintenance.reset'), ['confirmation' => 'RESET'])
+            ->assertForbidden();
     }
 
     public function test_recovery_now_runs_pipeline_actor_recovery_and_writes_audit_log(): void
@@ -79,9 +72,9 @@ class MaintenanceTest extends TestCase
             'paperless_document_id' => 42,
         ]);
         $command = Command::query()->create([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
+            'type' => Command::TYPE_REINDEX,
             'status' => Command::STATUS_PENDING,
-            'payload' => ['action' => 'approve', 'type' => 'tag', 'name' => 'Invoices'],
+            'payload' => [],
         ]);
 
         $this->actingAs($admin)
@@ -91,7 +84,7 @@ class MaintenanceTest extends TestCase
         $this->assertSame(ActorExecution::STATUS_FAILED_PERMANENT, $execution->fresh()->status);
         $this->assertSame(PipelineRun::STATUS_CANCELLED, $run->fresh()->status);
         $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'sync_entity_approval'
+        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'reindex'
             && $job->commandId === $command->id);
 
         $this->assertDatabaseHas('audit_logs', [
@@ -148,25 +141,42 @@ class MaintenanceTest extends TestCase
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
     }
 
-    public function test_cli_maintenance_command_uses_same_durable_backend(): void
+    public function test_cli_maintenance_commands_use_the_same_durable_backend_as_ui_controls(): void
     {
         Queue::fake();
-        User::factory()->create(['is_admin' => true]);
 
-        $this->artisan('archibot:maintenance-command', ['type' => 'reindex_ocr', '--force' => true])
-            ->assertSuccessful();
+        $cases = [
+            ['poll', false, Command::TYPE_POLL_RECONCILIATION],
+            ['poll', true, Command::TYPE_POLL_RECONCILIATION],
+            ['reindex', false, Command::TYPE_REINDEX],
+            ['reindex_embed', false, Command::TYPE_EMBEDDING_INDEX_BUILD],
+            ['reindex_ocr', true, Command::TYPE_REINDEX_OCR],
+        ];
 
-        $command = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
-        $this->assertTrue($command->payload['force']);
-        $this->assertSame('cli', $command->payload['source']);
+        foreach ($cases as [$type, $force, $expectedType]) {
+            $arguments = ['type' => $type];
+            if ($force) {
+                $arguments['--force'] = true;
+            }
+            $this->artisan('archibot:maintenance-command', $arguments)->assertSuccessful();
+
+            $command = Command::query()->latest('id')->firstOrFail();
+            $this->assertSame($expectedType, $command->type);
+            $this->assertSame(Command::STATUS_QUEUED, $command->status);
+            $this->assertSame('cli', $command->payload['source']);
+            $this->assertNull($command->created_by_user_id);
+            if ($type === 'poll' || $type === 'reindex_ocr') {
+                $this->assertSame($force, $command->payload['force']);
+            }
+        }
+
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertPushed(RunPythonActorJob::class, count($cases));
     }
 
     public function test_cli_maintenance_command_starts_manual_document_pipeline(): void
     {
         Queue::fake();
-        $admin = User::factory()->create(['is_admin' => true]);
 
         $this->artisan('archibot:maintenance-command', [
             'type' => 'process_document',
@@ -180,7 +190,7 @@ class MaintenanceTest extends TestCase
         $this->assertTrue($run->reprocess_requested);
         $this->assertSame('manual_force', $run->reprocess_reason);
         $this->assertSame('manual', $run->reprocess_mode);
-        $this->assertSame($admin->id, $run->requested_by_user_id);
+        $this->assertNull($run->requested_by_user_id);
     }
 
     public function test_admin_can_start_manual_document_pipeline_from_maintenance(): void
@@ -247,5 +257,8 @@ class MaintenanceTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseCount('commands', 0);
+        $audit = AuditLog::query()->where('event', 'maintenance.reset_completed')->firstOrFail();
+        $this->assertNull($audit->actor_user_id);
+        $this->assertSame('local_operator', $audit->metadata['actor_principal']);
     }
 }

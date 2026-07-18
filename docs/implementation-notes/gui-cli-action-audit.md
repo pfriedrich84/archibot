@@ -144,7 +144,7 @@ Do not preserve old worker-job rows, detail pages, retry lineage, or logs. Runti
 
 | Action | CLI command | Current implementation | GUI/backend parity | Recommendation |
 | --- | --- | --- | --- | --- |
-| Reset | `archibot reset --yes` | Delegates to `php artisan archibot:reset --yes` | CLI-only by design | Keep |
+| Reset | `archibot reset --yes` | Delegates to `php artisan archibot:reset --yes` | Confirmed admin Maintenance reset through the same service | Equivalent |
 | Poll | `archibot poll [--force]` | Delegates to `php artisan archibot:maintenance-command poll` | Same durable `poll_reconciliation` command as Maintenance | Done |
 | Full reindex | `archibot reindex` | Delegates to `php artisan archibot:maintenance-command reindex` | Same durable `reindex` command as Maintenance | Done |
 | OCR reindex | `archibot reindex-ocr [--force]` | Delegates to `php artisan archibot:maintenance-command reindex_ocr` | Same durable `reindex_ocr` command as Maintenance; no direct operator mode | Done |
@@ -164,7 +164,7 @@ Worker Jobs are now planned for clean-state removal. The audit found active refe
 - **Runtime execution:** `RunPythonWorkerJob`, `WorkerJobDispatcher`, `PythonWorkerCommand`, `WorkerResultIngestor`, and `WorkerJobRecovery` have been removed; productive work uses fixed actor jobs and durable command/pipeline state.
 - **Migrated flow:** `reindex_ocr` no longer creates productive `worker_jobs` rows from Maintenance/Control Center. GUI requests create durable `reindex_ocr` commands and dispatch `RunPythonActorJob::reindexOcr`, matching the technical default used by poll, full reindex, and embedding builds.
 - **Visibility references:** dashboard/errors/stats/pipeline detail pages no longer show or link worker rows; operator history is durable-only through `/operations-log`, `/pipeline-runs`, webhook delivery pages and audit logs.
-- **Review/entity references:** review commits and entity approval syncs now use durable commands/actors rather than worker-job rows.
+- **Review/entity references:** review commits use durable commands/actors. Entity decisions use a synchronous durable Laravel/PostgreSQL Command seam with events/audits and no Python/SQLite sync actor.
 - **Health/readiness:** `/healthz`, dashboard readiness and recovery controls no longer check stale/failed worker jobs; recovery targets durable commands, pipeline runs, webhook deliveries and actor executions.
 
 Conclusion: the `worker_jobs` backend/table/routes/controllers/jobs/recovery/results/tests have been removed as a clean-install breaking cleanup. Do not migrate old rows, do not keep backend compatibility, and do not create `/worker-jobs` or `/legacy-worker-jobs` surfaces.

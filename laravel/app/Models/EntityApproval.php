@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['type', 'name', 'status', 'paperless_id', 'source_review_suggestion_id', 'reviewed_by_user_id', 'reviewed_at', 'sync_status'])]
+#[Fillable(['type', 'name', 'status', 'paperless_id', 'source_review_suggestion_id', 'reviewed_by_user_id', 'reviewed_at', 'sync_status', 'decision_version', 'active_decision_token', 'active_decision_action', 'active_decision_command_id'])]
 class EntityApproval extends Model
 {
     use HasFactory;
@@ -35,6 +35,7 @@ class EntityApproval extends Model
     {
         return [
             'reviewed_at' => 'datetime',
+            'decision_version' => 'integer',
         ];
     }
 

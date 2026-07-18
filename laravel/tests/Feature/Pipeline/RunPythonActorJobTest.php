@@ -504,7 +504,6 @@ $actor = match ($actorCommand) {
     'reindex-ocr' => 'reindex_ocr',
     'handle-webhook' => 'handle_paperless_webhook',
     'commit-review' => 'commit_review_suggestion',
-    'sync-entity-approval' => 'sync_entity_approval',
 };
 echo json_encode([
     'protocol' => 'archibot.actor-outcome',

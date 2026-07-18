@@ -61,7 +61,6 @@ class PythonActorSubprocessMatrixTest extends TestCase
             'poll' => ['command', Command::TYPE_POLL_RECONCILIATION],
             'reindex' => ['command', Command::TYPE_REINDEX],
             'ocr-reindex' => ['command', Command::TYPE_REINDEX_OCR],
-            'entity-approval' => ['command', Command::TYPE_SYNC_ENTITY_APPROVAL],
         ];
     }
 
@@ -189,7 +188,6 @@ class PythonActorSubprocessMatrixTest extends TestCase
 
         $payload = match ($type) {
             Command::TYPE_REVIEW_COMMIT => ['review_suggestion_id' => 88],
-            Command::TYPE_SYNC_ENTITY_APPROVAL => ['action' => 'approve', 'type' => 'tag', 'name' => 'Fixture'],
             default => [],
         };
         $source = Command::query()->create([
@@ -201,7 +199,6 @@ class PythonActorSubprocessMatrixTest extends TestCase
             Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($source->id),
             Command::TYPE_REINDEX => RunPythonActorJob::reindex($source->id),
             Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($source->id),
-            Command::TYPE_SYNC_ENTITY_APPROVAL => RunPythonActorJob::syncEntityApproval($source->id),
         };
 
         return [$job, $source];

@@ -8,28 +8,22 @@ calling allowlisted Python actor implementations.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import traceback
 from collections.abc import Sequence
 from typing import NoReturn
 
 import structlog
-from sqlalchemy import text as sql_text
 
 from app.execution_lifecycle import (
     DomainOutcome,
     DomainStatus,
-    ExecutionLifecycle,
     InvocationFence,
-    finish_actor_execution,
     outcome_for_source,
     protocol_failure,
     reset_invocation_fence,
     set_invocation_fence,
-    start_actor_execution,
 )
 from app.jobs.commands import CommandRecord, load_command
-from app.jobs.database import engine
 from app.jobs.pipeline_fence import (
     document_actor_lease,
     embedding_index_ready,
@@ -43,7 +37,6 @@ POLL_RECONCILIATION_COMMAND_TYPE = "poll_reconciliation"
 REINDEX_COMMAND_TYPE = "reindex"
 REINDEX_OCR_COMMAND_TYPE = "reindex_ocr"
 REVIEW_COMMIT_COMMAND_TYPE = "review_commit"
-SYNC_ENTITY_APPROVAL_COMMAND_TYPE = "sync_entity_approval"
 
 
 class ActorRunnerError(RuntimeError):
@@ -253,64 +246,6 @@ def run_reindex_ocr_command(command_id: int) -> None:
     log.info("ocr reindex actor command finished", command_id=command.id)
 
 
-def run_sync_entity_approval_command(command_id: int) -> None:
-    """Run entity approval sync from durable command payload."""
-    from app.cli import cmd_sync_entity_approval
-    from app.db import init_db
-
-    command = _load_typed_command(command_id, SYNC_ENTITY_APPROVAL_COMMAND_TYPE)
-    action = command.payload.get("action")
-    entity_type = command.payload.get("type")
-    name = command.payload.get("name")
-    paperless_id = command.payload.get("paperless_id")
-    if not isinstance(action, str) or not isinstance(entity_type, str) or not isinstance(name, str):
-        raise ActorRunnerError(f"Command {command.id} requires payload action, type, and name")
-    if paperless_id is not None:
-        try:
-            paperless_id = int(paperless_id)
-        except (TypeError, ValueError) as exc:
-            raise ActorRunnerError(
-                f"Command {command.id} has invalid payload.paperless_id"
-            ) from exc
-
-    entity_approval_id = command.payload.get("entity_approval_id")
-    actor_execution = start_actor_execution(
-        actor_name=SYNC_ENTITY_APPROVAL_COMMAND_TYPE,
-        command_id=command.id,
-        queue_name="laravel.database",
-    )
-    log.info(
-        "entity approval sync actor command started",
-        command_id=command.id,
-        action=action,
-        entity_type=entity_type,
-    )
-    try:
-        init_db()
-        asyncio.run(cmd_sync_entity_approval(action, entity_type, name, paperless_id))
-    except Exception as exc:
-        ExecutionLifecycle(actor_execution).fail(exc)
-        _mark_entity_approval_sync_status(entity_approval_id, "failed")
-        raise
-    _mark_entity_approval_sync_status(entity_approval_id, "synced")
-    finish_actor_execution(actor_execution, status="succeeded")
-    log.info("entity approval sync actor command succeeded", command_id=command.id)
-
-
-def _mark_entity_approval_sync_status(entity_approval_id: object, status: str) -> None:
-    if not isinstance(entity_approval_id, int):
-        return
-    with engine().begin() as connection:
-        connection.execute(
-            sql_text("""
-                UPDATE entity_approvals
-                SET sync_status = :status, updated_at = CURRENT_TIMESTAMP
-                WHERE id = :id
-            """),
-            {"status": status, "id": entity_approval_id},
-        )
-
-
 def run_document_pipeline(pipeline_run_id: int) -> None:
     """Run one document actor while this Python child owns the shared lease."""
     with document_actor_lease() as lease_connection:
@@ -431,17 +366,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durable webhook_deliveries.id for a Paperless webhook delivery",
     )
 
-    sync_entity = subparsers.add_parser(
-        "sync-entity-approval",
-        help="Run entity approval sync from a durable command id",
-    )
-    sync_entity.add_argument(
-        "--command-id",
-        type=int,
-        required=True,
-        help="Durable commands.id for a sync_entity_approval command",
-    )
-
     review = subparsers.add_parser(
         "commit-review",
         help="Run a review commit actor from a durable command id",
@@ -460,7 +384,6 @@ def build_parser() -> argparse.ArgumentParser:
         reindex,
         ocr_reindex,
         webhook,
-        sync_entity,
         review,
     ):
         actor_parser.add_argument("--execution-token", required=True)
@@ -527,14 +450,6 @@ def _invocation(args: argparse.Namespace):
             "commit_review_suggestion",
             "command",
             "commit_review_suggestion",
-        )
-    if args.command == "sync-entity-approval":
-        return (
-            run_sync_entity_approval_command,
-            args.command_id,
-            "sync_entity_approval",
-            "command",
-            "sync_entity_approval",
         )
     raise ActorRunnerError(f"Unsupported actor command: {args.command}")
 

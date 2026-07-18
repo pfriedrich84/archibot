@@ -202,7 +202,6 @@ def test_run_webhook_delivery_invokes_fixed_actor(monkeypatch):
         (["reindex-ocr", "--command-id", "1"], "reindex_ocr", "command"),
         (["handle-webhook", "--delivery-id", "1"], "handle_paperless_webhook", "webhook_delivery"),
         (["commit-review", "--command-id", "1"], "commit_review_suggestion", "command"),
-        (["sync-entity-approval", "--command-id", "1"], "sync_entity_approval", "command"),
     ],
 )
 def test_every_actor_family_has_fixed_protocol_identity(argv, actor, source_kind):
@@ -225,7 +224,6 @@ def test_every_actor_family_has_fixed_protocol_identity(argv, actor, source_kind
         (["reindex-ocr", "--command-id", "1"], "reindex_ocr", "command"),
         (["handle-webhook", "--delivery-id", "1"], "handle_paperless_webhook", "webhook_delivery"),
         (["commit-review", "--command-id", "1"], "commit_review_suggestion", "command"),
-        (["sync-entity-approval", "--command-id", "1"], "sync_entity_approval", "command"),
     ],
 )
 def test_every_actor_family_real_subprocess_emits_protocol_failure_on_bootstrap_failure(

@@ -93,7 +93,7 @@ Es gibt **fuenf Wege**, wie ein Dokument in die Pipeline gelangt:
 | **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → festes Python-Discovery-Kommando → versionierte `poll_candidates` → Laravel `PollCandidateConsumer` → `DocumentPipelineStarter` | Ja, Marker-Disposition wird dauerhaft protokolliert |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware erzwingt vor Controller/Persistenz Roh-Body-Limit, gemeinsames per-Client Rate-Limit fuer beide Aliase und ein nicht leeres effektives Secret (verschluesselte globale Einstellung vor Deployment-Konfiguration) mit `hash_equals`; danach speichert Laravel redigierte `webhook_deliveries`. Create/Process-Events starten `pipeline_runs` und queuen `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, Refresh/Delete-Events queuen `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)`. | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
-| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py`; Ziel ist Delegation an Laravel durable Commands fuer produktive Operator-Aktionen | Ja fuer event-driven Starts/Reindex; manuelle Legacy-Pfade pruefen Guards |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge (Actors nutzen `app.actor_runner`) |
 
 ## Inbox-Seite (`/inbox`)
 
@@ -184,11 +184,9 @@ Die Browser-Datenvertraege enthalten nur explizit erlaubte skalare Metadaten mit
 | `processed_documents` | Legacy-Python-Pollstatus; nicht Source of Truth fuer den event-driven Pfad |
 | `suggestions` | Legacy-LLM-Vorschlaege (original vs. proposed, Status pending/committed/rejected) |
 | `document_embeddings` | PostgreSQL/pgvector Embeddings mit Metadaten und `trusted_for_context` fuer Klassifikationskontext |
-| `tag_whitelist` | Staging fuer unbekannte Tags (name, times_seen, approved) |
-| `tag_blacklist` | Abgelehnte Tags — werden bei zukuenftigen Vorschlaegen ignoriert |
-| `doc_ocr_cache` | Lokal gecachter korrigierter OCR-Text (nie zurueck nach Paperless) |
-| `errors` | Fehler-Audit-Trail (stage, document_id, message) |
-| `audit_log` | Aktions-Audit-Trail (commit, reject, prompt_update) |
+| `entity_approvals` | PostgreSQL-eigene Staging-, Freigabe- und Blacklist-Grenze fuer unbekannte Tags, Korrespondenten und Dokumenttypen; produktive Klassifikation liest abgelehnte Namen ausschliesslich hier. |
+| `document_ocr_corrections` | Gemeinsamer PostgreSQL-Cache fuer lokal korrigierten OCR-Text (nie zurueck nach Paperless). |
+| `tag_whitelist`, `tag_blacklist`, `doc_ocr_cache`, `errors`, `audit_log` | Retired SQLite-Tabellen; kein produktiver CLI/UI-Actor initialisiert oder liest diese Legacy-Daten. |
 | `poll_candidates` | Versionierter, idempotenter Python-Discovery/Laravel-Start-Handoff mit Marker-Disposition, normalisiertem Content-State, Claim/Replay und Starter-Ergebnis |
 | `poll_cycles` | Zusammenfassung pro `poll_inbox()`-Aufruf (started_at, finished_at, succeeded, failed, skipped) |
 | `phase_timing` | Pro-Dokument-Pro-Phase Verarbeitungsdauer (poll_cycle_id, phase, duration_ms, success) |

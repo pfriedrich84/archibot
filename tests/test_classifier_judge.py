@@ -14,6 +14,12 @@ from app.pipeline.classifier import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _postgres_blacklist_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Judge prompt tests do not require the external PostgreSQL service."""
+    monkeypatch.setattr("app.pipeline.classifier.rejected_entity_names", lambda _kind: [])
+
+
 def _initial_result() -> ClassificationResult:
     return ClassificationResult(
         title="Original Title",

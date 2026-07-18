@@ -34,7 +34,7 @@ from app.jobs.pipeline_runs import is_pipeline_run_cancel_requested, load_docume
 from app.jobs.review_suggestions import store_review_suggestion
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import classify
-from app.pipeline.document_processing import maybe_run_judge
+from app.pipeline.judge import maybe_run_judge
 from app.pipeline.ocr_correction import (
     cache_ocr_correction,
     effective_ocr_mode,
@@ -174,7 +174,6 @@ async def _classify_document(
             catalog.storage_paths,
             catalog.tags,
             provider,
-            cycle_id=None,
         )
         return DocumentClassificationOutcome(
             document=processed_document,

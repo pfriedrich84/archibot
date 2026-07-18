@@ -76,13 +76,6 @@ actor_runner.document_actor_lease = lambda: contextlib.nullcontext(object())
 actor_runner.embedding_mutation_lease = lambda: contextlib.nullcontext(object())
 actor_runner.embedding_index_ready = lambda connection: True
 
-
-def run_entity(command_id: int) -> None:
-    deterministic_actor(command_id)
-
-
-actor_runner.run_sync_entity_approval_command = run_entity
-
 # Process/protocol fault cases happen around the genuine final durable outcome.
 original_print = builtins.print
 

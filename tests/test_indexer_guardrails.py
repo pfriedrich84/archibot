@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app import cli, indexer
+from app import indexer
 from app.db import EMBED_DIM
 from app.models import PaperlessDocument
 
@@ -154,19 +154,6 @@ async def test_embedding_failure_reports_document_failed_and_continues(
     failed = next(line for line in lines if line.get("event") == "document_failed")
     assert failed["document_id"] == 3
     assert failed["error"] == "model unavailable"
-
-
-@pytest.mark.asyncio
-async def test_reindex_embed_delegates_gate_transitions_to_laravel(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls = []
-    monkeypatch.setattr(cli, "cmd_laravel_maintenance", lambda command: calls.append(command))
-
-    result = await cli.cmd_reindex_embed(emit_progress=True, job_id="job-7")
-
-    assert calls == ["reindex_embed"]
-    assert result == {"queued": True, "owner": "laravel"}
 
 
 @pytest.mark.asyncio

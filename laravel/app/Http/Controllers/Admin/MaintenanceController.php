@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Command;
+use App\Services\ArchibotResetService;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
@@ -37,6 +38,7 @@ class MaintenanceController extends Controller
                 'recover_pipeline_actors' => route('admin.maintenance.recover-pipeline-actors'),
                 'mark_embedding_stale' => route('embedding-index.mark-stale'),
                 'document_pipeline' => route('admin.maintenance.document-pipeline'),
+                'reset' => route('admin.maintenance.reset'),
             ],
             'recentAuditLogs' => AuditLog::query()
                 ->where('event', 'like', 'maintenance.%')
@@ -94,8 +96,29 @@ class MaintenanceController extends Controller
             requestedByUserId: $request->user()->id,
         );
 
+        $this->audit($request, 'maintenance.document_pipeline_requested', 'pipeline_run', (string) $result->pipelineRun->id, [
+            'actor_principal' => 'authenticated_user',
+            'paperless_document_id' => (int) $validated['paperless_document_id'],
+            'force' => $force,
+        ]);
+
         return redirect()->route('pipeline-runs.show', $result->pipelineRun)
             ->with('status', 'Document Pipeline Run queued.');
+    }
+
+    public function reset(Request $request, ArchibotResetService $reset): RedirectResponse
+    {
+        abort_unless((bool) $request->user()?->is_admin, 403);
+        $request->validate(['confirmation' => ['required', 'in:RESET']]);
+
+        $cleared = $reset->reset(false);
+        $this->audit($request, 'maintenance.reset_completed', 'system', 'archibot', [
+            'actor_principal' => 'authenticated_user',
+            'include_config' => false,
+            'cleared_tables' => $cleared,
+        ]);
+
+        return redirect()->route('admin.maintenance.index')->with('status', 'ArchiBot operational state reset complete.');
     }
 
     public function startCommand(Request $request, MaintenanceCommandDispatcher $maintenanceCommands): RedirectResponse

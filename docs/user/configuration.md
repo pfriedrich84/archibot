@@ -188,7 +188,7 @@ Siehe [Webhook-Doku und Rotations-Runbook](./webhooks.md).
 
 ## MCP Server (optional)
 
-MCP-Transport, Host/Port, Write-Tool-Schalter, Auth-Modus und Rate-Limit koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen.
+MCP-Transport und Host/Port koennen in `/admin/settings` gepflegt werden. Per-user MCP Tokens werden separat unter `/settings/mcp-tokens` erstellt und widerrufen. Seit Hardening-Milestone 2.1 sind alle Tools und Resources retired, bis vollstaendige berechtigungsgebundene Laravel/PostgreSQL-Seams vorliegen; die folgenden Write-, Key- und Classification-Schalter sind daher inert und werden in einem spaeteren Konfigurations-Cleanup entfernt.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -196,12 +196,12 @@ MCP-Transport, Host/Port, Write-Tool-Schalter, Auth-Modus und Rate-Limit koennen
 | `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `sse`, `streamable-http` |
 | `MCP_PORT` | `3001` | Port fuer SSE/HTTP-Transport |
 | `MCP_HOST` | `0.0.0.0` | Bind-Adresse |
-| `MCP_ENABLE_WRITE` | `false` | Write-Tools aktivieren |
-| `MCP_API_KEY` | — | Legacy-API-Key, nur wenn Laravel MCP Auth deaktiviert ist |
-| `MCP_LARAVEL_AUTH_ENABLED` | `true` | MCP-Tokens ueber Laravel pruefen |
+| `MCP_ENABLE_WRITE` | `false` | Inert; es sind keine MCP-Write-Tools registriert |
+| `MCP_API_KEY` | — | Inert fuer registrierte Tools; statische Keys tragen keine verifizierte Benutzeridentitaet |
+| `MCP_LARAVEL_AUTH_ENABLED` | `true` | Muss vor einer zukuenftigen Tool-Rueckkehr aktiv sein; MCP-Tokens ueber Laravel pruefen |
 | `MCP_LARAVEL_PATH` | `/app/laravel` | Pfad zur Laravel-App fuer den lokalen Verifier |
 | `MCP_LARAVEL_PHP_BINARY` | `php` | PHP-Binary fuer den lokalen Verifier |
-| `MCP_CLASSIFY_RATE_LIMIT` | `10` | Max. KI-Klassifikationen pro Stunde (0 = unbegrenzt) |
+| `MCP_CLASSIFY_RATE_LIMIT` | `10` | Inert, solange `classify_document` retired ist |
 
 Details: [MCP-Server-Dokumentation](../developer/mcp.md)
 

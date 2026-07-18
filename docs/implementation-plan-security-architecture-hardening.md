@@ -289,6 +289,8 @@ Acceptance:
 
 ### 2.1 Migrate CLI and MCP off SQLite
 
+Status: implemented (Step 9). Operator CLI commands now delegate exclusively to Laravel Maintenance/Pipeline/Review/reset commands; the fixed Python actor contract remains isolated in `app.actor_runner`. MCP startup has no local product-state backend, every baseline registration is recorded in the disposition matrix, and all tools/resources are retired because none yet has a complete permission-aware Laravel/PostgreSQL data seam. SQLite-backed reads, direct Paperless reads/mutations, classification/status tools and identity-less resources may return only through the named seams and acceptance tests. Productive classification reads rejected entity names from `entity_approvals`, and process-document/OCR actors store local OCR corrections in `document_ocr_corrections`; actor-source and isolated-data-dir guards forbid `app.db`, `get_conn`, and `classifier.db`. Entity decisions use idempotent queued Laravel commands with pending/stale-running recovery and tested crash boundaries around Paperless create/patch. PostgreSQL integration coverage launches fresh queue-worker processes to terminal outcomes for every CLI/UI operation and compares durable source, actor progress, events, audits, failure state, and side effects.
+
 Scope:
 
 - make operator CLI commands delegate to the same Laravel command/Pipeline Run behavior as UI controls;
@@ -302,7 +304,7 @@ Scope:
 
 Acceptance:
 
-- CLI/UI equivalence tests cover poll, force poll, per-document process, reindex, OCR reindex, reset and review commit;
+- CLI/UI equivalence tests cover poll, force poll, per-document process, full reindex, OCR reindex, embedding reindex, reset and review commit, including durable commands/runs, events, audits, progress/outcomes and restart continuity;
 - a committed MCP disposition matrix names every registered tool/resource, replacement seam, identity/permission rule, durable audit/command behavior and deletion criterion;
 - MCP tests cover every retained tool/resource with allowed and denied identities and PostgreSQL-backed state;
 - productive commands never create/read `classifier.db`;

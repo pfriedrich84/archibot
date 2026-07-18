@@ -106,6 +106,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
             Route::post('admin/maintenance/recover-pipeline-actors', [MaintenanceController::class, 'recoverPipelineActors'])->name('admin.maintenance.recover-pipeline-actors');
             Route::post('admin/maintenance/document-pipeline', [MaintenanceController::class, 'startDocumentPipeline'])->name('admin.maintenance.document-pipeline');
             Route::post('admin/maintenance/commands', [MaintenanceController::class, 'startCommand'])->name('admin.maintenance.commands');
+            Route::post('admin/maintenance/reset', [MaintenanceController::class, 'reset'])->name('admin.maintenance.reset');
         });
 
         Route::get('admin/settings/{section?}', [SettingsController::class, 'edit'])->name('admin.settings.edit');

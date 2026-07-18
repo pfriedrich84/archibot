@@ -399,7 +399,7 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
 }
 PIPELINE_RUN_TABLE_MUTATION_OWNERS = {
     START_OWNER,
-    "laravel/app/Console/Commands/ArchibotReset.php",
+    "laravel/app/Services/ArchibotResetService.php",
 }
 
 

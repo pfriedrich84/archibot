@@ -27,15 +27,11 @@
     "b4bcff1c7bcb56893279": 1,
     "c0afa3bf93badc86741e": 2
   },
-  "app/actor_runner.py": {
-    "cc87f0748c9e70e6b4cd": 1
-  },
   "app/actors/__init__.py": {
     "454c9941dc321228aa76": 1
   },
   "app/actors/document.py": {
-    "a64708f826dacca35125": 1,
-    "e7c01380aa2572d405df": 1
+    "a64708f826dacca35125": 1
   },
   "app/actors/embedding.py": {
     "a64708f826dacca35125": 1
@@ -62,20 +58,6 @@
     "b6df44ba70dadba36175": 1,
     "bc62298a67b9a156c022": 1,
     "e082af873416132d2043": 2
-  },
-  "app/cli.py": {
-    "04f91b5dd897a5da15e5": 1,
-    "1be93e27d53d4b48a185": 2,
-    "22f31e6ec1405689c1e2": 1,
-    "50b8fc82c988da789fa2": 1,
-    "5f68968662a060adde2c": 1,
-    "79fbb2755e617f8702c2": 1,
-    "91d19246ea1f1ff99638": 1,
-    "a329df5f77a5b9c61f44": 1,
-    "ad5372dcc617bff6a363": 1,
-    "cc87f0748c9e70e6b4cd": 1,
-    "ea892affe301719a4de3": 1,
-    "f67b78aaca2138ccf596": 7
   },
   "app/config.py": {
     "4ea86bac1ee5c22c332f": 1,
@@ -118,53 +100,6 @@
   "app/jobs/webhook_delivery.py": {
     "918ce2bf8f8ca56c931b": 1
   },
-  "app/mcp_server.py": {
-    "cc87f0748c9e70e6b4cd": 1
-  },
-  "app/mcp_tools/classify.py": {
-    "a46a80cd7006d89888b2": 1
-  },
-  "app/mcp_tools/correspondents.py": {
-    "672813f72bf95f0800f3": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/doctypes.py": {
-    "5765221d3efb4f6c17b8": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/documents.py": {
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/resources.py": {
-    "1be93e27d53d4b48a185": 1,
-    "8338979d4ef6249bc018": 1,
-    "eee9ec7a632877ca4af3": 1,
-    "f08f9154cde83b884a8f": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/suggestions.py": {
-    "3e45ad0c34d123c894ea": 1,
-    "3f091ce043e102cb51ca": 1,
-    "849aa39af2cc27432ba1": 1,
-    "8872117b244fab1f26a2": 1,
-    "89140de4f45d479c2e02": 1,
-    "a121f1f7e8f90a523ace": 1,
-    "b69247099659c55e727a": 1,
-    "ea892affe301719a4de3": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/system.py": {
-    "8338979d4ef6249bc018": 1,
-    "f08f9154cde83b884a8f": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/mcp_tools/tags.py": {
-    "e08e8ad0eace7300c08a": 1,
-    "f67b78aaca2138ccf596": 1
-  },
-  "app/pipeline/classifier.py": {
-    "f67b78aaca2138ccf596": 1
-  },
   "app/pipeline/committer.py": {
     "1be93e27d53d4b48a185": 3,
     "2f4940f004662ceecc8c": 1,
@@ -181,9 +116,6 @@
     "6d3bbf3c3943b4d841e4": 2,
     "8bf63f027b6eb9e83acb": 1,
     "e2fba1fd41523738e23f": 1
-  },
-  "app/pipeline/ocr_correction.py": {
-    "f67b78aaca2138ccf596": 1
   },
   "app/vector_store.py": {
     "20e669d78f6401513a17": 1,

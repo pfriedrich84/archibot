@@ -8,7 +8,7 @@ import re
 import structlog
 
 from app.config import settings
-from app.db import get_conn
+from app.jobs.entity_approvals import rejected_entity_names
 from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
 from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
@@ -104,21 +104,9 @@ def _format_entity_list(label: str, entities: list[PaperlessEntity]) -> str:
     return f"{label}: {names}"
 
 
-def _load_blacklist_names(table: str) -> list[str]:
-    """Load local ArchiBot blacklist names for prompt steering.
-
-    Prompt context is advisory only; DB-side blacklist checks still enforce that
-    rejected entities are not re-staged when the model ignores instructions.
-    """
-    if table not in {"tag_blacklist", "correspondent_blacklist", "doctype_blacklist"}:
-        return []
-    try:
-        with get_conn() as conn:
-            rows = conn.execute(f"SELECT name FROM {table} ORDER BY name LIMIT 100").fetchall()
-    except Exception as exc:  # pragma: no cover - prompt building should not fail on diagnostics
-        log.warning("failed to load entity blacklist for prompt", table=table, error=str(exc))
-        return []
-    return [str(row["name"]).strip() for row in rows if str(row["name"]).strip()]
+def _load_blacklist_names(entity_type: str) -> list[str]:
+    """Load rejected names; fail closed when the durable safety state is unavailable."""
+    return rejected_entity_names(entity_type)
 
 
 def _format_name_list(label: str, names: list[str]) -> str:
@@ -211,9 +199,9 @@ def build_user_prompt(
 ) -> str:
     # --- Fixed sections (entity lists + task instructions) ---
     max_tags = _classification_max_tags()
-    blacklisted_correspondents = _load_blacklist_names("correspondent_blacklist")
-    blacklisted_doctypes = _load_blacklist_names("doctype_blacklist")
-    blacklisted_tags = _load_blacklist_names("tag_blacklist")
+    blacklisted_correspondents = _load_blacklist_names("correspondent")
+    blacklisted_doctypes = _load_blacklist_names("document_type")
+    blacklisted_tags = _load_blacklist_names("tag")
 
     entity_lines: list[str] = [
         "# Verfuegbare Entitaeten in Paperless",

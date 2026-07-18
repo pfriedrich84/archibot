@@ -1,65 +1,39 @@
-"""CLI management commands for manual pipeline triggering.
+"""Operator CLI delegating every product action to Laravel/PostgreSQL.
 
-Usage::
-
-    python -m app.cli reindex          # Full reindex (OCR + embedding)
-    python -m app.cli reindex-ocr      # OCR correction only (skip cached)
-    python -m app.cli reindex-ocr --force  # OCR correction, ignore cache + clean-text heuristic
-    python -m app.cli reindex-embed    # Embedding only (skip OCR)
-    python -m app.cli poll             # Process inbox (OCR + embed + classify)
-    python -m app.cli poll --force     # Reprocess inbox docs (ignore idempotency skip)
-    python -m app.cli process-doc 224  # Process one document by ID
-    python -m app.cli process-doc 224 --force  # Reprocess one document
-    python -m app.cli reset --yes      # Reset through Laravel/PostgreSQL
-    python -m app.cli reset --yes --include-config  # Also clear config/setup state
+Python actor execution has a separate fixed entry point (``app.actor_runner``).
+This module intentionally never initializes or reads the retired SQLite product
+state.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-import json
 import logging
-import signal
 import subprocess
 import sys
-import traceback
-import uuid
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
-from app.ai_provider.factory import create_ai_provider
-from app.clients.paperless import PaperlessClient
 from app.config import settings
-from app.db import init_db
 
-
-def _exception_summary(exc: BaseException) -> str:
-    """Return a compact error summary with the first useful application frame."""
-    message = str(exc).strip()
-    summary = f"{type(exc).__name__}: {message[:700]}" if message else type(exc).__name__
-    frames = traceback.extract_tb(exc.__traceback__)
-    for frame in reversed(frames):
-        filename = frame.filename.rsplit("/", 1)[-1]
-        if frame.filename.endswith("app/cli.py"):
-            continue
-        return f"{summary} ({filename}:{frame.lineno} in {frame.name})"[:1000]
-    return summary[:1000]
+COMMANDS: dict[str, str] = {
+    "reindex": "Queue full reindex through Laravel Maintenance",
+    "reindex-ocr": "Queue OCR reindex through Laravel Maintenance (--force supported)",
+    "reindex-embed": "Queue embedding build through Laravel Maintenance",
+    "poll": "Queue poll reconciliation through Laravel Maintenance (--force supported)",
+    "process-doc": "Queue one document pipeline through Laravel Maintenance",
+    "process-document": "Queue one document pipeline through Laravel Maintenance",
+    "commit-review": "Accept and queue a durable Laravel review suggestion commit",
+    "reset": "Reset via Laravel/PostgreSQL (--yes required)",
+}
 
 
 def _configure_logging() -> None:
-    """Set up structlog for CLI use (always console renderer)."""
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.dev.ConsoleRenderer(colors=False),
         ],
@@ -70,381 +44,7 @@ def _configure_logging() -> None:
     )
 
 
-async def cmd_reindex(
-    *, emit_progress: bool = False, job_id: str | None = None, job_type: str = "reindex"
-) -> dict[str, object]:
-    """Full reindex: OCR correction (if enabled) + embedding."""
-    from datetime import UTC, datetime
-
-    import app.indexer as indexer
-    from app.indexer import enable_reindex_progress_stdout, get_reindex_progress, reindex_all
-
-    enable_reindex_progress_stdout(emit_progress)
-    indexer._reindex_progress.running = True
-    indexer._reindex_progress.cancelled = False
-    indexer._reindex_progress.error = None
-    indexer._reindex_progress.started_at = datetime.now(tz=UTC).isoformat()
-    indexer._reindex_progress.finished_at = None
-    indexer._reindex_progress.job_id = job_id
-    indexer._reindex_progress.job_type = job_type
-
-    paperless = PaperlessClient()
-    ollama = create_ai_provider()
-    try:
-        count = await reindex_all(paperless, ollama)
-        print(f"Reindex complete: {count} documents indexed.")
-        progress = get_reindex_progress()
-        progress.running = False
-        return {
-            "indexed": count,
-            "progress": {
-                "running": progress.running,
-                "phase": progress.phase,
-                "done": progress.done,
-                "total": progress.total,
-                "failed": progress.failed,
-                "cancelled": progress.cancelled,
-                "error": progress.error,
-                "started_at": progress.started_at,
-                "finished_at": progress.finished_at,
-            },
-        }
-    finally:
-        indexer._reindex_progress.running = False
-        await paperless.aclose()
-        await ollama.aclose()
-
-
-async def cmd_reindex_ocr(*, force: bool = False) -> dict[str, object]:
-    """Run OCR correction on all Paperless documents (respects OCR_MODE)."""
-    from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
-
-    mode = effective_ocr_mode()
-    if mode == "off":
-        print("OCR_MODE is 'off' — nothing to do. Set OCR_MODE to text/vision_light/vision_full.")
-        return {"corrected": 0, "mode": mode}
-
-    paperless = PaperlessClient()
-    ollama = create_ai_provider()
-    try:
-        corrected = await batch_correct_documents(paperless, ollama, force=force)
-        print(f"OCR correction complete: {corrected} documents corrected (mode={mode}).")
-        return {"corrected": corrected, "mode": mode}
-    finally:
-        await paperless.aclose()
-        await ollama.aclose()
-
-
-async def cmd_reindex_embed(
-    *, emit_progress: bool = False, job_id: str | None = None, job_type: str = "reindex_embed"
-) -> dict[str, object]:
-    """Queue embedding rebuild through Laravel, the sole fenced owner."""
-    del emit_progress, job_id, job_type
-    cmd_laravel_maintenance("reindex_embed")
-    return {"queued": True, "owner": "laravel"}
-
-
-async def cmd_poll(*, force: bool = False, job_id: str | None = None) -> None:
-    """Process inbox: OCR + embed + classify (same as scheduled poll).
-
-    With ``force=True`` the idempotency skip check is bypassed.
-    """
-    from app.job_events import list_events, record_event
-    from app.worker import enable_poll_progress_stdout, poll_inbox
-
-    paperless = PaperlessClient()
-    ollama = create_ai_provider()
-
-    # The worker needs module-level client refs — set them via start_scheduler's pattern
-    import app.worker as worker
-
-    worker._paperless = paperless
-    worker._ollama = ollama
-    worker._poll_progress.running = True
-    worker._poll_progress.total = 0
-    worker._poll_progress.done = 0
-    worker._poll_progress.succeeded = 0
-    worker._poll_progress.failed = 0
-    worker._poll_progress.skipped = 0
-    worker._poll_progress.phase = "prepare"
-    worker._poll_progress.phase_done = 0
-    worker._poll_progress.phase_total = 0
-    worker._poll_progress.cancelled = False
-    worker._poll_progress.error = None
-    worker._poll_progress.started_at = datetime.now(tz=UTC).isoformat()
-    worker._poll_progress.cycle_id = None
-    worker._poll_progress.job_type = "poll"
-    worker._poll_progress.job_id = job_id or f"cli-poll-{uuid.uuid4().hex[:12]}"
-    record_event(
-        worker._poll_progress.job_id,
-        "poll",
-        "job_started",
-        "CLI-Posteingang-Prüfung gestartet.",
-        phase="prepare",
-    )
-
-    # Wire Ctrl+C to the worker's cooperative cancellation flag
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(
-        signal.SIGINT,
-        lambda: (
-            setattr(worker._poll_progress, "cancelled", True),
-            print("\nInterrupting after current document… (press Ctrl+C again to force)"),
-            loop.remove_signal_handler(signal.SIGINT),
-        ),
-    )
-
-    try:
-        enable_poll_progress_stdout(True)
-        await poll_inbox(force=force)
-        for event in list_events(worker._poll_progress.job_id or "", limit=1000):
-            doc = f" doc=#{event['document_id']}" if event.get("document_id") else ""
-            print(
-                f"[{event['level']}] {event.get('phase') or event['job_type']}{doc}: {event['message']}"
-            )
-        if worker._poll_progress.cancelled:
-            print("Inbox processing cancelled.")
-        else:
-            print("Inbox processing complete.")
-    finally:
-        enable_poll_progress_stdout(False)
-        worker._poll_progress.running = False
-        await paperless.aclose()
-        await ollama.aclose()
-
-
-def _coerce_tag_ids(values: list[object]) -> list[int]:
-    tag_ids: list[int] = []
-    for value in values:
-        try:
-            if value is not None:
-                tag_ids.append(int(value))
-        except (TypeError, ValueError):
-            continue
-    return tag_ids
-
-
-def _coerce_optional_int(value: object) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None
-
-
-async def cmd_process_doc(document_id: int, *, force: bool = False) -> str:
-    """Process exactly one document by ID (OCR + embed + classify)."""
-    from app.db import get_conn
-    from app.pipeline.document_processing import process_document
-
-    paperless = PaperlessClient()
-    ollama = create_ai_provider()
-    try:
-        doc = await paperless.get_document(document_id)
-        correspondents = await paperless.list_correspondents()
-        doctypes = await paperless.list_document_types()
-        storage_paths = await paperless.list_storage_paths()
-        tags = await paperless.list_tags()
-
-        if force:
-            with get_conn() as conn:
-                conn.execute(
-                    "DELETE FROM processed_documents WHERE document_id = ?", (document_id,)
-                )
-
-        result = await process_document(
-            doc,
-            paperless,
-            ollama,
-            correspondents,
-            doctypes,
-            storage_paths,
-            tags,
-        )
-        print(f"Document #{document_id} processing complete: {result}")
-        return result
-    finally:
-        await paperless.aclose()
-        await ollama.aclose()
-
-
-async def cmd_sync_entity_approval(
-    action: str, entity_type: str, name: str, paperless_id: int | None = None
-) -> dict[str, object]:
-    """Synchronize a Laravel-owned entity approval decision into the Python worker DB."""
-    from app.db import get_conn
-    from app.pipeline.committer import (
-        retroactive_correspondent_apply,
-        retroactive_doctype_apply,
-        retroactive_tag_apply,
-    )
-
-    tables = {
-        "tag": (
-            "DELETE FROM tag_blacklist WHERE name = ?",
-            "DELETE FROM tag_whitelist WHERE name = ?",
-            "SELECT times_seen FROM tag_whitelist WHERE name = ?",
-            "INSERT OR REPLACE INTO tag_blacklist (name, times_seen) VALUES (?, ?)",
-            """INSERT INTO tag_whitelist (name, paperless_id, approved)
-               VALUES (?, ?, 1)
-               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
-                                               approved = 1""",
-            retroactive_tag_apply,
-        ),
-        "correspondent": (
-            "DELETE FROM correspondent_blacklist WHERE name = ?",
-            "DELETE FROM correspondent_whitelist WHERE name = ?",
-            "SELECT times_seen FROM correspondent_whitelist WHERE name = ?",
-            "INSERT OR REPLACE INTO correspondent_blacklist (name, times_seen) VALUES (?, ?)",
-            """INSERT INTO correspondent_whitelist (name, paperless_id, approved)
-               VALUES (?, ?, 1)
-               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
-                                               approved = 1""",
-            retroactive_correspondent_apply,
-        ),
-        "document_type": (
-            "DELETE FROM doctype_blacklist WHERE name = ?",
-            "DELETE FROM doctype_whitelist WHERE name = ?",
-            "SELECT times_seen FROM doctype_whitelist WHERE name = ?",
-            "INSERT OR REPLACE INTO doctype_blacklist (name, times_seen) VALUES (?, ?)",
-            """INSERT INTO doctype_whitelist (name, paperless_id, approved)
-               VALUES (?, ?, 1)
-               ON CONFLICT(name) DO UPDATE SET paperless_id = excluded.paperless_id,
-                                               approved = 1""",
-            retroactive_doctype_apply,
-        ),
-    }
-    if entity_type not in tables:
-        raise ValueError(f"Unsupported entity approval type: {entity_type}")
-    if action not in {"approved", "rejected", "unblacklisted"}:
-        raise ValueError(f"Unsupported entity approval action: {action}")
-
-    (
-        delete_blacklist_sql,
-        delete_whitelist_sql,
-        select_whitelist_sql,
-        insert_blacklist_sql,
-        upsert_whitelist_sql,
-        retroactive_apply,
-    ) = tables[entity_type]
-    result: dict[str, object] = {
-        "action": action,
-        "type": entity_type,
-        "name": name,
-        "synced": True,
-    }
-
-    if action == "approved":
-        if paperless_id is None:
-            raise ValueError("Approved entity sync requires paperless_id")
-        with get_conn() as conn:
-            conn.execute(delete_blacklist_sql, (name,))
-            conn.execute(upsert_whitelist_sql, (name, paperless_id))
-            conn.execute(
-                """
-                INSERT INTO audit_log (action, document_id, actor, details)
-                VALUES ('laravel_entity_approval_synced', NULL, 'laravel', ?)
-                """,
-                (
-                    json.dumps(
-                        {
-                            "action": action,
-                            "type": entity_type,
-                            "name": name,
-                            "paperless_id": paperless_id,
-                        }
-                    ),
-                ),
-            )
-
-        paperless = PaperlessClient()
-        try:
-            patched, pending = await retroactive_apply(name, paperless_id, paperless)
-        finally:
-            await paperless.aclose()
-        result.update(
-            {"paperless_id": paperless_id, "patched_docs": patched, "updated_pending": pending}
-        )
-    elif action == "rejected":
-        with get_conn() as conn:
-            row = conn.execute(select_whitelist_sql, (name,)).fetchone()
-            times_seen = row["times_seen"] if row else 1
-            conn.execute(delete_whitelist_sql, (name,))
-            conn.execute(insert_blacklist_sql, (name, times_seen))
-    else:
-        with get_conn() as conn:
-            conn.execute(delete_blacklist_sql, (name,))
-
-    print(f"Entity approval sync complete: {result}")
-    return result
-
-
-async def cmd_commit_review(
-    suggestion_id: int, overrides: dict[str, object] | None = None
-) -> dict[str, object]:
-    """Commit an accepted Python-origin review suggestion to Paperless."""
-    from app.db import get_conn
-    from app.models import ReviewDecision, SuggestionRow
-    from app.pipeline.committer import commit_suggestion
-
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-
-    if row is None:
-        raise ValueError(f"Suggestion #{suggestion_id} not found")
-
-    suggestion = SuggestionRow(**dict(row))
-    proposed_tags = _decode_json_value(suggestion.proposed_tags_json, [])
-    tag_ids = _coerce_tag_ids(
-        [tag.get("id") for tag in proposed_tags if isinstance(tag, dict)]
-        if isinstance(proposed_tags, list)
-        else []
-    )
-    overrides = overrides or {}
-    override_tag_ids = _coerce_tag_ids(
-        overrides.get("tag_ids") if isinstance(overrides.get("tag_ids"), list) else []
-    )
-
-    decision = ReviewDecision(
-        suggestion_id=suggestion.id,
-        title=str(
-            overrides.get("title") or suggestion.proposed_title or suggestion.original_title or ""
-        ),
-        date=str(overrides.get("date") or suggestion.effective_date),
-        correspondent_id=_coerce_optional_int(overrides.get("correspondent_id"))
-        or suggestion.effective_correspondent_id,
-        doctype_id=_coerce_optional_int(overrides.get("doctype_id"))
-        or suggestion.effective_doctype_id,
-        storage_path_id=_coerce_optional_int(overrides.get("storage_path_id"))
-        or suggestion.effective_storage_path_id,
-        tag_ids=override_tag_ids or tag_ids,
-        action="accept",
-    )
-
-    paperless = PaperlessClient()
-    try:
-        await commit_suggestion(suggestion, decision, paperless)
-    finally:
-        await paperless.aclose()
-
-    with get_conn() as conn:
-        updated = conn.execute(
-            "SELECT status FROM suggestions WHERE id = ?", (suggestion_id,)
-        ).fetchone()
-
-    status = updated["status"] if updated else "error"
-    result = {
-        "source_suggestion_id": suggestion_id,
-        "status": status,
-        "committed": status == "committed",
-    }
-    print(f"Suggestion #{suggestion_id} commit complete: {result}")
-    return result
-
-
 def _laravel_artisan_path() -> Path | None:
-    """Return the Laravel artisan path used for PostgreSQL-owned CLI actions."""
     candidates = [
         Path("/app/laravel/artisan"),
         Path(__file__).resolve().parents[1] / "laravel" / "artisan",
@@ -452,53 +52,18 @@ def _laravel_artisan_path() -> Path | None:
     return next((path for path in candidates if path.exists()), None)
 
 
-def _delete_legacy_reset_files(include_config: bool) -> None:
-    """Remove old Python SQLite/config files after the canonical Laravel reset succeeds."""
-    log = structlog.get_logger("reset")
-    data_dir = Path(settings.data_dir)
-    db_path = settings.db_path
-    targets: list[Path] = [
-        db_path,
-        db_path.parent / f"{db_path.name}-wal",
-        db_path.parent / f"{db_path.name}-shm",
-    ]
-
-    if include_config:
-        targets.append(data_dir / "config.env")
-        targets.extend(data_dir.glob("config.bak.*"))
-
-    existing = [path for path in targets if path.exists()]
-    if not existing:
-        return
-
-    print("Removing legacy Python SQLite/config files:")
-    for path in existing:
-        path.unlink()
-        log.info("deleted_legacy_file", path=str(path))
-        print(f"  {path}")
-
-
-def cmd_reset(include_config: bool = False) -> None:
-    """Reset via the canonical Laravel/PostgreSQL reset path, keeping the CLI entrypoint."""
+def _run_artisan(arguments: list[str]) -> None:
     artisan = _laravel_artisan_path()
     if artisan is None:
         print(
-            "Reset is Laravel/PostgreSQL-owned, but Laravel artisan was not found. "
-            "Run from the container with: cd /app/laravel && php artisan archibot:reset --yes",
+            "This action is Laravel/PostgreSQL-owned, but Laravel artisan was not found.",
             file=sys.stderr,
         )
-        sys.exit(1)
+        raise SystemExit(1)
 
-    command = ["php", str(artisan), "archibot:reset", "--yes"]
-    if include_config:
-        command.append("--include-config")
-
-    result = subprocess.run(command, cwd=artisan.parent, check=False)
+    result = subprocess.run(["php", str(artisan), *arguments], cwd=artisan.parent, check=False)
     if result.returncode != 0:
-        sys.exit(result.returncode)
-
-    _delete_legacy_reset_files(include_config=include_config)
-    print("Reset complete via Laravel/PostgreSQL.")
+        raise SystemExit(result.returncode)
 
 
 def cmd_laravel_maintenance(
@@ -508,573 +73,119 @@ def cmd_laravel_maintenance(
     document_id: int | None = None,
     limit: int | None = None,
 ) -> None:
-    """Dispatch GUI-overlapping CLI actions through Laravel Maintenance."""
-    artisan = _laravel_artisan_path()
-    if artisan is None:
-        print(
-            "This action is Laravel/PostgreSQL-owned, but Laravel artisan was not found. "
-            "Run from the container or Laravel project with: php artisan archibot:maintenance-command",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    command = ["php", str(artisan), "archibot:maintenance-command", command_type]
+    arguments = ["archibot:maintenance-command", command_type]
     if force:
-        command.append("--force")
+        arguments.append("--force")
     if document_id is not None:
-        command.append(f"--document-id={document_id}")
+        arguments.append(f"--document-id={document_id}")
     if limit is not None:
-        command.append(f"--limit={limit}")
-
-    result = subprocess.run(command, cwd=artisan.parent, check=False)
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+        arguments.append(f"--limit={limit}")
+    _run_artisan(arguments)
 
 
-def _laravel_db_path() -> Path:
-    env_path = None
-    with contextlib.suppress(Exception):
-        from os import environ
-
-        env_path = environ.get("DB_DATABASE")
-    raw = env_path
-    if raw:
-        path = Path(raw)
-        if path.exists():
-            return path
-    return Path(__file__).resolve().parents[1] / "laravel" / "database" / "database.sqlite"
+def cmd_reset(include_config: bool = False) -> None:
+    arguments = ["archibot:reset", "--yes"]
+    if include_config:
+        arguments.append("--include-config")
+    _run_artisan(arguments)
 
 
-def _display_datetime(value: Any) -> str:
-    """Format stored timestamps for CLI display using .env date format/timezone."""
-    if not value:
-        return "-"
-    raw = str(value)
+def cmd_commit_review(suggestion_id: int, user_id: int) -> None:
+    _run_artisan(["archibot:review-commit", str(suggestion_id), f"--user-id={user_id}"])
+
+
+def _reject_unknown_args(
+    args: list[str], allowed_flags: set[str], allowed_prefixes: tuple[str, ...] = ()
+) -> None:
+    unknown = [
+        arg
+        for arg in args
+        if arg not in allowed_flags
+        and not any(arg.startswith(prefix) for prefix in allowed_prefixes)
+    ]
+    if unknown:
+        print(f"Unsupported argument(s): {' '.join(unknown)}")
+        raise SystemExit(1)
+
+
+def _positive_int(raw: str, label: str) -> int:
     try:
-        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        value = int(raw)
     except ValueError:
-        return raw
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=UTC)
-    try:
-        display_tz = ZoneInfo(settings.app_timezone)
-    except ZoneInfoNotFoundError:
-        display_tz = UTC
-    return when.astimezone(display_tz).strftime(f"{settings.gui_date_format} %H:%M:%S %Z")
-
-
-COMMANDS = {
-    "reindex": ("Queue full reindex through Laravel Maintenance", cmd_reindex),
-    "reindex-ocr": (
-        "Queue OCR reindex through Laravel Maintenance (--force supported)",
-        cmd_reindex_ocr,
-    ),
-    "reindex-embed": ("Queue embedding build through Laravel Maintenance", cmd_reindex_embed),
-    "poll": ("Queue poll reconciliation through Laravel Maintenance (--force supported)", cmd_poll),
-    "process-doc": ("Queue one document pipeline through Laravel Maintenance", cmd_process_doc),
-    "process-document": (
-        "Queue one document pipeline through Laravel Maintenance",
-        cmd_process_doc,
-    ),
-    "commit-review": (
-        "Commit an accepted review suggestion by Python suggestion ID",
-        cmd_commit_review,
-    ),
-    "sync-entity-approval": (
-        "Synchronize a Laravel entity approval decision into the Python worker DB",
-        cmd_sync_entity_approval,
-    ),
-    "reset": ("Reset via Laravel/PostgreSQL (--yes required)", None),
-}
-
-
-def _arg_value(args: list[str], name: str) -> str | None:
-    """Return the value following *name* in CLI args, if present."""
-    if name not in args:
-        return None
-    idx = args.index(name)
-    if idx + 1 >= len(args):
-        return None
-    return args[idx + 1]
-
-
-def _load_worker_contract(extra_args: list[str]) -> tuple[dict[str, object], Path] | None:
-    """Load Laravel worker JSON contract input/output paths from CLI args."""
-    input_path = _arg_value(extra_args, "--input")
-    output_path = _arg_value(extra_args, "--output")
-
-    if input_path is None and output_path is None:
-        return None
-    if not input_path or not output_path:
-        print("Worker JSON contract requires both --input and --output")
-        sys.exit(1)
-
-    with Path(input_path).open("r", encoding="utf-8") as fh:
-        payload = json.load(fh)
-
-    if not isinstance(payload, dict):
-        print("Worker JSON contract input must be a JSON object")
-        sys.exit(1)
-
-    return payload, Path(output_path)
-
-
-def _write_worker_output(output_path: Path, payload: dict[str, object]) -> None:
-    """Write a JSON result for a legacy Python contract invocation."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
-
-
-def _decode_json_value(value: str | None, default: Any = None) -> Any:
-    """Decode a JSON string from the legacy Python DB, falling back safely."""
-    if value is None or value == "":
-        return default
-    with contextlib.suppress(json.JSONDecodeError, TypeError):
-        return json.loads(value)
-    return {"text": value}
-
-
-def _suggestion_row_to_review_suggestion(row: Any) -> dict[str, object]:
-    """Map a Python suggestion row to Laravel's stable review ingestion shape."""
-    return {
-        "source_suggestion_id": row.id,
-        "python_suggestion_id": row.id,
-        "paperless_document_id": row.document_id,
-        "status": row.status,
-        "confidence": row.confidence,
-        "reasoning": row.reasoning,
-        "original": {
-            "title": row.original_title,
-            "date": row.original_date,
-            "correspondent_id": row.original_correspondent,
-            "document_type_id": row.original_doctype,
-            "storage_path_id": row.original_storage_path,
-            "tags": _decode_json_value(row.original_tags_json, []),
-        },
-        "proposed": {
-            "title": row.proposed_title,
-            "date": row.proposed_date,
-            "correspondent_name": row.proposed_correspondent_name,
-            "correspondent_id": row.proposed_correspondent_id,
-            "document_type_name": row.proposed_doctype_name,
-            "document_type_id": row.proposed_doctype_id,
-            "storage_path_name": row.proposed_storage_path_name,
-            "storage_path_id": row.proposed_storage_path_id,
-            "tags": _decode_json_value(row.proposed_tags_json, []),
-        },
-        "context_documents": _decode_json_value(row.context_docs_json, []),
-        "raw_response": _decode_json_value(row.raw_response),
-        "judge_verdict": row.judge_verdict,
-        "judge_reasoning": row.judge_reasoning,
-        "original_proposed_snapshot": _decode_json_value(row.original_proposed_json),
-    }
-
-
-def _latest_suggestion_id() -> int:
-    """Return the current highest Python suggestion id for delta-based worker output."""
-    from app.db import get_conn
-
-    with get_conn() as conn:
-        row = conn.execute("SELECT COALESCE(MAX(id), 0) AS max_id FROM suggestions").fetchone()
-
-    return int(row["max_id"] or 0)
-
-
-OcrCacheSnapshot = dict[int, tuple[str, int, str]]
-
-
-def _ocr_cache_snapshot(*, document_id: int | None = None) -> OcrCacheSnapshot:
-    """Return current OCR cache rows for delta-based Laravel OCR review output."""
-    from app.db import get_conn
-
-    sql = "SELECT document_id, corrected_content, num_corrections, ocr_mode FROM doc_ocr_cache"
-    params: list[object] = []
-    if document_id is not None:
-        sql += " WHERE document_id = ?"
-        params.append(document_id)
-
-    with get_conn() as conn:
-        rows = conn.execute(sql, params).fetchall()
-
-    return {
-        int(row["document_id"]): (
-            str(row["corrected_content"]),
-            int(row["num_corrections"] or 0),
-            str(row["ocr_mode"] or ""),
-        )
-        for row in rows
-    }
-
-
-def _ocr_review_payloads_since_snapshot(
-    before: OcrCacheSnapshot, *, document_id: int | None = None
-) -> list[dict[str, object]]:
-    """Return OCR cache deltas in Laravel's OCR review ingestion shape.
-
-    Laravel owns Paperless write-back. Python only reports newly generated or
-    changed corrected OCR text so Laravel can create manual/auto OCR reviews.
-    """
-    after = _ocr_cache_snapshot(document_id=document_id)
-    payloads: list[dict[str, object]] = []
-    for doc_id in sorted(after):
-        corrected_content, num_corrections, ocr_mode = after[doc_id]
-        previous = before.get(doc_id)
-        if previous == after[doc_id]:
-            continue
-        if previous is None and num_corrections <= 0:
-            # Vision validation can cache unchanged text. Do not create a
-            # user-facing OCR review when no correction was reported.
-            continue
-        payloads.append(
-            {
-                "paperless_document_id": doc_id,
-                "ocr_content": corrected_content,
-                "ocr_mode": ocr_mode,
-                "num_corrections": num_corrections,
-            }
-        )
-    return payloads
-
-
-def _review_suggestion_payloads_since(
-    suggestion_id: int, *, document_id: int | None = None
-) -> list[dict[str, object]]:
-    """Return Python suggestions created after *suggestion_id* in Laravel ingest format."""
-    from app.db import get_conn
-    from app.models import SuggestionRow
-
-    sql = "SELECT * FROM suggestions WHERE id > ?"
-    params: list[object] = [suggestion_id]
-    if document_id is not None:
-        sql += " AND document_id = ?"
-        params.append(document_id)
-    sql += " ORDER BY id ASC"
-
-    with get_conn() as conn:
-        rows = conn.execute(sql, params).fetchall()
-
-    return [_suggestion_row_to_review_suggestion(SuggestionRow(**dict(row))) for row in rows]
-
-
-def _latest_review_suggestion_payloads_for_documents(
-    document_ids: list[int],
-) -> list[dict[str, object]]:
-    """Return the latest Python suggestion per document for Laravel backfill.
-
-    Normal poll skips unchanged documents based on ``processed_documents``. If a
-    previous worker run created Python suggestions but Laravel ingestion missed
-    them, delta-by-id output alone cannot recover because no new suggestion rows
-    are created. Backfilling latest suggestions for documents observed in the
-    current poll lets Laravel's dedupe import missing review rows while treating
-    already-imported ones as no-ops.
-    """
-    if not document_ids:
-        return []
-
-    from app.db import get_conn
-    from app.models import SuggestionRow
-
-    unique_ids = sorted({int(document_id) for document_id in document_ids})
-    placeholders = ",".join("?" for _ in unique_ids)
-    sql = f"""
-        SELECT *
-        FROM suggestions
-        WHERE id IN (
-            SELECT MAX(id)
-            FROM suggestions
-            WHERE document_id IN ({placeholders})
-            GROUP BY document_id
-        )
-        ORDER BY id ASC
-    """
-    with get_conn() as conn:
-        rows = conn.execute(sql, unique_ids).fetchall()
-
-    return [_suggestion_row_to_review_suggestion(SuggestionRow(**dict(row))) for row in rows]
-
-
-def _document_ids_from_poll_events(job_id: str) -> list[int]:
-    """Return document ids touched by a poll job from safe job events."""
-    from app.job_events import list_events
-
-    document_ids: list[int] = []
-    for event in list_events(job_id, limit=1000):
-        raw_document_id = event.get("document_id")
-        if raw_document_id is None:
-            continue
-        try:
-            document_ids.append(int(raw_document_id))
-        except (TypeError, ValueError):
-            continue
-    return sorted(set(document_ids))
-
-
-def _merge_review_suggestion_payloads(
-    *groups: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    """Merge suggestion payloads, preferring later entries for the same source id."""
-    merged: dict[tuple[str, object], dict[str, object]] = {}
-    for group in groups:
-        for item in group:
-            key: tuple[str, object]
-            source_id = item.get("source_suggestion_id") or item.get("python_suggestion_id")
-            if source_id is not None:
-                key = ("source", source_id)
-            else:
-                key = ("document", item.get("paperless_document_id"))
-            merged[key] = item
-    return list(merged.values())
-
-
-def _contract_payload(input_payload: dict[str, object]) -> dict[str, object]:
-    payload = input_payload.get("payload", {})
-    return payload if isinstance(payload, dict) else {}
-
-
-def _contract_document_id(input_payload: dict[str, object]) -> int | None:
-    payload = _contract_payload(input_payload)
-    raw = payload.get("paperless_document_id") or payload.get("document_id")
-    if raw is None:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
-def _contract_entity_approval(input_payload: dict[str, object]) -> tuple[str, str, str, int | None]:
-    payload = _contract_payload(input_payload)
-    action = payload.get("action")
-    entity_type = payload.get("type")
-    name = payload.get("name")
-    raw_paperless_id = payload.get("paperless_id")
-
-    if not isinstance(action, str) or not isinstance(entity_type, str) or not isinstance(name, str):
-        raise ValueError("Worker payload requires action, type, and name for sync-entity-approval")
-
-    paperless_id = None
-    if raw_paperless_id is not None:
-        try:
-            paperless_id = int(raw_paperless_id)
-        except (TypeError, ValueError):
-            raise ValueError("paperless_id must be numeric when provided") from None
-
-    return action, entity_type, name, paperless_id
-
-
-def _contract_source_suggestion_id(input_payload: dict[str, object]) -> int | None:
-    payload = _contract_payload(input_payload)
-    raw = payload.get("source_suggestion_id") or payload.get("suggestion_id")
-    if raw is None:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
-def _contract_force(input_payload: dict[str, object], cli_force: bool) -> bool:
-    payload = _contract_payload(input_payload)
-    raw = payload.get("force")
-    if isinstance(raw, bool):
-        return cli_force or raw
-    if isinstance(raw, str):
-        return cli_force or raw.lower() in {"1", "true", "yes"}
-    return cli_force
+        print(f"Invalid {label}: {raw}")
+        raise SystemExit(1) from None
+    if value < 1:
+        print(f"Invalid {label}: {raw}")
+        raise SystemExit(1)
+    return value
 
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: python -m app.cli <command>\n")
         print("Commands:")
-        for name, (desc, _) in COMMANDS.items():
-            print(f"  {name:<20} {desc}")
-        sys.exit(0 if len(sys.argv) >= 2 else 1)
+        for name, description in COMMANDS.items():
+            print(f"  {name:<20} {description}")
+        raise SystemExit(0 if len(sys.argv) >= 2 else 1)
 
-    cmd_name = sys.argv[1]
-    if cmd_name not in COMMANDS:
-        print(f"Unknown command: {cmd_name}")
+    command = sys.argv[1]
+    if command not in COMMANDS:
+        print(f"Unknown command: {command}")
         print(f"Available: {', '.join(COMMANDS)}")
-        sys.exit(1)
+        raise SystemExit(1)
 
     _configure_logging()
+    args = sys.argv[2:]
+    force = "--force" in args
+    limit_value = next((arg.split("=", 1)[1] for arg in args if arg.startswith("--limit=")), None)
+    limit = _positive_int(limit_value, "limit") if limit_value is not None else None
 
-    # reset delegates to Laravel/PostgreSQL and must NOT call init_db() first
-    if cmd_name == "reset":
-        extra_args = sys.argv[2:]
-        if "--yes" not in extra_args:
+    if command == "reset":
+        _reject_unknown_args(args, {"--yes", "--include-config"})
+        if "--yes" not in args:
             print("Safety check: pass --yes to confirm reset.")
-            print("  archibot reset --yes")
-            print("  archibot reset --yes --include-config")
-            sys.exit(1)
-        cmd_reset(include_config="--include-config" in extra_args)
+            raise SystemExit(1)
+        cmd_reset(include_config="--include-config" in args)
         return
 
-    extra_args = sys.argv[2:]
-    force = "--force" in extra_args
-    limit_arg = next((a.split("=", 1)[1] for a in extra_args if a.startswith("--limit=")), None)
-    limit = None
-    if limit_arg is not None:
-        try:
-            limit = int(limit_arg)
-        except ValueError:
-            print(f"Invalid limit: {limit_arg}")
-            sys.exit(1)
-
-    _, cmd_func = COMMANDS[cmd_name]
-    contract = _load_worker_contract(extra_args)
-
-    if contract is None and cmd_name in {"poll", "reindex", "reindex-ocr", "reindex-embed"}:
-        maintenance_type = {
-            "poll": "poll",
-            "reindex": "reindex",
-            "reindex-ocr": "reindex_ocr",
-            "reindex-embed": "reindex_embed",
-        }[cmd_name]
-        cmd_laravel_maintenance(maintenance_type, force=force, limit=limit)
+    if command == "commit-review":
+        positional = [arg for arg in args if not arg.startswith("-")]
+        user_value = next(
+            (arg.split("=", 1)[1] for arg in args if arg.startswith("--user-id=")),
+            None,
+        )
+        _reject_unknown_args(args, set(positional), ("--user-id=",))
+        if len(positional) != 1 or user_value is None:
+            print("Usage: archibot commit-review <review_suggestion_id> --user-id=<id>")
+            raise SystemExit(1)
+        cmd_commit_review(
+            _positive_int(positional[0], "review_suggestion_id"),
+            _positive_int(user_value, "user_id"),
+        )
         return
 
-    if contract is None and cmd_name in {"process-doc", "process-document"}:
-        doc_arg = next((a for a in extra_args if not a.startswith("-")), None)
-        if doc_arg is None:
+    if command in {"process-doc", "process-document"}:
+        positional = [arg for arg in args if not arg.startswith("-")]
+        _reject_unknown_args(args, {"--force", *positional})
+        if len(positional) != 1:
             print("Usage: archibot process-doc <document_id> [--force]")
-            sys.exit(1)
-        try:
-            document_id = int(doc_arg)
-        except ValueError:
-            print(f"Invalid document_id: {doc_arg}")
-            sys.exit(1)
-        cmd_laravel_maintenance("process_document", force=force, document_id=document_id)
+            raise SystemExit(1)
+        cmd_laravel_maintenance(
+            "process_document",
+            force=force,
+            document_id=_positive_int(positional[0], "document_id"),
+        )
         return
 
-    init_db()
-
-    try:
-        if contract is not None:
-            input_payload, output_path = contract
-            output_payload: dict[str, object] = {
-                "ok": True,
-                "command": cmd_name,
-                "job_id": input_payload.get("id"),
-                "type": input_payload.get("type", cmd_name),
-            }
-            if cmd_name == "poll":
-                before_suggestion_id = _latest_suggestion_id()
-                before_ocr_cache = _ocr_cache_snapshot()
-                asyncio.run(
-                    cmd_func(
-                        force=_contract_force(input_payload, force),
-                        job_id=str(input_payload.get("id")),
-                    )
-                )
-                review_suggestions = _merge_review_suggestion_payloads(
-                    _review_suggestion_payloads_since(before_suggestion_id),
-                    _latest_review_suggestion_payloads_for_documents(
-                        _document_ids_from_poll_events(str(input_payload.get("id")))
-                    ),
-                )
-                if review_suggestions:
-                    output_payload["review_suggestions"] = review_suggestions
-                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
-                if ocr_reviews:
-                    output_payload["ocr_reviews"] = ocr_reviews
-                import app.worker as worker
-
-                output_payload["progress"] = worker._poll_progress.__dict__.copy()
-            elif cmd_name == "reindex":
-                before_ocr_cache = _ocr_cache_snapshot()
-                result = asyncio.run(
-                    cmd_func(
-                        emit_progress=True, job_id=str(input_payload.get("id")), job_type="reindex"
-                    )
-                )
-                output_payload.update(result)
-                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
-                if ocr_reviews:
-                    output_payload["ocr_reviews"] = ocr_reviews
-            elif cmd_name == "reindex-ocr":
-                before_ocr_cache = _ocr_cache_snapshot()
-                result = asyncio.run(cmd_func(force=_contract_force(input_payload, force)))
-                output_payload["result"] = result
-                ocr_reviews = _ocr_review_payloads_since_snapshot(before_ocr_cache)
-                if ocr_reviews:
-                    output_payload["ocr_reviews"] = ocr_reviews
-            elif cmd_name == "reindex-embed":
-                result = asyncio.run(
-                    cmd_func(
-                        emit_progress=True,
-                        job_id=str(input_payload.get("id")),
-                        job_type="reindex_embed",
-                    )
-                )
-                output_payload["result"] = result
-            elif cmd_name in {"process-doc", "process-document"}:
-                document_id = _contract_document_id(input_payload)
-                if document_id is None:
-                    raise ValueError(
-                        "Worker payload requires paperless_document_id for process-document"
-                    )
-                before_suggestion_id = _latest_suggestion_id()
-                before_ocr_cache = _ocr_cache_snapshot(document_id=document_id)
-                result = asyncio.run(
-                    cmd_func(document_id, force=_contract_force(input_payload, force))
-                )
-                output_payload["result"] = result
-                if result == "classified":
-                    review_suggestions = _review_suggestion_payloads_since(
-                        before_suggestion_id, document_id=document_id
-                    )
-                    if review_suggestions:
-                        output_payload["review_suggestions"] = review_suggestions
-                ocr_reviews = _ocr_review_payloads_since_snapshot(
-                    before_ocr_cache, document_id=document_id
-                )
-                if ocr_reviews:
-                    output_payload["ocr_reviews"] = ocr_reviews
-            elif cmd_name == "commit-review":
-                suggestion_id = _contract_source_suggestion_id(input_payload)
-                if suggestion_id is None:
-                    raise ValueError(
-                        "Worker payload requires source_suggestion_id for commit-review"
-                    )
-                output_payload["result"] = asyncio.run(
-                    cmd_func(suggestion_id, _contract_payload(input_payload))
-                )
-            elif cmd_name == "sync-entity-approval":
-                output_payload["result"] = asyncio.run(
-                    cmd_func(*_contract_entity_approval(input_payload))
-                )
-            else:
-                asyncio.run(cmd_func())
-            _write_worker_output(output_path, output_payload)
-        elif cmd_name == "commit-review":
-            suggestion_arg = next((a for a in extra_args if not a.startswith("-")), None)
-            if suggestion_arg is None:
-                print("Usage: archibot commit-review <source_suggestion_id>")
-                sys.exit(1)
-            try:
-                suggestion_id = int(suggestion_arg)
-            except ValueError:
-                print(f"Invalid source_suggestion_id: {suggestion_arg}")
-                sys.exit(1)
-            asyncio.run(cmd_func(suggestion_id))
-        elif cmd_name == "sync-entity-approval":
-            print("Usage: archibot sync-entity-approval --input <path> --output <path>")
-            sys.exit(1)
-        else:
-            asyncio.run(cmd_func())
-    except KeyboardInterrupt:
-        print("\nAborted.")
-        sys.exit(130)
-    except Exception as exc:
-        if contract is not None:
-            _, output_path = contract
-            _write_worker_output(
-                output_path,
-                {"ok": False, "command": cmd_name, "error": _exception_summary(exc)},
-            )
-        raise
+    allowed_flags = {"--force"} if command in {"poll", "reindex-ocr"} else set()
+    _reject_unknown_args(args, allowed_flags, ("--limit=",))
+    maintenance_type = {
+        "poll": "poll",
+        "reindex": "reindex",
+        "reindex-ocr": "reindex_ocr",
+        "reindex-embed": "reindex_embed",
+    }[command]
+    cmd_laravel_maintenance(maintenance_type, force=force, limit=limit)
 
 
 if __name__ == "__main__":

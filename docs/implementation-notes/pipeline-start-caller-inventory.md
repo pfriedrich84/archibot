@@ -43,16 +43,16 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 | `app/mcp_server.py` | Registers all MCP tools/resources and still initializes legacy DB compatibility. | Hardening 1.4: use Laravel/PostgreSQL service seam; remove legacy DB initialization. |
 | `app/mcp_tools/__init__.py` | Package marker only; no state/start caller. | Retain. |
 | `app/mcp_tools/_auth.py` | MCP token/auth checks only. | Retain; no migration. |
-| `app/mcp_tools/_deps.py` | Paperless/AI dependency access only. | Retain; no state owner. |
-| `app/mcp_tools/classify.py` | Runs a legacy in-process classifier and stores a SQLite suggestion. | Hardening 1.4: submit the same authorized Laravel command/start path or remove classify mutation until parity exists. |
-| `app/mcp_tools/correspondents.py` | Reads legacy DB and invokes legacy retroactive commit helper. | Hardening 1.4: PostgreSQL approval/Command path. |
-| `app/mcp_tools/doctypes.py` | Reads legacy DB and invokes legacy retroactive commit helper. | Hardening 1.4: PostgreSQL approval/Command path. |
-| `app/mcp_tools/documents.py` | Reads documents/settings via legacy DB dependencies; no Pipeline Start. | Hardening 1.4: PostgreSQL/Laravel settings seam. |
-| `app/mcp_tools/entities.py` | Paperless entity reads; no local durable mutation/start. | Retain, then verify authorization parity in hardening 1.4. |
-| `app/mcp_tools/resources.py` | `paperless://suggestions/pending` and stats read SQLite `suggestions`. | Hardening 1.4: `review_suggestions`/durable stats; delete SQLite queries. |
-| `app/mcp_tools/suggestions.py` | Lists/commits/rejects SQLite suggestions and updates `processed_documents`. | Hardening 1.4: authorized Laravel review actions and PostgreSQL review state. |
-| `app/mcp_tools/system.py` | Mixed SQLite suggestion counts and PostgreSQL embedding counts. | Hardening 1.4: one PostgreSQL diagnostics source. |
-| `app/mcp_tools/tags.py` | Legacy DB-backed retroactive tag helper. | Hardening 1.4: PostgreSQL approval/Command path. |
+| `app/mcp_tools/_deps.py` | Dormant lifespan/verified-identity marker; creates no product-state client. | Retain; no state owner. |
+| `app/mcp_tools/classify.py` | Registration retired in Step 9. | No return before a permission-aware Laravel Pipeline seam exists. |
+| `app/mcp_tools/correspondents.py` | Proposal registrations retired in Step 9. | No return before an admin-authorized PostgreSQL entity seam exists. |
+| `app/mcp_tools/doctypes.py` | Proposal registrations retired in Step 9. | Same. |
+| `app/mcp_tools/documents.py` | All registrations retired in Step 9. | No return before a permission-aware Laravel/PostgreSQL read or mutation seam exists. |
+| `app/mcp_tools/entities.py` | All registrations retired in Step 9. | No return before a permission-aware Laravel/PostgreSQL entity-read seam exists. |
+| `app/mcp_tools/resources.py` | Identity-less resources retired in Step 9. | No return before identity-aware PostgreSQL redaction seam exists. |
+| `app/mcp_tools/suggestions.py` | All registrations retired in Step 9. | No return before permission-filtered Laravel Review seam exists. |
+| `app/mcp_tools/system.py` | Global status registration retired in Step 9. | No return before admin-only PostgreSQL diagnostics seam exists. |
+| `app/mcp_tools/tags.py` | Proposal registrations retired in Step 9. | No return before an admin-authorized PostgreSQL entity seam exists. |
 
 ## Legacy state/vector inventory
 
@@ -61,7 +61,7 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 | `app/db.py` | SQLite schema/connection owner for processing, suggestions and vectors. | Hardening 1.4 after export/parity tests. |
 | `app/config.py` | Legacy SQLite path/table defaults. | Hardening 1.4. |
 | `app/api_data.py` | SQLite processing/suggestion reads. | Hardening 1.4. |
-| `app/cli.py` | Remaining SQLite processing reads; productive maintenance already delegates to Laravel. | Hardening 1.4; CLI parity required before deletion. |
+| `app/cli.py` | Operator-only Laravel delegation; no SQLite or worker JSON contract. | Step 9 complete; fixed actor execution remains isolated in `app.actor_runner`. |
 | `app/indexer.py` | Legacy DB-dependent indexing compatibility. | Hardening 1.4, replaced by pgvector actors. |
 | `app/job_events.py` | Legacy DB-dependent local events. | Hardening 1.3/1.4, replaced by pipeline events. |
 | `app/vector_store.py` | SQLite `doc_embeddings`, metadata and FTS read/write helpers. | Hardening 1.4: `document_embeddings`/pgvector, then delete file. |
@@ -89,6 +89,7 @@ MCP entry points do not own Pipeline Start. Their current state source and requi
 | `app/event_worker.py` | Unsupervised transitional Absurd worker/recovery entry point. | Hardening 1.5: delete launcher. |
 | `app/actor_runner.py` | Fixed Laravel-launched actor CLI and the only productive importer/caller of private document/build implementations; imports legacy DB setup compatibility. | Retain fixed runner; remove DB compatibility in hardening 1.4. |
 | `app/jobs/pipeline_runs.py` | Existing-run lifecycle reads/updates only; all insertion/start helpers were removed. | Hardening 1.3 consolidates lifecycle transitions; never restore creation here. |
+| Laravel `EntityApprovalDecisionService` | PostgreSQL-owned approval/blacklist decisions, durable command/events, Review Suggestion resolution, and retroactive Paperless application. | Productive entity approval never invokes Python or `classifier.db`; the former sync actor is retired. |
 | `app/jobs/idempotency.py` | Webhook/command key helpers only; the Python Pipeline Start dedupe key was removed. | Retain non-start helpers; never restore Pipeline Start ownership. |
 | `app/jobs/recovery.py` | Transitional recovery remains for non-document legacy actors, but document/build/reindex enqueue helpers fail closed and the scan never redispatches them. | Hardening 1.3/1.5: delete after remaining Laravel recovery parity. |
 | `laravel/database/migrations/2026_06_05_000000_install_absurd_queue_schema.php` | Transitional Absurd schema. | Hardening 1.5 clean-install removal migration. |

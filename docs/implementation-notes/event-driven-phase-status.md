@@ -27,7 +27,7 @@ The active event transport is Laravel database queues invoking fixed, allowliste
 - Webhook ingestion validates and persists deliveries, deduplicates input and creates/attaches durable document runs without synchronous OCR/LLM processing.
 - Embedding readiness, document pipeline start/attach, retry/recovery state, progress, reprocess metadata and Laravel-triggered review commits use durable PostgreSQL records.
 - Laravel UI exposes durable pipeline, webhook, maintenance, review and operations controls with admin boundaries on job-control actions.
-- Several maintenance/reset CLI actions delegate to Laravel, but CLI/UI parity is incomplete: `archibot commit-review` still uses the legacy SQLite suggestion path, and contract-mode entity sync still uses Python-owned state.
+- Step 9 completed CLI/UI parity: maintenance, reset and review commit delegate to Laravel/PostgreSQL durable seams. Entity decisions are PostgreSQL-owned and the Python/SQLite entity-sync actor is retired.
 
 ### Laravel queued actor transport
 
@@ -50,7 +50,7 @@ Confirmed allowlisted flows:
 - poll reconciliation;
 - reindex command, currently implemented as an embedding-index rebuild rather than full reindex parity;
 - OCR reindex;
-- entity approval sync;
+- PostgreSQL-owned entity approval decision application;
 - Paperless webhook handling.
 
 Laravel producers and recovery services dispatch small jobs containing one allowlisted actor name and one durable record ID. Python loads command/run/delivery options from PostgreSQL before processing. Actor Executions now carry nullable source links to the originating Command, Pipeline Run, or Webhook Delivery so recovery decisions are source-scoped.

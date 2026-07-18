@@ -53,7 +53,7 @@
 <div class="space-y-6">
     <Heading
         {title}
-        description="ArchiBot approval state for AI-proposed Paperless entities. Approvals create the Paperless entity with the current admin's token; retroactive application remains a worker follow-up."
+        description="ArchiBot approval state for AI-proposed Paperless entities. Approvals use the current admin's Paperless token and the durable Laravel/PostgreSQL application path."
     />
 
     {#if !isAdmin}
@@ -95,7 +95,7 @@
                             Imported proposal
                         {/if}
                         {#if entity.sync_status}
-                            · Python sync: {entity.sync_status}
+                            · Application: {entity.sync_status}
                         {/if}
                     </div>
                 </div>
@@ -139,15 +139,31 @@
     <section class="rounded-xl border">
         <div class="border-b px-4 py-3 font-medium">Approved</div>
         {#each approved as entity (entity.id)}
-            <div class="border-b p-4 text-sm last:border-b-0">
-                <span class="font-medium">{entity.name}</span>
-                <span class="text-muted-foreground">
-                    · Paperless entity {paperlessLabel(
-                        entity.paperless_id,
-                        entity.name,
-                    )} · Python sync
-                    {entity.sync_status ?? '—'}</span
-                >
+            <div
+                class="flex flex-wrap items-center justify-between gap-3 border-b p-4 text-sm last:border-b-0"
+            >
+                <div>
+                    <span class="font-medium">{entity.name}</span>
+                    <span class="text-muted-foreground">
+                        · Paperless entity {paperlessLabel(
+                            entity.paperless_id,
+                            entity.name,
+                        )} · Application
+                        {entity.sync_status ?? '—'}</span
+                    >
+                </div>
+                {#if isAdmin && entity.sync_status === 'failed'}
+                    <Form method="post" action={actionUrl(entity, 'approve')}>
+                        {#snippet children({ processing })}
+                            <Button
+                                type="submit"
+                                size="sm"
+                                variant="outline"
+                                disabled={processing}>Retry application</Button
+                            >
+                        {/snippet}
+                    </Form>
+                {/if}
             </div>
         {:else}
             <div class="p-8 text-center text-muted-foreground">

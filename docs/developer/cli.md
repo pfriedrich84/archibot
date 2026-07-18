@@ -62,7 +62,7 @@ archibot reindex-ocr --force
 - Die CLI delegiert an `php artisan archibot:maintenance-command reindex_ocr`
 - Laravel erzeugt einen durable `reindex_ocr` Command und queued `RunPythonActorJob::reindexOcr`
 - Der fixe Python-Actor laedt `force` aus `commands.payload`
-- Ergebnisse landen in `doc_ocr_cache` (nie direkt in Paperless)
+- Ergebnisse landen in der gemeinsamen PostgreSQL-Tabelle `document_ocr_corrections` (nie direkt in Paperless)
 - Bereits gecachte Korrekturen werden uebersprungen (ausser mit `--force`)
 - `--force` sendet auch sauber wirkende Texte erneut ans OCR-Modell; `OCR_REQUESTED_TAG_ID` gilt weiterhin
 
@@ -73,7 +73,7 @@ Mit `--force` wenn vorhandene Korrekturen unbrauchbar sind und neu erzeugt werde
 
 ### `reindex-embed` — Nur Embeddings neu berechnen
 
-Startet einen PostgreSQL/pgvector-Embedding-Build fuer vertrauenswuerdige Dokumente ohne Inbox-/Posteingang-Tag. Nutzt gecachte OCR-Texte aus `doc_ocr_cache` (falls vorhanden), fuehrt aber keine neue OCR-Korrektur durch.
+Startet einen PostgreSQL/pgvector-Embedding-Build fuer vertrauenswuerdige Dokumente ohne Inbox-/Posteingang-Tag. Der Build fuehrt keine neue OCR-Korrektur durch.
 
 ```bash
 archibot reindex-embed
@@ -104,7 +104,7 @@ archibot poll --force
 **Flags:**
 | Flag | Beschreibung |
 |------|-------------|
-| `--force` | Ignoriert den Idempotency-Skip (`processed_documents`) und verarbeitet Inbox-Dokumente erneut, auch wenn sich `modified` nicht geaendert hat. |
+| `--force` | Erstellt ueber Laravel einen expliziten erzwungenen Reconciliation-/Pipeline-Pfad; produktive SQLite-Zeilen werden weder gelesen noch geloescht. |
 
 **Was passiert:**
 1. Die CLI delegiert an `php artisan archibot:maintenance-command poll`
@@ -147,7 +147,7 @@ Klassifikation oder Ollama-Probleme), ohne die gesamte Inbox zu starten.
 
 ### `reset` — Container zuruecksetzen
 
-Setzt die ArchiBot-Laufzeitdaten ueber den kanonischen Laravel/PostgreSQL-Pfad zurueck. Der Python-CLI-Einstieg `archibot reset` bleibt fuer Operatoren erhalten, delegiert im Hintergrund aber an `php artisan archibot:reset` und entfernt alte Python-SQLite-Dateien nur noch als Legacy-Cleanup nach erfolgreichem PostgreSQL-Reset.
+Setzt die ArchiBot-Laufzeitdaten ueber den kanonischen Laravel/PostgreSQL-Pfad zurueck. Der Python-CLI-Einstieg `archibot reset` bleibt fuer Operatoren erhalten und delegiert ausschliesslich an `php artisan archibot:reset`; die Admin-Maintenance-UI nutzt mit expliziter `RESET`-Bestaetigung denselben Backend-Service. Keine Variante initialisiert, liest, schreibt oder meldet eine SQLite-Datenbank.
 
 ```bash
 # PostgreSQL/Laravel-Laufzeitdaten zuruecksetzen (Config behalten)
@@ -167,7 +167,7 @@ archibot reset --yes --include-config
 1. `archibot reset` ruft im Hintergrund `php artisan archibot:reset --yes` auf
 2. Laravel leert die PostgreSQL/Laravel-Laufzeittabellen, inklusive Job-, Pipeline-, Embedding-, Audit-, Chat-, Session- und Cache-State
 3. Optional: Laravel-Config/Setup-State sowie Legacy-`config.env` und `config.bak.*` Backups werden geloescht
-4. Alte `classifier.db`, `-wal` und `-shm` Dateien werden nur als Legacy-Cleanup entfernt
+4. Die CLI fuehrt keinen separaten Python-/SQLite-Cleanup aus; die Reset-Grenze bleibt vollstaendig Laravel-owned
 
 **Was NICHT geloescht wird:**
 - `.env` (Docker-Compose Umgebungsvariablen)
@@ -176,6 +176,14 @@ archibot reset --yes --include-config
 
 **Wann nutzen:** Bei einem Neustart von Grund auf, nach schwerwiegenden
 Datenbank-Problemen, oder beim Wechsel der gesamten Klassifikationsstrategie.
+
+### `commit-review` — Review-Vorschlag annehmen und Commit einreihen
+
+```bash
+archibot commit-review <review_suggestion_id> --user-id=<archibot_user_id>
+```
+
+Die Vorschlags-ID ist die durable Laravel-`review_suggestions.id`, nicht die fruehere Python-Suggestion-ID. `--user-id` ist verpflichtend und benennt explizit die ArchiBot/Paperless-Identitaet, deren gespeicherter Paperless-Kontext fuer dieselbe ADR-0019-Berechtigungspruefung wie in der UI verwendet wird; es gibt keinen Fallback auf den ersten Admin. Da der Aufruf aus der privilegierten lokalen Shell und nicht aus einer Web-Anmeldung stammt, protokollieren Events und Audit sowohl `actor_principal=local_operator` als auch diese explizite `actor_user_id`. Der Befehl delegiert an `php artisan archibot:review-commit`; Statuswechsel, `review_commit` Command, Queue-Job, Pipeline Events und Audit Log bleiben PostgreSQL-backed und restart-durable. Reine Wartungs-CLI-Befehle werden ebenfalls als `local_operator`, aber mit `actor_user_id = null`, protokolliert und impersonieren keinen Admin.
 
 ## Hilfe
 

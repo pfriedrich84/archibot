@@ -560,43 +560,6 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
     }
 
-    public function test_recovery_scan_redispatches_sync_entity_approval_commands(): void
-    {
-        Queue::fake();
-        $command = $this->command([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
-            'payload' => [
-                'action' => 'approve',
-                'type' => 'tag',
-                'name' => 'Invoices',
-                'paperless_id' => 12,
-            ],
-        ]);
-
-        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
-
-        $this->assertSame(1, $count);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL
-            && $job->commandId === $command->id);
-        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
-    }
-
-    public function test_recovery_scan_marks_invalid_sync_entity_command_permanently_failed(): void
-    {
-        Queue::fake();
-        $command = $this->command([
-            'type' => Command::TYPE_SYNC_ENTITY_APPROVAL,
-            'payload' => ['action' => 'approve', 'type' => 'tag'],
-        ]);
-
-        $count = app(PipelineRecoveryDispatcher::class)->recoverPendingCommands(limit: 10);
-
-        $this->assertSame(0, $count);
-        Queue::assertNothingPushed();
-        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
-        $this->assertSame('missing_entity_sync_name', $command->fresh()->error);
-    }
-
     public function test_recovery_redispatches_stale_running_actor_through_linked_command(): void
     {
         Queue::fake();

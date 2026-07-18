@@ -31,7 +31,7 @@ Current operator surfaces:
 - **Pipeline Runs** shows durable document/reprocess/retry/cancel state.
 - **Operations Log** (`/operations-log`) shows durable commands, pipeline runs/events/items, actor executions, webhook deliveries and audit logs.
 - **CLI overlap actions** (`archibot poll`, `reindex`, `reindex-ocr`, `reindex-embed`, `process-doc`) delegate to `php artisan archibot:maintenance-command ...`, the same backend used by Maintenance.
-- **Reset** remains CLI-only and delegates to `php artisan archibot:reset`.
+- **Reset** is available to admins in Maintenance and through `php artisan archibot:reset`; both call the same Laravel/PostgreSQL reset service.
 
 There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worker-jobs/{id}`, worker-job backend compatibility, or migration/archive path for old worker-job rows.
 
@@ -46,10 +46,10 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` | `RunPythonActorJob::documentPipeline` -> fixed actor runner | Pipeline Runs, Operations Log |
 | Paperless document webhook | `WebhookDelivery` + `PipelineRun(type=document)` | same document actor transport | Webhook Deliveries, Pipeline Runs, Operations Log |
 | Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
-| Entity approval sync | `Command(type=sync_entity_approval)` | sync entity approval actor | Entity approval status, Operations Log |
+| Entity approval application | `Command(type=sync_entity_approval)` | queued Laravel `ApplyEntityApprovalCommand`; PostgreSQL decision/recovery service, no Python/SQLite actor | Entity approval status, Operations Log, audit logs |
 | Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check creates one durable poll command and dispatches its Laravel actor job | Operations Log, command events |
 | Durable recovery scan | `php artisan archibot:recovery-scan` | recovers source-linked actor attempts, cancellations, and safe pending/stale commands/runs/webhooks through Laravel actor jobs | Pipeline/command/webhook/actor events |
-| Reset | `php artisan archibot:reset` | Laravel/PostgreSQL-owned destructive reset | CLI output; reset remains outside GUI |
+| Reset | `php artisan archibot:reset` or confirmed admin Maintenance action | Shared Laravel/PostgreSQL reset service | CLI/UI outcome and durable audit identity |
 
 ## State machines
 
@@ -60,6 +60,8 @@ pending -> queued -> running -> succeeded|skipped|failed_permanent
 running -> pending       (retry scheduled with next_retry_at)
 failed -> queued         (explicit safe redispatch where supported)
 ```
+
+Rejected entity names are read from PostgreSQL for every classification prompt; if that safety-state query is unavailable, classification fails closed and follows normal actor retry/recovery instead of silently omitting the blacklist. Entity approval decisions are persisted as queued, idempotency-keyed commands before any Paperless request. Enqueue locks the entity row and permits only one active decision across all actions: an identical action reuses its command, while a conflicting action returns a deterministic conflict. The entity and command share an active decision token and monotonically increasing version; workers condition every checkpoint and terminal write on that fence, so reordered, recovered, or superseded deliveries cannot overwrite a newer decision. The Laravel worker records the remote entity id before retroactive document patches. Recoverable failures become `pending` with `next_retry_at`; a worker death may leave `running`, and both paths are allowlisted for the same recovery scanner. Retries first resolve an existing Paperless entity by name, preventing duplicate entity creation across the create/persist crash window, while document patches are idempotent.
 
 `failed_permanent` is terminal. `pending` with a future `next_retry_at` is the
 actual command retry/backoff representation; it must not be displayed as an

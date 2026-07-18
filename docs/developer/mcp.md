@@ -1,113 +1,27 @@
 # MCP Server
 
-[Model Context Protocol](https://modelcontextprotocol.io/) Server, der Paperless-NGX
-und die KI-Klassifikation als Tools fuer KI-Assistenten (Claude Code, etc.) bereitstellt.
+Der optionale MCP-Prozess bleibt als Integrationspunkt vorhanden, registriert nach Hardening-Milestone 2.1 aber **keine Tools oder Resources**. Alle 24 frueheren Tools und beide Resources wurden inventarisiert und bis zu einem vollstaendigen, berechtigungsgebundenen Laravel/PostgreSQL-Seam retired. Die Entscheidung und Rueckkehrkriterien fuer jede Registrierung stehen in der [MCP disposition matrix](../implementation-notes/mcp-disposition-matrix.md).
 
-Der MCP-Server laeuft optional im selben Container wie die Haupt-App.
+## Sicherheits- und Datenmodell
 
-## Aktivierung
+- MCP-Startup initialisiert oder liest keine `classifier.db` und startet keinen privilegierten globalen Paperless-/AI-Client.
+- Direkte Paperless-Reads gelten nicht als Ersatz fuer den geforderten Laravel/PostgreSQL-Datenseam.
+- Klassifikation, Dokumentupdates, Review-/Entity-Mutationen, Suche, Retrieval, Suggestions, Systemstatus und Summary-Resources sind nicht registriert.
+- Eine spaetere dokumentbezogene Operation muss vor Inhalt oder Mutation einen frisch verifizierten Laravel-MCP-Benutzer und dessen Live-Paperless-Berechtigung pruefen und geschlossen fehlschlagen.
+- Spaetere Mutationen muessen dieselben durable Command/Review/Pipeline-/Audit-Pfade wie die Laravel-UI verwenden.
+- Spaetere Reads muessen PostgreSQL-backed, berechtigungsgefiltert und redigiert sein.
+- Identitaetslose FastMCP-Resources bleiben unregistriert.
+
+## Aktivierung und Transport
+
+Der Prozess kann weiterhin fuer Integrations- und Rueckkehrtests gestartet werden:
 
 ```bash
-# In .env setzen:
 ENABLE_MCP=true
-MCP_API_KEY=ein-sicherer-key    # empfohlen bei SSE-Transport
-
-# Container starten
-docker compose up -d
+MCP_LARAVEL_AUTH_ENABLED=true
+MCP_LARAVEL_PATH=/app/laravel
 ```
 
-### Lokaler Start (Entwicklung)
+`MCP_TRANSPORT` unterstuetzt `stdio`, `sse` und `streamable-http`; `MCP_HOST` und `MCP_PORT` konfigurieren Netzwerktransporte. Da keine Registrierungen exponiert werden, sind `MCP_ENABLE_WRITE`, `MCP_API_KEY` und `MCP_CLASSIFY_RATE_LIMIT` fuer das produktive MCP-Verhalten inert. Sie werden in einem spaeteren Konfigurations-Cleanup entfernt.
 
-```bash
-# stdio (fuer Claude Code CLI):
-python -m app.mcp_server
-
-# SSE:
-MCP_TRANSPORT=sse MCP_PORT=3001 python -m app.mcp_server
-```
-
-## Sicherheitskonzept
-
-- **Chat/RAG und globales Retrieval deaktiviert.** MCP registriert keine globale Dokumentensuche, keinen Volltext-Dokumentabruf und keine frei aufrufbare Aehnlichkeitssuche. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track.
-- **Read-Only als Default.** Schreibende Tools nur bei `MCP_ENABLE_WRITE=true`.
-- **API-Key-Auth:** `MCP_API_KEY` sichert alle Tool-Calls ab (empfohlen bei SSE-Transport).
-- **Rate-Limit:** `MCP_CLASSIFY_RATE_LIMIT` begrenzt KI-Klassifikationen pro Stunde (Default: 10).
-- **Inbox-Gate:** `classify_document` akzeptiert nur Dokumente mit dem Inbox-Tag.
-
-## Verfuegbare Tools
-
-### Read-Only (immer verfuegbar)
-
-| Kategorie | Tools |
-|---|---|
-| Dokumente | `list_inbox` (Metadaten des berechtigungsgebundenen Paperless-Inbox-Pfads; kein globales Retrieval) |
-| Entities | `list_correspondents`, `list_document_types`, `list_tags`, `list_storage_paths` |
-| KI | `classify_document` (rate-limited und Inbox-gated; kein allgemeiner Chat-/Retrieval-Aufruf) |
-| Suggestions | `list_suggestions`, `get_suggestion` |
-| Tags | `list_tag_proposals`, `list_blacklisted_tags` |
-| System | `get_status` |
-
-### Write (opt-in via `MCP_ENABLE_WRITE=true`)
-
-| Kategorie | Tools |
-|---|---|
-| Dokumente | `update_document` |
-| Suggestions | `approve_suggestion`, `reject_suggestion` |
-| Tags | `approve_tag` (retroaktiv auf committete Docs), `unblacklist_tag` |
-
-## Resources
-
-| URI | Beschreibung |
-|---|---|
-| `paperless://suggestions/pending` | Offene Vorschlaege |
-| `paperless://stats` | Classifier-Statistiken (Suggestions, Errors, Tags) |
-
-## Konfiguration
-
-| Variable | Default | Beschreibung |
-|---|---|---|
-| `ENABLE_MCP` | `false` | MCP-Server aktivieren |
-| `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `sse`, `streamable-http` |
-| `MCP_PORT` | `3001` | Port fuer SSE/HTTP-Transport |
-| `MCP_HOST` | `0.0.0.0` | Bind-Adresse |
-| `MCP_ENABLE_WRITE` | `false` | Write-Tools aktivieren |
-| `MCP_API_KEY` | — | API-Key fuer Authentifizierung |
-| `MCP_CLASSIFY_RATE_LIMIT` | `10` | Max. Klassifikationen pro Stunde (0 = unbegrenzt) |
-
-## Integration Examples
-
-Below are example configurations to connect the MCP server with client tools.
-
-### Local CLI Usage
-
-```json
-{
-  "mcpServers": {
-    "paperless": {
-      "command": "python",
-      "args": ["-m", "app.mcp_server"],
-      "cwd": "/path/to/archibot",
-      "env": {
-        "MCP_LARAVEL_AUTH_ENABLED": "true",
-        "MCP_LARAVEL_PATH": "/path/to/archibot/laravel"
-      }
-    }
-  }
-}
-```
-
-### SSE Transport (e.g., Docker remote server)
-
-```json
-{
-  "mcpServers": {
-    "paperless": {
-      "type": "sse",
-      "url": "http://classifier-host:3001/sse",
-      "headers": {
-        "X-API-Key": "your-mcp-api-key"
-      }
-    }
-  }
-}
-```
+Der vorhandene Auth-Guard akzeptiert fuer zukuenftige Seams ausschliesslich einen durch `php artisan archibot:mcp-token-verify` verifizierten Benutzerkontext mit verknuepftem Paperless-Token. Statische Keys oder unauthentifizierter stdio-Modus duerfen keine zukuenftige Registrierung freischalten.

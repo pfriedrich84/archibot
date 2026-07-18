@@ -1,70 +1,22 @@
-"""Tests for the CLI poll --force flag."""
-
 from __future__ import annotations
 
-import asyncio
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def _mock_cli_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.cli.init_db", MagicMock())
-    monkeypatch.setattr("app.cli._configure_logging", MagicMock())
+from app import cli
 
 
-class _FakeLoop:
-    def add_signal_handler(self, *_args, **_kwargs):
-        return None
+def test_poll_and_force_poll_delegate_to_laravel(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_configure_logging", MagicMock())
+    invoke = MagicMock()
+    monkeypatch.setattr(cli, "cmd_laravel_maintenance", invoke)
 
-    def remove_signal_handler(self, *_args, **_kwargs):
-        return None
+    monkeypatch.setattr(sys, "argv", ["archibot", "poll"])
+    cli.main()
+    monkeypatch.setattr(sys, "argv", ["archibot", "poll", "--force"])
+    cli.main()
 
-
-def test_cmd_poll_passes_force() -> None:
-    """cmd_poll(force=True) passes force through to poll_inbox."""
-    mock_poll = AsyncMock()
-    mock_paperless = MagicMock()
-    mock_paperless.aclose = AsyncMock()
-    mock_ollama = MagicMock()
-    mock_ollama.aclose = AsyncMock()
-
-    with (
-        patch("app.cli.PaperlessClient", return_value=mock_paperless),
-        patch("app.cli.create_ai_provider", return_value=mock_ollama),
-        patch("app.worker.poll_inbox", mock_poll),
-        patch("app.cli.asyncio.get_running_loop", return_value=_FakeLoop()),
-    ):
-        from app.cli import cmd_poll
-
-        asyncio.run(cmd_poll(force=True))
-
-    mock_poll.assert_called_once_with(force=True)
-
-
-def test_main_parses_force_flag_for_poll(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() routes poll --force through durable Laravel Maintenance."""
-    monkeypatch.setattr(sys, "argv", ["cli", "poll", "--force"])
-    mock_laravel = MagicMock()
-    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
-
-    from app.cli import main
-
-    main()
-
-    mock_laravel.assert_called_once_with("poll", force=True, limit=None)
-
-
-def test_main_poll_no_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """main() routes poll without --force through durable Laravel Maintenance."""
-    monkeypatch.setattr(sys, "argv", ["cli", "poll"])
-    mock_laravel = MagicMock()
-    monkeypatch.setattr("app.cli.cmd_laravel_maintenance", mock_laravel)
-
-    from app.cli import main
-
-    main()
-
-    mock_laravel.assert_called_once_with("poll", force=False, limit=None)
+    assert invoke.call_args_list == [
+        __import__("unittest.mock").mock.call("poll", force=False, limit=None),
+        __import__("unittest.mock").mock.call("poll", force=True, limit=None),
+    ]

@@ -29,7 +29,7 @@ All requested checks passed on `main` after the documentation cleanup:
 
 ## Operational risks to keep visible
 
-- Maintenance reset is no longer exposed in the Laravel GUI. Destructive reset is CLI-only via `archibot reset --yes`, which delegates to `php artisan archibot:reset --yes` and clears Laravel/PostgreSQL worker/job-control, pipeline, embedding, audit, chat, session/cache, webhook, review, OCR and entity-approval state.
+- Maintenance reset is exposed only to authenticated admins with an explicit `RESET` confirmation. The UI and `archibot reset --yes` both use the same Laravel/PostgreSQL reset service and record the real authenticated user or explicit `local_operator` principal.
 - Some Svelte navigation still uses hardcoded internal paths instead of generated route helpers. This is low-risk for the default deployment, but can matter for deployments using `archibot.path_prefix`.
 - Historical only: the Python `archibot jobs` CLI noted here has since been removed. Operator-facing CLI actions that overlap GUI actions now delegate to Laravel Maintenance and durable commands/pipeline runs.
 
@@ -46,9 +46,9 @@ From `docs/laravel-gui-parity.md`, the remaining `partial` areas are:
 - Chat/RAG is disabled for every user; historical chat rows remain stored but are not exposed. Issue #221 is the only redesign/re-enable track.
 - Settings: deployment-only settings remain intentionally outside Laravel settings.
 - Audit Logs: latest-100 view lacks filters/export/detail view.
-- Maintenance: destructive reset is intentionally excluded from GUI parity and remains operator-only CLI functionality.
+- Maintenance: destructive reset has CLI/UI parity through one Laravel service; browser use is admin-only and confirmation-gated.
 - MCP: no MCP server status/health page, per-token permissions UI, or direct rate-limit/write-tool status page.
 
 ## Readiness summary
 
-Historical conclusion at the time: the temporary Laravel `worker_jobs` control plane was stable enough to enter Phase 13 planning. Current state: `worker_jobs` has been retired, Operations Log and Pipeline Runs provide durable visibility, Maintenance is the only admin action-launch surface, and destructive reset remains a deliberate operator CLI action outside the GUI.
+Historical conclusion at the time: the temporary Laravel `worker_jobs` control plane was stable enough to enter Phase 13 planning. Current state: `worker_jobs` has been retired, Operations Log and Pipeline Runs provide durable visibility, Maintenance is the admin action-launch surface, and destructive reset is shared by the confirmed admin UI and local operator CLI.

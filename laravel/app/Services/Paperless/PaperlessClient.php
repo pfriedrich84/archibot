@@ -130,6 +130,15 @@ class PaperlessClient
         return $payload;
     }
 
+    /** @param array<string, mixed> $fields */
+    public function patchDocument(string $token, int $documentId, array $fields): void
+    {
+        $response = $this->request($token)->patch("/api/documents/{$documentId}/", $fields);
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not update Paperless document.');
+        }
+    }
+
     public function documentOptions(string $token, int $documentId): Response
     {
         return $this->request($token)->send('OPTIONS', "/api/documents/{$documentId}/");
@@ -221,6 +230,21 @@ class PaperlessClient
     public function createDocumentType(string $token, string $name): int
     {
         return $this->createEntity($token, '/api/document_types/', $name, 'document type');
+    }
+
+    public function findTagByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/tags/', $name, 'tag');
+    }
+
+    public function findCorrespondentByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/correspondents/', $name, 'correspondent');
+    }
+
+    public function findDocumentTypeByName(string $token, string $name): ?int
+    {
+        return $this->findEntityByName($token, '/api/document_types/', $name, 'document type');
     }
 
     public function currentUser(string $token, ?string $fallbackUsername = null): PaperlessUser
@@ -419,6 +443,28 @@ class PaperlessClient
         $query = is_array($parts) && isset($parts['query']) ? '?'.$parts['query'] : '';
 
         return $path.$query;
+    }
+
+    private function findEntityByName(string $token, string $endpoint, string $name, string $label): ?int
+    {
+        $response = $this->request($token)->get($endpoint, ['name__iexact' => $name, 'page_size' => 2]);
+        if (! $response->successful()) {
+            throw new RuntimeException("Could not look up Paperless {$label}.");
+        }
+        $payload = $response->json();
+        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+        if (! is_array($items)) {
+            throw new RuntimeException("Paperless {$label} lookup response was not JSON.");
+        }
+        foreach ($items as $item) {
+            if (is_array($item)
+                && is_numeric($item['id'] ?? null)
+                && is_string($item['name'] ?? null)
+                && mb_strtolower(trim($item['name'])) === mb_strtolower(trim($name))) {
+                return (int) $item['id'];
+            }
+        }
+        return null;
     }
 
     private function createEntity(string $token, string $endpoint, string $name, string $label): int

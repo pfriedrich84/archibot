@@ -209,13 +209,28 @@ def check_api_key(ctx: Context) -> McpIdentity | None:
     return None
 
 
-def require_mcp_write(ctx: Context) -> McpIdentity | None:
-    """Validate auth and require write permission for a mutating MCP tool."""
+def require_verified_identity(ctx: Context) -> McpIdentity:
+    """Require a live Laravel token identity with user-scoped Paperless context.
+
+    Retained MCP registrations do not support the legacy static-key/no-auth
+    modes because those modes cannot carry a Paperless user identity.
+    """
+    if not settings.mcp_laravel_auth_enabled:
+        raise ValueError("Verified Laravel MCP identity is required.")
     identity = check_api_key(ctx)
-    if settings.mcp_laravel_auth_enabled:
-        if not identity or not identity.mcp_write_enabled:
-            raise ValueError("MCP write tools are disabled for this token.")
-        return identity
-    if not settings.mcp_enable_write:
-        raise ValueError("MCP write tools are disabled.")
+    if (
+        identity is None
+        or identity.user_id is None
+        or not identity.paperless_url
+        or not identity.paperless_token
+    ):
+        raise ValueError("Verified Laravel MCP identity is incomplete.")
+    return identity
+
+
+def require_mcp_write(ctx: Context) -> McpIdentity:
+    """Require verified identity and an explicitly write-enabled MCP token."""
+    identity = require_verified_identity(ctx)
+    if not identity.mcp_write_enabled:
+        raise ValueError("MCP write tools are disabled for this token.")
     return identity

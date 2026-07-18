@@ -62,11 +62,6 @@ class RunPythonActorJob implements ShouldQueue
         return new self(PythonActorRunner::ACTOR_REINDEX_OCR, $commandId);
     }
 
-    public static function syncEntityApproval(int $commandId): self
-    {
-        return new self(PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL, $commandId);
-    }
-
     public static function webhookDelivery(int $deliveryId): self
     {
         return new self(PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK, $deliveryId);
@@ -84,8 +79,7 @@ class RunPythonActorJob implements ShouldQueue
             PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX,
             PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION,
             PythonActorRunner::ACTOR_REINDEX,
-            PythonActorRunner::ACTOR_REINDEX_OCR,
-            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $this->runCommandIfEligible($runner, $claimer),
+            PythonActorRunner::ACTOR_REINDEX_OCR => $this->runCommandIfEligible($runner, $claimer),
             PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE => $this->runPipelineIfEligible($runner, $claimer),
             PythonActorRunner::ACTOR_POLL_RECONCILIATION => $this->runPollReconciliation($runner, $pollCandidates, $claimer),
             PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK => $this->runWebhookIfEligible($runner, $claimer),
@@ -131,7 +125,6 @@ class RunPythonActorJob implements ShouldQueue
             PythonActorRunner::ACTOR_POLL_RECONCILIATION => $runner->runPollReconciliation($command, $claim),
             PythonActorRunner::ACTOR_REINDEX => $runner->runReindex($command, $claim),
             PythonActorRunner::ACTOR_REINDEX_OCR => $runner->runReindexOcr($command, $claim),
-            PythonActorRunner::ACTOR_SYNC_ENTITY_APPROVAL => $runner->runSyncEntityApproval($command, $claim),
             default => throw new InvalidArgumentException("Unsupported command actor {$this->actorName}."),
         };
 

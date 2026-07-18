@@ -2,6 +2,7 @@
 
 namespace App\Services\Pipeline;
 
+use App\Jobs\ApplyEntityApprovalCommand;
 use App\Jobs\RunPythonActorJob;
 use App\Models\ActorExecution;
 use App\Models\Command;
@@ -876,7 +877,7 @@ class PipelineRecoveryDispatcher
                 Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
                 Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($command->id),
                 Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
-                Command::TYPE_SYNC_ENTITY_APPROVAL => $this->syncEntityApprovalJobOrFail($command),
+                Command::TYPE_SYNC_ENTITY_APPROVAL => new ApplyEntityApprovalCommand($command->id),
                 default => null,
             };
 
@@ -1354,35 +1355,6 @@ class PipelineRecoveryDispatcher
 
             return true;
         });
-    }
-
-    private function syncEntityApprovalJobOrFail(Command $command): ?RunPythonActorJob
-    {
-        foreach (['action', 'type', 'name'] as $requiredKey) {
-            if (! is_string($command->payload[$requiredKey] ?? null)
-                || trim((string) $command->payload[$requiredKey]) === '') {
-                $command->update([
-                    'status' => Command::STATUS_FAILED_PERMANENT,
-                    'error' => 'missing_entity_sync_'.$requiredKey,
-                    'finished_at' => now(),
-                ]);
-
-                PipelineLifecycleRecorder::event([
-                    'command_id' => $command->id,
-                    'event_type' => 'recovery.command_failed_permanent',
-                    'level' => 'error',
-                    'message' => "Entity approval sync command could not be redispatched because payload.{$requiredKey} is missing.",
-                    'payload' => [
-                        'command_type' => $command->type,
-                        'error_type' => 'missing_entity_sync_'.$requiredKey,
-                    ],
-                ]);
-
-                return null;
-            }
-        }
-
-        return RunPythonActorJob::syncEntityApproval($command->id);
     }
 
     private function reviewCommitJobOrFail(Command $command): ?RunPythonActorJob
