@@ -18,8 +18,8 @@
     import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
-    import type { Paginator } from '@/types';
     import { show } from '@/routes/ocr-reviews';
+    import type { Paginator } from '@/types';
 
     type OcrReview = {
         id: number;

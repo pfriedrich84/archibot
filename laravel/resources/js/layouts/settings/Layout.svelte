@@ -6,8 +6,8 @@
     import { Separator } from '@/components/ui/separator';
     import { currentUrlState } from '@/lib/currentUrl.svelte';
     import { toUrl } from '@/lib/utils';
-    import type { NavItem } from '@/types';
     import { edit as editAppearance } from '@/routes/appearance';
+    import type { NavItem } from '@/types';
 
     let {
         children,

@@ -14,8 +14,8 @@
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
     import { formatDisplayValue } from '@/lib/display';
-    import type { Paginator } from '@/types';
     import { index as errorsIndex } from '@/routes/errors';
+    import type { Paginator } from '@/types';
 
     type WebhookError = {
         id: number;
