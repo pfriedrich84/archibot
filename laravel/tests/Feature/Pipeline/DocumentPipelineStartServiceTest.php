@@ -8,6 +8,7 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineStartGate;
+use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Mockery\MockInterface;
@@ -43,8 +44,9 @@ class DocumentPipelineStartServiceTest extends TestCase
     public function test_enqueue_failure_leaves_pending_run_for_recovery(): void
     {
         EmbeddingIndexState::query()->create(['status' => 'complete']);
-        Queue::shouldReceive('connection')->once()->andReturnSelf();
-        Queue::shouldReceive('push')->once()->andReturnUsing(function (): never {
+        $queue = $this->mock(QueueContract::class);
+        Queue::shouldReceive('connection')->once()->andReturn($queue);
+        $queue->shouldReceive('push')->once()->andReturnUsing(function (): never {
             $this->assertDatabaseHas('pipeline_runs', [
                 'paperless_document_id' => 42,
                 'status' => PipelineRun::STATUS_PENDING,
@@ -76,8 +78,9 @@ class DocumentPipelineStartServiceTest extends TestCase
     public function test_post_dispatch_queued_transition_cannot_overwrite_fast_worker_running_state(): void
     {
         EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
-        Queue::shouldReceive('connection')->once()->andReturnSelf();
-        Queue::shouldReceive('push')->once()->andReturnUsing(function (RunPythonActorJob $job): void {
+        $queue = $this->mock(QueueContract::class);
+        Queue::shouldReceive('connection')->once()->andReturn($queue);
+        $queue->shouldReceive('push')->once()->andReturnUsing(function (RunPythonActorJob $job): void {
             PipelineRun::query()->whereKey($job->commandId)->update([
                 'status' => PipelineRun::STATUS_RUNNING,
                 'started_at' => now(),

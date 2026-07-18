@@ -12,6 +12,7 @@ use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
+use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -175,8 +176,9 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
         $delivery->timestamps = false;
         $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
-        Queue::shouldReceive('connection')->once()->andReturnSelf();
-        Queue::shouldReceive('push')->once()->andReturnUsing(function (): never {
+        $queue = $this->mock(QueueContract::class);
+        Queue::shouldReceive('connection')->once()->andReturn($queue);
+        $queue->shouldReceive('push')->once()->andReturnUsing(function (): never {
             $this->assertDatabaseHas('pipeline_runs', [
                 'status' => PipelineRun::STATUS_PENDING,
             ]);

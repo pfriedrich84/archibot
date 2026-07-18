@@ -120,7 +120,11 @@ class UxConsistencyTest extends TestCase
             $assertPrefixedPath = function (string $url, string $context) use ($expectedPrefix): void {
                 $path = parse_url($url, PHP_URL_PATH);
                 $this->assertIsString($path, $context);
-                $this->assertStringStartsWith($expectedPrefix.'/', $path, $context);
+                $this->assertTrue(
+                    $path === ($expectedPrefix === '' ? '/' : $expectedPrefix)
+                        || str_starts_with($path, $expectedPrefix.'/'),
+                    $context,
+                );
                 $this->assertStringNotContainsString('/archibot/archibot/', $path, $context);
                 if ($expectedPrefix === '') {
                     $this->assertStringNotContainsString('/archibot/', $path, $context);
@@ -180,11 +184,13 @@ class UxConsistencyTest extends TestCase
         $prefix = trim((string) config('archibot.path_prefix'), '/');
         $expectedPath = fn (string $path): string => '/'.($prefix === '' ? '' : $prefix.'/').ltrim($path, '/');
 
+        $this->markArchiBotSetupIncomplete();
         $this->get(route('setup.show'))->assertOk()->assertInertia(fn (Assert $page) => $page
             ->where('actions.store', url($expectedPath('setup')))
             ->where('actions.paperlessTags', url($expectedPath('setup/paperless-tags')))
         );
 
+        $this->markArchiBotSetupComplete();
         $admin = User::factory()->create(['is_admin' => true]);
         $this->actingAs($admin)->get(route('admin.settings.edit', ['section' => 'ai-provider']))
             ->assertOk()

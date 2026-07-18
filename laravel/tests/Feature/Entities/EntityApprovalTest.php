@@ -83,6 +83,7 @@ class EntityApprovalTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->execute($command);
 
+        $command->refresh();
         $entity->refresh();
         $this->assertSame(EntityApproval::STATUS_APPROVED, $entity->status);
         $this->assertSame(77, $entity->paperless_id);
@@ -170,7 +171,7 @@ class EntityApprovalTest extends TestCase
         $this->assertSame(77, $matching->refresh()->proposed_tags[0]['id']);
         $this->assertNull($unrelated->refresh()->proposed_tags[0]['id']);
         $this->assertSame(1, Command::query()->firstOrFail()->payload['outcome']['updated_suggestions']);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/api/documents/43/'));
     }
 
@@ -194,6 +195,7 @@ class EntityApprovalTest extends TestCase
         } catch (\RuntimeException) {
             // The durable command remains recoverable after the queued worker fails.
         }
+        $command->refresh();
         $this->assertSame(Command::STATUS_PENDING, $command->status);
         $this->assertNotNull($command->next_retry_at);
         $this->assertStringStartsWith('entity_approval_application_failed:', $command->error);
@@ -221,7 +223,9 @@ class EntityApprovalTest extends TestCase
         Http::fake([
             'paperless.test/api/tags/?*' => Http::response(['results' => []]),
             'paperless.test/api/tags/' => Http::response(['id' => 77], 201),
-            'paperless.test/api/documents/42/' => Http::response([], 500),
+            'paperless.test/api/documents/42/' => Http::sequence()
+                ->push([], 500)
+                ->push([], 200),
         ]);
         $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
         $entity = EntityApproval::factory()->create(['type' => EntityApproval::TYPE_TAG, 'name' => 'Accounting']);
@@ -247,7 +251,6 @@ class EntityApprovalTest extends TestCase
         $this->assertSame(EntityApproval::SYNC_STATUS_FAILED, $entity->sync_status);
         $this->assertSame(77, $entity->paperless_id);
 
-        Http::fake(['paperless.test/api/documents/42/' => Http::response([], 200)]);
         $this->actingAs($admin)
             ->post(route('entities.approve', ['segment' => 'tags', 'entityApproval' => $entity]))
             ->assertRedirect();

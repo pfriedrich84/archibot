@@ -591,9 +591,14 @@ class FirstRunSetupTest extends TestCase
             }
 
             config(['archibot.paperless_url' => 'http://'.$address]);
+            // These focused transport tests intentionally use a loopback socket
+            // instead of Laravel's HTTP fake handler so Guzzle performs real
+            // chunk decoding/decompression before the bounded sink is checked.
+            Http::allowStrayRequests();
 
             return $request();
         } finally {
+            Http::preventStrayRequests();
             @proc_terminate($process);
             foreach ([1, 2] as $pipe) {
                 if (isset($pipes[$pipe]) && is_resource($pipes[$pipe])) {

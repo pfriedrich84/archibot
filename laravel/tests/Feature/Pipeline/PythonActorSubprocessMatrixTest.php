@@ -37,8 +37,8 @@ class PythonActorSubprocessMatrixTest extends TestCase
         $this->databasePath = $path;
         $this->originalDatabaseConnection = getenv('DB_CONNECTION');
         $this->originalDatabasePath = getenv('DB_DATABASE');
-        putenv('DB_CONNECTION=sqlite');
-        putenv("DB_DATABASE={$this->databasePath}");
+        $this->setEnvironment('DB_CONNECTION', 'sqlite');
+        $this->setEnvironment('DB_DATABASE', $this->databasePath);
         Config::set('database.default', 'sqlite');
         Config::set('database.connections.sqlite.database', $this->databasePath);
         DB::purge('sqlite');
@@ -59,7 +59,21 @@ class PythonActorSubprocessMatrixTest extends TestCase
 
     private function restoreEnvironment(string $key, string|false $value): void
     {
-        putenv($value === false ? $key : "{$key}={$value}");
+        if ($value === false) {
+            putenv($key);
+            unset($_ENV[$key], $_SERVER[$key]);
+
+            return;
+        }
+
+        $this->setEnvironment($key, $value);
+    }
+
+    private function setEnvironment(string $key, string $value): void
+    {
+        putenv("{$key}={$value}");
+        $_ENV[$key] = $value;
+        $_SERVER[$key] = $value;
     }
 
     /** @return array<string, array{string, string}> */
@@ -111,6 +125,10 @@ class PythonActorSubprocessMatrixTest extends TestCase
             putenv('ARCHIBOT_ACTOR_FIXTURE_SCENARIO');
         }
 
+        // Reopen the parent PDO after the child exits so assertions observe
+        // only committed durable state from the file-backed SQLite fixture.
+        DB::purge('sqlite');
+        DB::reconnect('sqlite');
         $source->refresh();
         $execution = ActorExecution::query()->latest('id')->firstOrFail();
         $eventSourceColumn = match ($kind) {
