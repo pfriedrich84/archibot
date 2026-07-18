@@ -81,8 +81,8 @@ class PostgresWebhookPollConcurrencyTest extends TestCase
 
             DB::disconnect();
             DB::reconnect();
-            $webhook = $this->result($base.'.webhook.result');
-            $poll = $this->result($base.'.poll.result');
+            $webhook = $this->readWorkerResult($base.'.webhook.result');
+            $poll = $this->readWorkerResult($base.'.poll.result');
             $this->assertSame(200, $webhook['status']);
             $this->assertSame(['completed' => 1, 'skipped' => 0, 'failed' => 0], $poll);
             $this->assertDatabaseCount('pipeline_runs', 1);
@@ -144,7 +144,7 @@ class PostgresWebhookPollConcurrencyTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function result(string $path): array
+    private function readWorkerResult(string $path): array
     {
         return json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
     }
