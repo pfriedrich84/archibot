@@ -2,11 +2,13 @@
 
 ## Status and baseline
 
-Status: accepted 13-step maintainer sequence; implementation in progress. Steps 1–12 have implementation changes, subject to the acceptance qualifications recorded below. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval.
+Status: accepted 13-step maintainer sequence. Steps 1–12 are implemented and accepted for this hardening sequence. Step 13 research/design is complete, while every Milestone 4 runtime redesign, compatibility implementation and re-enable remains pending explicit approval.
 
 Baseline: `main` after PR [#219](https://github.com/pfriedrich84/archibot/pull/219), merge commit `5ec7cb2`.
 
-This plan records the maintainer decisions from the product-risk and architecture review. It does not claim that the current runtime already satisfies the target controls. Each milestone must ship as a focused, reviewable pull request with current validation evidence.
+Current final CI evidence: PR [#229](https://github.com/pfriedrich84/archibot/pull/229) HEAD `cc0ec96`, [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568) — lint-and-verify, Laravel (468 passed; 26 PostgreSQL-only skipped), Docker build, Grype and Trivy passed. This evidence does not claim live PostgreSQL integration or satisfy the stable-release gates below by itself.
+
+This plan records the maintainer decisions from the product-risk and architecture review. Implementation and acceptance claims are bounded by the recorded evidence and release gates. Each milestone must ship as a focused, reviewable pull request with current validation evidence.
 
 ## Outcomes
 
@@ -312,7 +314,7 @@ Acceptance:
 
 ### 2.2 Delete SQLite processing
 
-Status: implementation complete in the Step 10 working tree; acceptance pending. Productive SQLite schemas, repositories, workers, diagnostics, configuration and dependencies are deleted. PostgreSQL/pgvector remain the sole product-state and vector-search stores; reset remains Laravel-owned. Product startup now fails closed for non-PostgreSQL Laravel or Python configuration, while the sole Python SQLite SQL adapter is explicitly injected from a Laravel process-test fixture and is unavailable to product actor, CLI and server paths. A repository-wide deny-by-default guard scans productive source, configuration, manifests, scripts, Docker and supervisor inputs, with exact-rule test/framework exceptions and adversarial new-file, dependency and renamed-schema probes. The retained SQLite references are classified in the [Step 10 disposition](implementation-notes/sqlite-disposition.md), and the committed Graphify artifacts have been regenerated from the candidate tree. Existing `classifier.db` files are left inert on persistent volumes for explicit export, rollback or operator-directed retention rather than being silently deleted. Change this status to implemented only after the full Python/Laravel suites and clean-install Docker smoke acceptance below pass for the candidate patch.
+Status: implemented (Step 10), with final acceptance evidence recorded in PR [#229](https://github.com/pfriedrich84/archibot/pull/229) and [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568). Productive SQLite schemas, repositories, workers, diagnostics, configuration and dependencies are deleted. PostgreSQL/pgvector remain the sole product-state and vector-search stores; reset remains Laravel-owned. Product startup now fails closed for non-PostgreSQL Laravel or Python configuration, while the sole Python SQLite SQL adapter is explicitly injected from a Laravel process-test fixture and is unavailable to product actor, CLI and server paths. A repository-wide deny-by-default guard scans productive source, configuration, manifests, scripts, Docker and supervisor inputs, with exact-rule test/framework exceptions and adversarial new-file, dependency and renamed-schema probes. The retained SQLite references are classified in the [Step 10 disposition](implementation-notes/sqlite-disposition.md), and the committed Graphify artifacts have been regenerated from the candidate tree. Existing `classifier.db` files are left inert on persistent volumes for explicit export, rollback or operator-directed retention rather than being silently deleted.
 
 Delete only after 2.1 passes:
 
@@ -332,7 +334,7 @@ Acceptance:
 
 ### 2.3 Remove Absurd
 
-Status: implementation complete in the Step 11 working tree; acceptance pending. The SDK, decorator/bootstrap path, Python event/recovery workers, schema installer, runtime settings, Docker dependency and broker tests are deleted. Plain actor functions remain behind the fixed Laravel-launched allowlist, and a deny-by-default productive-file guard prevents transport reintroduction. Clean installs no longer create the retired schema; upgraded historical schemas remain inert for retention and rollback as documented in the [Step 11 upgrade notes](implementation-notes/absurd-removal.md). Change this status to implemented only after the full Python/Laravel suites, clean-install Docker/process smoke, dependency gates and available image-security scans pass for the candidate patch.
+Status: implemented (Step 11), with final acceptance evidence recorded in PR [#229](https://github.com/pfriedrich84/archibot/pull/229) and [GitHub Actions run 29640358568](https://github.com/pfriedrich84/archibot/actions/runs/29640358568). The SDK, decorator/bootstrap path, Python event/recovery workers, schema installer, runtime settings, Docker dependency and broker tests are deleted. Plain actor functions remain behind the fixed Laravel-launched allowlist, and a deny-by-default productive-file guard prevents transport reintroduction. Clean installs no longer create the retired schema; upgraded historical schemas remain inert for retention and rollback as documented in the [Step 11 upgrade notes](implementation-notes/absurd-removal.md).
 
 Delete:
 
@@ -456,8 +458,8 @@ This is the only step numbering used for hardening status. Milestone subsections
 7. Add the ownership inventory/guards and centralize Pipeline Start in Laravel — implemented.
 8. Add the Python execution lifecycle and align Laravel transport outcomes — implemented.
 9. Migrate CLI/MCP off SQLite — implemented; retired MCP surfaces remain absent.
-10. Delete SQLite processing — implementation complete; final acceptance qualifications remain those in Milestone 2.2.
-11. Remove Absurd — implementation complete; final acceptance qualifications remain those in Milestone 2.3.
+10. Delete SQLite processing — implemented.
+11. Remove Absurd — implemented.
 12. Deliver the aggregated Milestone 3 UX consistency work — implemented; release validation remains required.
 13. Deliver the aggregated Milestone 4 research/design for Issue #221, Issue #222 and safe automation — research/design complete on 2026-07-18. Authorization-safe RAG runtime work, Paperless v3/API negotiation implementation and safe-automation runtime/canary work are **not implemented or approved**; Chat/RAG, OCR write-back and automatic commits remain disabled.
 
