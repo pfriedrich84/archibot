@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -44,11 +42,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_BASE_URL", "OLLAMA_URL"),
     )
     openai_api_key: str = ""
-    ai_provider_profiles: str = ""  # JSON list of named provider profiles
-    classification_provider: str = ""
-    embedding_provider: str = ""
-    ocr_provider: str = ""
-    judge_provider: str = ""
     ollama_model: str = Field(
         default="gemma4:e4b",
         validation_alias=AliasChoices("CLASSIFICATION_MODEL", "OLLAMA_MODEL"),
@@ -199,79 +192,6 @@ class Settings(BaseSettings):
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
-
-    @property
-    def ai_provider_profiles_resolved(self) -> dict[str, dict[str, str]]:
-        """Named AI provider profiles, always including the default profile.
-
-        `ai_provider_profiles` is a JSON list of objects with `id`, `type`,
-        `base_url`, optional `api_key_env`, and optional `label`/`is_cloud` fields.
-        The legacy single-provider settings remain the default profile for
-        backwards compatibility.
-        """
-        profiles: dict[str, dict[str, str]] = {
-            "default": {
-                "id": "default",
-                "label": "Default AI provider",
-                "type": self.llm_provider or "ollama",
-                "base_url": self.ollama_url,
-                "api_key": self.openai_api_key,
-                "is_cloud": "false",
-            }
-        }
-
-        raw = (self.ai_provider_profiles or "").strip()
-        if not raw:
-            return profiles
-
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return profiles
-
-        if not isinstance(parsed, list):
-            return profiles
-
-        for item in parsed:
-            if not isinstance(item, dict):
-                continue
-            profile_id = str(item.get("id", "")).strip()
-            provider_type = str(item.get("type", "")).strip().lower()
-            base_url = str(item.get("base_url", "")).strip().rstrip("/")
-            api_key_env = str(item.get("api_key_env", "")).strip()
-            if (
-                not profile_id
-                or provider_type not in {"ollama", "openai_compatible"}
-                or not base_url
-            ):
-                continue
-            profiles[profile_id] = {
-                "id": profile_id,
-                "label": str(item.get("label") or profile_id).strip(),
-                "type": provider_type,
-                "base_url": base_url,
-                "api_key": os.environ.get(api_key_env, "")
-                if api_key_env
-                else str(item.get("api_key", "")).strip(),
-                "api_key_env": api_key_env,
-                "is_cloud": "true" if bool(item.get("is_cloud", False)) else "false",
-            }
-
-        return profiles
-
-    def provider_id_for_role(self, role: str) -> str:
-        role_map = {
-            "classification": self.classification_provider,
-            "embedding": self.embedding_provider,
-            "ocr": self.ocr_provider,
-            "judge": self.judge_provider,
-        }
-        provider_id = (role_map.get(role, "") or "").strip() or "default"
-        return provider_id if provider_id in self.ai_provider_profiles_resolved else "default"
-
-    def ai_provider_for_role(self, role: str) -> dict[str, str]:
-        profiles = self.ai_provider_profiles_resolved
-        return profiles[self.provider_id_for_role(role)]
 
     @property
     def ollama_embed_dim_resolved(self) -> int:
@@ -481,37 +401,6 @@ FIELD_META: dict[str, dict[str, Any]] = {
         restart="component",
         help="Optional bearer token for OpenAI-compatible local providers. Leave empty when the endpoint does not require authentication.",
         sensitive=True,
-    ),
-    "ai_provider_profiles": _fm(
-        "AI Provider",
-        "Additional Provider Profiles (JSON)",
-        "textarea",
-        restart="component",
-        help="Optional JSON array of named providers, e.g. local-litellm and openrouter. Each item needs id, type, base_url; api_key_env and is_cloud are optional. Prefer api_key_env over inline secrets.",
-    ),
-    "classification_provider": _fm(
-        "AI Provider",
-        "Classification Provider ID",
-        restart="component",
-        help="Provider profile ID for classification. Empty/default uses the main provider.",
-    ),
-    "embedding_provider": _fm(
-        "AI Provider",
-        "Embedding Provider ID",
-        restart="component",
-        help="Provider profile ID for embeddings. Empty/default uses the main provider.",
-    ),
-    "ocr_provider": _fm(
-        "AI Provider",
-        "OCR Provider ID",
-        restart="component",
-        help="Provider profile ID for OCR text and vision calls. Empty/default uses the main provider.",
-    ),
-    "judge_provider": _fm(
-        "AI Provider",
-        "Judge Provider ID",
-        restart="component",
-        help="Provider profile ID for judge verification. Empty/default uses the main provider.",
     ),
     "ollama_timeout_seconds": _fm(
         "AI Provider",

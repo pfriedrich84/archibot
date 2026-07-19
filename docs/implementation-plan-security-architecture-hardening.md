@@ -152,14 +152,14 @@ Acceptance:
 
 ### 0.5 Restrict and structure diagnostics
 
-Status: implemented. One admin middleware protects every diagnostic route before route-model binding, mutation controllers retain defense-in-depth admin checks, and every browser diagnostic contract (including statistics and embedding snapshots) uses fixed field schemas, source-inventoried canonical application/provider enums, non-leaking `unknown` aggregate buckets, stable non-reversible references for opaque identifiers (including webhook dedupe, request IDs, configurable provider profiles and every model ID), and fixed redaction notices for free-form messages. Canonical actor phases, event codes and explicitly inventoried internal error classes/types remain visible for recovery; arbitrary or merely grammar-conforming stored keys and values do not.
+Status: implemented. One admin middleware protects every diagnostic route before route-model binding, mutation controllers retain defense-in-depth admin checks, and every browser diagnostic contract (including statistics and embedding snapshots) uses fixed field schemas, source-inventoried canonical application/provider enums, non-leaking `unknown` aggregate buckets, stable non-reversible references for opaque identifiers (including webhook dedupe, request IDs, configurable provider identifiers and every model ID), and fixed redaction notices for free-form messages. Canonical actor phases, event codes and explicitly inventoried internal error classes/types remain visible for recovery; arbitrary or merely grammar-conforming stored keys and values do not.
 
 Scope:
 
 - apply one admin middleware/policy to operations log, Pipeline Runs, webhook deliveries, actor executions, errors, embeddings diagnostics, maintenance and audit routes;
 - verify every mutation remains admin-guarded in the controller as defense in depth;
 - replace raw JSON blocks with structured summaries, labeled metadata, event timelines and redacted error fields;
-- validate browser-bound diagnostic scalars against fixed types/source-inventoried enums and replace attacker-controlled webhook event, modified/dedupe, request-ID and equivalent unknown values with stable non-reversible references; never echo configurable model IDs, provider-profile IDs or merely exception-shaped error values;
+- validate browser-bound diagnostic scalars against fixed types/source-inventoried enums and replace attacker-controlled webhook event, modified/dedupe, request-ID and equivalent unknown values with stable non-reversible references; never echo configurable model IDs, provider identifiers or merely exception-shaped error values;
 - never expose authorization headers, tokens, full document text, prompts or OCR content.
 
 Acceptance:

@@ -36,43 +36,19 @@ ArchiBot nutzt intern eine neutrale AI-Provider-Schnittstelle. Unterstuetzt werd
 
 Editierbare AI-Provider-Endpunkte und Modell-Discovery werden erst nach abgeschlossenem Setup in der authentifizierten Admin-Settings-UI angeboten; der oeffentliche Bootstrap nimmt keine frei waehlbaren Provider-Ziele an. Manuelle Modelleingabe bleibt moeglich, falls ein Provider keine vollstaendige Modellliste liefert. Legacy-Variablennamen mit `OLLAMA_*` bleiben aus Kompatibilitaetsgruenden erhalten und bedeuten nicht, dass die Verarbeitung nur eine bestimmte Ollama-Instanz unterstuetzt.
 
-Der einfache Modus nutzt einen globalen Provider. Optional koennen zusaetzliche benannte Provider-Profile angelegt und pro Rolle ausgewaehlt werden, z.B. ein lokaler OpenAI-kompatibler Embedding-Endpoint plus ein separater OpenAI-kompatibler Judge-Endpoint. Cloud-Provider koennen Dokumenttext/OCR-Inhalte erhalten und sollten bewusst markiert/verwendet werden.
+Jede ArchiBot-Installation nutzt genau einen Provider-Endpunkt fuer Klassifikation, Embeddings, OCR und Judge. Fuer diese Rollen werden unterschiedliche Modelle konfiguriert. Ein Gateway wie LiteLLM kann intern mehrere Backends bedienen, bleibt aus ArchiBot-Sicht aber ein einzelner Provider. Bei einem entfernten Provider koennen Dokumenttext und OCR-Inhalte die eigene Infrastruktur verlassen; die Wahl des Endpunkts muss daher bewusst erfolgen.
 
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | `ollama` fuer Ollama-kompatible API oder `openai_compatible` fuer OpenAI-kompatible `/v1`-API |
 | `OLLAMA_URL` / `OPENAI_BASE_URL` | `http://ollama:11434` | Provider-Basis-URL. Fuer `openai_compatible` inkl. `/v1`, z.B. `http://localhost:11434/v1`. `OPENAI_BASE_URL` ist ein Alias fuer OpenAI-kompatible Setups; `OLLAMA_URL` bleibt der Legacy-Name. |
 | `OPENAI_API_KEY` | — | Optionaler Bearer Token fuer OpenAI-kompatible Provider; leer lassen bei lokalen Endpunkten ohne Auth |
-| `AI_PROVIDER_PROFILES` | — | Optionales JSON-Array weiterer Provider-Profile (`id`, `type`, `base_url`, optional `api_key_env`, `is_cloud`). Secrets bevorzugt per Env-Variable referenzieren, nicht inline speichern. |
-| `CLASSIFICATION_PROVIDER` | — | Provider-Profil-ID fuer Klassifikation; leer = Default |
-| `EMBEDDING_PROVIDER` | — | Provider-Profil-ID fuer Embeddings; leer = Default |
-| `OCR_PROVIDER` | — | Provider-Profil-ID fuer OCR Text/Vision; leer = Default |
-| `JUDGE_PROVIDER` | — | Provider-Profil-ID fuer Judge-Verifikation; leer = Default |
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | HTTP-Timeout fuer AI-Provider-Requests (Sekunden) |
 | `OLLAMA_CHAT_RETRIES` | `2` | Historisch benannter Wert fuer maximale Retries strukturierter OCR-/Klassifikationsaufrufe bei transienten Fehlern (429/5xx/Timeouts); aktiviert keinen Chat. |
 | `OLLAMA_CHAT_RETRY_BASE_DELAY` | `1.0` | Historisch benannter Basis-Delay fuer den exponentiellen Backoff strukturierter OCR-/Klassifikationsaufrufe; aktiviert keinen Chat. |
 | `OLLAMA_MODEL_SWAP_DELAY` / `OLLAMA_MODEL_SWAP_DELAY_SECONDS` | `8.0` | Wartezeit nach Model-Unload, damit Ollama-kompatible Runtimes freie VRAM korrekt erkennen; nur bei Providern genutzt, die Model-Unload unterstuetzen. `_SECONDS` ist ein Legacy-Alias. |
 
-Beispiel fuer mehrere Provider:
-
-```json
-[
-  {
-    "id": "local-embeddings",
-    "label": "Local embeddings",
-    "type": "openai_compatible",
-    "base_url": "http://localhost:11434/v1"
-  },
-  {
-    "id": "local-judge",
-    "label": "Local judge",
-    "type": "ollama",
-    "base_url": "http://ollama:11434"
-  }
-]
-```
-
-Dann z.B. `EMBEDDING_PROVIDER=local-embeddings` und `JUDGE_PROVIDER=local-judge` setzen.
+Die Admin-Settings laden die Modellliste einmal von diesem Endpunkt. Klassifikation, Embedding, OCR Text, OCR Vision und Judge besitzen danach jeweils ein eigenes Modellfeld. Falls Discovery keine vollstaendige Liste liefert, kann weiterhin eine Modell-ID manuell eingegeben und rollenspezifisch validiert werden.
 
 ## Phase 1: OCR-Korrektur
 
@@ -174,7 +150,9 @@ Die GUI zeigt Paperless-Labels/Namen statt roher numerischer IDs an (z.B. `Poste
 
 Paginierten Listen fuer Reviews, OCR, Pipeline Runs, Webhooks und Fehler bieten eine gemeinsame Seitennavigation und Seitengroesse. Filter und Sortierung bleiben beim Seitenwechsel erhalten. Globale, barrierearm ausgezeichnete Statusmeldungen bestaetigen erfolgreiche oder fehlgeschlagene Aktionen. Bereits laufende Formulare deaktivieren ihre Schaltflaeche gegen Doppelklicks; Sammel- und destruktive Aktionen nennen Anzahl und Auswirkung in einer Bestaetigung.
 
-Nach dem ersten Setup fuehrt ArchiBot den neuen Administrator zur AI-Provider-Sektion. Falls die Modell-Discovery keine brauchbare `/models`-Liste liefert oder unvollstaendig ist, kann dort fuer Klassifikation, Embeddings, OCR Text/Vision oder Judge eine manuelle Modell-ID eingegeben werden. **Validate model** fuehrt einen kleinen rollenspezifischen Provider-Aufruf aus; erst bei Erfolg wird die ID in das passende Settings-Feld uebernommen. Discovery-Fehler und Modellvalidierungsfehler werden getrennt angezeigt. Anschliessend muessen die Settings gespeichert werden.
+Nach dem ersten Setup fuehrt ArchiBot den neuen Administrator zur Sektion **AI Provider**. Dort werden der eine installationsweite Endpunkt und alle Modellrollen gemeinsam konfiguriert. **Test connection and load models** laedt Modellvorschlaege; freie Modell-IDs bleiben moeglich. **Validate configured models** fuehrt fuer jedes ausgefuellte Modellfeld einen kleinen rollenspezifischen Provider-Aufruf aus. Discovery- und Validierungsfehler werden getrennt angezeigt. Anschliessend muessen die Settings gespeichert werden.
+
+Beim Upgrade werden die frueheren Multi-Provider-Variablen `AI_PROVIDER_PROFILES`, `CLASSIFICATION_PROVIDER`, `EMBEDDING_PROVIDER`, `OCR_PROVIDER` und `JUDGE_PROVIDER` nicht mehr verwendet und beim naechsten verwalteten Runtime-Export entfernt. Vor dem Upgrade muss deshalb der gewuenschte gemeinsame Provider als `LLM_PROVIDER`, `OLLAMA_URL`/`OPENAI_BASE_URL` und optional `OPENAI_API_KEY` gesetzt werden.
 
 Die fruehere globale GUI-Basic-Auth gibt es nicht mehr. Benutzer melden sich mit Paperless-NGX-Benutzername/Passwort an.
 

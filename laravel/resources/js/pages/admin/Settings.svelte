@@ -94,23 +94,16 @@
         aiModelActions: { discover: string; validate: string };
     } = $props();
 
-    let aiModelProviderId = $state('default');
     let aiModelLoading = $state(false);
     let aiModelError = $state('');
     let aiModelItems = $state<string[]>([]);
-    let selectedAiModel = $state('');
-    let manualAiModel = $state('');
-    let manualAiRole = $state('classification');
     let aiModelValidationLoading = $state(false);
-    let aiModelValidationMessage = $state('');
+    let aiModelValidationResults = $state<Record<string, string>>({});
     let aiModelValidationError = $state('');
     let aiModelDiscoveryMessage = $state('');
     let aiModelProvider = $state<{
-        id: string;
-        label: string;
         type: string;
         base_url: string;
-        is_cloud: boolean;
     } | null>(null);
 
     const csrfToken = () =>
@@ -159,24 +152,6 @@
         return element?.value ?? '';
     };
 
-    function applyLoadedModel(inputName: string | undefined) {
-        if (!selectedAiModel || !inputName) {
-            return;
-        }
-
-        const element = document.querySelector<HTMLInputElement>(
-            `[name="${inputName}"]`,
-        );
-
-        if (!element) {
-            return;
-        }
-
-        element.value = selectedAiModel;
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-        element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
     async function loadAiModels() {
         aiModelLoading = true;
         aiModelError = '';
@@ -193,11 +168,9 @@
                     'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
-                    provider_id: aiModelProviderId,
                     llm_provider: settingValue('llm_provider'),
                     ollama_url: settingValue('ollama_url'),
                     openai_api_key: settingValue('llm_openai_api_key'),
-                    ai_provider_profiles: settingValue('llm_provider_profiles'),
                 }),
             });
 
@@ -215,7 +188,6 @@
             }
 
             aiModelItems = data.items ?? [];
-            selectedAiModel = aiModelItems[0] ?? '';
             aiModelProvider = data.provider ?? null;
             aiModelDiscoveryMessage = data.discovery?.message ?? '';
         } catch (error) {
@@ -226,47 +198,61 @@
         }
     }
 
-    async function validateManualAiModel() {
+    async function validateConfiguredAiModels() {
         aiModelValidationLoading = true;
-        aiModelValidationMessage = '';
+        aiModelValidationResults = {};
         aiModelValidationError = '';
 
         try {
-            const response = await fetch(aiModelActions.validate, {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
-                body: JSON.stringify({
-                    model_id: manualAiModel,
-                    role: manualAiRole,
-                    provider_id: aiModelProviderId,
-                    llm_provider: settingValue('llm_provider'),
-                    ollama_url: settingValue('ollama_url'),
-                    openai_api_key: settingValue('llm_openai_api_key'),
-                    ai_provider_profiles: settingValue('llm_provider_profiles'),
-                }),
-            });
-            const data = await response.json().catch(() => ({}));
+            const configuredModels = Object.entries(modelRoleInputNames)
+                .map(([role, inputName]) => ({
+                    role,
+                    model: settingValue(inputName).trim(),
+                }))
+                .filter(({ model }) => model !== '');
 
-            if (!response.ok) {
-                const firstError = Object.values(data?.errors ?? {}).flat()[0];
-
+            if (configuredModels.length === 0) {
                 throw new Error(
-                    typeof firstError === 'string'
-                        ? firstError
-                        : (data?.message ?? 'Model validation failed.'),
+                    'Configure at least one model before validation.',
                 );
             }
 
-            selectedAiModel = manualAiModel;
-            applyLoadedModel(modelRoleInputNames[manualAiRole]);
-            aiModelValidationMessage = `${data.message} It has been applied to the matching settings field; save settings to persist it.`;
+            for (const configured of configuredModels) {
+                const response = await fetch(aiModelActions.validate, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken(),
+                    },
+                    body: JSON.stringify({
+                        model_id: configured.model,
+                        role: configured.role,
+                        llm_provider: settingValue('llm_provider'),
+                        ollama_url: settingValue('ollama_url'),
+                        openai_api_key: settingValue('llm_openai_api_key'),
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
 
-            if (!aiModelItems.includes(manualAiModel)) {
-                aiModelItems = [...aiModelItems, manualAiModel];
+                if (!response.ok) {
+                    const firstError = Object.values(
+                        data?.errors ?? {},
+                    ).flat()[0];
+
+                    throw new Error(
+                        `${configured.role}: ${
+                            typeof firstError === 'string'
+                                ? firstError
+                                : (data?.message ?? 'Model validation failed.')
+                        }`,
+                    );
+                }
+
+                aiModelValidationResults = {
+                    ...aiModelValidationResults,
+                    [configured.role]: `${configured.model} validated`,
+                };
             }
         } catch (error) {
             aiModelValidationError =
@@ -344,42 +330,39 @@
     {#if activeSection === 'ai-provider'}
         <section class="grid max-w-3xl gap-4 rounded-xl border p-6">
             <div>
-                <h2 class="text-lg font-semibold">AI provider model loader</h2>
+                <h2 class="text-lg font-semibold">AI connection</h2>
                 <p class="text-sm text-muted-foreground">
-                    Test the default provider or a named provider profile and
-                    load its currently available model IDs. Unsaved AI provider
-                    fields on this page are included in the check.
+                    ArchiBot uses one provider endpoint for the whole
+                    installation. Configure its type, URL and optional API key
+                    below, then load the available model IDs. You may also enter
+                    a model ID manually in any model field.
                 </p>
             </div>
 
-            <div class="grid gap-3 md:grid-cols-[1fr_auto]">
-                <div class="grid gap-2">
-                    <Label for="ai_model_provider_id">Provider profile ID</Label
-                    >
-                    <Input
-                        id="ai_model_provider_id"
-                        value={aiModelProviderId}
-                        oninput={(event) =>
-                            (aiModelProviderId = event.currentTarget.value)}
-                        placeholder="default, local-litellm, openrouter"
-                    />
-                </div>
-                <div class="flex items-end">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onclick={loadAiModels}
-                        disabled={aiModelLoading}
-                    >
-                        {#if aiModelLoading}<Spinner />{/if}
-                        Load models
-                    </Button>
-                </div>
+            <div class="flex flex-wrap gap-3">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={loadAiModels}
+                    disabled={aiModelLoading}
+                >
+                    {#if aiModelLoading}<Spinner />{/if}
+                    Test connection and load models
+                </Button>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={validateConfiguredAiModels}
+                    disabled={aiModelValidationLoading}
+                >
+                    {#if aiModelValidationLoading}<Spinner />{/if}
+                    Validate configured models
+                </Button>
             </div>
 
             {#if aiModelError}
                 <p class="text-sm text-destructive" role="alert">
-                    Discovery failure: {aiModelError}
+                    Connection failure: {aiModelError}
                 </p>
             {/if}
             {#if aiModelDiscoveryMessage}
@@ -390,76 +373,30 @@
                     {aiModelDiscoveryMessage}
                 </p>
             {/if}
-
-            <div class="grid gap-3 rounded-md border p-4">
-                <div>
-                    <h3 class="font-medium">Validate a manual model ID</h3>
-                    <p class="text-sm text-muted-foreground">
-                        Use this when discovery is unavailable or incomplete.
-                        Validation makes a minimal request for the selected role
-                        and is separate from discovery.
-                    </p>
-                </div>
-                <div class="grid gap-3 md:grid-cols-[1fr_12rem_auto]">
-                    <Input
-                        value={manualAiModel}
-                        oninput={(event) =>
-                            (manualAiModel = event.currentTarget.value)}
-                        aria-label="Manual model ID"
-                        placeholder="provider/model-id"
-                        maxlength="255"
-                    />
-                    <select
-                        bind:value={manualAiRole}
-                        aria-label="Model role"
-                        class="h-9 rounded-md border bg-background px-3 text-sm"
-                    >
-                        <option value="classification">Classification</option>
-                        <option value="embedding">Embedding</option>
-                        <option value="ocr_text">OCR text</option>
-                        <option value="ocr_vision">OCR vision</option>
-                        <option value="judge">Judge</option>
-                    </select>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onclick={validateManualAiModel}
-                        disabled={aiModelValidationLoading ||
-                            !manualAiModel.trim()}
-                    >
-                        {#if aiModelValidationLoading}<Spinner />{/if}Validate
-                        model
-                    </Button>
-                </div>
-                {#if aiModelValidationMessage}<p
-                        class="text-sm text-green-700 dark:text-green-400"
-                        role="status"
-                    >
-                        {aiModelValidationMessage}
-                    </p>{/if}
-                {#if aiModelValidationError}<p
-                        class="text-sm text-destructive"
-                        role="alert"
-                    >
-                        Validation failure: {aiModelValidationError}
-                    </p>{/if}
-            </div>
+            {#if aiModelValidationError}
+                <p class="text-sm text-destructive" role="alert">
+                    Validation failure: {aiModelValidationError}
+                </p>
+            {/if}
 
             {#if aiModelProvider}
                 <div class="rounded-md border bg-muted/30 p-3 text-sm">
-                    <p>
-                        Loaded {aiModelItems.length} models from
-                        <strong>{aiModelProvider.label}</strong>
-                        ({aiModelProvider.type}, {aiModelProvider.base_url}).
-                    </p>
-                    {#if aiModelProvider.is_cloud}
-                        <p class="mt-1 text-amber-700 dark:text-amber-400">
-                            Cloud provider: document text or OCR content may
-                            leave your machine when this profile is used for
-                            processing.
-                        </p>
-                    {/if}
+                    Loaded {aiModelItems.length} models from the configured
+                    {aiModelProvider.type} endpoint ({aiModelProvider.base_url}).
+                    Document or OCR content may leave your machine when this is
+                    a remote provider.
                 </div>
+            {/if}
+
+            {#if Object.keys(aiModelValidationResults).length > 0}
+                <ul
+                    class="grid gap-1 text-sm text-green-700 dark:text-green-400"
+                    role="status"
+                >
+                    {#each Object.entries(aiModelValidationResults) as [role, result] (role)}
+                        <li><strong>{role}:</strong> {result}</li>
+                    {/each}
+                </ul>
             {/if}
 
             {#if aiModelItems.length > 0}
@@ -468,66 +405,10 @@
                         <option value={model}></option>
                     {/each}
                 </datalist>
-
-                <div class="grid gap-3">
-                    <div class="grid gap-2">
-                        <Label for="selected_ai_model">Loaded models</Label>
-                        <select
-                            id="selected_ai_model"
-                            bind:value={selectedAiModel}
-                            class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
-                        >
-                            {#each aiModelItems as model (model)}
-                                <option value={model}>{model}</option>
-                            {/each}
-                        </select>
-                    </div>
-
-                    <div class="flex flex-wrap gap-2">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onclick={() =>
-                                applyLoadedModel('classification_model')}
-                        >
-                            Use for classification
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onclick={() => applyLoadedModel('embedding_model')}
-                        >
-                            Use for embedding
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onclick={() => applyLoadedModel('ocr_text_model')}
-                        >
-                            Use for OCR text
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onclick={() => applyLoadedModel('ocr_vision_model')}
-                        >
-                            Use for OCR vision
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onclick={() =>
-                                applyLoadedModel('classification_judge_model')}
-                        >
-                            Use for judge
-                        </Button>
-                    </div>
-
-                    <p class="text-xs text-muted-foreground">
-                        Model fields below also use these loaded models as
-                        browser suggestions while this page is open.
-                    </p>
-                </div>
+                <p class="text-xs text-muted-foreground">
+                    {aiModelItems.length} model IDs are now available as suggestions
+                    in the model fields below.
+                </p>
             {/if}
         </section>
     {/if}

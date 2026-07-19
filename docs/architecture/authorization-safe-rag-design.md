@@ -24,7 +24,7 @@ Threats include cross-user nearest-neighbor hits, stale grants, revoked permissi
 
 The shared embedding index may remain a coarse candidate generator only if the implementation proves that vectors and metadata are never exposed directly and filtering precedes content access:
 
-1. Embed the user's query with the approved provider profile. Do not fetch document text yet.
+1. Embed the user's query with the approved installation-wide provider. Do not fetch document text yet.
 2. Query PostgreSQL only for an over-fetched set of opaque Paperless document IDs and distances. The query must not select title, content, OCR, snippet, filename or user-facing metadata.
 3. In bounded batches, Laravel checks each candidate with the requesting user's Paperless context. A live authorized document fetch (or a documented Paperless permission endpoint that is equivalently authoritative) is the grant. `403`, `404`, timeout, malformed response, rate limit, redirect or partial batch is denial.
 4. Return a request-scoped allowlist with per-document authorization epoch/expiry. Python fetches content only for those IDs. Inbox/unreviewed documents remain excluded as trusted context even when viewable.
@@ -63,7 +63,7 @@ Provider output is untrusted. It cannot add a citation that was not in the final
 | Laravel → Paperless | Requesting user's Paperless token and candidate IDs | Canonical pinned origin, no redirects, bounded calls, live view checks, secret never logged/persisted in jobs. |
 | PostgreSQL vector search | Query vector, opaque document IDs/distances | No content/snippet projection before ACL allowlist; database is not an authorization oracle. |
 | Laravel → Python | Short-lived identity/capability and allowed IDs | Audience/purpose/expiry/replay protection; fixed interface; sanitized audit. |
-| Python → AI provider | Query plus content from currently allowed/redacted sources | Approved provider profile only; local-first; cloud provider requires explicit documented approval. |
+| Python → AI provider | Query plus content from currently allowed/redacted sources | Approved installation-wide provider only; local-first; a cloud endpoint requires explicit documented approval. |
 | Python/Laravel → browser | Answer and currently authorized citations | Final ACL recheck, citation allowlist, deterministic redaction, no partial release after failure. |
 | Chat storage | Authorized post-release history and opaque provenance | Per-owner access, reauthorization on every read, retention/deletion policy, no old-row exposure by default. |
 
@@ -108,4 +108,4 @@ Re-enable requires all of these, in order:
 - Which Paperless endpoint/batch shape provides authoritative live view decisions without leaking inaccessible IDs?
 - Is a shared embedding index acceptable after an embedding-inversion threat review, or is encryption/segmentation required?
 - What retention and deletion semantics should apply to newly created chat history?
-- Which AI provider profiles, if any, may receive document text, and how is operator consent represented?
+- May the installation-wide AI provider receive document text, and how is operator consent represented?

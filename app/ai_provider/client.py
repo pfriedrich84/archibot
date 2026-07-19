@@ -1,4 +1,4 @@
-"""Neutral AI-provider client for chat, JSON responses, vision, and embeddings."""
+"""Neutral AI-provider client for structured LLM calls, JSON responses, vision, and embeddings."""
 
 from __future__ import annotations
 
@@ -57,53 +57,29 @@ class AiProviderClient:
             base_url=self.base_url,
             timeout=httpx.Timeout(settings.ollama_timeout_seconds),
         )
-        self._clients: dict[str, httpx.AsyncClient] = {}
         self.embed_retry_count: int = 0
 
     def _provider(self) -> str:
         return getattr(self, "provider", "ollama")
 
-    def _provider_for_role(self, role: str) -> dict[str, str]:
-        try:
-            provider = dict(settings.ai_provider_for_role(role))
-        except (AttributeError, TypeError, ValueError):
-            provider = {
-                "id": "default",
-                "type": self._provider(),
-                "base_url": getattr(self, "base_url", ""),
-                "api_key": getattr(settings, "openai_api_key", ""),
-            }
-        if provider.get("id") == "default":
-            provider["type"] = self._provider()
-            provider["base_url"] = getattr(self, "base_url", settings.ollama_url)
-            provider["api_key"] = settings.openai_api_key
-        return provider
+    def _provider_config(self) -> dict[str, str]:
+        """Return the single installation-wide AI provider configuration."""
+        return {
+            "type": self._provider(),
+            "base_url": getattr(self, "base_url", settings.ollama_url),
+            "api_key": settings.openai_api_key,
+        }
 
     def _provider_type(self, provider: dict[str, str] | None = None) -> str:
         if provider is None:
             return self._provider()
-        return (provider.get("type") or "ollama").strip().lower()
+        return (provider.get("type") or self._provider()).strip().lower()
 
-    def _client_for_provider(self, provider: dict[str, str] | None = None) -> httpx.AsyncClient:
-        if provider is None:
-            return self._client
-        current_base_url = getattr(self, "base_url", settings.ollama_url).rstrip("/")
-        base_url = (provider.get("base_url") or current_base_url).rstrip("/")
-        if base_url == current_base_url:
-            return self._client
-        if not hasattr(self, "_clients"):
-            self._clients = {}
-        if base_url not in self._clients:
-            self._clients[base_url] = httpx.AsyncClient(
-                base_url=base_url,
-                timeout=httpx.Timeout(settings.ollama_timeout_seconds),
-            )
-        return self._clients[base_url]
+    def _client_for_provider(self, _provider: dict[str, str] | None = None) -> httpx.AsyncClient:
+        return self._client
 
     async def aclose(self) -> None:
         await self._client.aclose()
-        for client in getattr(self, "_clients", {}).values():
-            await client.aclose()
 
     # ---------------------------------------------------------------
     # Health
@@ -117,15 +93,6 @@ class AiProviderClient:
             log.warning("ollama ping failed", error=str(exc))
             return False
 
-    def _role_for_model(self, model: str) -> str:
-        if model == self.embed_model:
-            return "embedding"
-        if model == getattr(self, "ocr_model", "") or model == settings.ocr_vision_model:
-            return "ocr"
-        if model == settings.ollama_judge_model:
-            return "judge"
-        return "classification"
-
     async def unload_model(self, model: str, *, swap: bool = False) -> None:
         """Unload a model from VRAM via keep_alive=0.
 
@@ -134,7 +101,7 @@ class AiProviderClient:
         Terminal cleanup calls should leave *swap* as False to avoid needless
         latency.
         """
-        provider = self._provider_for_role(self._role_for_model(model))
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             log.debug("model unload skipped for OpenAI-compatible provider", model=model)
             return
@@ -191,7 +158,7 @@ class AiProviderClient:
             return False
 
     @staticmethod
-    def _parse_chat_json_content(content: str, *, vision: bool = False) -> dict[str, Any]:
+    def _parse_structured_json_content(content: str, *, vision: bool = False) -> dict[str, Any]:
         if not content:
             raise ValueError("Ollama returned empty content")
 
@@ -221,7 +188,7 @@ class AiProviderClient:
 
     @staticmethod
     def _make_strict_json_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
-        """Harden a chat payload for JSON-recovery retries.
+        """Harden a structured LLM payload for JSON-recovery retries.
 
         Used after malformed JSON responses to increase deterministic output.
         """
@@ -241,17 +208,17 @@ class AiProviderClient:
         retry_payload["messages"] = messages
         return retry_payload
 
-    async def _chat_json_with_retries(
+    async def _structured_json_with_retries(
         self,
         payload: dict[str, Any],
         *,
         vision: bool = False,
     ) -> dict[str, Any]:
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=None, vision=vision
         )
 
-    async def _chat_json_with_retries_for_provider(
+    async def _structured_json_with_retries_for_provider(
         self,
         payload: dict[str, Any],
         *,
@@ -274,7 +241,7 @@ class AiProviderClient:
                 r.raise_for_status()
                 data = r.json()
                 content = data.get("message", {}).get("content", "")
-                return self._parse_chat_json_content(content, vision=vision)
+                return self._parse_structured_json_content(content, vision=vision)
             except Exception as exc:
                 last_exc = exc
                 is_retryable = self._is_retryable(exc) or isinstance(exc, ValueError)
@@ -285,7 +252,7 @@ class AiProviderClient:
                     else:
                         delay = self._backoff_delay(base_delay, attempt)
                     log.warning(
-                        "ollama chat request failed, retrying",
+                        "structured LLM request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
                         error=_exc_to_str(exc),
@@ -297,7 +264,7 @@ class AiProviderClient:
 
         raise last_exc  # type: ignore[misc]
 
-    async def _openai_chat_completion_with_retries(
+    async def _openai_structured_completion_with_retries(
         self,
         payload: dict[str, Any],
         *,
@@ -329,7 +296,7 @@ class AiProviderClient:
                     continue
                 raise
 
-    async def _openai_chat_json_with_retries(
+    async def _openai_structured_json_with_retries(
         self,
         payload: dict[str, Any],
         *,
@@ -343,15 +310,15 @@ class AiProviderClient:
 
         for attempt in range(1 + max_retries):
             try:
-                data = await self._openai_chat_completion_with_retries(
+                data = await self._openai_structured_completion_with_retries(
                     current_payload,
                     retry_count=0,
                     base_delay=base_delay,
-                    log_label="openai-compatible chat json",
+                    log_label="openai-compatible structured json",
                     provider=provider,
                 )
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return self._parse_chat_json_content(content)
+                return self._parse_structured_json_content(content)
             except Exception as exc:
                 response_format_rejected = (
                     isinstance(exc, httpx.HTTPStatusError)
@@ -371,7 +338,7 @@ class AiProviderClient:
                     else:
                         delay = self._backoff_delay(base_delay, attempt)
                     log.warning(
-                        "openai-compatible chat request failed, retrying",
+                        "openai-compatible structured request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
                         error=_exc_to_str(exc),
@@ -381,7 +348,7 @@ class AiProviderClient:
                     continue
                 raise
 
-        raise RuntimeError("openai-compatible chat json retry loop exhausted")
+        raise RuntimeError("openai-compatible structured json retry loop exhausted")
 
     @staticmethod
     def _make_strict_openai_json_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -398,9 +365,9 @@ class AiProviderClient:
         return retry_payload
 
     # ---------------------------------------------------------------
-    # Chat (JSON mode)
+    # Structured LLM calls (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_json(
+    async def structured_json(
         self,
         system: str,
         user: str,
@@ -410,8 +377,8 @@ class AiProviderClient:
         num_ctx: int | None = None,
         role: str = "classification",
     ) -> dict[str, Any]:
-        """Call the configured chat provider and parse a JSON response."""
-        provider = self._provider_for_role(role)
+        """Call the configured LLM provider and parse a JSON response."""
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             payload = {
                 "model": model or self.model,
@@ -423,7 +390,7 @@ class AiProviderClient:
                     {"role": "user", "content": user},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload, provider=provider)
+            return await self._openai_structured_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -438,14 +405,14 @@ class AiProviderClient:
                 {"role": "user", "content": user},
             ],
         }
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=provider, vision=False
         )
 
     # ---------------------------------------------------------------
-    # Chat with vision (JSON mode)
+    # Structured LLM calls with vision (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_vision_json(
+    async def structured_vision_json(
         self,
         system: str,
         user: str,
@@ -456,11 +423,11 @@ class AiProviderClient:
         num_ctx: int | None = None,
         role: str = "ocr",
     ) -> dict[str, Any]:
-        """Call provider chat with images and parse a JSON response.
+        """Call provider LLM with images and parse a JSON response.
 
         *images* must be a list of base64-encoded image strings (no data URI prefix).
         """
-        provider = self._provider_for_role(role)
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             content: list[dict[str, Any]] = [{"type": "text", "text": user}]
             content.extend(
@@ -480,7 +447,7 @@ class AiProviderClient:
                     {"role": "user", "content": content},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload, provider=provider)
+            return await self._openai_structured_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -495,7 +462,7 @@ class AiProviderClient:
                 {"role": "user", "content": user, "images": images},
             ],
         }
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=provider, vision=True
         )
 
@@ -516,12 +483,8 @@ class AiProviderClient:
         body = exc.response.text.strip()
         if len(body) > 1000:
             body = body[:1000] + "...[truncated]"
-        provider_id = provider.get("id") or "default"
         base_url = provider.get("base_url") or ""
-        detail = (
-            f"Embedding provider returned HTTP {exc.response.status_code}"
-            f" provider={provider_id} base_url={base_url}"
-        )
+        detail = f"Embedding provider returned HTTP {exc.response.status_code} base_url={base_url}"
         if body:
             detail += f" body={body}"
         return detail
@@ -571,7 +534,7 @@ class AiProviderClient:
         base_delay = settings.ollama_embed_retry_base_delay
         prompt = text
         last_exc: Exception | None = None
-        provider = self._provider_for_role("embedding")
+        provider = self._provider_config()
 
         for attempt in range(1 + max_retries):
             if self._provider_type(provider) == "openai_compatible":

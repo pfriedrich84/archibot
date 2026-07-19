@@ -86,7 +86,6 @@ class DashboardController extends Controller
                 'llm_provider' => $this->diagnostics->typedScalar('llm_provider', $llmProvider),
                 'ollama_or_provider_configured' => filled($ollamaUrl) || filled($llmProvider),
                 'ocr_mode' => $this->diagnostics->typedScalar('ocr_mode', $ocrMode),
-                'active_provider_roles' => $this->activeProviderRoles(),
             ],
             ...($isAdmin ? [
                 'embeddingIndex' => [
@@ -259,24 +258,6 @@ class DashboardController extends Controller
         }
 
         return config('archibot_settings.definitions')[$key]['default'] ?? null;
-    }
-
-    /** @return array<int, array{role: string, provider: string}> */
-    private function activeProviderRoles(): array
-    {
-        return collect([
-            'classification' => $this->settingValue('llm.classification_provider'),
-            'embedding' => $this->settingValue('llm.embedding_provider'),
-            'ocr' => $this->settingValue('llm.ocr_provider'),
-            'judge' => $this->settingValue('llm.judge_provider'),
-        ])
-            ->filter(fn (?string $provider): bool => filled($provider))
-            ->map(fn (string $provider, string $role): array => [
-                'role' => $role,
-                'provider' => $this->diagnostics->providerIdentifier($provider),
-            ])
-            ->values()
-            ->all();
     }
 
     /** @return array<int, array{source: string, id: int, status: string, message: ?string, occurred_at: ?string}> */
