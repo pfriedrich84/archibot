@@ -25,7 +25,7 @@ return new class extends Migration
         ];
 
         foreach ($retiredKeys as $key) {
-            AppSetting::query()->where('key', $key)->delete();
+            AppSetting::deleteKey($key);
         }
 
         DB::table('app_settings')

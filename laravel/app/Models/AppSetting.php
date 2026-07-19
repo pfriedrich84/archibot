@@ -35,7 +35,7 @@ class AppSetting extends Model
         return $setting->value;
     }
 
-    public static function delete(string $key): void
+    public static function deleteKey(string $key): void
     {
         self::query()->where('key', $key)->delete();
     }
