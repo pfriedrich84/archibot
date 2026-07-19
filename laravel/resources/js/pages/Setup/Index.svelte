@@ -165,14 +165,14 @@
                     variant="outline"
                     class="justify-start"
                     disabled
-                    aria-label="AI providers, available after setup completion"
+                    aria-label="AI connection, available after setup completion"
                 >
                     <span
                         class="flex size-6 items-center justify-center rounded-full bg-background/20 text-xs"
                     >
                         {setupSteps.length + 1}
                     </span>
-                    AI providers
+                    AI connection
                 </Button>
             </nav>
 
@@ -412,7 +412,7 @@
                         disabled={processing || tags.length === 0}
                     >
                         {#if processing}<Spinner />{/if}
-                        Complete setup and configure AI providers
+                        Complete setup and configure AI connection
                     </Button>
                 </div>
             </section>

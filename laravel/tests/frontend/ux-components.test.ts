@@ -261,7 +261,6 @@ describe('executable mutation controls', () => {
                 llm_provider: 'ollama',
                 ollama_or_provider_configured: true,
                 ocr_mode: 'text',
-                active_provider_roles: [],
             },
             counts: { pending_reviews: 0 },
             activeOperations: operations,
@@ -472,18 +471,15 @@ describe('status, manual model, and pagination states', () => {
         );
     });
 
-    it('distinguishes empty discovery, discovery failure, validation failure, and successful manual validation', async () => {
+    it('distinguishes discovery and configured-model validation states', async () => {
         const responses = [
             {
                 ok: true,
                 json: async () => ({
                     items: [],
                     provider: {
-                        id: 'default',
-                        label: 'Local',
                         type: 'ollama',
                         base_url: 'http://ollama',
-                        is_cloud: false,
                     },
                     discovery: {
                         message:
@@ -561,34 +557,32 @@ describe('status, manual model, and pagination states', () => {
             paperlessTagOptions: [],
             aiModelActions: { discover: '/discover', validate: '/validate' },
         });
-        const load = screen.getByRole('button', { name: 'Load models' });
+        const load = screen.getByRole('button', {
+            name: 'Test connection and load models',
+        });
         await fireEvent.click(load);
         expect((await screen.findByRole('status')).textContent).toContain(
             'Provider returned no useful models; enter a model ID manually.',
         );
         await fireEvent.click(load);
         expect((await screen.findByRole('alert')).textContent).toContain(
-            'Discovery failure: Discovery endpoint unavailable.',
+            'Connection failure: Discovery endpoint unavailable.',
         );
 
-        const input = screen.getByRole('textbox', { name: 'Manual model ID' });
+        const input = screen.getByLabelText('OCR vision model');
         await fireEvent.input(input, { target: { value: 'vision/model-v1' } });
-        await fireEvent.change(
-            screen.getByRole('combobox', { name: 'Model role' }),
-            { target: { value: 'ocr_vision' } },
-        );
-        const validate = screen.getByRole('button', { name: 'Validate model' });
+        const validate = screen.getByRole('button', {
+            name: 'Validate configured models',
+        });
         await fireEvent.click(validate);
         expect(
             await screen.findByText(
-                'Validation failure: Model cannot perform OCR vision.',
+                'Validation failure: ocr_vision: Model cannot perform OCR vision.',
             ),
         ).toBeTruthy();
         await fireEvent.click(validate);
         expect(
-            await screen.findByText(
-                /Model validated for OCR vision\. It has been applied/,
-            ),
+            await screen.findByText(/vision\/model-v1 validated/),
         ).toBeTruthy();
         expect(
             (screen.getByLabelText('OCR vision model') as HTMLInputElement)

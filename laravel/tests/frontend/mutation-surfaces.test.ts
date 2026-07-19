@@ -129,7 +129,7 @@ describe('all changed mutation surfaces', () => {
         expect(
             (
                 screen.getByRole('button', {
-                    name: 'AI providers, available after setup completion',
+                    name: 'AI connection, available after setup completion',
                 }) as HTMLButtonElement
             ).disabled,
         ).toBe(true);
@@ -455,7 +455,6 @@ describe('all changed mutation surfaces', () => {
                 llm_provider: 'ollama',
                 ollama_or_provider_configured: true,
                 ocr_mode: 'text',
-                active_provider_roles: [],
             },
             counts: { pending_reviews: 0 },
             activeOperations: operations,

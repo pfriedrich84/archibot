@@ -57,53 +57,29 @@ class AiProviderClient:
             base_url=self.base_url,
             timeout=httpx.Timeout(settings.ollama_timeout_seconds),
         )
-        self._clients: dict[str, httpx.AsyncClient] = {}
         self.embed_retry_count: int = 0
 
     def _provider(self) -> str:
         return getattr(self, "provider", "ollama")
 
-    def _provider_for_role(self, role: str) -> dict[str, str]:
-        try:
-            provider = dict(settings.ai_provider_for_role(role))
-        except (AttributeError, TypeError, ValueError):
-            provider = {
-                "id": "default",
-                "type": self._provider(),
-                "base_url": getattr(self, "base_url", ""),
-                "api_key": getattr(settings, "openai_api_key", ""),
-            }
-        if provider.get("id") == "default":
-            provider["type"] = self._provider()
-            provider["base_url"] = getattr(self, "base_url", settings.ollama_url)
-            provider["api_key"] = settings.openai_api_key
-        return provider
+    def _provider_config(self) -> dict[str, str]:
+        """Return the single installation-wide AI provider configuration."""
+        return {
+            "type": self._provider(),
+            "base_url": getattr(self, "base_url", settings.ollama_url),
+            "api_key": settings.openai_api_key,
+        }
 
     def _provider_type(self, provider: dict[str, str] | None = None) -> str:
         if provider is None:
             return self._provider()
-        return (provider.get("type") or "ollama").strip().lower()
+        return (provider.get("type") or self._provider()).strip().lower()
 
-    def _client_for_provider(self, provider: dict[str, str] | None = None) -> httpx.AsyncClient:
-        if provider is None:
-            return self._client
-        current_base_url = getattr(self, "base_url", settings.ollama_url).rstrip("/")
-        base_url = (provider.get("base_url") or current_base_url).rstrip("/")
-        if base_url == current_base_url:
-            return self._client
-        if not hasattr(self, "_clients"):
-            self._clients = {}
-        if base_url not in self._clients:
-            self._clients[base_url] = httpx.AsyncClient(
-                base_url=base_url,
-                timeout=httpx.Timeout(settings.ollama_timeout_seconds),
-            )
-        return self._clients[base_url]
+    def _client_for_provider(self, _provider: dict[str, str] | None = None) -> httpx.AsyncClient:
+        return self._client
 
     async def aclose(self) -> None:
         await self._client.aclose()
-        for client in getattr(self, "_clients", {}).values():
-            await client.aclose()
 
     # ---------------------------------------------------------------
     # Health
@@ -117,15 +93,6 @@ class AiProviderClient:
             log.warning("ollama ping failed", error=str(exc))
             return False
 
-    def _role_for_model(self, model: str) -> str:
-        if model == self.embed_model:
-            return "embedding"
-        if model == getattr(self, "ocr_model", "") or model == settings.ocr_vision_model:
-            return "ocr"
-        if model == settings.ollama_judge_model:
-            return "judge"
-        return "classification"
-
     async def unload_model(self, model: str, *, swap: bool = False) -> None:
         """Unload a model from VRAM via keep_alive=0.
 
@@ -134,7 +101,7 @@ class AiProviderClient:
         Terminal cleanup calls should leave *swap* as False to avoid needless
         latency.
         """
-        provider = self._provider_for_role(self._role_for_model(model))
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             log.debug("model unload skipped for OpenAI-compatible provider", model=model)
             return
@@ -411,7 +378,7 @@ class AiProviderClient:
         role: str = "classification",
     ) -> dict[str, Any]:
         """Call the configured chat provider and parse a JSON response."""
-        provider = self._provider_for_role(role)
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             payload = {
                 "model": model or self.model,
@@ -460,7 +427,7 @@ class AiProviderClient:
 
         *images* must be a list of base64-encoded image strings (no data URI prefix).
         """
-        provider = self._provider_for_role(role)
+        provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             content: list[dict[str, Any]] = [{"type": "text", "text": user}]
             content.extend(
@@ -516,12 +483,8 @@ class AiProviderClient:
         body = exc.response.text.strip()
         if len(body) > 1000:
             body = body[:1000] + "...[truncated]"
-        provider_id = provider.get("id") or "default"
         base_url = provider.get("base_url") or ""
-        detail = (
-            f"Embedding provider returned HTTP {exc.response.status_code}"
-            f" provider={provider_id} base_url={base_url}"
-        )
+        detail = f"Embedding provider returned HTTP {exc.response.status_code} base_url={base_url}"
         if body:
             detail += f" body={body}"
         return detail
@@ -571,7 +534,7 @@ class AiProviderClient:
         base_delay = settings.ollama_embed_retry_base_delay
         prompt = text
         last_exc: Exception | None = None
-        provider = self._provider_for_role("embedding")
+        provider = self._provider_config()
 
         for attempt in range(1 + max_retries):
             if self._provider_type(provider) == "openai_compatible":

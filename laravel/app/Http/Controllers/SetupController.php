@@ -125,6 +125,6 @@ class SetupController extends Controller
         }
 
         return redirect()->route('admin.settings.edit', ['section' => 'ai-provider'])
-            ->with('status', 'Setup completed. Configure and validate the AI models for each role.');
+            ->with('status', 'Setup completed. Configure the installation-wide AI connection and validate its models.');
     }
 }

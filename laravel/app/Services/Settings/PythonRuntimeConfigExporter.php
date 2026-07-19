@@ -33,7 +33,16 @@ class PythonRuntimeConfigExporter
 
         // Hardening milestone 0.3: stale or explicitly overridden OCR write-back
         // configuration is inert and must not survive a managed runtime export.
-        unset($values['OCR_AUTO_WRITE_BACK']);
+        // ADR-0020: remove stale URL alias that could silently redirect AI traffic.
+        unset(
+            $values['OCR_AUTO_WRITE_BACK'],
+            $values['AI_PROVIDER_PROFILES'],
+            $values['CLASSIFICATION_PROVIDER'],
+            $values['EMBEDDING_PROVIDER'],
+            $values['OCR_PROVIDER'],
+            $values['JUDGE_PROVIDER'],
+            $values['OPENAI_BASE_URL'],
+        );
 
         $directory = dirname($path);
         if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {

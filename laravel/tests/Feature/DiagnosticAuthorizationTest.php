@@ -131,8 +131,6 @@ class DiagnosticAuthorizationTest extends TestCase
     {
         $user = User::factory()->create(['is_admin' => false]);
         AppSetting::put('llm.provider', 'token_secret_123');
-        AppSetting::put('llm.classification_provider', 'token_secret_123');
-        AppSetting::put('llm.embedding_provider', 'ollama');
         Command::query()->create([
             'type' => Command::TYPE_POLL_RECONCILIATION,
             'status' => Command::STATUS_RUNNING,
@@ -177,12 +175,6 @@ class DiagnosticAuthorizationTest extends TestCase
             ->missing('recentActorExecutions')
             ->missing('recentPipelineRuns')
             ->missing('recentErrors')
-            ->where('status.active_provider_roles.0.role', 'classification')
-            ->where(
-                'status.active_provider_roles.0.provider',
-                'Configured Provider (ref:'.substr(hash('sha256', 'token_secret_123'), 0, 12).')',
-            )
-            ->where('status.active_provider_roles.1.provider', 'ollama')
         );
         $response->assertDontSee('token_secret_123', escape: false);
         $response->assertDontSee('secret-actor-name', escape: false);

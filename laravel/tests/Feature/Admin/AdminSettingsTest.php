@@ -80,8 +80,35 @@ class AdminSettingsTest extends TestCase
                 ->where('activeSection', 'embedding')
                 ->has('groups', 1)
                 ->where('groups.0.name', 'Embedding')
-                ->where('groups.0.settings.0.key', 'embedding.model')
+                ->where('groups.0.settings.0.key', 'embedding.dimension')
                 ->where('prompts', [])
+            );
+    }
+
+    public function test_ai_section_exposes_one_provider_and_all_role_models_without_profiles(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'ai-provider']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('groups.0.settings', function ($settings): bool {
+                    $keys = collect($settings)->pluck('key');
+
+                    return $keys->contains('llm.provider')
+                        && $keys->contains('ollama.url')
+                        && $keys->contains('classification.model')
+                        && $keys->contains('embedding.model')
+                        && $keys->contains('ocr.text_model')
+                        && $keys->contains('ocr.vision_model')
+                        && $keys->contains('classification.judge_model')
+                        && ! $keys->contains('llm.provider_profiles')
+                        && ! $keys->contains('llm.classification_provider')
+                        && ! $keys->contains('llm.embedding_provider')
+                        && ! $keys->contains('llm.ocr_provider')
+                        && ! $keys->contains('llm.judge_provider');
+                })
             );
     }
 
@@ -212,7 +239,15 @@ class AdminSettingsTest extends TestCase
     {
         $path = config('archibot_settings.import_paths')[0];
         File::ensureDirectoryExists(dirname($path));
-        File::put($path, "AUTO_COMMIT_CONFIDENCE=80\n");
+        File::put($path, implode("\n", [
+            'AUTO_COMMIT_CONFIDENCE=80',
+            'AI_PROVIDER_PROFILES=[{"id":"legacy"}]',
+            'CLASSIFICATION_PROVIDER=legacy',
+            'EMBEDDING_PROVIDER=legacy',
+            'OCR_PROVIDER=legacy',
+            'JUDGE_PROVIDER=legacy',
+            '',
+        ]));
         AppSetting::put('classification.auto_commit_confidence', '100');
 
         app(PythonRuntimeConfigExporter::class)->export([
@@ -225,6 +260,9 @@ class AdminSettingsTest extends TestCase
         $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=80', $runtimeConfig);
         $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=95', $runtimeConfig);
         $this->assertStringNotContainsString('AUTO_COMMIT_CONFIDENCE=100', $runtimeConfig);
+        foreach (['AI_PROVIDER_PROFILES', 'CLASSIFICATION_PROVIDER', 'EMBEDDING_PROVIDER', 'OCR_PROVIDER', 'JUDGE_PROVIDER'] as $retiredKey) {
+            $this->assertStringNotContainsString($retiredKey.'=', $runtimeConfig);
+        }
     }
 
     public function test_admin_can_load_ai_models_for_default_provider(): void
@@ -241,16 +279,16 @@ class AdminSettingsTest extends TestCase
         ]);
 
         $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
-            'provider_id' => 'default',
             'llm_provider' => 'ollama',
             'ollama_url' => 'http://ollama.test:11434',
         ])->assertOk()
-            ->assertJsonPath('provider.id', 'default')
+            ->assertJsonPath('provider.type', 'ollama')
+            ->assertJsonPath('provider.base_url', 'http://ollama.test:11434')
             ->assertJsonPath('items.0', 'nomic-embed-text:latest')
             ->assertJsonPath('items.1', 'qwen3:4b');
     }
 
-    public function test_admin_can_load_ai_models_for_named_openai_provider(): void
+    public function test_admin_can_load_ai_models_from_single_openai_provider(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
 
@@ -264,19 +302,12 @@ class AdminSettingsTest extends TestCase
         ]);
 
         $this->actingAs($admin)->postJson(route('admin.settings.ai-models'), [
-            'provider_id' => 'openrouter',
-            'ai_provider_profiles' => json_encode([
-                [
-                    'id' => 'openrouter',
-                    'type' => 'openai_compatible',
-                    'base_url' => 'https://openrouter.ai/api/v1',
-                    'api_key' => 'test-token',
-                    'is_cloud' => true,
-                ],
-            ]),
+            'llm_provider' => 'openai_compatible',
+            'ollama_url' => 'https://openrouter.ai/api/v1',
+            'openai_api_key' => 'test-token',
         ])->assertOk()
-            ->assertJsonPath('provider.id', 'openrouter')
-            ->assertJsonPath('provider.is_cloud', true)
+            ->assertJsonPath('provider.type', 'openai_compatible')
+            ->assertJsonMissingPath('provider.id')
             ->assertJsonPath('items.0', 'anthropic/claude-3.5-sonnet')
             ->assertJsonPath('items.1', 'openai/gpt-4o-mini');
 
