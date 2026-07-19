@@ -15,5 +15,11 @@ from app.ai_provider.client import (
 class OllamaClient(AiProviderClient):
     """Compatibility wrapper for the neutral :class:`AiProviderClient`."""
 
+    async def chat_json(self, *args, **kwargs):
+        return await self.structured_json(*args, **kwargs)
+
+    async def chat_vision_json(self, *args, **kwargs):
+        return await self.structured_vision_json(*args, **kwargs)
+
 
 __all__ = ["AiProviderClient", "OllamaClient", "_exc_to_str", "_strip_markdown_fences"]

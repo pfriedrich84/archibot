@@ -1,4 +1,4 @@
-"""Neutral AI-provider client for chat, JSON responses, vision, and embeddings."""
+"""Neutral AI-provider client for structured LLM calls, JSON responses, vision, and embeddings."""
 
 from __future__ import annotations
 
@@ -158,7 +158,7 @@ class AiProviderClient:
             return False
 
     @staticmethod
-    def _parse_chat_json_content(content: str, *, vision: bool = False) -> dict[str, Any]:
+    def _parse_structured_json_content(content: str, *, vision: bool = False) -> dict[str, Any]:
         if not content:
             raise ValueError("Ollama returned empty content")
 
@@ -188,7 +188,7 @@ class AiProviderClient:
 
     @staticmethod
     def _make_strict_json_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
-        """Harden a chat payload for JSON-recovery retries.
+        """Harden a structured LLM payload for JSON-recovery retries.
 
         Used after malformed JSON responses to increase deterministic output.
         """
@@ -208,17 +208,17 @@ class AiProviderClient:
         retry_payload["messages"] = messages
         return retry_payload
 
-    async def _chat_json_with_retries(
+    async def _structured_json_with_retries(
         self,
         payload: dict[str, Any],
         *,
         vision: bool = False,
     ) -> dict[str, Any]:
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=None, vision=vision
         )
 
-    async def _chat_json_with_retries_for_provider(
+    async def _structured_json_with_retries_for_provider(
         self,
         payload: dict[str, Any],
         *,
@@ -241,7 +241,7 @@ class AiProviderClient:
                 r.raise_for_status()
                 data = r.json()
                 content = data.get("message", {}).get("content", "")
-                return self._parse_chat_json_content(content, vision=vision)
+                return self._parse_structured_json_content(content, vision=vision)
             except Exception as exc:
                 last_exc = exc
                 is_retryable = self._is_retryable(exc) or isinstance(exc, ValueError)
@@ -252,7 +252,7 @@ class AiProviderClient:
                     else:
                         delay = self._backoff_delay(base_delay, attempt)
                     log.warning(
-                        "ollama chat request failed, retrying",
+                        "structured LLM request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
                         error=_exc_to_str(exc),
@@ -264,7 +264,7 @@ class AiProviderClient:
 
         raise last_exc  # type: ignore[misc]
 
-    async def _openai_chat_completion_with_retries(
+    async def _openai_structured_completion_with_retries(
         self,
         payload: dict[str, Any],
         *,
@@ -296,7 +296,7 @@ class AiProviderClient:
                     continue
                 raise
 
-    async def _openai_chat_json_with_retries(
+    async def _openai_structured_json_with_retries(
         self,
         payload: dict[str, Any],
         *,
@@ -310,15 +310,15 @@ class AiProviderClient:
 
         for attempt in range(1 + max_retries):
             try:
-                data = await self._openai_chat_completion_with_retries(
+                data = await self._openai_structured_completion_with_retries(
                     current_payload,
                     retry_count=0,
                     base_delay=base_delay,
-                    log_label="openai-compatible chat json",
+                    log_label="openai-compatible structured json",
                     provider=provider,
                 )
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                return self._parse_chat_json_content(content)
+                return self._parse_structured_json_content(content)
             except Exception as exc:
                 response_format_rejected = (
                     isinstance(exc, httpx.HTTPStatusError)
@@ -338,7 +338,7 @@ class AiProviderClient:
                     else:
                         delay = self._backoff_delay(base_delay, attempt)
                     log.warning(
-                        "openai-compatible chat request failed, retrying",
+                        "openai-compatible structured request failed, retrying",
                         attempt=attempt + 1,
                         delay_s=round(delay, 2),
                         error=_exc_to_str(exc),
@@ -348,7 +348,7 @@ class AiProviderClient:
                     continue
                 raise
 
-        raise RuntimeError("openai-compatible chat json retry loop exhausted")
+        raise RuntimeError("openai-compatible structured json retry loop exhausted")
 
     @staticmethod
     def _make_strict_openai_json_retry_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -365,9 +365,9 @@ class AiProviderClient:
         return retry_payload
 
     # ---------------------------------------------------------------
-    # Chat (JSON mode)
+    # Structured LLM calls (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_json(
+    async def structured_json(
         self,
         system: str,
         user: str,
@@ -377,7 +377,7 @@ class AiProviderClient:
         num_ctx: int | None = None,
         role: str = "classification",
     ) -> dict[str, Any]:
-        """Call the configured chat provider and parse a JSON response."""
+        """Call the configured LLM provider and parse a JSON response."""
         provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
             payload = {
@@ -390,7 +390,7 @@ class AiProviderClient:
                     {"role": "user", "content": user},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload, provider=provider)
+            return await self._openai_structured_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -405,14 +405,14 @@ class AiProviderClient:
                 {"role": "user", "content": user},
             ],
         }
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=provider, vision=False
         )
 
     # ---------------------------------------------------------------
-    # Chat with vision (JSON mode)
+    # Structured LLM calls with vision (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_vision_json(
+    async def structured_vision_json(
         self,
         system: str,
         user: str,
@@ -423,7 +423,7 @@ class AiProviderClient:
         num_ctx: int | None = None,
         role: str = "ocr",
     ) -> dict[str, Any]:
-        """Call provider chat with images and parse a JSON response.
+        """Call provider LLM with images and parse a JSON response.
 
         *images* must be a list of base64-encoded image strings (no data URI prefix).
         """
@@ -447,7 +447,7 @@ class AiProviderClient:
                     {"role": "user", "content": content},
                 ],
             }
-            return await self._openai_chat_json_with_retries(payload, provider=provider)
+            return await self._openai_structured_json_with_retries(payload, provider=provider)
 
         payload = {
             "model": model or self.model,
@@ -462,7 +462,7 @@ class AiProviderClient:
                 {"role": "user", "content": user, "images": images},
             ],
         }
-        return await self._chat_json_with_retries_for_provider(
+        return await self._structured_json_with_retries_for_provider(
             payload, provider=provider, vision=True
         )
 
