@@ -351,7 +351,7 @@
             </div>
 
             <Form {...update.form()} class="grid gap-4">
-                {#snippet children({ errors, processing, recentlySuccessful })}
+                {#snippet children({ errors, processing })}
                     {#each groups as group (group.name)}
                         {#if group.slug === 'ai-provider'}
                             {#each group.settings as setting (setting.key)}
