@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime
 
 import structlog
 
@@ -37,7 +38,11 @@ async def _fetch_inbox_documents() -> list[object]:
 
 def _modified_value(document: object) -> str | None:
     modified = getattr(document, "modified", None)
-    return None if modified is None else str(modified)
+    if modified is None:
+        return None
+    if isinstance(modified, datetime):
+        return modified.isoformat()
+    return str(modified)
 
 
 def _reconcile_inbox_documents_impl(

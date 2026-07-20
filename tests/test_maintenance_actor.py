@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,12 @@ def _actor(monkeypatch, actor_id=7):
             id=actor_id, actor_name=kwargs["actor_name"], started_monotonic=0
         ),
     )
+
+
+def test_modified_value_serializes_parsed_datetime_as_iso_8601():
+    document = SimpleNamespace(modified=datetime(2026, 5, 8, 12, tzinfo=UTC))
+
+    assert maintenance._modified_value(document) == "2026-05-08T12:00:00+00:00"
 
 
 def test_poll_reconciliation_persists_marked_and_unmarked_candidates(monkeypatch):
