@@ -351,7 +351,7 @@
             </div>
 
             <Form {...update.form()} class="grid gap-4">
-                {#snippet children({ errors, processing, recentlySuccessful })}
+                {#snippet children({ errors, processing })}
                     {#each groups as group (group.name)}
                         {#if group.slug === 'ai-provider'}
                             {#each group.settings as setting (setting.key)}
@@ -419,11 +419,14 @@
                                         {/if}
 
                                         {#if setting.help || setting.sensitive}
-                                            <p class="text-sm text-muted-foreground">
+                                            <p
+                                                class="text-sm text-muted-foreground"
+                                            >
                                                 {setting.help ?? ''}
                                                 {#if setting.sensitive && setting.has_value}
-                                                    {setting.help ? ' ' : ''}A value is
-                                                    already saved and masked.
+                                                    {setting.help ? ' ' : ''}A
+                                                    value is already saved and
+                                                    masked.
                                                 {/if}
                                             </p>
                                         {/if}
@@ -480,8 +483,8 @@
                         <div class="rounded-md border bg-muted/30 p-3 text-sm">
                             Loaded {aiModelItems.length} models from the configured
                             {aiModelProvider.type} endpoint ({aiModelProvider.base_url}).
-                            Document or OCR content may leave your machine when this is
-                            a remote provider.
+                            Document or OCR content may leave your machine when
+                            this is a remote provider.
                         </div>
                     {/if}
 
@@ -517,9 +520,13 @@
             {#snippet children({ errors, processing, recentlySuccessful })}
                 {#each groups as group (group.name)}
                     {#if !(activeSection === 'ai-provider' && group.slug === 'ai-provider')}
-                        <section class="grid max-w-3xl gap-5 rounded-xl border p-6">
+                        <section
+                            class="grid max-w-3xl gap-5 rounded-xl border p-6"
+                        >
                             <div>
-                                <h2 class="text-lg font-semibold">{group.name}</h2>
+                                <h2 class="text-lg font-semibold">
+                                    {group.name}
+                                </h2>
                             </div>
 
                             {#each group.settings as setting (setting.key)}
@@ -538,7 +545,8 @@
                                                 id={setting.input_name}
                                                 name={setting.input_name}
                                                 value="1"
-                                                checked={setting.value === '1' ||
+                                                checked={setting.value ===
+                                                    '1' ||
                                                     setting.value === 'true'}
                                             />
                                             <span>{setting.label}</span>
@@ -641,11 +649,13 @@
                                     {/if}
 
                                     {#if setting.help || setting.sensitive}
-                                        <p class="text-sm text-muted-foreground">
+                                        <p
+                                            class="text-sm text-muted-foreground"
+                                        >
                                             {setting.help ?? ''}
                                             {#if setting.sensitive && setting.has_value}
-                                                {setting.help ? ' ' : ''}A value is
-                                                already saved and masked.
+                                                {setting.help ? ' ' : ''}A value
+                                                is already saved and masked.
                                             {/if}
                                         </p>
                                     {/if}
@@ -661,22 +671,20 @@
                 {#if activeSection === 'ai-provider'}
                     <section class="grid max-w-3xl gap-5 rounded-xl border p-6">
                         <div>
-                            <h2 class="text-lg font-semibold">Role model selection</h2>
+                            <h2 class="text-lg font-semibold">
+                                Role model selection
+                            </h2>
                             <p class="text-sm text-muted-foreground">
-                                Each AI role uses the shared provider endpoint above
-                                with its own model ID. Select from discovered models
-                                or enter a model ID manually.
+                                Each AI role uses the shared provider endpoint
+                                above with its own model ID. Select from
+                                discovered models or enter a model ID manually.
                             </p>
                         </div>
 
-                        {#each [
-                            { role: 'classification', label: 'Classification model', key: 'classification.model', input: 'classification_model', help: 'Model used for document classification and tag suggestions.' },
-                            { role: 'embedding', label: 'Embedding model', key: 'embedding.model', input: 'embedding_model', help: 'Model used for vector embeddings and semantic search.' },
-                            { role: 'ocr_text', label: 'OCR text model', key: 'ocr.text_model', input: 'ocr_text_model', help: 'Model used for text-only OCR correction.' },
-                            { role: 'ocr_vision', label: 'OCR vision model', key: 'ocr.vision_model', input: 'ocr_vision_model', help: 'Model used for vision-based OCR correction.' },
-                            { role: 'judge', label: 'Judge model', key: 'classification.judge_model', input: 'classification_judge_model', help: 'Model used for LLM-as-judge verification of uncertain classifications.' },
-                        ] as modelConfig (modelConfig.key)}
-                            {#if groups.flatMap(g => g.settings).some(s => s.key === modelConfig.key)}
+                        {#each [{ role: 'classification', label: 'Classification model', key: 'classification.model', input: 'classification_model', help: 'Model used for document classification and tag suggestions.' }, { role: 'embedding', label: 'Embedding model', key: 'embedding.model', input: 'embedding_model', help: 'Model used for vector embeddings and semantic search.' }, { role: 'ocr_text', label: 'OCR text model', key: 'ocr.text_model', input: 'ocr_text_model', help: 'Model used for text-only OCR correction.' }, { role: 'ocr_vision', label: 'OCR vision model', key: 'ocr.vision_model', input: 'ocr_vision_model', help: 'Model used for vision-based OCR correction.' }, { role: 'judge', label: 'Judge model', key: 'classification.judge_model', input: 'classification_judge_model', help: 'Model used for LLM-as-judge verification of uncertain classifications.' }] as modelConfig (modelConfig.key)}
+                            {#if groups
+                                .flatMap((g) => g.settings)
+                                .some((s) => s.key === modelConfig.key)}
                                 <input
                                     type="hidden"
                                     name="__settings_keys[]"
@@ -694,7 +702,9 @@
                                         list="ai-loaded-models"
                                         class="font-mono text-sm"
                                     />
-                                    <p class="text-sm text-muted-foreground">{modelConfig.help}</p>
+                                    <p class="text-sm text-muted-foreground">
+                                        {modelConfig.help}
+                                    </p>
                                     <InputError
                                         message={errors[modelConfig.input]}
                                     />
