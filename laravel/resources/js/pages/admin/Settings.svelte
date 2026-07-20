@@ -682,9 +682,13 @@
                         </div>
 
                         {#each [{ role: 'classification', label: 'Classification model', key: 'classification.model', input: 'classification_model', help: 'Model used for document classification and tag suggestions.' }, { role: 'embedding', label: 'Embedding model', key: 'embedding.model', input: 'embedding_model', help: 'Model used for vector embeddings and semantic search.' }, { role: 'ocr_text', label: 'OCR text model', key: 'ocr.text_model', input: 'ocr_text_model', help: 'Model used for text-only OCR correction.' }, { role: 'ocr_vision', label: 'OCR vision model', key: 'ocr.vision_model', input: 'ocr_vision_model', help: 'Model used for vision-based OCR correction.' }, { role: 'judge', label: 'Judge model', key: 'classification.judge_model', input: 'classification_judge_model', help: 'Model used for LLM-as-judge verification of uncertain classifications.' }] as modelConfig (modelConfig.key)}
-                            {#if groups
-                                .flatMap((g) => g.settings)
-                                .some((s) => s.key === modelConfig.key)}
+                            {@const modelSetting = groups
+                                .flatMap((group) => group.settings)
+                                .find(
+                                    (setting) =>
+                                        setting.key === modelConfig.key,
+                                )}
+                            {#if modelSetting}
                                 <input
                                     type="hidden"
                                     name="__settings_keys[]"
@@ -698,7 +702,7 @@
                                         id={modelConfig.input}
                                         name={modelConfig.input}
                                         type="text"
-                                        value={settingValue(modelConfig.input)}
+                                        value={modelSetting.value}
                                         list="ai-loaded-models"
                                         class="font-mono text-sm"
                                     />

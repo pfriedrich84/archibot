@@ -56,7 +56,7 @@
     "laravel/resources/js/pages/Welcome.svelte": "0b0124419013ebb5d136d7ba58a5155bc37d024f451d338cefad5aec0f8c9049",
     "laravel/resources/js/pages/admin/AuditLogs.svelte": "0c6c391fdd1efa11e45c9029cd2cb0c0e28052dcb4411ff4d41434f8d0586747",
     "laravel/resources/js/pages/admin/Maintenance.svelte": "8ac71961780564afd046a924f7f63e6c16705ed244b904a3e4317d012b2fa15b",
-    "laravel/resources/js/pages/admin/Settings.svelte": "2417436fe777b3864ff00027cc0ff8aa5d47bd30df3ce7a59eba53edc60831af",
+    "laravel/resources/js/pages/admin/Settings.svelte": "74ed1a779159a8fd84b530375a0b3e017df6dcd6f84a50f3e45e53d6d2af4889",
     "laravel/resources/js/pages/auth/Login.svelte": "518b776e49af4eeb411d0c64cf9ae07e977844a17c71c55a985cc18137aa8d31",
     "laravel/resources/js/pages/diagnostics/Errors.svelte": "dfcf68545c95ee5cb9beec71465ecd32c72970e2ff6b924671a42c806182063a",
     "laravel/resources/js/pages/entities/Index.svelte": "de9024f500e0dd6db92d03c7dbb43e3437e0307eb49df071a1c395eabc87550c",

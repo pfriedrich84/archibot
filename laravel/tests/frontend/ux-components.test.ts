@@ -532,7 +532,7 @@ describe('status, manual model, and pagination states', () => {
                             entity: null,
                         },
                         {
-                            key: 'ocr_vision_model',
+                            key: 'ocr.vision_model',
                             input_name: 'ocr_vision_model',
                             label: 'OCR vision model',
                             type: 'text',
@@ -540,8 +540,8 @@ describe('status, manual model, and pagination states', () => {
                             required: false,
                             sensitive: false,
                             read_only: false,
-                            has_value: false,
-                            value: '',
+                            has_value: true,
+                            value: 'saved/vision-model',
                             help: null,
                             min: null,
                             max: null,
@@ -569,7 +569,10 @@ describe('status, manual model, and pagination states', () => {
             'Connection failure: Discovery endpoint unavailable.',
         );
 
-        const input = screen.getByLabelText('OCR vision model');
+        const input = screen.getByLabelText(
+            'OCR vision model',
+        ) as HTMLInputElement;
+        expect(input.value).toBe('saved/vision-model');
         await fireEvent.input(input, { target: { value: 'vision/model-v1' } });
         const validate = screen.getByRole('button', {
             name: 'Validate configured models',
