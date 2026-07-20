@@ -28,7 +28,8 @@ sortedcontainers<=2.4.0
 # cryptography 48.0.1 fixes GHSA-537c-gmf6-5ccf (vulnerable bundled OpenSSL in wheels).
 cryptography>=48.0.1,<=48.0.1
 charset-normalizer<=3.4.9
-platformdirs<=4.10.1
+# platformdirs 4.10.1 remains in the 3-day supply-chain quarantine through 2026-07-20.
+platformdirs<=4.10.0
 requests<=2.34.2
 # jsonschema/referencing transitive dependency; keep off same-day releases for age gate.
 rpds-py<=0.30.0
