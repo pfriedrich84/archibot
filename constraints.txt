@@ -9,13 +9,13 @@ rich<=14.3.4
 markdown-it-py<=4.2.0
 msgpack<1.3.0
 click<=8.4.2
-typer<=0.26.8
+typer<=0.27.0
 # Keep MCP and its declared transport dependencies on a known-compatible set.
 # ArchiBot no longer imports these web transport packages directly, but the
 # upstream mcp package currently declares them even when using stdio transport.
 mcp<=1.28.1
 # anyio 4.14.2 is still inside the 3-day quarantine window as of 2026-07-14.
-anyio<=4.14.1
+anyio<=4.14.2
 # starlette 1.0.1 is a security fix for PYSEC-2026-161 (allowed as age exception)
 starlette<=1.3.1
 uvicorn<=0.51.0
@@ -28,7 +28,7 @@ sortedcontainers<=2.4.0
 # cryptography 48.0.1 fixes GHSA-537c-gmf6-5ccf (vulnerable bundled OpenSSL in wheels).
 cryptography>=48.0.1,<=48.0.1
 charset-normalizer<=3.4.9
-platformdirs<=4.10.0
+platformdirs<=4.10.1
 requests<=2.34.2
 # jsonschema/referencing transitive dependency; keep off same-day releases for age gate.
 rpds-py<=0.30.0
@@ -38,7 +38,7 @@ pydantic-core<=2.47.0
 pydantic-settings>=2.14.2,<=2.14.2
 rpds-py<2026.5.1
 pymupdf<=1.28.0
-ruff<=0.15.21
+ruff<=0.15.22
 structlog<=25.5.0
 # Event-driven runtime dependencies: PostgreSQL/pgvector state used by fixed actors.
 sqlalchemy<=2.0.51
