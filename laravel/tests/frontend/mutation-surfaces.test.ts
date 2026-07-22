@@ -199,6 +199,7 @@ describe('all changed mutation surfaces', () => {
             'confirm',
             vi.fn(() => true),
         );
+        const entityCsrfMeta = installCsrfMeta();
         const base = {
             type: 'tag',
             paperless_id: null,
@@ -223,8 +224,10 @@ describe('all changed mutation surfaces', () => {
             ],
             rejected: [{ ...base, id: 3, name: 'Spam', status: 'rejected' }],
         });
+        expectCsrfOnPostForms(entities, 4);
         await submitEveryFormOnce(entities, 4);
         entities.unmount();
+        entityCsrfMeta.remove();
 
         const ocrCsrfMeta = installCsrfMeta();
         const ocr = render(OcrShow, {

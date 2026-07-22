@@ -59,7 +59,7 @@
     "laravel/resources/js/pages/admin/Settings.svelte": "74ed1a779159a8fd84b530375a0b3e017df6dcd6f84a50f3e45e53d6d2af4889",
     "laravel/resources/js/pages/auth/Login.svelte": "518b776e49af4eeb411d0c64cf9ae07e977844a17c71c55a985cc18137aa8d31",
     "laravel/resources/js/pages/diagnostics/Errors.svelte": "dfcf68545c95ee5cb9beec71465ecd32c72970e2ff6b924671a42c806182063a",
-    "laravel/resources/js/pages/entities/Index.svelte": "de9024f500e0dd6db92d03c7dbb43e3437e0307eb49df071a1c395eabc87550c",
+    "laravel/resources/js/pages/entities/Index.svelte": "368c04d873b971ceead324a1ff0f84288a6dae6416ffb7eb3cf96e9b63a5295f",
     "laravel/resources/js/pages/inbox/Index.svelte": "bca7186138e3928f0ea80c7d8dfd836c9f7a56f2c54d47f8c64ff0a45c064ce4",
     "laravel/resources/js/pages/ocr/Index.svelte": "b6e6f63e7ac81c0f9f10eb8141ce90078c6450f219c0ccb9506fcefe3277df47",
     "laravel/resources/js/pages/operations-log/Index.svelte": "ccee47c4b17151e0db9caaa6b6f4097db75a074ebd416ecebd5cb3087a37630a",
