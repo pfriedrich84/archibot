@@ -33,6 +33,28 @@ const paginator = (data: unknown[]) => ({
     per_page: 25,
 });
 
+function installCsrfMeta(): HTMLMetaElement {
+    const meta = document.createElement('meta');
+    meta.name = 'csrf-token';
+    meta.content = 'csrf-test-token';
+    document.head.append(meta);
+
+    return meta;
+}
+
+function expectCsrfOnPostForms(view: RenderResult, expected: number): void {
+    const forms = view.container.querySelectorAll<HTMLFormElement>(
+        'form[method="post"]',
+    );
+    expect(forms).toHaveLength(expected);
+
+    for (const form of forms) {
+        expect(
+            form.querySelector<HTMLInputElement>('input[name="_token"]')?.value,
+        ).toBe('csrf-test-token');
+    }
+}
+
 function captureSubmissions() {
     const calls: { action: string; method: string }[] = [];
     const listener = (event: Event) =>
@@ -204,6 +226,7 @@ describe('all changed mutation surfaces', () => {
         await submitEveryFormOnce(entities, 4);
         entities.unmount();
 
+        const ocrCsrfMeta = installCsrfMeta();
         const ocr = render(OcrShow, {
             review: {
                 id: 4,
@@ -215,11 +238,13 @@ describe('all changed mutation surfaces', () => {
             },
             actions: { approve: '/ocr/approve', reject: '/ocr/reject' },
         });
+        expectCsrfOnPostForms(ocr, 2);
         expect(await submitEveryFormOnce(ocr, 2)).toEqual([
             { action: '/ocr/approve', method: 'post' },
             { action: '/ocr/reject', method: 'post' },
         ]);
         ocr.unmount();
+        ocrCsrfMeta.remove();
 
         const mcp = render(McpTokens, {
             tokens: [
@@ -321,10 +346,7 @@ describe('all changed mutation surfaces', () => {
     ])(
         'confirms, disables, and suppresses a duplicate $label request',
         async ({ label, action, confirmation }) => {
-            const csrfMeta = document.createElement('meta');
-            csrfMeta.name = 'csrf-token';
-            csrfMeta.content = 'csrf-test-token';
-            document.head.append(csrfMeta);
+            const csrfMeta = installCsrfMeta();
 
             const confirm = vi.fn(() => true);
             vi.stubGlobal('confirm', confirm);
@@ -397,6 +419,7 @@ describe('all changed mutation surfaces', () => {
     );
 
     it('renders review controls, exact effects, confirmations, and one request per control', async () => {
+        const csrfMeta = installCsrfMeta();
         const confirm = vi.fn(() => true);
         vi.stubGlobal('confirm', confirm);
         const review = render(ReviewShow, {
@@ -422,6 +445,7 @@ describe('all changed mutation surfaces', () => {
                 storagePaths: [],
             },
         });
+        expectCsrfOnPostForms(review, 4);
         const calls = await submitEveryFormOnce(review, 4);
         expect(calls[0]).toEqual({
             action: '/review/11/save',
@@ -432,6 +456,8 @@ describe('all changed mutation surfaces', () => {
             'Reject this suggestion? No Paperless metadata will be changed.',
             'Force a new pipeline run for this one document? This queues fresh processing even when its content is unchanged.',
         ]);
+        review.unmount();
+        csrfMeta.remove();
     });
 
     it('covers settings save/prompt reset and every dashboard mutation without duplicate requests', async () => {

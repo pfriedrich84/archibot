@@ -4,6 +4,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { csrfToken } from '@/lib/csrf';
     import { formatDate } from '@/lib/datetime';
     import { numericId, paperlessLabel } from '@/lib/paperless';
     import type { PaperlessEntityOption } from '@/lib/paperless';
@@ -247,6 +248,7 @@
                 class="grid gap-3 md:grid-cols-2"
             >
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <label class="grid gap-1 text-sm">
                         <span class="text-muted-foreground">Title</span>
                         <input
@@ -394,6 +396,7 @@
                 }}
             >
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <Button type="submit" disabled={processing}>Accept</Button>
                 {/snippet}
             </Form>
@@ -410,6 +413,7 @@
                 }}
             >
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <Button
                         type="submit"
                         variant="outline"
@@ -443,6 +447,7 @@
                 }}
             >
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <input
                         type="hidden"
                         name="reason"

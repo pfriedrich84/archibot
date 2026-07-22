@@ -17,6 +17,7 @@
     import Heading from '@/components/Heading.svelte';
     import Pagination from '@/components/Pagination.svelte';
     import { Button } from '@/components/ui/button';
+    import { csrfToken } from '@/lib/csrf';
     import { formatDateTime } from '@/lib/datetime';
     import { paperlessLabel } from '@/lib/paperless';
     import { toUrl } from '@/lib/utils';
@@ -51,11 +52,6 @@
     } = $props();
 
     let selectedIds = $state<number[]>([]);
-
-    const csrfToken = () =>
-        document
-            .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-            ?.getAttribute('content') ?? '';
 
     const toggleSelection = (id: number, checked: boolean) => {
         selectedIds = checked
