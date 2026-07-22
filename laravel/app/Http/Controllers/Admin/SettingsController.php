@@ -321,13 +321,15 @@ class SettingsController extends Controller
     {
         return collect($this->promptSpecs())
             ->map(function (array $spec): array {
-                $path = $this->promptPath($spec['filename']);
-                $content = is_file($path) ? File::get($path) : '';
+                $overridePath = $this->promptPath($spec['filename']);
+                $hasOverride = is_file($overridePath);
+                $contentPath = $hasOverride ? $overridePath : $this->defaultPromptPath($spec['filename']);
+                $content = File::get($contentPath);
 
                 return [
                     ...$spec,
                     'content' => $content,
-                    'has_override' => is_file($path),
+                    'has_override' => $hasOverride,
                     'update_url' => route('admin.settings.prompts.update', $spec['key']),
                     'reset_url' => route('admin.settings.prompts.reset', $spec['key']),
                 ];
@@ -362,6 +364,11 @@ class SettingsController extends Controller
     private function promptPath(string $filename): string
     {
         return $this->promptDirectory().DIRECTORY_SEPARATOR.$filename;
+    }
+
+    private function defaultPromptPath(string $filename): string
+    {
+        return base_path('../prompts/'.$filename);
     }
 
     private function normalizeValue(mixed $value, string $type): ?string
