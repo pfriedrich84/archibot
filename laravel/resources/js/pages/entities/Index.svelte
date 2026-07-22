@@ -15,6 +15,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { csrfToken } from '@/lib/csrf';
     import { paperlessLabel } from '@/lib/paperless';
 
     type EntityApproval = {
@@ -116,6 +117,11 @@
                             }}
                         >
                             {#snippet children({ processing })}
+                                <input
+                                    type="hidden"
+                                    name="_token"
+                                    value={csrfToken()}
+                                />
                                 <Button
                                     type="submit"
                                     size="sm"
@@ -137,6 +143,11 @@
                             }}
                         >
                             {#snippet children({ processing })}
+                                <input
+                                    type="hidden"
+                                    name="_token"
+                                    value={csrfToken()}
+                                />
                                 <Button
                                     type="submit"
                                     size="sm"
@@ -174,6 +185,11 @@
                 {#if isAdmin && entity.sync_status === 'failed'}
                     <Form method="post" action={actionUrl(entity, 'approve')}>
                         {#snippet children({ processing })}
+                            <input
+                                type="hidden"
+                                name="_token"
+                                value={csrfToken()}
+                            />
                             <Button
                                 type="submit"
                                 size="sm"
@@ -213,6 +229,11 @@
                         }}
                     >
                         {#snippet children({ processing })}
+                            <input
+                                type="hidden"
+                                name="_token"
+                                value={csrfToken()}
+                            />
                             <Button
                                 type="submit"
                                 size="sm"
