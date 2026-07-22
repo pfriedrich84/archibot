@@ -52,6 +52,11 @@
 
     let selectedIds = $state<number[]>([]);
 
+    const csrfToken = () =>
+        document
+            .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+            ?.getAttribute('content') ?? '';
+
     const toggleSelection = (id: number, checked: boolean) => {
         selectedIds = checked
             ? [...new Set([...selectedIds, id])]
@@ -197,6 +202,11 @@
                         }}
                     >
                         {#snippet children({ processing })}
+                            <input
+                                type="hidden"
+                                name="_token"
+                                value={csrfToken()}
+                            />
                             {#each selectedIds as id (id)}
                                 <input
                                     type="hidden"
@@ -226,6 +236,11 @@
                         }}
                     >
                         {#snippet children({ processing })}
+                            <input
+                                type="hidden"
+                                name="_token"
+                                value={csrfToken()}
+                            />
                             {#each selectedIds as id (id)}
                                 <input
                                     type="hidden"
