@@ -321,6 +321,11 @@ describe('all changed mutation surfaces', () => {
     ])(
         'confirms, disables, and suppresses a duplicate $label request',
         async ({ label, action, confirmation }) => {
+            const csrfMeta = document.createElement('meta');
+            csrfMeta.name = 'csrf-token';
+            csrfMeta.content = 'csrf-test-token';
+            document.head.append(csrfMeta);
+
             const confirm = vi.fn(() => true);
             vi.stubGlobal('confirm', confirm);
             const submissions = captureSubmissions();
@@ -363,6 +368,18 @@ describe('all changed mutation surfaces', () => {
             const button = screen.getByRole('button', { name: label });
             const form = button.closest('form');
             expect(form).not.toBeNull();
+            expect(
+                form?.querySelector<HTMLInputElement>('input[name="_token"]')
+                    ?.value,
+            ).toBe('csrf-test-token');
+            expect(
+                Array.from(
+                    form?.querySelectorAll<HTMLInputElement>(
+                        'input[name="suggestion_ids[]"]',
+                    ) ?? [],
+                    (input) => input.value,
+                ),
+            ).toEqual(['11']);
             await fireEvent.submit(form!);
 
             expect(confirm).toHaveBeenCalledOnce();
@@ -375,6 +392,7 @@ describe('all changed mutation surfaces', () => {
 
             submissions.stop();
             review.unmount();
+            csrfMeta.remove();
         },
     );
 
