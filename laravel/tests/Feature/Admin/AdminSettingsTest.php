@@ -509,6 +509,25 @@ class AdminSettingsTest extends TestCase
             ->assertJsonValidationErrors('model_id');
     }
 
+    public function test_prompt_settings_show_packaged_defaults_without_overrides(): void
+    {
+        config(['archibot.data_dir' => storage_path('framework/testing/prompts')]);
+        File::deleteDirectory(config('archibot.data_dir'));
+        $admin = User::factory()->create(['is_admin' => true]);
+        $default = File::get(base_path('../prompts/classify_system.txt'));
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'prompts']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('prompts', fn ($prompts) => collect($prompts)->contains(
+                    fn (array $prompt): bool => $prompt['key'] === 'classify'
+                        && $prompt['content'] === $default
+                        && $prompt['has_override'] === false
+                ))
+            );
+    }
+
     public function test_admin_can_update_and_reset_active_prompt_overrides(): void
     {
         config(['archibot.data_dir' => storage_path('framework/testing/prompts')]);
