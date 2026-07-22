@@ -367,26 +367,6 @@ class AiProviderClient:
     # ---------------------------------------------------------------
     # Structured LLM calls (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_json(
-        self,
-        system: str,
-        user: str,
-        *,
-        model: str | None = None,
-        temperature: float = 0.1,
-        num_ctx: int | None = None,
-        role: str = "classification",
-    ) -> dict[str, Any]:
-        """Implement the stable pipeline gateway using the neutral client."""
-        return await self.structured_json(
-            system,
-            user,
-            model=model,
-            temperature=temperature,
-            num_ctx=num_ctx,
-            role=role,
-        )
-
     async def structured_json(
         self,
         system: str,
@@ -432,28 +412,6 @@ class AiProviderClient:
     # ---------------------------------------------------------------
     # Structured LLM calls with vision (JSON mode)
     # ---------------------------------------------------------------
-    async def chat_vision_json(
-        self,
-        system: str,
-        user: str,
-        images: list[str],
-        *,
-        model: str | None = None,
-        temperature: float = 0.1,
-        num_ctx: int | None = None,
-        role: str = "ocr",
-    ) -> dict[str, Any]:
-        """Implement the stable vision pipeline gateway using the neutral client."""
-        return await self.structured_vision_json(
-            system,
-            user,
-            images,
-            model=model,
-            temperature=temperature,
-            num_ctx=num_ctx,
-            role=role,
-        )
-
     async def structured_vision_json(
         self,
         system: str,

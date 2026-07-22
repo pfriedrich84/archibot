@@ -1,6 +1,7 @@
 """Factory for the configured AI-provider adapter."""
 
 from app.ai_provider.client import AiProviderClient
+from app.clients.ollama import OllamaClient
 
 
 def create_ai_provider(
@@ -11,4 +12,4 @@ def create_ai_provider(
     Existing OLLAMA_* and OpenAI-compatible settings remain the source of
     configuration; this factory only gives runtime code a provider-neutral seam.
     """
-    return AiProviderClient(base_url=base_url, model=model)
+    return OllamaClient(base_url=base_url, model=model)

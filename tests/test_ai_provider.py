@@ -33,22 +33,7 @@ def test_factory_provider_implements_pipeline_chat_gateway() -> None:
         assert asyncio.run(provider.chat_vision_json("system", "document", ["image"])) == {
             "text": "A7K9"
         }
-        provider.structured_json.assert_awaited_once_with(
-            "system",
-            "document",
-            model=None,
-            temperature=0.1,
-            num_ctx=None,
-            role="classification",
-        )
-        provider.structured_vision_json.assert_awaited_once_with(
-            "system",
-            "document",
-            ["image"],
-            model=None,
-            temperature=0.1,
-            num_ctx=None,
-            role="ocr",
-        )
+        provider.structured_json.assert_awaited_once_with(system="system", user="document")
+        provider.structured_vision_json.assert_awaited_once_with("system", "document", ["image"])
     finally:
         asyncio.run(provider.aclose())
