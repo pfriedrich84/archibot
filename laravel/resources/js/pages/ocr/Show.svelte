@@ -3,6 +3,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import { Button } from '@/components/ui/button';
+    import { csrfToken } from '@/lib/csrf';
 
     type OcrReview = {
         id: number;
@@ -69,6 +70,7 @@
         <div class="flex flex-wrap gap-3">
             <Form method="post" action={actions.approve}>
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <input
                         type="hidden"
                         name="approved_content"
@@ -94,6 +96,7 @@
                 }}
             >
                 {#snippet children({ processing })}
+                    <input type="hidden" name="_token" value={csrfToken()} />
                     <Button
                         type="submit"
                         variant="outline"
