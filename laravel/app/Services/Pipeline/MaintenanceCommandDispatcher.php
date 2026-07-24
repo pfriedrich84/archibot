@@ -2,10 +2,10 @@
 
 namespace App\Services\Pipeline;
 
-use App\Jobs\RunPythonActorJob;
 use App\Data\Audit\AuditRecord;
 use App\Data\Pipeline\PipelineEventRecord;
 use App\Domain\Commands\CommandRecord;
+use App\Jobs\RunPythonActorJob;
 use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -34,7 +34,11 @@ class MaintenanceCommandDispatcher
             ...$metadata,
         ], fn ($value): bool => $value !== null);
 
-        $command = $this->createCommand($request, CommandRecord::TYPE_POLL_RECONCILIATION, $payload);
+        $command = $this->createCommand(
+            $request,
+            CommandRecord::TYPE_POLL_RECONCILIATION,
+            $payload,
+        );
 
         $this->recordEvent($request, $command, 'job_control.poll_reconciliation_requested', 'info', 'Polling reconciliation requested by admin.', [
             'action' => CommandRecord::TYPE_POLL_RECONCILIATION,

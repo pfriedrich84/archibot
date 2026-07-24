@@ -82,7 +82,7 @@
     "laravel/resources/js/types/navigation.ts": "64a7b151f1260507230bf922ad6682b949ee99e8c51a2f17ebb3eae235437d83",
     "laravel/routes/console.php": "6f731a43d8962444bf03c2d2ef019d8c0515d2a26da79353f74975c3d5c68b35",
     "laravel/routes/settings.php": "ca9de8b93ed9034fee8f74c332bc2455d43fae8cb647c0d7c862c706e83926b0",
-    "laravel/routes/web.php": "b519a8df62da59baf67ce177ec0fb3e6e706b7ecf1d7a620cdac812fccd25542"
+    "laravel/routes/web.php": "ec8b5792844c09fdaa2095665e3bf299d5fed35392b9fd60c28105f40b1f9c6c"
   },
   "paperless_mutation_files": {
     "app/clients/paperless.py": "5dbe4ca6e3a3b1db94922684483572a28cb49676b71869defd0bb7face203b7c",
