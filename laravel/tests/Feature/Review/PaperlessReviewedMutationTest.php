@@ -153,9 +153,9 @@ class PaperlessReviewedMutationTest extends TestCase
 
     public function test_api10_accept_header_is_sent_for_productive_requests(): void
     {
-        Http::fake(['paperless.test/api/ui_settings/' => Http::response([], 200)]);
+        Http::fake(['paperless.test/api/ui_settings/' => Http::response([], 406)]);
 
-        $this->assertTrue(app(PaperlessClient::class)->ping('reviewer-token'));
+        $this->assertFalse(app(PaperlessClient::class)->ping('reviewer-token'));
 
         Http::assertSent(fn ($request): bool => $request->header('Accept')[0] === 'application/json; version=10');
     }
