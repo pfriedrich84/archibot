@@ -45,6 +45,8 @@ class PaperlessMasterDataCaseController extends Controller
             'reviewed_at' => now(),
         ])->save();
 
+        $this->audit($request, $paperlessMasterDataCase, 'approved', ['outcome' => 'queued']);
+
         return back()->with('status', "Approval for '{$paperlessMasterDataCase->canonical_name}' was queued.");
     }
 
@@ -60,6 +62,8 @@ class PaperlessMasterDataCaseController extends Controller
             'reviewed_by_user_id' => $request->user()->id,
             'reviewed_at' => now(),
         ])->save();
+
+        $this->audit($request, $paperlessMasterDataCase, 'rejected', ['outcome' => 'queued']);
 
         return back()->with('status', "Rejection of '{$paperlessMasterDataCase->canonical_name}' was queued.");
     }
@@ -77,6 +81,8 @@ class PaperlessMasterDataCaseController extends Controller
             'reviewed_at' => null,
             'suppressed_until' => null,
         ])->save();
+
+        $this->audit($request, $paperlessMasterDataCase, 'unblacklisted', ['outcome' => 'queued']);
 
         return back()->with('status', "Blocklist removal for '{$paperlessMasterDataCase->canonical_name}' was queued.");
     }
@@ -122,5 +128,24 @@ class PaperlessMasterDataCaseController extends Controller
             'document_type' => 'Document types',
             default => 'Master data',
         };
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function audit(Request $request, PaperlessMasterDataCase $entity, string $action, array $metadata = []): void
+    {
+        \App\Models\AuditLog::query()->create([
+            'actor_user_id' => $request->user()->id,
+            'event' => "paperless_master_data_case.{$action}",
+            'target_type' => 'paperless_master_data_case',
+            'target_id' => (string) $entity->id,
+            'metadata' => [
+                'actor_principal' => 'authenticated_user',
+                'type' => $entity->entity_type,
+                'name' => $entity->canonical_name ?: $entity->normalized_name,
+                ...$metadata,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
     }
 }
