@@ -129,7 +129,7 @@ class FirstRunSetupTest extends TestCase
         $runtimeConfig = file_get_contents($runtimeConfigPath);
         $this->assertStringContainsString('PAPERLESS_URL=https://paperless.test', $runtimeConfig);
         $this->assertStringContainsString('PAPERLESS_TOKEN=paperless-token', $runtimeConfig);
-        $this->assertStringContainsString('PAPERLESS_AI_SUGGEST_ENABLED=1', $runtimeConfig);
+        $this->assertStringContainsString('PAPERLESS_AI_SUGGEST_ENABLED=0', $runtimeConfig);
         $this->assertStringContainsString('PAPERLESS_AI_SIMILAR_DOCUMENTS_ENABLED=0', $runtimeConfig);
         $this->assertStringContainsString('PAPERLESS_AI_AUTO_MANAGE_WORKFLOWS=0', $runtimeConfig);
         $this->assertDatabaseHas('audit_logs', [

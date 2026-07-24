@@ -143,7 +143,7 @@ $routeParameters = [
     'ocr-reviews.approve' => [$ocrReview],
     'ocr-reviews.reject' => [$ocrReview],
     'entities.index' => ['segment' => 'tags'],
-    'entities.reject' => ['segment' => 'tags', 'entityApproval' => $entity],
+    'entities.reject' => ['segment' => 'tags', 'paperlessMasterDataCase' => $entity],
     'mcp-tokens.destroy' => [$mcpToken],
     'admin.settings.edit' => ['section' => 'ai-provider'],
 ];

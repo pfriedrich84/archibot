@@ -298,6 +298,12 @@ class DiagnosticPresenter
             'error' => $this->redactedMessage(is_string($snapshot['error'] ?? null) ? $snapshot['error'] : null),
             'document_count_error' => $this->redactedMessage(is_string($snapshot['document_count_error'] ?? null) ? $snapshot['document_count_error'] : null),
             'ready' => is_bool($snapshot['ready'] ?? null) ? $snapshot['ready'] : false,
+            'scope' => is_string($snapshot['scope'] ?? null) && $snapshot['scope'] !== '' ? $snapshot['scope'] : null,
+            'release_threshold' => $this->nonNegativeInteger($snapshot['release_threshold'] ?? null),
+            'release_target_population' => $this->nonNegativeInteger($snapshot['release_target_population'] ?? null),
+            'release_status' => $this->typedScalar('status', $snapshot['release_status'] ?? null),
+            'released_at' => $this->timestamp($snapshot['released_at'] ?? null),
+            'released' => is_bool($snapshot['released'] ?? null) ? $snapshot['released'] : false,
         ];
     }
 
