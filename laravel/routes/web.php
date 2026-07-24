@@ -7,7 +7,6 @@ use App\Http\Controllers\ClassifyWithArchiBotController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingIndexController;
 use App\Http\Controllers\EmbeddingsController;
-use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\ErrorsController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InboxController;

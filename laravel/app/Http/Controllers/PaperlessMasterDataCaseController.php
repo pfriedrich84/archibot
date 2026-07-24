@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\PaperlessMasterDataCase;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -133,7 +134,7 @@ class PaperlessMasterDataCaseController extends Controller
     /** @param array<string, mixed> $metadata */
     private function audit(Request $request, PaperlessMasterDataCase $entity, string $action, array $metadata = []): void
     {
-        \App\Models\AuditLog::query()->create([
+        AuditLog::query()->create([
             'actor_user_id' => $request->user()->id,
             'event' => "paperless_master_data_case.{$action}",
             'target_type' => 'paperless_master_data_case',

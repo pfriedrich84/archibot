@@ -329,7 +329,7 @@
     <aside
         class="max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
     >
-        <strong>Conversational retrieval is disabled for every user.</strong>
+        <strong>Conversational document lookup is disabled for every user.</strong>
         Its page, routes, provider setting, prompt editor, and global MCP document lookup
         tools are unavailable.
         <a
