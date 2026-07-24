@@ -7,7 +7,7 @@
     "laravel/app/Http/Controllers/ClassifyWithArchiBotController.php": "9cfb5a20ee2d5e3d8d073384974aefc745b5963d9b7024315d77aa2fb3baf14d",
     "laravel/app/Http/Controllers/EntityApprovalController.php": "11a3fdb0f0bad8bd7051d4411b064bf0b655733e9a1f36162757353dc5f22aa2",
     "laravel/app/Http/Controllers/OcrReviewController.php": "60f15b69f5934a3fb267332b7a9945a46c3c858473d3400219d986c710e2bf0c",
-    "laravel/app/Http/Controllers/PaperlessAiSuggestController.php": "f0ffe07f11b0568dc38067566100d14fd94c6c58f9670ae193d6bc5da48769fc",
+    "laravel/app/Http/Controllers/PaperlessAiSuggestController.php": "ce0879cad7c7741562cfb9812156a2b7743c38ce70302408149f5a085530b17f",
     "laravel/app/Http/Controllers/PaperlessEventWebhookController.php": "a1fb5865999c17a88d61c56e4b57b52e2a0b462fb7c44d09e6752aa5d0b05748",
     "laravel/app/Http/Controllers/PaperlessMasterDataCaseController.php": "3ad85ab721e2cbd89221a8a95d8e7fc6df3a693c10ae36ed8a468aaccd4175f3",
     "laravel/app/Http/Controllers/ReviewSuggestionController.php": "6847555391c7a16dc534629868b8d25d4fb287f477b12ac2d1c97c76e877a2fa",
