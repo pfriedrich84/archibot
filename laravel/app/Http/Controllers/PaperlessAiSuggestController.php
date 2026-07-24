@@ -28,18 +28,18 @@ class PaperlessAiSuggestController extends Controller
         $classificationEngine = (string) AppSetting::getValue('classification.model', '');
         abort_if($classificationEngine === '', 503, 'No classification engine is configured.');
 
-        $provider = (string) AppSetting::getValue('llm.provider', 'ollama');
-        $baseUrl = $provider === 'openai_compatible'
+        $providerAlias = (string) AppSetting::getValue('llm.provider', 'ollama');
+        $providerBaseUrl = $providerAlias === 'openai_compatible'
             ? (string) AppSetting::getValue('llm.openai_base_url', 'https://api.openai.com/v1')
             : (string) AppSetting::getValue('ollama.url', 'http://ollama:11434');
-        $apiKey = $provider === 'openai_compatible'
+        $providerSecret = $providerAlias === 'openai_compatible'
             ? AppSetting::getValue('llm.openai_api_key')
             : null;
 
         $response = app(OllamaClient::class, [
-            'baseUrl' => $baseUrl,
-            'provider' => $provider,
-            'apiKey' => $apiKey ?: null,
+            'baseUrl' => $providerBaseUrl,
+            'provider' => $providerAlias,
+            'apiKey' => $providerSecret ?: null,
         ])->chatCompletion($classificationEngine, $validated['messages']);
 
         return response()->json($response);
