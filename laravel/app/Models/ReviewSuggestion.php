@@ -44,6 +44,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'commit_status',
     'commit_command_id',
     'staleness_reason',
+    'origin',
+    'context_quality',
+    'context_document_count',
+    'requested_by_user_id',
+    'request_source',
 ])]
 class ReviewSuggestion extends Model
 {
@@ -69,6 +74,7 @@ class ReviewSuggestion extends Model
             'original_date' => 'date',
             'proposed_date' => 'date',
             'paperless_version_id' => 'integer',
+            'context_document_count' => 'integer',
             'original_tags' => 'array',
             'proposed_tags' => 'array',
             'context_documents' => 'array',
@@ -123,6 +129,11 @@ class ReviewSuggestion extends Model
     public function reviewedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by_user_id');
+    }
+
+    public function requestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by_user_id');
     }
 
     public function markReviewed(string $status, User $user): void

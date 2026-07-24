@@ -3,17 +3,20 @@
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\MaintenanceController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\ClassifyWithArchiBotController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmbeddingIndexController;
 use App\Http\Controllers\EmbeddingsController;
-use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\ErrorsController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
 use App\Http\Controllers\OperationsLogController;
+use App\Http\Controllers\PaperlessAiSuggestController;
 use App\Http\Controllers\PaperlessEventWebhookController;
+use App\Http\Controllers\PaperlessMasterDataCaseController;
+use App\Http\Controllers\EntityApprovalController;
 use App\Http\Controllers\PipelineRunController;
 use App\Http\Controllers\ReviewSuggestionController;
 use App\Http\Controllers\SetupController;
@@ -27,6 +30,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
     Route::post('/webhook', PaperlessEventWebhookController::class)->name('webhook.paperless');
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
+    Route::post('/paperless-ai/v1/chat/completions', PaperlessAiSuggestController::class)->name('paperless-ai.suggest');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
     Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])
@@ -54,7 +58,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
 
-        Route::get('{segment}', [EntityApprovalController::class, 'index'])
+        Route::get('{segment}', [PaperlessMasterDataCaseController::class, 'index'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.index');
         Route::post('{segment}/entity-approvals/{entityApproval}/approve', [EntityApprovalController::class, 'approve'])
@@ -66,8 +70,16 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('{segment}/entity-approvals/{entityApproval}/unblacklist', [EntityApprovalController::class, 'unblacklist'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.unblacklist');
+        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/approve', [PaperlessMasterDataCaseController::class, 'approve'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
+        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/reject', [PaperlessMasterDataCaseController::class, 'reject'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
+        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/unblacklist', [PaperlessMasterDataCaseController::class, 'unblacklist'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
 
         Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
+        Route::get('review/classify-with-archibot', [ClassifyWithArchiBotController::class, 'create'])->name('classify-with-archibot.create');
+        Route::post('review/classify-with-archibot', [ClassifyWithArchiBotController::class, 'store'])->name('classify-with-archibot.store');
         Route::post('review/bulk/accept', [ReviewSuggestionController::class, 'bulkAccept'])->name('review.bulk.accept');
         Route::post('review/bulk/reject', [ReviewSuggestionController::class, 'bulkReject'])->name('review.bulk.reject');
         Route::get('review/{reviewSuggestion}', [ReviewSuggestionController::class, 'show'])->name('review.show');
@@ -113,6 +125,8 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('admin/settings/ai-models', [SettingsController::class, 'aiModels'])
             ->middleware('throttle:model-discovery')
             ->name('admin.settings.ai-models');
+        Route::post('admin/settings/paperless-ai-state', [SettingsController::class, 'refreshPaperlessAiState'])
+            ->name('admin.settings.paperless-ai-state');
         Route::post('admin/settings/ai-models/validate', [SettingsController::class, 'validateAiModel'])
             ->middleware('throttle:model-discovery')
             ->name('admin.settings.ai-models.validate');

@@ -22,6 +22,9 @@
         inboxTagId?: string;
         processedTagId?: string;
         ocrRequestedTagId?: string;
+        paperlessAiSuggestEnabled?: boolean;
+        paperlessAiSimilarDocumentsEnabled?: boolean;
+        paperlessAiAutoManageWorkflows?: boolean;
     };
 
     let {
@@ -47,6 +50,15 @@
     let inboxTagId = $state((() => defaults.inboxTagId ?? '')());
     let processedTagId = $state((() => defaults.processedTagId ?? '')());
     let ocrRequestedTagId = $state((() => defaults.ocrRequestedTagId ?? '')());
+    let paperlessAiSuggestEnabled = $state(
+        (() => defaults.paperlessAiSuggestEnabled ?? true)(),
+    );
+    let paperlessAiSimilarDocumentsEnabled = $state(
+        (() => defaults.paperlessAiSimilarDocumentsEnabled ?? false)(),
+    );
+    let paperlessAiAutoManageWorkflows = $state(
+        (() => defaults.paperlessAiAutoManageWorkflows ?? true)(),
+    );
 
     type SetupStep = 'reset-token' | 'paperless' | 'tags';
     const setupSteps = $derived([
@@ -399,6 +411,45 @@
                         </select>
                         <InputError message={errors.ocr_requested_tag_id} />
                     </div>
+                </div>
+
+                <div class="grid gap-4 rounded-lg border p-4">
+                    <div>
+                        <h3 class="font-medium">Paperless AI Suggest</h3>
+                        <p class="text-sm text-muted-foreground">
+                            Manual Paperless AI Suggest works immediately after setup. Similar documents remain a separate toggle.
+                        </p>
+                    </div>
+
+                    <Label class="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            name="paperless_ai_suggest_enabled"
+                            value="1"
+                            bind:checked={paperlessAiSuggestEnabled}
+                        />
+                        <span>Enable manual Paperless AI Suggest</span>
+                    </Label>
+
+                    <Label class="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            name="paperless_ai_similar_documents_enabled"
+                            value="1"
+                            bind:checked={paperlessAiSimilarDocumentsEnabled}
+                        />
+                        <span>Enable similar Paperless documents</span>
+                    </Label>
+
+                    <Label class="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            name="paperless_ai_auto_manage_workflows"
+                            value="1"
+                            bind:checked={paperlessAiAutoManageWorkflows}
+                        />
+                        <span>Automatically configure Paperless workflows</span>
+                    </Label>
                 </div>
 
                 <div class="flex justify-between gap-3">

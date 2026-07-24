@@ -103,6 +103,8 @@ class MaintenanceCommandDispatcher
 
         $command = Command::query()->create([
             'type' => Command::TYPE_POLL_RECONCILIATION,
+            'queue' => $this->queueNameFor(Command::TYPE_POLL_RECONCILIATION),
+            'priority' => $this->priorityFor(Command::TYPE_POLL_RECONCILIATION),
             'status' => Command::STATUS_PENDING,
             'payload' => [
                 'source' => 'scheduler',
@@ -263,6 +265,8 @@ class MaintenanceCommandDispatcher
     {
         return Command::query()->create([
             'type' => $type,
+            'queue' => $this->queueNameFor($type),
+            'priority' => $this->priorityFor($type),
             'status' => Command::STATUS_PENDING,
             'payload' => $payload,
             'created_by_user_id' => OperatorPrincipal::userId($request),
@@ -333,6 +337,7 @@ class MaintenanceCommandDispatcher
                 'status' => Command::STATUS_QUEUED,
                 'error' => null,
             ])->save();
+            $job->onQueue($command->queue ?: $this->queueNameFor($command->type));
             dispatch($job);
         });
         $command->refresh();
@@ -341,5 +346,27 @@ class MaintenanceCommandDispatcher
     private function normalizedLimit(?int $limit): ?int
     {
         return $limit !== null && $limit > 0 ? $limit : null;
+    }
+
+    private function queueNameFor(string $type): string
+    {
+        return match ($type) {
+            Command::TYPE_EMBEDDING_INDEX_BUILD,
+            Command::TYPE_PAPERLESS_SIMILARITY_INDEX => (string) config('archibot_workers.queues.embeddings', 'embeddings'),
+            Command::TYPE_CLASSIFY_WITH_ARCHIBOT,
+            Command::TYPE_REVIEW_COMMIT => (string) config('archibot_workers.queues.interactive', 'interactive'),
+            default => (string) config('archibot_workers.queues.maintenance', 'maintenance'),
+        };
+    }
+
+    private function priorityFor(string $type): int
+    {
+        return match ($type) {
+            Command::TYPE_EMBEDDING_INDEX_BUILD,
+            Command::TYPE_PAPERLESS_SIMILARITY_INDEX => (int) config('archibot_workers.priorities.embeddings', 30),
+            Command::TYPE_CLASSIFY_WITH_ARCHIBOT,
+            Command::TYPE_REVIEW_COMMIT => (int) config('archibot_workers.priorities.interactive', 80),
+            default => (int) config('archibot_workers.priorities.maintenance', 40),
+        };
     }
 }

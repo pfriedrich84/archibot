@@ -159,6 +159,60 @@ class OllamaClient
         }
     }
 
+    /**
+     * @param  array<int, array{role: string, content: string}>  $messages
+     * @return array<string, mixed>
+     */
+    public function chatCompletion(string $model, array $messages): array
+    {
+        $provider = strtolower(trim($this->provider));
+        $request = Http::baseUrl($this->validatedBaseUrl())
+            ->acceptJson()
+            ->asJson()
+            ->connectTimeout(5)
+            ->timeout(60)
+            ->withoutRedirecting()
+            ->withOptions([
+                'decode_content' => true,
+                'sink' => new ResponseSizeGuard(4194304, 'AI provider'),
+            ]);
+
+        if ($provider === 'openai_compatible' && filled($this->apiKey)) {
+            $request = $request->withToken($this->apiKey);
+        }
+
+        $path = $provider === 'openai_compatible' ? '/chat/completions' : '/api/chat';
+        $payload = $provider === 'openai_compatible'
+            ? ['model' => $model, 'messages' => $messages, 'stream' => false]
+            : ['model' => $model, 'messages' => $messages, 'stream' => false];
+
+        $response = $request->post($path, $payload);
+        if (! $response->successful()) {
+            throw new RuntimeException('Paperless AI Suggest request failed.');
+        }
+
+        if ($provider === 'openai_compatible') {
+            return [
+                'id' => $response->json('id'),
+                'object' => 'chat.completion',
+                'choices' => $response->json('choices') ?? [],
+            ];
+        }
+
+        return [
+            'id' => 'archibot-paperless-suggest',
+            'object' => 'chat.completion',
+            'choices' => [[
+                'index' => 0,
+                'message' => [
+                    'role' => 'assistant',
+                    'content' => (string) ($response->json('message.content') ?? ''),
+                ],
+                'finish_reason' => 'stop',
+            ]],
+        ];
+    }
+
     private function validatedVisionChallenge(): string
     {
         $encoded = $this->visionChallengeBase64 ?? self::VISION_CHALLENGE_BASE64;

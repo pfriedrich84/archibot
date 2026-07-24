@@ -10,6 +10,7 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -43,6 +44,60 @@ class ReviewSuggestionTest extends TestCase
                 ->where('suggestions.data.0.id', $suggestion->id)
                 ->where('suggestions.data.0.proposed_title', 'Suggested title')
             );
+    }
+
+    public function test_authorized_user_can_open_classify_with_archibot_page(): void
+    {
+        $user = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('classify-with-archibot.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('review/ClassifyWithArchiBot')
+                ->where('actions.store', route('classify-with-archibot.store'))
+            );
+    }
+
+    public function test_classify_with_archibot_queues_document_bound_review_request(): void
+    {
+        Http::fake(function (Request $request) {
+            if ($request->method() === 'OPTIONS') {
+                return Http::response([], 200, ['Allow' => 'GET, HEAD, OPTIONS, PATCH']);
+            }
+
+            return Http::response([
+                'id' => 123,
+                'modified' => '2026-01-01T12:00:00+00:00',
+                'checksum' => 'root-checksum',
+                'versions' => [
+                    ['id' => 55, 'checksum' => 'version-checksum'],
+                ],
+            ], 200);
+        });
+
+        $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->post(route('classify-with-archibot.store'), ['paperless_document_id' => 123])
+            ->assertRedirect(route('review.index'));
+
+        $this->assertDatabaseHas('pipeline_runs', [
+            'paperless_document_id' => 123,
+            'trigger_source' => 'manual',
+            'reprocess_requested' => true,
+        ]);
+        $this->assertDatabaseHas('review_suggestions', [
+            'paperless_document_id' => 123,
+            'paperless_version_id' => 55,
+            'paperless_version_checksum' => 'version-checksum',
+            'origin' => 'manual_archibot',
+            'request_source' => 'classify_with_archibot',
+            'requested_by_user_id' => $user->id,
+        ]);
+
+        $run = PipelineRun::query()->where('paperless_document_id', 123)->firstOrFail();
+        $this->assertSame('manual', $run->trigger_source);
     }
 
     public function test_pending_review_queue_only_shows_latest_suggestion_per_document(): void

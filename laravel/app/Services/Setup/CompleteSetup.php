@@ -52,6 +52,9 @@ class CompleteSetup
             AppSetting::put('paperless.processed_tag_id', (string) ($data['paperless_processed_tag_id'] ?? ''));
             AppSetting::put('ocr.requested_tag_id', (string) ($data['ocr_requested_tag_id'] ?? ''));
             AppSetting::put('ocr.mode', 'off');
+            AppSetting::put('paperless.ai_suggest_enabled', ! empty($data['paperless_ai_suggest_enabled']) ? '1' : '0');
+            AppSetting::put('paperless.ai_similar_documents_enabled', ! empty($data['paperless_ai_similar_documents_enabled']) ? '1' : '0');
+            AppSetting::put('paperless.ai_auto_manage_workflows', ! empty($data['paperless_ai_auto_manage_workflows']) ? '1' : '0');
 
             $email = $paperlessUser->email ?: $paperlessUser->username.'@paperless.local';
 
@@ -88,6 +91,9 @@ class CompleteSetup
                     'imported_setting_keys' => $importedKeys,
                     'paperless_inbox_tag_id' => (int) $data['paperless_inbox_tag_id'],
                     'ai_provider_configuration' => 'deferred_until_authenticated_admin_session',
+                    'paperless_ai_suggest_enabled' => ! empty($data['paperless_ai_suggest_enabled']),
+                    'paperless_ai_similar_documents_enabled' => ! empty($data['paperless_ai_similar_documents_enabled']),
+                    'paperless_ai_auto_manage_workflows' => ! empty($data['paperless_ai_auto_manage_workflows']),
                 ],
                 'ip_address' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
@@ -100,6 +106,9 @@ class CompleteSetup
                 'PAPERLESS_PROCESSED_TAG_ID' => (string) ($data['paperless_processed_tag_id'] ?? ''),
                 'OCR_REQUESTED_TAG_ID' => (string) ($data['ocr_requested_tag_id'] ?? ''),
                 'OCR_MODE' => 'off',
+                'PAPERLESS_AI_SUGGEST_ENABLED' => ! empty($data['paperless_ai_suggest_enabled']) ? '1' : '0',
+                'PAPERLESS_AI_SIMILAR_DOCUMENTS_ENABLED' => ! empty($data['paperless_ai_similar_documents_enabled']) ? '1' : '0',
+                'PAPERLESS_AI_AUTO_MANAGE_WORKFLOWS' => ! empty($data['paperless_ai_auto_manage_workflows']) ? '1' : '0',
             ]);
 
             Auth::login($user);

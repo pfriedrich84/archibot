@@ -40,6 +40,8 @@ class EmbeddingIndexSnapshot
             : null;
         $failedCount = $state?->failed_count ?? 0;
         $status = $state?->status;
+        $releaseThreshold = max(0, (int) ($state?->release_threshold ?? 0));
+        $releaseTargetPopulation = max(0, (int) ($state?->release_target_population ?? ($documentCount ?? 0)));
 
         if (($status === null || $status === 'missing') && $embeddedCount > 0) {
             $status = $missingCount === 0 && $failedCount === 0 ? EmbeddingIndexState::STATUS_COMPLETE : 'partial';
@@ -49,6 +51,12 @@ class EmbeddingIndexSnapshot
 
         $ready = $status === EmbeddingIndexState::STATUS_COMPLETE
             || ($embeddedCount > 0 && $missingCount === 0 && $failedCount === 0);
+
+        $released = $ready
+            && $embeddedCount >= $releaseThreshold
+            && ($releaseTargetPopulation === 0 || $embeddedCount >= $releaseTargetPopulation);
+        $releaseStatus = $state?->release_status
+            ?? ($released ? EmbeddingIndexState::RELEASE_STATUS_RELEASED : ($ready ? EmbeddingIndexState::RELEASE_STATUS_BLOCKED : EmbeddingIndexState::RELEASE_STATUS_PENDING));
 
         return [
             'id' => $state?->id,
@@ -67,6 +75,12 @@ class EmbeddingIndexSnapshot
             'error' => $state?->error,
             'document_count_error' => $documentCountError,
             'ready' => $ready,
+            'scope' => $state?->scope ?? $state?->content_scope,
+            'release_threshold' => $releaseThreshold,
+            'release_target_population' => $releaseTargetPopulation,
+            'release_status' => $releaseStatus,
+            'released_at' => $state?->released_at?->toISOString(),
+            'released' => $released,
         ];
     }
 

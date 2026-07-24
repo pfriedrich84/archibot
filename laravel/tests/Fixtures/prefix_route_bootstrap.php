@@ -77,6 +77,14 @@ $app->instance(
 Http::fake(function (Illuminate\Http\Client\Request $request) {
     $url = $request->url();
 
+    if (str_contains($url, '/api/ui_settings/')) {
+        return Http::response([
+            'ai_settings' => [
+                'manual_enabled' => true,
+                'similar_documents_enabled' => false,
+            ],
+        ]);
+    }
     if (str_contains($url, 'ollama.test/api/tags')) {
         return Http::response([
             'models' => [['name' => 'safe-model']],
@@ -135,13 +143,13 @@ $routeParameters = [
     'ocr-reviews.approve' => [$ocrReview],
     'ocr-reviews.reject' => [$ocrReview],
     'entities.index' => ['segment' => 'tags'],
-    'entities.reject' => ['segment' => 'tags', 'entityApproval' => $entity],
+    'entities.reject' => ['segment' => 'tags', 'paperlessMasterDataCase' => $entity],
     'mcp-tokens.destroy' => [$mcpToken],
     'admin.settings.edit' => ['section' => 'ai-provider'],
 ];
 $names = [
     'home', 'dashboard', 'admin.settings.edit', 'admin.settings.update',
-    'admin.settings.ai-models', 'admin.settings.ai-models.validate',
+    'admin.settings.ai-models', 'admin.settings.ai-models.validate', 'admin.settings.paperless-ai-state',
     'review.index', 'review.bulk.accept', 'review.bulk.reject', 'review.show',
     'review.preview', 'ocr-reviews.index', 'ocr-reviews.store',
     'ocr-reviews.show', 'ocr-reviews.approve', 'ocr-reviews.reject',
@@ -227,6 +235,7 @@ $flows = [
         'llm_provider' => 'ollama',
         'ollama_url' => 'http://ollama.test',
     ], $json),
+    'paperless_ai_state_post' => $dispatch('POST', $base.'/admin/settings/paperless-ai-state', [], $json),
     'review_bulk_accept_post' => $dispatch('POST', $base.'/review/bulk/accept', [
         'suggestion_ids' => [$acceptSuggestion->id],
     ], ['Referer' => 'http://localhost'.$base.'/review']),

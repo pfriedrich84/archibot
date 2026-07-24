@@ -25,6 +25,8 @@ class MaintenanceCommandTest extends TestCase
         $this->assertSame('poll_reconciliation', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(['limit' => 25], $command->payload);
+        $this->assertSame('maintenance', $command->queue);
+        $this->assertSame(40, $command->priority);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
         $this->assertDatabaseHas('pipeline_events', [
@@ -83,6 +85,8 @@ class MaintenanceCommandTest extends TestCase
         $this->assertSame('reindex', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(['limit' => 50], $command->payload);
+        $this->assertSame('maintenance', $command->queue);
+        $this->assertSame(40, $command->priority);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
         $state->refresh();
