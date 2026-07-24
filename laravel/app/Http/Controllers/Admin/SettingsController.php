@@ -7,6 +7,7 @@ use App\Http\Middleware\ValidatePaperlessWebhookRequest;
 use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Services\Ollama\OllamaClient;
+use App\Services\Paperless\PaperlessAiSettingsService;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Settings\PythonRuntimeConfigExporter;
 use App\Services\Settings\SettingsCatalog;
@@ -21,7 +22,7 @@ use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function edit(Request $request, SettingsCatalog $catalog, ?string $section = null): Response
+    public function edit(Request $request, SettingsCatalog $catalog, PaperlessAiSettingsService $paperlessAi, ?string $section = null): Response
     {
         $this->authorizeAdmin($request);
 
@@ -58,7 +59,53 @@ class SettingsController extends Controller
                 'discover' => route('admin.settings.ai-models'),
                 'validate' => route('admin.settings.ai-models.validate'),
             ],
+            'paperlessAiState' => $this->paperlessAiState($request, $paperlessAi),
         ]);
+    }
+
+    public function refreshPaperlessAiState(Request $request, PaperlessAiSettingsService $paperlessAi): array
+    {
+        $this->authorizeAdmin($request);
+
+        return $this->paperlessAiState($request, $paperlessAi);
+    }
+
+    /** @return array<string, mixed> */
+    private function paperlessAiState(Request $request, PaperlessAiSettingsService $paperlessAi): array
+    {
+        $token = $request->user()?->paperless_token;
+        $desired = $paperlessAi->desiredConfig();
+
+        if (! $token) {
+            return [
+                'desired' => $desired,
+                'remote' => null,
+                'drift_fields' => [],
+                'sync_status' => 'paperless_token_missing',
+                'last_remote_read_at' => null,
+            ];
+        }
+
+        try {
+            $state = $paperlessAi->refreshState($token);
+
+            return [
+                'desired' => $state->desired_config ?? $desired,
+                'remote' => $state->remote_config,
+                'drift_fields' => $state->drift_fields ?? [],
+                'sync_status' => $state->sync_status,
+                'last_remote_read_at' => $state->last_remote_read_at?->toISOString(),
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'desired' => $desired,
+                'remote' => null,
+                'drift_fields' => [],
+                'sync_status' => 'remote_read_failed',
+                'last_remote_read_at' => null,
+                'error' => $exception->getMessage(),
+            ];
+        }
     }
 
     public function aiModels(Request $request): array
