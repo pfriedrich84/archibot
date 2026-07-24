@@ -160,7 +160,7 @@ class PaperlessReviewedMutationTest extends TestCase
         Http::assertSentCount(1);
         $request = Http::recorded()[0][0];
         $this->assertSame('https://paperless.test/api/ui_settings/', $request->url());
-        $this->assertSame('application/json; version=10', $request->header('Accept')[0]);
+        $this->assertSame('application/json', $request->header('Accept')[0]);
     }
 
     public function test_health_ping_fails_closed_on_406(): void
