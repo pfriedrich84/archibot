@@ -157,7 +157,8 @@ class PaperlessReviewedMutationTest extends TestCase
 
         app(PaperlessClient::class)->ping('reviewer-token');
 
-        Http::assertSent(fn ($request): bool => $request->header('Accept')[0] === 'application/json; version=10');
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/api/ui_settings/')
+            && $request->header('Accept')[0] === 'application/json; version=10');
     }
 
     public function test_health_ping_fails_closed_on_406(): void
