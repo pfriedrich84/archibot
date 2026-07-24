@@ -2,9 +2,9 @@
 
 namespace App\Services\Pipeline;
 
-use App\Data\Audit\AuditRecord;
-use App\Data\Pipeline\PipelineEventRecord;
-use App\Domain\Commands\CommandRecord;
+use App\Data\Audit\AuditLogRecord;
+use App\Data\Pipeline\EventRecord;
+use App\Domain\Commands\CommandEntry;
 use App\Jobs\RunPythonActorJob;
 use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
@@ -18,15 +18,15 @@ class MaintenanceCommandDispatcher
         private readonly PipelineStartGate $pipelineStartGate,
     ) {}
 
-    public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): CommandRecord
+    public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): CommandEntry
     {
         return Cache::lock('archibot:poll-command-dispatch', 120)->block(
             5,
-            fn (): CommandRecord => $this->queuePollReconciliationUnlocked($request, $limit, $metadata),
+            fn (): CommandEntry => $this->queuePollReconciliationUnlocked($request, $limit, $metadata),
         );
     }
 
-    private function queuePollReconciliationUnlocked(Request $request, ?int $limit, array $metadata): CommandRecord
+    private function queuePollReconciliationUnlocked(Request $request, ?int $limit, array $metadata): CommandEntry
     {
         $limit = $this->normalizedLimit($limit);
         $payload = array_filter([
@@ -36,12 +36,12 @@ class MaintenanceCommandDispatcher
 
         $command = $this->createCommand(
             $request,
-            CommandRecord::TYPE_POLL_RECONCILIATION,
+            CommandEntry::TYPE_POLL_RECONCILIATION,
             $payload,
         );
 
         $this->recordEvent($request, $command, 'job_control.poll_reconciliation_requested', 'info', 'Polling reconciliation requested by admin.', [
-            'action' => CommandRecord::TYPE_POLL_RECONCILIATION,
+            'action' => CommandEntry::TYPE_POLL_RECONCILIATION,
             'limit' => $limit,
             ...$metadata,
         ]);
@@ -52,7 +52,7 @@ class MaintenanceCommandDispatcher
 
         $this->enqueueCommand($command, RunPythonActorJob::pollReconciliation($command->id));
         $this->recordEvent($request, $command, 'job_control.poll_reconciliation_actor_queued', 'info', 'Polling reconciliation queued through Laravel actor transport.', [
-            'action' => CommandRecord::TYPE_POLL_RECONCILIATION,
+            'action' => CommandEntry::TYPE_POLL_RECONCILIATION,
             'actor_name' => 'reconcile_inbox_documents',
             'limit' => $limit,
             ...$metadata,
@@ -61,7 +61,7 @@ class MaintenanceCommandDispatcher
         return $command;
     }
 
-    public function queueScheduledPollReconciliation(): ?CommandRecord
+    public function queueScheduledPollReconciliation(): ?CommandEntry
     {
         $lock = Cache::lock('archibot:poll-command-dispatch', 120);
         if (! $lock->get()) {
@@ -75,44 +75,44 @@ class MaintenanceCommandDispatcher
         }
     }
 
-    private function queueScheduledPollReconciliationUnlocked(): ?CommandRecord
+    private function queueScheduledPollReconciliationUnlocked(): ?CommandEntry
     {
-        $period = max(0, (int) config('archibot.poll_interval_seconds', 600));
-        if ($period === 0) {
+        $pollEvery = max(0, (int) config('archibot.poll_interval_seconds', 600));
+        if ($pollEvery === 0) {
             return null;
         }
 
-        $activeExists = CommandRecord::query()
-            ->where('type', CommandRecord::TYPE_POLL_RECONCILIATION)
-            ->whereIn('status', CommandRecord::activeStatuses())
+        $hasActiveCommand = CommandEntry::query()
+            ->where('type', CommandEntry::TYPE_POLL_RECONCILIATION)
+            ->whereIn('status', CommandEntry::activeStatuses())
             ->exists();
-        if ($activeExists) {
+        if ($hasActiveCommand) {
             return null;
         }
 
-        $recentScheduledExists = CommandRecord::query()
-            ->where('type', CommandRecord::TYPE_POLL_RECONCILIATION)
+        $hasRecentScheduledCommand = CommandEntry::query()
+            ->where('type', CommandEntry::TYPE_POLL_RECONCILIATION)
             ->whereIn('status', [
-                CommandRecord::STATUS_SUCCEEDED,
-                CommandRecord::STATUS_FAILED,
-                CommandRecord::STATUS_FAILED_PERMANENT,
+                CommandEntry::STATUS_SUCCEEDED,
+                CommandEntry::STATUS_FAILED,
+                CommandEntry::STATUS_FAILED_PERMANENT,
             ])
             ->where('payload->source', 'scheduler')
             ->whereNotNull('finished_at')
-            ->where('finished_at', '>', now()->subSeconds($period))
+            ->where('finished_at', '>', now()->subSeconds($pollEvery))
             ->exists();
-        if ($recentScheduledExists) {
+        if ($hasRecentScheduledCommand) {
             return null;
         }
 
-        $command = CommandRecord::query()->create([
-            'type' => CommandRecord::TYPE_POLL_RECONCILIATION,
-            'queue' => $this->queueNameFor(CommandRecord::TYPE_POLL_RECONCILIATION),
-            'priority' => $this->priorityFor(CommandRecord::TYPE_POLL_RECONCILIATION),
-            'status' => CommandRecord::STATUS_PENDING,
+        $command = CommandEntry::query()->create([
+            'type' => CommandEntry::TYPE_POLL_RECONCILIATION,
+            'queue' => $this->queueNameFor(CommandEntry::TYPE_POLL_RECONCILIATION),
+            'priority' => $this->priorityFor(CommandEntry::TYPE_POLL_RECONCILIATION),
+            'status' => CommandEntry::STATUS_PENDING,
             'payload' => [
                 'source' => 'scheduler',
-                'cadence' => $period,
+                'poll_every_seconds' => $pollEvery,
             ],
             'created_by_user_id' => null,
         ]);
@@ -122,14 +122,14 @@ class MaintenanceCommandDispatcher
             'scheduler.poll_reconciliation_requested',
             'info',
             'Automatic polling reconciliation requested by the Laravel scheduler.',
-            ['cadence' => $period],
+            ['poll_every_seconds' => $pollEvery],
         );
 
         try {
             $this->enqueueCommand($command, RunPythonActorJob::pollReconciliation($command->id));
         } catch (Throwable $exception) {
             $command->forceFill([
-                'status' => CommandRecord::STATUS_PENDING,
+                'status' => CommandEntry::STATUS_PENDING,
                 'error' => 'queue_dispatch_failed:'.$exception::class,
             ])->save();
             $this->recordSystemEvent(
@@ -150,14 +150,14 @@ class MaintenanceCommandDispatcher
             'Automatic polling reconciliation queued through Laravel actor transport.',
             [
                 'actor_name' => 'reconcile_inbox_documents',
-                'cadence' => $period,
+                'poll_every_seconds' => $pollEvery,
             ],
         );
 
         return $command;
     }
 
-    public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): Command
+    public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): CommandEntry
     {
         $limit = $this->normalizedLimit($limit);
         $embeddingState = $this->pipelineStartGate->markStale('Reindex requested by admin.');
@@ -166,10 +166,10 @@ class MaintenanceCommandDispatcher
             'limit' => $limit,
             ...$metadata,
         ], fn ($value): bool => $value !== null);
-        $command = $this->createCommand($request, CommandRecord::TYPE_REINDEX, $payload);
+        $command = $this->createCommand($request, CommandEntry::TYPE_REINDEX, $payload);
 
         $this->recordEvent($request, $command, 'job_control.reindex_requested', 'warning', 'Reindex requested by admin; embedding gate marked stale.', [
-            'action' => CommandRecord::TYPE_REINDEX,
+            'action' => CommandEntry::TYPE_REINDEX,
             'embedding_index_state_id' => $embeddingState->id,
             'limit' => $limit,
             ...$metadata,
@@ -182,7 +182,7 @@ class MaintenanceCommandDispatcher
 
         $this->enqueueCommand($command, RunPythonActorJob::reindex($command->id));
         $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Reindex queued through Laravel actor transport.', [
-            'action' => CommandRecord::TYPE_REINDEX,
+            'action' => CommandEntry::TYPE_REINDEX,
             'actor_name' => 'reindex',
             'embedding_index_state_id' => $embeddingState->id,
             'limit' => $limit,
@@ -192,7 +192,7 @@ class MaintenanceCommandDispatcher
         return $command;
     }
 
-    public function queueOcrReindex(Request $request, ?int $limit = null, bool $force = false, array $metadata = []): Command
+    public function queueOcrReindex(Request $request, ?int $limit = null, bool $force = false, array $metadata = []): CommandEntry
     {
         $limit = $this->normalizedLimit($limit);
         $payload = array_filter([
@@ -200,10 +200,10 @@ class MaintenanceCommandDispatcher
             'force' => $force,
             ...$metadata,
         ], fn ($value): bool => $value !== null);
-        $command = $this->createCommand($request, CommandRecord::TYPE_REINDEX_OCR, $payload);
+        $command = $this->createCommand($request, CommandEntry::TYPE_REINDEX_OCR, $payload);
 
         $this->recordEvent($request, $command, 'job_control.ocr_reindex_requested', 'info', 'OCR reindex requested by admin.', [
-            'action' => CommandRecord::TYPE_REINDEX_OCR,
+            'action' => CommandEntry::TYPE_REINDEX_OCR,
             'limit' => $limit,
             'force' => $force,
             ...$metadata,
@@ -216,7 +216,7 @@ class MaintenanceCommandDispatcher
 
         $this->enqueueCommand($command, RunPythonActorJob::reindexOcr($command->id));
         $this->recordEvent($request, $command, 'job_control.ocr_reindex_actor_queued', 'info', 'OCR reindex queued through Laravel actor transport.', [
-            'action' => CommandRecord::TYPE_REINDEX_OCR,
+            'action' => CommandEntry::TYPE_REINDEX_OCR,
             'actor_name' => 'reindex_ocr',
             'limit' => $limit,
             'force' => $force,
@@ -226,17 +226,17 @@ class MaintenanceCommandDispatcher
         return $command;
     }
 
-    public function queueEmbeddingIndexBuild(Request $request, ?int $limit = null, array $metadata = []): Command
+    public function queueEmbeddingIndexBuild(Request $request, ?int $limit = null, array $metadata = []): CommandEntry
     {
         $limit = $this->normalizedLimit($limit);
         $payload = array_filter([
             'limit' => $limit,
             ...$metadata,
         ], fn ($value): bool => $value !== null);
-        $command = $this->createCommand($request, CommandRecord::TYPE_EMBEDDING_INDEX_BUILD, $payload);
+        $command = $this->createCommand($request, CommandEntry::TYPE_EMBEDDING_INDEX_BUILD, $payload);
 
         $this->recordEvent($request, $command, 'job_control.embedding_build_requested', 'info', 'Embedding index build requested by admin.', [
-            'action' => CommandRecord::TYPE_EMBEDDING_INDEX_BUILD,
+            'action' => CommandEntry::TYPE_EMBEDDING_INDEX_BUILD,
             'limit' => $limit,
             ...$metadata,
         ]);
@@ -254,7 +254,7 @@ class MaintenanceCommandDispatcher
             'info',
             'Embedding build queued through Laravel actor transport.',
             [
-                'action' => CommandRecord::TYPE_EMBEDDING_INDEX_BUILD,
+                'action' => CommandEntry::TYPE_EMBEDDING_INDEX_BUILD,
                 'actor_name' => 'build_embedding_index',
                 'limit' => $limit,
                 ...$metadata,
@@ -265,22 +265,22 @@ class MaintenanceCommandDispatcher
     }
 
     /** @param array<string, mixed> $payload */
-    private function createCommand(Request $request, string $type, array $payload): Command
+    private function createCommand(Request $request, string $type, array $payload): CommandEntry
     {
-        return CommandRecord::query()->create([
+        return CommandEntry::query()->create([
             'type' => $type,
             'queue' => $this->queueNameFor($type),
             'priority' => $this->priorityFor($type),
-            'status' => CommandRecord::STATUS_PENDING,
+            'status' => CommandEntry::STATUS_PENDING,
             'payload' => $payload,
             'created_by_user_id' => OperatorPrincipal::userId($request),
         ]);
     }
 
     /** @param array<string, mixed> $payload */
-    private function recordEvent(Request $request, Command $command, string $eventType, string $level, string $message, array $payload): void
+    private function recordEvent(Request $request, CommandEntry $command, string $eventType, string $level, string $message, array $payload): void
     {
-        PipelineEventRecord::query()->create([
+        EventRecord::query()->create([
             'command_id' => $command->id,
             'event_type' => $eventType,
             'level' => $level,
@@ -295,9 +295,9 @@ class MaintenanceCommandDispatcher
     }
 
     /** @param array<string, mixed> $payload */
-    private function recordSystemEvent(Command $command, string $eventType, string $level, string $message, array $payload): void
+    private function recordSystemEvent(CommandEntry $command, string $eventType, string $level, string $message, array $payload): void
     {
-        PipelineEventRecord::query()->create([
+        EventRecord::query()->create([
             'command_id' => $command->id,
             'event_type' => $eventType,
             'level' => $level,
@@ -312,9 +312,9 @@ class MaintenanceCommandDispatcher
     }
 
     /** @param array<string, mixed> $metadata */
-    private function audit(Request $request, string $event, Command $command, array $metadata, string $targetType = 'command'): void
+    private function audit(Request $request, string $event, CommandEntry $command, array $metadata, string $targetType = 'command'): void
     {
-        AuditRecord::query()->create([
+        AuditLogRecord::query()->create([
             'actor_user_id' => OperatorPrincipal::userId($request),
             'event' => $event,
             'target_type' => $targetType,
@@ -329,16 +329,16 @@ class MaintenanceCommandDispatcher
         ]);
     }
 
-    private function enqueueCommand(Command $command, RunPythonActorJob $job): void
+    private function enqueueCommand(CommandEntry $command, RunPythonActorJob $job): void
     {
         DB::transaction(function () use ($command, $job): void {
-            $command = CommandRecord::query()->lockForUpdate()->findOrFail($command->id);
-            if ($command->status !== CommandRecord::STATUS_PENDING) {
+            $command = CommandEntry::query()->lockForUpdate()->findOrFail($command->id);
+            if ($command->status !== CommandEntry::STATUS_PENDING) {
                 return;
             }
 
             $command->forceFill([
-                'status' => CommandRecord::STATUS_QUEUED,
+                'status' => CommandEntry::STATUS_QUEUED,
                 'error' => null,
             ])->save();
             $job->onQueue($command->queue ?: $this->queueNameFor($command->type));
@@ -355,10 +355,10 @@ class MaintenanceCommandDispatcher
     private function queueNameFor(string $type): string
     {
         return match ($type) {
-            CommandRecord::TYPE_EMBEDDING_INDEX_BUILD,
-            CommandRecord::TYPE_PAPERLESS_SIMILARITY_INDEX => (string) config('archibot_workers.queues.embeddings', 'embeddings'),
-            CommandRecord::TYPE_CLASSIFY_WITH_ARCHIBOT,
-            CommandRecord::TYPE_REVIEW_COMMIT => (string) config('archibot_workers.queues.interactive', 'interactive'),
+            CommandEntry::TYPE_EMBEDDING_INDEX_BUILD,
+            CommandEntry::TYPE_PAPERLESS_SIMILARITY_INDEX => (string) config('archibot_workers.queues.embeddings', 'embeddings'),
+            CommandEntry::TYPE_CLASSIFY_WITH_ARCHIBOT,
+            CommandEntry::TYPE_REVIEW_COMMIT => (string) config('archibot_workers.queues.interactive', 'interactive'),
             default => (string) config('archibot_workers.queues.maintenance', 'maintenance'),
         };
     }
@@ -366,10 +366,10 @@ class MaintenanceCommandDispatcher
     private function priorityFor(string $type): int
     {
         return match ($type) {
-            CommandRecord::TYPE_EMBEDDING_INDEX_BUILD,
-            CommandRecord::TYPE_PAPERLESS_SIMILARITY_INDEX => (int) config('archibot_workers.priorities.embeddings', 30),
-            CommandRecord::TYPE_CLASSIFY_WITH_ARCHIBOT,
-            CommandRecord::TYPE_REVIEW_COMMIT => (int) config('archibot_workers.priorities.interactive', 80),
+            CommandEntry::TYPE_EMBEDDING_INDEX_BUILD,
+            CommandEntry::TYPE_PAPERLESS_SIMILARITY_INDEX => (int) config('archibot_workers.priorities.embeddings', 30),
+            CommandEntry::TYPE_CLASSIFY_WITH_ARCHIBOT,
+            CommandEntry::TYPE_REVIEW_COMMIT => (int) config('archibot_workers.priorities.interactive', 80),
             default => (int) config('archibot_workers.priorities.maintenance', 40),
         };
     }
