@@ -10,11 +10,12 @@ class HealthCheckTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_healthz_reports_ok_without_retired_checks(): void
+    public function test_healthz_reports_degraded_without_verified_paperless_connectivity(): void
     {
         $this->getJson('/healthz')
             ->assertOk()
-            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('status', 'degraded')
+            ->assertJsonPath('checks.paperless_config', 'missing')
             ->assertJsonMissingPath('checks.worker_recovery')
             ->assertJsonMissingPath('checks.retired_queue');
     }

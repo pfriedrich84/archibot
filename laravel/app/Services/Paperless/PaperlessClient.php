@@ -70,6 +70,7 @@ class PaperlessClient
         $payload = $response->json();
 
         return ! is_array($payload)
+            || $payload === []
             || $this->supportsPaperlessV3Api10($payload);
     }
 
