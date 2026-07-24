@@ -30,6 +30,11 @@ from app.jobs.document_embeddings import (
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.progress import ProgressSnapshot
 from app.jobs.webhook_delivery import load_webhook_delivery
+from app.models import (
+    document_date_for,
+    document_version_checksum_for,
+    document_version_id_for,
+)
 from app.pipeline.ocr_correction import cache_ocr_correction, effective_ocr_mode, maybe_correct_ocr
 from app.pipeline.trusted_context import is_trusted_document
 
@@ -99,7 +104,7 @@ async def _refresh_document_embedding_async(paperless_document_id: int) -> Embed
                 content=processed_document.content,
                 embedding_model=provider.embed_model,
                 embedding=embedding,
-                created_date=processed_document.created_date,
+                document_date=document_date_for(processed_document),
                 metadata={
                     "correspondent": processed_document.correspondent,
                     "document_type": processed_document.document_type,
@@ -115,6 +120,8 @@ async def _refresh_document_embedding_async(paperless_document_id: int) -> Embed
                 if processed_document.modified is not None
                 else None,
                 trusted_for_context=trusted_for_context,
+                paperless_version_id=document_version_id_for(processed_document),
+                paperless_version_checksum=document_version_checksum_for(processed_document),
             )
         )
         stale_deleted = 0

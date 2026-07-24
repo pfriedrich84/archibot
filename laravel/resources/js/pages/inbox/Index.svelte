@@ -21,7 +21,7 @@
     type InboxDocument = {
         id: number;
         title: string;
-        created_date: string | null;
+        created: string | null;
         correspondent_id: number | null;
         correspondent_name: string | null;
         document_type_id: number | null;
@@ -110,9 +110,9 @@
                     <span class="font-medium">
                         {document.title || `Document reference ${document.id}`}
                     </span>
-                    {#if document.created_date}
+                    {#if document.created}
                         <span class="text-muted-foreground">
-                            {formatDate(document.created_date)}
+                            {formatDate(document.created)}
                         </span>
                     {/if}
                 </div>

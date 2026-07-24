@@ -51,6 +51,7 @@ def load_allowlist(path: str) -> set[tuple[str, str]]:
                 continue
             if "==" in line:
                 name, version = line.split("==", 1)
+                version = version.split("#", 1)[0]
                 allowed.add((name.strip().lower(), version.strip()))
     return allowed
 

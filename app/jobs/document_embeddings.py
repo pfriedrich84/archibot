@@ -26,7 +26,7 @@ class DocumentEmbeddingInput:
     content: str
     embedding_model: str
     embedding: list[float]
-    created_date: str | None = None
+    document_date: str | None = None
     metadata: dict[str, Any] | None = None
     correspondent_id: int | None = None
     document_type_id: int | None = None
@@ -34,6 +34,8 @@ class DocumentEmbeddingInput:
     tags: list[int] | None = None
     paperless_modified: str | None = None
     trusted_for_context: bool = False
+    paperless_version_id: int | None = None
+    paperless_version_checksum: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,7 +46,7 @@ class DocumentEmbeddingRow:
     document_type_id: int | None
     storage_path_id: int | None
     tags: list[int]
-    created_date: str | None
+    document_date: str | None
     trusted_for_context: bool
     updated_at: str | None
 
@@ -123,7 +125,9 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
             dimensions,
             embedding,
             title,
-            created_date,
+            document_date,
+            paperless_version_id,
+            paperless_version_checksum,
             correspondent_id,
             document_type_id,
             storage_path_id,
@@ -139,7 +143,9 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
             :dimensions,
             CAST(:embedding AS vector),
             :title,
-            :created_date,
+            :document_date,
+            :paperless_version_id,
+            :paperless_version_checksum,
             :correspondent_id,
             :document_type_id,
             :storage_path_id,
@@ -153,7 +159,9 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
         DO UPDATE SET
             embedding = EXCLUDED.embedding,
             title = EXCLUDED.title,
-            created_date = EXCLUDED.created_date,
+            document_date = EXCLUDED.document_date,
+            paperless_version_id = EXCLUDED.paperless_version_id,
+            paperless_version_checksum = EXCLUDED.paperless_version_checksum,
             correspondent_id = EXCLUDED.correspondent_id,
             document_type_id = EXCLUDED.document_type_id,
             storage_path_id = EXCLUDED.storage_path_id,
@@ -173,7 +181,9 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
                 "dimensions": dimensions,
                 "embedding": pgvector_literal(item.embedding),
                 "title": item.title,
-                "created_date": item.created_date,
+                "document_date": item.document_date,
+                "paperless_version_id": item.paperless_version_id,
+                "paperless_version_checksum": item.paperless_version_checksum,
                 "correspondent_id": item.correspondent_id
                 if item.correspondent_id is not None
                 else _metadata_value(item, "correspondent"),
@@ -274,9 +284,9 @@ def find_similar_document_ids(
     if doctype_id is not None:
         filters.append("document_type_id = :doctype_id")
     if date_from:
-        filters.append("created_date >= :date_from")
+        filters.append("document_date >= :date_from")
     if date_to:
-        filters.append("created_date <= :date_to")
+        filters.append("document_date <= :date_to")
 
     distance_expr = "embedding <-> CAST(:embedding AS vector)"
     having = "WHERE distance <= :max_distance" if max_distance > 0 else ""
@@ -379,7 +389,7 @@ def list_document_embedding_rows(limit: int = 100) -> tuple[int, list[DocumentEm
     rows_statement = sql_text(
         """
         SELECT paperless_document_id, title, correspondent_id, document_type_id,
-               storage_path_id, tags_json, created_date, trusted_for_context, updated_at
+               storage_path_id, tags_json, document_date, trusted_for_context, updated_at
         FROM document_embeddings
         ORDER BY updated_at DESC, paperless_document_id DESC
         LIMIT :limit
@@ -402,7 +412,7 @@ def list_document_embedding_rows(limit: int = 100) -> tuple[int, list[DocumentEm
                 document_type_id=row["document_type_id"],
                 storage_path_id=row["storage_path_id"],
                 tags=tags if isinstance(tags, list) else [],
-                created_date=row["created_date"],
+                document_date=row["document_date"],
                 trusted_for_context=bool(row["trusted_for_context"]),
                 updated_at=str(row["updated_at"]) if row["updated_at"] is not None else None,
             )

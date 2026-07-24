@@ -16,7 +16,7 @@ class PaperlessReviewedMutationTest extends TestCase
 
         app(PaperlessClient::class)->patchDocument('reviewer-token', 42, [
             'title' => 'Reviewed',
-            'created_date' => '2026-07-18',
+            'created' => '2026-07-18',
             'correspondent' => 3,
             'document_type' => 4,
             'tags' => [5],
@@ -149,5 +149,24 @@ class PaperlessReviewedMutationTest extends TestCase
         $this->assertSame('PATCH', $requests[1][0]->method());
         $this->assertSame(7, $requests[1][0]['storage_path']);
         $this->assertSame('Token reviewer-token', $requests[1][0]->header('Authorization')[0]);
+    }
+
+    public function test_api10_accept_header_is_sent_for_productive_requests(): void
+    {
+        Http::fake(['paperless.test/api/ui_settings/' => Http::response([], 406)]);
+
+        app(PaperlessClient::class)->ping('reviewer-token');
+
+        Http::assertSentCount(1);
+        $request = Http::recorded()[0][0];
+        $this->assertSame('https://paperless.test/api/ui_settings/', $request->url());
+        $this->assertSame('application/json', $request->header('Accept')[0]);
+    }
+
+    public function test_health_ping_fails_closed_on_406(): void
+    {
+        Http::fake(['paperless.test/api/ui_settings/' => Http::response([], 406)]);
+
+        $this->assertFalse(app(PaperlessClient::class)->ping('reviewer-token'));
     }
 }

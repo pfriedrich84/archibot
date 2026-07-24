@@ -30,6 +30,11 @@ from app.jobs.embedding_index import (
     update_embedding_index_progress,
 )
 from app.jobs.progress import ProgressSnapshot
+from app.models import (
+    document_date_for,
+    document_version_checksum_for,
+    document_version_id_for,
+)
 from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
@@ -109,7 +114,7 @@ async def _build_pgvector_embeddings(
                         content=document.content,
                         embedding_model=ollama.embed_model,
                         embedding=embedding,
-                        created_date=document.created_date,
+                        document_date=document_date_for(document),
                         metadata={
                             "correspondent": document.correspondent,
                             "document_type": document.document_type,
@@ -124,6 +129,8 @@ async def _build_pgvector_embeddings(
                         paperless_modified=str(document.modified)
                         if document.modified is not None
                         else None,
+                        paperless_version_id=document_version_id_for(document),
+                        paperless_version_checksum=document_version_checksum_for(document),
                         trusted_for_context=True,
                     )
                 )

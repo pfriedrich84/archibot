@@ -9,7 +9,7 @@ class PaperlessWebhookNormalizer
 {
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{event_type: string, webhook_action: string, paperless_document_id: int|null, paperless_modified: string|null}
+     * @return array{event_type: string, webhook_action: string, paperless_document_id: int|null, paperless_modified: string|null, paperless_version_id: int|null, paperless_version_checksum: string|null}
      */
     public function normalize(array $payload): array
     {
@@ -20,6 +20,8 @@ class PaperlessWebhookNormalizer
             'webhook_action' => $this->webhookAction($eventType),
             'paperless_document_id' => $this->documentId($payload),
             'paperless_modified' => $this->paperlessModified($payload),
+            'paperless_version_id' => $this->paperlessVersionId($payload),
+            'paperless_version_checksum' => $this->paperlessVersionChecksum($payload),
         ];
     }
 
@@ -101,6 +103,32 @@ class PaperlessWebhookNormalizer
         $value = Arr::get($payload, 'document.modified')
             ?? Arr::get($payload, 'object.modified')
             ?? Arr::get($payload, 'modified');
+
+        return $value === null ? null : (string) $value;
+    }
+
+    /** @param array<string, mixed> $payload */
+    public function paperlessVersionId(array $payload): ?int
+    {
+        $value = Arr::get($payload, 'document.version_added.id')
+            ?? Arr::get($payload, 'version_added.id')
+            ?? Arr::get($payload, 'document.version.id')
+            ?? Arr::get($payload, 'version.id');
+
+        return $value !== null && filter_var($value, FILTER_VALIDATE_INT) !== false
+            ? (int) $value
+            : null;
+    }
+
+    /** @param array<string, mixed> $payload */
+    public function paperlessVersionChecksum(array $payload): ?string
+    {
+        $value = Arr::get($payload, 'document.version_added.checksum')
+            ?? Arr::get($payload, 'version_added.checksum')
+            ?? Arr::get($payload, 'document.version.checksum')
+            ?? Arr::get($payload, 'version.checksum')
+            ?? Arr::get($payload, 'document.checksum')
+            ?? Arr::get($payload, 'checksum');
 
         return $value === null ? null : (string) $value;
     }

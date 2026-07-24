@@ -9,7 +9,13 @@ import structlog
 
 from app.config import settings
 from app.jobs.entity_approvals import rejected_entity_names
-from app.models import ClassificationResult, JudgeVerdict, PaperlessDocument, PaperlessEntity
+from app.models import (
+    ClassificationResult,
+    JudgeVerdict,
+    PaperlessDocument,
+    PaperlessEntity,
+    document_date_for,
+)
 from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
 
@@ -73,8 +79,8 @@ def _format_context_block(
     """Format a context document including its classification metadata."""
     lines = [f"--- Dokument #{doc.id} ---", f"Titel: {doc.title}"]
 
-    if doc.created_date:
-        lines.append(f"Datum: {doc.created_date}")
+    if document_date_for(doc):
+        lines.append(f"Datum: {document_date_for(doc)}")
 
     corr = _resolve_entity_name(doc.correspondent, correspondents)
     if corr:

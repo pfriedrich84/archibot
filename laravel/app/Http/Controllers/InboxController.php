@@ -106,7 +106,7 @@ class InboxController extends Controller
                 return [
                     'id' => $documentId,
                     'title' => $document['title'] ?? '',
-                    'created_date' => $document['created_date'] ?? null,
+                    'created' => $document['created'] ?? ($document['created_date'] ?? null),
                     'correspondent_id' => $correspondentId,
                     'correspondent_name' => $correspondentId ? ($entityMaps['correspondents'][$correspondentId] ?? null) : null,
                     'document_type_id' => $documentTypeId,

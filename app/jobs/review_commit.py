@@ -19,6 +19,8 @@ class ReviewCommitRecord:
     proposed_document_type_id: int | None
     proposed_storage_path_id: int | None
     proposed_tags: list[dict[str, Any]]
+    paperless_version_id: int | None = None
+    paperless_version_checksum: str | None = None
 
 
 def sql_text(statement: str):
@@ -54,6 +56,8 @@ def load_review_commit(review_suggestion_id: int) -> ReviewCommitRecord | None:
         """
         SELECT id,
                paperless_document_id,
+               paperless_version_id,
+               paperless_version_checksum,
                proposed_title,
                proposed_date,
                proposed_correspondent_id,
@@ -88,6 +92,10 @@ def load_review_commit(review_suggestion_id: int) -> ReviewCommitRecord | None:
         proposed_document_type_id=_optional_int(row["proposed_document_type_id"]),
         proposed_storage_path_id=_optional_int(row["proposed_storage_path_id"]),
         proposed_tags=proposed_tags,
+        paperless_version_id=_optional_int(row["paperless_version_id"]),
+        paperless_version_checksum=None
+        if row["paperless_version_checksum"] is None
+        else str(row["paperless_version_checksum"]),
     )
 
 
@@ -103,7 +111,7 @@ def build_paperless_patch(
     if record.proposed_title:
         fields["title"] = record.proposed_title
     if record.proposed_date:
-        fields["created_date"] = record.proposed_date
+        fields["created"] = record.proposed_date
     if record.proposed_correspondent_id is not None:
         fields["correspondent"] = record.proposed_correspondent_id
     if record.proposed_document_type_id is not None:
@@ -129,6 +137,16 @@ async def commit_review_suggestion_to_paperless(
 ) -> dict[str, Any]:
     """Patch Paperless for one accepted review suggestion."""
     document = await paperless.get_document(record.paperless_document_id)
+    if (
+        record.paperless_version_id is not None
+        and document.current_version_id != record.paperless_version_id
+    ):
+        raise ValueError("Paperless document version changed before commit")
+    if (
+        record.paperless_version_checksum is not None
+        and document.current_version_checksum != record.paperless_version_checksum
+    ):
+        raise ValueError("Paperless document checksum changed before commit")
     fields = build_paperless_patch(record, document.tags, document.storage_path)
     if fields:
         await paperless.patch_reviewed_document(record.paperless_document_id, fields)

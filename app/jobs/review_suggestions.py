@@ -8,7 +8,13 @@ from datetime import date, datetime
 from typing import Any
 
 from app.jobs.database import engine
-from app.models import ClassificationResult, PaperlessEntity
+from app.models import (
+    ClassificationResult,
+    PaperlessEntity,
+    document_date_for,
+    document_version_checksum_for,
+    document_version_id_for,
+)
 
 
 @dataclass(frozen=True)
@@ -199,6 +205,8 @@ def store_review_suggestion(
             dedupe_key,
             pipeline_run_id,
             paperless_document_id,
+            paperless_version_id,
+            paperless_version_checksum,
             status,
             confidence,
             reasoning,
@@ -228,6 +236,8 @@ def store_review_suggestion(
             :dedupe_key,
             :pipeline_run_id,
             :paperless_document_id,
+            :paperless_version_id,
+            :paperless_version_checksum,
             'pending',
             :confidence,
             :reasoning,
@@ -299,10 +309,12 @@ def store_review_suggestion(
                     "dedupe_key": dedupe_key,
                     "pipeline_run_id": pipeline_run_id,
                     "paperless_document_id": paperless_document_id,
+                    "paperless_version_id": document_version_id_for(document),
+                    "paperless_version_checksum": document_version_checksum_for(document),
                     "confidence": result.confidence,
                     "reasoning": result.reasoning,
                     "original_title": getattr(document, "title", None),
-                    "original_date": getattr(document, "created_date", None),
+                    "original_date": document_date_for(document),
                     "original_correspondent_id": getattr(document, "correspondent", None),
                     "original_document_type_id": getattr(document, "document_type", None),
                     "original_storage_path_id": getattr(document, "storage_path", None),

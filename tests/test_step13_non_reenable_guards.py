@@ -364,7 +364,7 @@ def test_reviewed_manual_patch_builder_has_exact_deterministic_field_seam(
 
     expected = {
         "title": "Reviewed title",
-        "created_date": "2026-07-18",
+        "created": "2026-07-18",
         "correspondent": 2,
         "document_type": 3,
         "tags": [5, 6],
