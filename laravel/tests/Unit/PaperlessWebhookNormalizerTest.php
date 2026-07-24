@@ -46,9 +46,15 @@ class PaperlessWebhookNormalizerTest extends TestCase
             'webhook_action' => 'refresh_embedding',
             'paperless_document_id' => 42,
             'paperless_modified' => '2026-06-02T12:00:00Z',
+            'paperless_version_id' => 99,
+            'paperless_version_checksum' => 'abc123',
         ], $normalizer->normalize([
             'event' => 'Document.Updated',
-            'document' => ['id' => 42, 'modified' => '2026-06-02T12:00:00Z'],
+            'document' => [
+                'id' => 42,
+                'modified' => '2026-06-02T12:00:00Z',
+                'version_added' => ['id' => 99, 'checksum' => 'abc123'],
+            ],
         ]));
     }
 }

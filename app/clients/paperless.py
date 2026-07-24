@@ -18,7 +18,7 @@ log = structlog.get_logger(__name__)
 # storage_path has one explicit manual-review-only null-to-value seam.
 SAFE_DOCUMENT_PATCH_FIELDS = {
     "title",
-    "created_date",
+    "created",
     "correspondent",
     "document_type",
     "tags",
@@ -40,7 +40,7 @@ class PaperlessClient:
             base_url=f"{self.base_url}/api",
             headers={
                 "Authorization": f"Token {self.token}",
-                "Accept": "application/json; version=5",
+                "Accept": "application/json; version=10",
             },
             timeout=60.0,
         )
@@ -54,7 +54,9 @@ class PaperlessClient:
     async def ping(self) -> bool:
         try:
             r = await self._client.get("/ui_settings/")
-            return r.status_code < 500
+            if not r.is_success:
+                return False
+            return self._supports_paperless_v3_api10(r.json())
         except Exception as exc:
             log.warning("paperless ping failed", error=str(exc))
             return False
@@ -102,11 +104,28 @@ class PaperlessClient:
                 )
             if current.storage_path is not None:
                 raise ValueError("An existing Paperless storage path is immutable")
+            if current.current_version_id is None or current.current_version_checksum is None:
+                raise ValueError("Paperless document version is not verifiable")
         await self._patch_document(
             document_id,
             fields,
             SAFE_DOCUMENT_PATCH_FIELDS | {REVIEWED_STORAGE_PATH_FIELD},
         )
+
+    async def verify_supported_configuration(self) -> None:
+        r = await self._client.get("/ui_settings/")
+        r.raise_for_status()
+        if not self._supports_paperless_v3_api10(r.json()):
+            raise ValueError("Unsupported Paperless version or API version")
+
+    def _supports_paperless_v3_api10(self, payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        settings_payload = payload.get("settings")
+        if not isinstance(settings_payload, dict):
+            return False
+        version = settings_payload.get("version") or payload.get("version")
+        return isinstance(version, str) and version.startswith("3.")
 
     async def _patch_document(
         self, document_id: int, fields: dict[str, Any], allowed: set[str]

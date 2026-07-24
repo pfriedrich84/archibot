@@ -61,7 +61,16 @@ class PaperlessClient
      */
     public function ping(string $token): bool
     {
-        return $this->request($token)->get('/api/ui_settings/')->status() < 500;
+        $response = $this->request($token)->get('/api/ui_settings/');
+
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $payload = $response->json();
+
+        return is_array($payload)
+            && $this->supportsPaperlessV3Api10($payload);
     }
 
     public function documentCount(string $token): int
@@ -137,7 +146,7 @@ class PaperlessClient
             $token,
             $documentId,
             $fields,
-            ['title', 'created_date', 'correspondent', 'document_type', 'tags'],
+            ['title', 'created', 'correspondent', 'document_type', 'tags'],
         );
     }
 
@@ -167,7 +176,7 @@ class PaperlessClient
             $token,
             $documentId,
             $fields,
-            ['title', 'created_date', 'correspondent', 'document_type', 'tags', 'storage_path'],
+            ['title', 'created', 'correspondent', 'document_type', 'tags', 'storage_path'],
         );
     }
 
@@ -402,6 +411,38 @@ class PaperlessClient
         return false;
     }
 
+    public function verifySupportedConfiguration(string $token): void
+    {
+        $response = $this->request($token)->get('/api/ui_settings/');
+
+        if ($response->serverError()) {
+            throw new PaperlessUnavailableException('Paperless server is not reachable.');
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Could not fetch Paperless UI settings.');
+        }
+
+        $payload = $response->json();
+
+        if (! is_array($payload) || ! $this->supportsPaperlessV3Api10($payload)) {
+            throw new RuntimeException('Unsupported Paperless version or API version.');
+        }
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function supportsPaperlessV3Api10(array $payload): bool
+    {
+        $settings = $payload['settings'] ?? null;
+        if (! is_array($settings)) {
+            return false;
+        }
+
+        $version = $settings['version'] ?? $payload['version'] ?? null;
+
+        return is_string($version) && str_starts_with($version, '3.');
+    }
+
     private function currentUserFromUsersEndpoint(string $token, ?string $fallbackUsername): ?PaperlessUser
     {
         if (! $fallbackUsername) {
@@ -553,7 +594,7 @@ class PaperlessClient
                 'decode_content' => true,
                 'sink' => new ResponseSizeGuard($maxBytes, 'Paperless'),
             ])
-            ->withHeaders(['Accept' => 'application/json; version=5']);
+            ->withHeaders(['Accept' => 'application/json; version=10']);
 
         if ($token) {
             $request = $request->withToken($token, 'Token');

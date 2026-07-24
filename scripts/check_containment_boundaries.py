@@ -44,6 +44,8 @@ EXCLUDED_SOURCE_PARTS = {
     ".agent-evidence",
     ".graphify",
     ".pi",
+    ".venv",
+    ".venv312",
     "__pycache__",
     "node_modules",
     "vendor",
@@ -94,6 +96,7 @@ MODEL_AUTH_TERMS = {
 }
 SAFE_DOCUMENT_PATCH_FIELDS = {
     "title",
+    "created",
     "createddate",
     "correspondent",
     "documenttype",
@@ -592,8 +595,8 @@ def _python_http_write(
     endpoint_ids = _expression_identifiers(endpoint) if endpoint is not None else set()
     endpoint_literals = {
         child.value
-        for child in ast.walk(endpoint)
-        if endpoint is not None and isinstance(child, ast.Constant) and isinstance(child.value, str)
+        for child in ast.walk(endpoint or ast.Constant(value=""))
+        if isinstance(child, ast.Constant) and isinstance(child.value, str)
     }
     documents = (endpoint_text is not None and "document" in _norm(endpoint_text)) or any(
         "document" in _norm(piece) for piece in endpoint_literals

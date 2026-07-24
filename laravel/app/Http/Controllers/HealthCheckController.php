@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Services\Paperless\CanonicalPaperlessOrigin;
+use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
@@ -59,8 +61,11 @@ class HealthCheckController extends Controller
     {
         try {
             app(CanonicalPaperlessOrigin::class)->url();
-
-            return 'ok';
+            $token = User::query()->whereNotNull('paperless_token')->value('paperless_token');
+            if (! is_string($token) || $token === '') {
+                return 'missing';
+            }
+            return app(PaperlessClient::class)->ping($token) ? 'ok' : 'error';
         } catch (Throwable) {
             return 'missing';
         }

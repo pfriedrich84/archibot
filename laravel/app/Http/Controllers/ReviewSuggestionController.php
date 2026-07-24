@@ -435,6 +435,21 @@ class ReviewSuggestionController extends Controller
     private function assertReviewable(ReviewSuggestion $suggestion): void
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
+
+        $token = $suggestion->createdBy?->paperless_token ?? $suggestion->reviewedBy?->paperless_token;
+        abort_if(blank($token), 409);
+
+        $document = app(PaperlessClient::class)->document($token, $suggestion->paperless_document_id);
+        $latestVersion = collect($document['versions'] ?? [])->sortByDesc('id')->first();
+        $versionId = is_array($latestVersion) ? (int) ($latestVersion['id'] ?? 0) : 0;
+        $checksum = is_array($latestVersion) ? (string) ($latestVersion['checksum'] ?? '') : (string) ($document['checksum'] ?? '');
+
+        if ($versionId < 1 || $checksum === ''
+            || (int) $suggestion->paperless_version_id !== $versionId
+            || (string) $suggestion->paperless_version_checksum !== $checksum) {
+            $suggestion->markStale('paperless_document_version_changed');
+            abort(409);
+        }
     }
 
     private function isLatestForDocument(ReviewSuggestion $suggestion): bool

@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'dedupe_key',
     'pipeline_run_id',
     'paperless_document_id',
+    'paperless_version_id',
+    'paperless_version_checksum',
     'status',
     'confidence',
     'reasoning',
@@ -41,6 +43,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'reviewed_at',
     'commit_status',
     'commit_command_id',
+    'staleness_reason',
 ])]
 class ReviewSuggestion extends Model
 {
@@ -51,6 +54,8 @@ class ReviewSuggestion extends Model
     public const STATUS_ACCEPTED = 'accepted';
 
     public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_STALE = 'stale';
 
     public const COMMIT_STATUS_QUEUED = 'queued';
 
@@ -63,6 +68,7 @@ class ReviewSuggestion extends Model
         return [
             'original_date' => 'date',
             'proposed_date' => 'date',
+            'paperless_version_id' => 'integer',
             'original_tags' => 'array',
             'proposed_tags' => 'array',
             'context_documents' => 'array',
@@ -125,6 +131,14 @@ class ReviewSuggestion extends Model
             'status' => $status,
             'reviewed_by_user_id' => $user->id,
             'reviewed_at' => now(),
+        ])->save();
+    }
+
+    public function markStale(string $reason): void
+    {
+        $this->forceFill([
+            'status' => self::STATUS_STALE,
+            'staleness_reason' => $reason,
         ])->save();
     }
 }

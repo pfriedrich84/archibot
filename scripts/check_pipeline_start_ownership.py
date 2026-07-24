@@ -484,6 +484,7 @@ EXCLUDED_PARTS = {
     ".pytest_cache",
     ".ruff_cache",
     ".venv",
+    ".venv312",
     "__pycache__",
     "docs",
     "node_modules",

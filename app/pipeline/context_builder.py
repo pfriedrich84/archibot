@@ -17,7 +17,12 @@ from app.jobs.document_embeddings import (
 from app.jobs.document_embeddings import (
     find_similar_with_precomputed_embedding as _find_similar_with_precomputed_embedding,
 )
-from app.models import PaperlessDocument
+from app.models import (
+    PaperlessDocument,
+    document_date_for,
+    document_version_checksum_for,
+    document_version_id_for,
+)
 from app.pipeline.context_types import SimilarDocument, document_summary
 from app.pipeline.ports import AiProviderGateway
 from app.pipeline.trusted_context import is_trusted_document
@@ -39,12 +44,14 @@ def store_embedding(doc: PaperlessDocument, embedding: list[float]) -> None:
             content=doc.content,
             embedding_model=settings.ollama_embed_model,
             embedding=embedding,
-            created_date=doc.created_date,
+            document_date=document_date_for(doc),
             correspondent_id=doc.correspondent,
             document_type_id=doc.document_type,
             storage_path_id=doc.storage_path,
             tags=doc.tags,
             paperless_modified=str(doc.modified) if doc.modified is not None else None,
+            paperless_version_id=document_version_id_for(doc),
+            paperless_version_checksum=document_version_checksum_for(doc),
             trusted_for_context=True,
         )
     )

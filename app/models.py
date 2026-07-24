@@ -43,6 +43,55 @@ def _coerce_entity_id_list(value: Any) -> list[int]:
 # =============================================================================
 # Paperless API DTOs (subset - only fields we actually use)
 # =============================================================================
+def document_date_for(document: Any) -> str | None:
+    created = getattr(document, "created", None)
+    if created is not None:
+        date_method = getattr(created, "date", None)
+        if callable(date_method):
+            return date_method().isoformat()
+        isoformat = getattr(created, "isoformat", None)
+        if callable(isoformat):
+            return str(isoformat())
+    value = getattr(document, "created_date", None)
+    return None if value is None else str(value)
+
+
+def document_version_id_for(document: Any) -> int | None:
+    value = getattr(document, "current_version_id", None)
+    if value is not None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    versions = getattr(document, "versions", None)
+    if isinstance(versions, list) and versions:
+        candidate = max(versions, key=lambda version: int(version.get("id", 0)))
+        try:
+            return int(candidate.get("id"))
+        except (TypeError, ValueError):
+            return None
+    checksum = getattr(document, "checksum", None)
+    if checksum is None:
+        return None
+    try:
+        return int(getattr(document, "id", None))
+    except (TypeError, ValueError):
+        return None
+
+
+def document_version_checksum_for(document: Any) -> str | None:
+    value = getattr(document, "current_version_checksum", None)
+    if value is not None:
+        return str(value)
+    versions = getattr(document, "versions", None)
+    if isinstance(versions, list) and versions:
+        candidate = max(versions, key=lambda version: int(version.get("id", 0)))
+        checksum = candidate.get("checksum")
+        return None if checksum is None else str(checksum)
+    checksum = getattr(document, "checksum", None)
+    return None if checksum is None else str(checksum)
+
+
 class PaperlessDocument(BaseModel):
     id: int
     title: str
@@ -55,6 +104,8 @@ class PaperlessDocument(BaseModel):
     document_type: int | None = None
     storage_path: int | None = None
     tags: list[int] = Field(default_factory=list)
+    versions: list[dict[str, Any]] = Field(default_factory=list)
+    checksum: str | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -67,6 +118,45 @@ class PaperlessDocument(BaseModel):
     @classmethod
     def _coerce_tags(cls, value: Any) -> list[int]:
         return _coerce_entity_id_list(value)
+
+    @property
+    def document_date(self) -> str | None:
+        if self.created is not None:
+            return self.created.date().isoformat()
+        return self.created_date
+
+    @property
+    def current_version(self) -> dict[str, Any] | None:
+        if self.versions:
+            return max(
+                self.versions,
+                key=lambda version: int(version.get("id", 0)),
+                default=None,
+            )
+        if self.checksum is None:
+            return None
+        return {
+            "id": self.id,
+            "checksum": self.checksum,
+            "is_root": True,
+        }
+
+    @property
+    def current_version_id(self) -> int | None:
+        version = self.current_version
+        value = version.get("id") if isinstance(version, dict) else None
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def current_version_checksum(self) -> str | None:
+        version = self.current_version
+        value = version.get("checksum") if isinstance(version, dict) else None
+        if value is None:
+            return self.checksum
+        return str(value)
 
 
 class PaperlessEntity(BaseModel):
