@@ -124,7 +124,7 @@ class AdminSettingsTest extends TestCase
                 'ai_settings' => [
                     'manual_enabled' => false,
                     'similar_documents_enabled' => false,
-                    'suggest_endpoint' => 'https://other.example/paperless-ai/v1/chat/completions',
+                    'suggest_endpoint' => 'https://other.example/paperless-ai/v1/completions-suggest',
                     'suggest_model' => 'wrong-model',
                     'embedding_provider_type' => 'ollama',
                     'embedding_provider_url' => 'http://ollama:11434',
