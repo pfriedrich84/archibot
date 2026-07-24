@@ -65,6 +65,7 @@ class HealthCheckController extends Controller
             if (! is_string($token) || $token === '') {
                 return 'missing';
             }
+
             return app(PaperlessClient::class)->ping($token) ? 'ok' : 'error';
         } catch (Throwable) {
             return 'missing';
