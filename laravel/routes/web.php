@@ -70,12 +70,15 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
         Route::post('{segment}/entity-approvals/{entityApproval}/unblacklist', [EntityApprovalController::class, 'unblacklist'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.unblacklist');
-        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/approve', [PaperlessMasterDataCaseController::class, 'approve'])
-            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
-        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/reject', [PaperlessMasterDataCaseController::class, 'reject'])
-            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
-        Route::post('{segment}/entity-approvals/{paperlessMasterDataCase}/unblacklist', [PaperlessMasterDataCaseController::class, 'unblacklist'])
-            ->whereIn('segment', ['tags', 'correspondents', 'doctypes']);
+        Route::post('{segment}/master-data-cases/{paperlessMasterDataCase}/approve', [PaperlessMasterDataCaseController::class, 'approve'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('master-data-cases.approve');
+        Route::post('{segment}/master-data-cases/{paperlessMasterDataCase}/reject', [PaperlessMasterDataCaseController::class, 'reject'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('master-data-cases.reject');
+        Route::post('{segment}/master-data-cases/{paperlessMasterDataCase}/unblacklist', [PaperlessMasterDataCaseController::class, 'unblacklist'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('master-data-cases.unblacklist');
 
         Route::get('review', [ReviewSuggestionController::class, 'index'])->name('review.index');
         Route::get('review/classify-with-archibot', [ClassifyWithArchiBotController::class, 'create'])->name('classify-with-archibot.create');

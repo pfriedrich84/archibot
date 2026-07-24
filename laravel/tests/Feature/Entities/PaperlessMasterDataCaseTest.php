@@ -52,7 +52,7 @@ class PaperlessMasterDataCaseTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->post(route('entities.approve', ['segment' => 'tags', 'paperlessMasterDataCase' => $entity]))
+            ->post(route('master-data-cases.approve', ['segment' => 'tags', 'paperlessMasterDataCase' => $entity]))
             ->assertRedirect()
             ->assertSessionHas('status', "Approval for 'Accounting' was queued.");
 
@@ -79,7 +79,7 @@ class PaperlessMasterDataCaseTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->post(route('entities.reject', ['segment' => 'tags', 'paperlessMasterDataCase' => $entity]))
+            ->post(route('master-data-cases.reject', ['segment' => 'tags', 'paperlessMasterDataCase' => $entity]))
             ->assertRedirect()
             ->assertSessionHas('status', "Rejection of 'Accounting' was queued.");
 

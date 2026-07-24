@@ -143,7 +143,7 @@ $routeParameters = [
     'ocr-reviews.approve' => [$ocrReview],
     'ocr-reviews.reject' => [$ocrReview],
     'entities.index' => ['segment' => 'tags'],
-    'entities.reject' => ['segment' => 'tags', 'paperlessMasterDataCase' => $entity],
+    'master-data-cases.reject' => ['segment' => 'tags', 'paperlessMasterDataCase' => $entity],
     'mcp-tokens.destroy' => [$mcpToken],
     'admin.settings.edit' => ['section' => 'ai-provider'],
 ];
@@ -153,7 +153,7 @@ $names = [
     'review.index', 'review.bulk.accept', 'review.bulk.reject', 'review.show',
     'review.preview', 'ocr-reviews.index', 'ocr-reviews.store',
     'ocr-reviews.show', 'ocr-reviews.approve', 'ocr-reviews.reject',
-    'entities.index', 'entities.reject', 'mcp-tokens.index',
+    'entities.index', 'master-data-cases.reject', 'mcp-tokens.index',
     'mcp-tokens.store', 'mcp-tokens.destroy',
 ];
 $routes = [];
@@ -251,7 +251,7 @@ $flows = [
     'ocr_reject_post' => $dispatch('POST', $base.'/ocr-reviews/'.$ocrReview->id.'/reject', [], [
         'Referer' => 'http://localhost'.$base.'/ocr-reviews/'.$ocrReview->id,
     ]),
-    'entity_reject_post' => $dispatch('POST', $base.'/tags/entity-approvals/'.$entity->id.'/reject', [], [
+    'entity_reject_post' => $dispatch('POST', $base.'/tags/master-data-cases/'.$entity->id.'/reject', [], [
         'Referer' => 'http://localhost'.$base.'/tags',
     ]),
     'mcp_index_get' => $dispatch('GET', $base.'/settings/mcp-tokens', [], $inertia),
