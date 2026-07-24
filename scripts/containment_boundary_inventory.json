@@ -15,7 +15,6 @@
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "87e66f0215872a084f18ed201c23cc0705020e59b9de6b08ecb5ad13858d7414",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
-    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "e800a124f62830319586a6666063295418ca449a6a4487e17c148ebad286d261",
     "scripts/check_containment_boundaries.py": "778aecd55d20ed9a9f288f4fedca21eb8ff576d66e3a490eccccd6907033bad6"
   },
   "cli_registration_files": {
@@ -83,7 +82,7 @@
     "laravel/resources/js/types/navigation.ts": "64a7b151f1260507230bf922ad6682b949ee99e8c51a2f17ebb3eae235437d83",
     "laravel/routes/console.php": "6f731a43d8962444bf03c2d2ef019d8c0515d2a26da79353f74975c3d5c68b35",
     "laravel/routes/settings.php": "ca9de8b93ed9034fee8f74c332bc2455d43fae8cb647c0d7c862c706e83926b0",
-    "laravel/routes/web.php": "2fb853f37d601f974af7b16ad33e544e75713f8eb0d0f5c252f9b269cb99fc64"
+    "laravel/routes/web.php": "b519a8df62da59baf67ce177ec0fb3e6e706b7ecf1d7a620cdac812fccd25542"
   },
   "paperless_mutation_files": {
     "app/clients/paperless.py": "5dbe4ca6e3a3b1db94922684483572a28cb49676b71869defd0bb7face203b7c",
