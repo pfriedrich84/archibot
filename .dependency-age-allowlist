@@ -6,3 +6,4 @@
 # removed once the version is older than 3 days.
 #
 # (no active exceptions — cryptography==46.0.7 is now >3 days old)
+annotated-types==0.8.0  # temporary-supply-chain-quarantine-exception-released-2026-07-23-remove-after-2026-07-26
