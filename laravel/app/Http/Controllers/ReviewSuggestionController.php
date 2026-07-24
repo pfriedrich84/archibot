@@ -351,7 +351,7 @@ class ReviewSuggestionController extends Controller
 
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
     {
-        $this->assertReviewable($suggestion);
+        $this->assertReviewable($request, $suggestion);
 
         $suggestion->markReviewed($status, $request->user());
 
