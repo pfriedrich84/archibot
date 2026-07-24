@@ -1,8 +1,8 @@
 <?php
 
-use App\Models\EntityApproval;
 use App\Models\McpToken;
 use App\Models\OcrReview;
+use App\Models\PaperlessMasterDataCase;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Services\Paperless\PaperlessDocumentPermissions;
@@ -130,9 +130,11 @@ $ocrReview = OcrReview::query()->create([
     'status' => OcrReview::STATUS_PENDING,
     'created_by_user_id' => $user->id,
 ]);
-$entity = EntityApproval::factory()->create([
-    'type' => EntityApproval::TYPE_TAG,
-    'name' => 'Prefix matrix tag',
+$entity = PaperlessMasterDataCase::query()->create([
+    'entity_type' => 'tag',
+    'normalized_name' => 'prefix-matrix-tag',
+    'canonical_name' => 'Prefix matrix tag',
+    'status' => PaperlessMasterDataCase::STATUS_PENDING,
 ]);
 $mcpToken = McpToken::factory()->create(['user_id' => $user->id]);
 

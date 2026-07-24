@@ -2,10 +2,10 @@
 
 namespace App\Services\Pipeline;
 
-use App\Data\Audit\AuditEntry;
-use App\Data\Pipeline\EventEntry;
-use App\Domain\Queue\DispatchCommand;
 use App\Jobs\RunPythonActorJob;
+use App\Models\AuditLog as AuditEntry;
+use App\Models\Command as DispatchCommand;
+use App\Models\PipelineEvent as EventEntry;
 use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
