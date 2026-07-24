@@ -337,7 +337,8 @@ class MaintenanceCommandDispatcher
                 'status' => Command::STATUS_QUEUED,
                 'error' => null,
             ])->save();
-            dispatch($job->onQueue($command->queue ?: $this->queueNameFor($command->type)));
+            $job->onQueue($command->queue ?: $this->queueNameFor($command->type));
+            dispatch($job);
         });
         $command->refresh();
     }

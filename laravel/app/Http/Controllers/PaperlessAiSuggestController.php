@@ -22,10 +22,11 @@ class PaperlessAiSuggestController extends Controller
             'stream' => ['nullable', 'boolean'],
         ]);
 
-        $configuredModel = (string) AppSetting::getValue('classification.model', '');
         $requestedModel = trim((string) ($validated['model'] ?? ''));
-        $model = $requestedModel !== '' ? $requestedModel : $configuredModel;
-        abort_if($model === '', 503, 'No classification model is configured.');
+        abort_if($requestedModel !== '', 422, 'Model override is not allowed on this endpoint.');
+
+        $classificationEngine = (string) AppSetting::getValue('classification.model', '');
+        abort_if($classificationEngine === '', 503, 'No classification engine is configured.');
 
         $provider = (string) AppSetting::getValue('llm.provider', 'ollama');
         $baseUrl = $provider === 'openai_compatible'
@@ -36,6 +37,11 @@ class PaperlessAiSuggestController extends Controller
             : null;
 
         $response = app(OllamaClient::class, [
+             'baseUrl' => $baseUrl,
+             'provider' => $provider,
+             'apiKey' => $apiKey ?: null,
+-        ])->chatCompletion($model, $validated['messages']);
++        ])->chatCompletion($classificationEngine, $validated['messages']);
             'baseUrl' => $baseUrl,
             'provider' => $provider,
             'apiKey' => $apiKey ?: null,

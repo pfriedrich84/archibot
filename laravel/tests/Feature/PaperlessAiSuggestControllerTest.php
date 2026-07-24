@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\AppSetting;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -51,6 +50,20 @@ class PaperlessAiSuggestControllerTest extends TestCase
         Http::assertSent(fn ($request) => $request->url() === 'http://openai.test/v1/chat/completions'
             && $request->hasHeader('Authorization', 'Bearer provider-secret')
             && $request['model'] === 'safe-model');
+    }
+
+    public function test_model_override_is_rejected(): void
+    {
+        AppSetting::put('paperless.ai_bearer_key', 'paperless-secret');
+        AppSetting::put('paperless.ai_suggest_enabled', '1');
+        AppSetting::put('classification.model', 'safe-model');
+
+        $this->withHeader('Authorization', 'Bearer paperless-secret')
+            ->postJson(route('paperless-ai.suggest'), [
+                'model' => 'other-model',
+                'messages' => [['role' => 'user', 'content' => 'classify this']],
+            ])
+            ->assertStatus(422);
     }
 
     public function test_disabled_suggest_fails_closed(): void

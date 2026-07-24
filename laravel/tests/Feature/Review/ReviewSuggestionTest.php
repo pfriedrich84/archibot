@@ -10,6 +10,7 @@ use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -60,7 +61,7 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_classify_with_archibot_queues_document_bound_review_request(): void
     {
-        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+        Http::fake(function (Request $request) {
             if ($request->method() === 'OPTIONS') {
                 return Http::response([], 200, ['Allow' => 'GET, HEAD, OPTIONS, PATCH']);
             }

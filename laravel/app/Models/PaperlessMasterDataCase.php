@@ -22,6 +22,7 @@ class PaperlessMasterDataCase extends Model
     public const SYNC_STATUS_SYNCED = 'synced';
 
     public const SYNC_STATUS_FAILED = 'failed';
+
     protected function casts(): array
     {
         return [
