@@ -5,6 +5,7 @@ namespace Tests\Feature\Review;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Paperless\PaperlessDocumentPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
@@ -14,6 +15,15 @@ use Tests\TestCase;
 class PaperlessReviewedMutationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $permissions = $this->mock(PaperlessDocumentPermissions::class);
+        $permissions->shouldReceive('assertCanChangeDocument')->andReturnNull();
+        $permissions->shouldReceive('assertCanViewDocument')->andReturnNull();
+    }
 
     public function test_allowed_metadata_patch_is_dispatched(): void
     {
@@ -187,7 +197,7 @@ class PaperlessReviewedMutationTest extends TestCase
             ], 200),
         ]);
 
-        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token', 'is_admin' => false]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 42,
             'paperless_version_id' => 55,
@@ -210,7 +220,7 @@ class PaperlessReviewedMutationTest extends TestCase
     {
         Http::fake();
 
-        $reviewer = User::factory()->create(['paperless_token' => null]);
+        $reviewer = User::factory()->create(['paperless_token' => null, 'is_admin' => false]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 42,
             'paperless_version_id' => 55,
@@ -239,7 +249,7 @@ class PaperlessReviewedMutationTest extends TestCase
             ], 200),
         ]);
 
-        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token', 'is_admin' => false]);
         $suggestion = ReviewSuggestion::factory()->create([
             'paperless_document_id' => 42,
             'paperless_version_id' => 55,
