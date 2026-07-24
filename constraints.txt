@@ -34,7 +34,8 @@ requests<=2.34.2
 # jsonschema/referencing transitive dependency; keep off same-day releases for age gate.
 rpds-py<=0.30.0
 pydantic<=2.13.4
-pydantic-core<=2.47.0
+pydantic-core<=2.46.4
+annotated-types<=0.7.0
 # pydantic-settings 2.14.2 fixes GHSA-4xgf-cpjx-pc3j (secrets-dir symlink escape).
 pydantic-settings>=2.14.2,<=2.14.2
 rpds-py<2026.5.1

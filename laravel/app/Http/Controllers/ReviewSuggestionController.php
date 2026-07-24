@@ -129,6 +129,7 @@ class ReviewSuggestionController extends Controller
     public function accept(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
+        $this->assertReviewable($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
 
         $this->queueCommitCommand($request, $reviewSuggestion);
@@ -140,6 +141,7 @@ class ReviewSuggestionController extends Controller
     public function reject(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
+        $this->assertReviewable($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
         return redirect()->route('review.index')
@@ -189,7 +191,7 @@ class ReviewSuggestionController extends Controller
     public function save(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
-        $this->assertReviewable($reviewSuggestion);
+        $this->assertReviewable($request, $reviewSuggestion);
 
         $validated = $request->validate([
             'proposed_title' => ['nullable', 'string', 'max:255'],
@@ -349,7 +351,7 @@ class ReviewSuggestionController extends Controller
 
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
     {
-        $this->assertReviewable($suggestion);
+        $this->assertReviewable($request, $suggestion);
 
         $suggestion->markReviewed($status, $request->user());
 
@@ -432,7 +434,7 @@ class ReviewSuggestionController extends Controller
         $this->permissions->assertCanChangeDocument($user, $suggestion->paperless_document_id);
     }
 
-    private function assertReviewable(ReviewSuggestion $suggestion): void
+    private function assertReviewable(Request $request, ReviewSuggestion $suggestion): void
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
 
@@ -440,7 +442,7 @@ class ReviewSuggestionController extends Controller
             return;
         }
 
-        $token = $suggestion->createdBy?->paperless_token ?? $suggestion->reviewedBy?->paperless_token;
+        $token = $request->user()?->paperless_token;
         abort_if(blank($token), 409);
 
         $document = app(PaperlessClient::class)->document($token, $suggestion->paperless_document_id);
