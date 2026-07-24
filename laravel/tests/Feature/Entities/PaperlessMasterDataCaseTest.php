@@ -60,6 +60,12 @@ class PaperlessMasterDataCaseTest extends TestCase
         $this->assertSame(PaperlessMasterDataCase::STATUS_APPROVED, $entity->status);
         $this->assertSame(PaperlessMasterDataCase::SYNC_STATUS_QUEUED, $entity->sync_status);
         $this->assertSame($admin->id, $entity->reviewed_by_user_id);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'event' => 'paperless_master_data_case.approved',
+            'target_type' => 'paperless_master_data_case',
+            'target_id' => (string) $entity->id,
+        ]);
     }
 
     public function test_admin_can_reject_pending_master_data_case(): void
@@ -80,5 +86,11 @@ class PaperlessMasterDataCaseTest extends TestCase
         $entity->refresh();
         $this->assertSame(PaperlessMasterDataCase::STATUS_REJECTED, $entity->status);
         $this->assertSame(PaperlessMasterDataCase::SYNC_STATUS_SYNCED, $entity->sync_status);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'event' => 'paperless_master_data_case.rejected',
+            'target_type' => 'paperless_master_data_case',
+            'target_id' => (string) $entity->id,
+        ]);
     }
 }
