@@ -223,12 +223,15 @@
         }
     }
 
+    const paperlessAiStateUrl = () =>
+        aiModelActions.discover.replace(/\/ai-models$/, '/paperless-ai-state');
+
     async function refreshPaperlessAiState() {
         paperlessAiRefreshing = true;
         paperlessAiRefreshError = '';
 
         try {
-            const response = await fetch('/admin/settings/paperless-ai-state', {
+            const response = await fetch(paperlessAiStateUrl(), {
                 method: 'POST',
                 headers: {
                     Accept: 'application/json',

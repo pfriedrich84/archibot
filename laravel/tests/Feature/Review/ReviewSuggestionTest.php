@@ -60,17 +60,20 @@ class ReviewSuggestionTest extends TestCase
 
     public function test_classify_with_archibot_queues_document_bound_review_request(): void
     {
-        Http::fake([
-            'https://paperless.example/api/documents/123/' => Http::response([
+        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+            if ($request->method() === 'OPTIONS') {
+                return Http::response([], 200, ['Allow' => 'GET, HEAD, OPTIONS, PATCH']);
+            }
+
+            return Http::response([
                 'id' => 123,
                 'modified' => '2026-01-01T12:00:00+00:00',
                 'checksum' => 'root-checksum',
                 'versions' => [
                     ['id' => 55, 'checksum' => 'version-checksum'],
                 ],
-            ], 200),
-            'https://paperless.example/api/documents/123' => Http::response([], 200),
-        ]);
+            ], 200);
+        });
 
         $user = User::factory()->create(['is_admin' => false, 'paperless_token' => 'user-token']);
 
