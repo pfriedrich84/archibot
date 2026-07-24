@@ -69,7 +69,6 @@ class ClassifyWithArchiBotController extends Controller
                 'paperless_version_checksum' => $paperlessVersionChecksum,
                 'origin' => 'manual_archibot',
                 'status' => ReviewSuggestion::STATUS_PENDING,
-                'confidence' => 0,
                 'reasoning' => 'Manual Classify with ArchiBot request created a document-bound review placeholder.',
                 'requested_by_user_id' => $user->id,
                 'created_by_user_id' => $user->id,
