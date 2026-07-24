@@ -1,10 +1,10 @@
 <script module lang="ts">
-    import { index as entitiesIndex } from '@/routes/entities';
+    import { index as masterDataCasesIndex } from '@/routes/master-data-cases';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Entity approvals',
-                href: entitiesIndex({ segment: 'tags' }),
+                href: masterDataCasesIndex({ segment: 'tags' }),
             },
         ],
     };

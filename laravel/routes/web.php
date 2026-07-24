@@ -58,9 +58,12 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
         Route::get('inbox', [InboxController::class, 'index'])->name('inbox.index');
 
-        Route::get('{segment}', [PaperlessMasterDataCaseController::class, 'index'])
+        Route::get('{segment}', [EntityApprovalController::class, 'index'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.index');
+        Route::get('{segment}/master-data-cases', [PaperlessMasterDataCaseController::class, 'index'])
+            ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
+            ->name('master-data-cases.index');
         Route::post('{segment}/entity-approvals/{entityApproval}/approve', [EntityApprovalController::class, 'approve'])
             ->whereIn('segment', ['tags', 'correspondents', 'doctypes'])
             ->name('entities.approve');

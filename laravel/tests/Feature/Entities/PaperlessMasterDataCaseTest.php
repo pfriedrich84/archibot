@@ -29,7 +29,7 @@ class PaperlessMasterDataCaseTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get('/tags')
+            ->get('/tags/master-data-cases')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('entities/Index')

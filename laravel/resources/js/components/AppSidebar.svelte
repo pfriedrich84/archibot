@@ -38,6 +38,7 @@
     import { edit as adminSettingsEdit } from '@/routes/admin/settings';
     import { index as embeddingsIndex } from '@/routes/embeddings';
     import { index as entitiesIndex } from '@/routes/entities';
+    import { index as masterDataCasesIndex } from '@/routes/master-data-cases';
     import { index as errorsIndex } from '@/routes/errors';
     import { index as inboxIndex } from '@/routes/inbox';
     import { index as mcpTokensIndex } from '@/routes/mcp-tokens';
@@ -83,17 +84,17 @@
     const masterDataNavItems: NavItem[] = $derived([
         {
             title: 'Correspondents',
-            href: entitiesIndex({ segment: 'correspondents' }),
+            href: masterDataCasesIndex({ segment: 'correspondents' }),
             icon: UserRound,
         },
         {
             title: 'Document types',
-            href: entitiesIndex({ segment: 'doctypes' }),
+            href: masterDataCasesIndex({ segment: 'doctypes' }),
             icon: FileType,
         },
         {
             title: 'Tags',
-            href: entitiesIndex({ segment: 'tags' }),
+            href: masterDataCasesIndex({ segment: 'tags' }),
             icon: Tag,
         },
     ]);
