@@ -326,8 +326,8 @@
     <aside
         class="max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
     >
-        <strong>Chat/RAG is disabled for every user.</strong>
-        Its page, routes, provider setting, prompt editor, and global MCP retrieval
+        <strong>Conversational retrieval is disabled for every user.</strong>
+        Its page, routes, provider setting, prompt editor, and global MCP document lookup
         tools are unavailable.
         <a
             class="underline"

@@ -116,7 +116,7 @@ class FirstRunSetupTest extends TestCase
         $this->assertStringNotContainsString('synthetic-setup-webhook-secret-12345', (string) $storedWebhookSecret->value);
         $this->assertSame('1', AppSetting::getValue('paperless.inbox_tag_id'));
         $this->assertSame('2', AppSetting::getValue('paperless.processed_tag_id'));
-        $this->assertSame('1', AppSetting::getValue('paperless.ai_suggest_enabled'));
+        $this->assertSame('0', AppSetting::getValue('paperless.ai_suggest_enabled'));
         $this->assertSame('0', AppSetting::getValue('paperless.ai_similar_documents_enabled'));
         $this->assertSame('1', AppSetting::getValue('paperless.ai_auto_manage_workflows'));
         $this->assertNull(AppSetting::getValue('ollama.url'));

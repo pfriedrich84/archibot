@@ -23,7 +23,7 @@ class PaperlessAiSettingsService
         return [
             'manual_enabled' => AppSetting::getValue('paperless.ai_suggest_enabled', '1') !== '0',
             'similar_documents_enabled' => AppSetting::getValue('paperless.ai_similar_documents_enabled', '0') === '1',
-            'suggest_endpoint' => rtrim((string) AppSetting::getValue('gui.base_url', ''), '/').'/paperless-ai/v1/chat/completions',
+            'suggest_endpoint' => rtrim((string) AppSetting::getValue('gui.base_url', ''), '/').'/paperless-ai/v1/completions-suggest',
             'suggest_model' => $classificationModel,
             'suggest_prompt_role' => 'paperless_suggest',
             'embedding_provider_type' => $provider,
