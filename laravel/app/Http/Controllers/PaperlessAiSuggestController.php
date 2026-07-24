@@ -37,15 +37,10 @@ class PaperlessAiSuggestController extends Controller
             : null;
 
         $response = app(OllamaClient::class, [
-             'baseUrl' => $baseUrl,
-             'provider' => $provider,
-             'apiKey' => $apiKey ?: null,
--        ])->chatCompletion($model, $validated['messages']);
-+        ])->chatCompletion($classificationEngine, $validated['messages']);
             'baseUrl' => $baseUrl,
             'provider' => $provider,
             'apiKey' => $apiKey ?: null,
-        ])->chatCompletion($model, $validated['messages']);
+        ])->chatCompletion($classificationEngine, $validated['messages']);
 
         return response()->json($response);
     }
