@@ -33,12 +33,20 @@
         error: string | null;
         document_count_error: string | null;
         ready: boolean;
+        scope: string | null;
+        release_threshold: number;
+        release_target_population: number;
+        release_status: string;
+        released_at: string | null;
+        released: boolean;
     };
 
     type EmbeddingBuildCommand = {
         id: number;
         type: string;
         status: string;
+        queue: string | null;
+        priority: number | null;
         error: string | null;
         created_at: string | null;
         updated_at: string | null;
@@ -130,6 +138,27 @@
         </div>
     </div>
 
+    <section class="grid gap-4 md:grid-cols-4">
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Release status</div>
+            <div class="mt-2 text-2xl font-semibold">
+                {snapshot.released ? 'Released' : snapshot.release_status}
+            </div>
+        </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Release threshold</div>
+            <div class="mt-2 text-3xl font-semibold">{snapshot.release_threshold}</div>
+        </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Target population</div>
+            <div class="mt-2 text-3xl font-semibold">{snapshot.release_target_population}</div>
+        </div>
+        <div class="rounded-xl border p-4">
+            <div class="text-sm text-muted-foreground">Index scope</div>
+            <div class="mt-2 text-sm font-medium">{snapshot.scope ?? 'default'}</div>
+        </div>
+    </section>
+
     {#if snapshotBuildActive || snapshot.document_count > 0}
         <section class="rounded-xl border p-4">
             <div
@@ -218,6 +247,12 @@
                     </div>
                     <div class="text-muted-foreground">
                         Status: {latestEmbeddingBuildCommand.status}
+                        {#if latestEmbeddingBuildCommand.queue}
+                            · Queue {latestEmbeddingBuildCommand.queue}
+                        {/if}
+                        {#if latestEmbeddingBuildCommand.priority !== null}
+                            · Priority {latestEmbeddingBuildCommand.priority}
+                        {/if}
                         {#if latestEmbeddingBuildCommand.updated_at}
                             · Updated {formatDateTime(
                                 latestEmbeddingBuildCommand.updated_at,
