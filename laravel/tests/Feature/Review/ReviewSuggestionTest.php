@@ -94,6 +94,9 @@ class ReviewSuggestionTest extends TestCase
             'request_source' => 'classify_with_archibot',
             'requested_by_user_id' => $user->id,
         ]);
+
+        $run = PipelineRun::query()->where('paperless_document_id', 123)->firstOrFail();
+        $this->assertSame('manual', $run->trigger_source);
     }
 
     public function test_pending_review_queue_only_shows_latest_suggestion_per_document(): void

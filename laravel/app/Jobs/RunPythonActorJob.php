@@ -28,8 +28,13 @@ class RunPythonActorJob implements ShouldQueue
     public function __construct(
         public string $actorName,
         public int $commandId,
+        ?string $queue = null,
     ) {
         $this->timeout = max(1, (int) config('archibot_workers.queue_worker_timeout', 21600));
+
+        if (is_string($queue) && $queue !== '') {
+            $this->onQueue($queue);
+        }
     }
 
     public static function embeddingIndexBuild(int $commandId): self
