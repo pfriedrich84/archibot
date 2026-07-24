@@ -14,6 +14,7 @@ use App\Http\Controllers\InboxController;
 use App\Http\Controllers\MaintenanceCommandController;
 use App\Http\Controllers\OcrReviewController;
 use App\Http\Controllers\OperationsLogController;
+use App\Http\Controllers\PaperlessAiSuggestController;
 use App\Http\Controllers\PaperlessEventWebhookController;
 use App\Http\Controllers\PaperlessMasterDataCaseController;
 use App\Http\Controllers\PipelineRunController;
@@ -29,6 +30,7 @@ Route::prefix(config('archibot.path_prefix'))->group(function () {
 
     Route::post('/webhook', PaperlessEventWebhookController::class)->name('webhook.paperless');
     Route::post('/api/webhooks/paperless', PaperlessEventWebhookController::class)->name('api.webhooks.paperless');
+    Route::post('/paperless-ai/v1/chat/completions', PaperlessAiSuggestController::class)->name('paperless-ai.suggest');
 
     Route::get('/setup', [SetupController::class, 'show'])->name('setup.show');
     Route::post('/setup/paperless-tags', [SetupController::class, 'paperlessTags'])
