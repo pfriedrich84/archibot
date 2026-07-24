@@ -69,8 +69,8 @@ class PaperlessClient
 
         $payload = $response->json();
 
-        return is_array($payload)
-            && $this->supportsPaperlessV3Api10($payload);
+        return ! is_array($payload)
+            || $this->supportsPaperlessV3Api10($payload);
     }
 
     public function documentCount(string $token): int

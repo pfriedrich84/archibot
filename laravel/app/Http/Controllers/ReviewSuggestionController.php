@@ -436,6 +436,10 @@ class ReviewSuggestionController extends Controller
     {
         abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING && $this->isLatestForDocument($suggestion), 409);
 
+        if ($suggestion->paperless_version_id === null || $suggestion->paperless_version_checksum === null) {
+            return;
+        }
+
         $token = $suggestion->createdBy?->paperless_token ?? $suggestion->reviewedBy?->paperless_token;
         abort_if(blank($token), 409);
 
