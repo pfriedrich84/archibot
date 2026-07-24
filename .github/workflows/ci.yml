@@ -232,13 +232,13 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build Docker image
-        run: docker build -t test .
+        run: docker build -t archibot-ci:test .
 
       - name: Grype container scan
         uses: anchore/scan-action@v7
         id: grype
         with:
-          image: test
+          image: archibot-ci:test
           fail-build: true
           severity-cutoff: high
           only-fixed: true
@@ -249,7 +249,7 @@ jobs:
         if: always()
         id: grype-sarif
         with:
-          image: test
+          image: archibot-ci:test
           fail-build: false
           severity-cutoff: high
           only-fixed: true
@@ -270,7 +270,7 @@ jobs:
             --ignore-unfixed \
             --format table \
             --exit-code 1 \
-            test
+            archibot-ci:test
 
       - name: Trivy SARIF report
         if: always()
@@ -283,7 +283,7 @@ jobs:
             --ignore-unfixed \
             --format sarif \
             --output /work/trivy-results.sarif \
-            test
+            archibot-ci:test
 
       - name: Upload Trivy SARIF report
         uses: github/codeql-action/upload-sarif@v4
@@ -292,4 +292,4 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Verify CLI in Docker image
-        run: docker run --rm test archibot --help
+        run: docker run --rm archibot-ci:test archibot --help
