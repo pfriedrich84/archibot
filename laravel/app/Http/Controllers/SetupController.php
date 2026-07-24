@@ -41,6 +41,9 @@ class SetupController extends Controller
                 'inboxTagId' => AppSetting::getValue('paperless.inbox_tag_id', ''),
                 'processedTagId' => AppSetting::getValue('paperless.processed_tag_id', ''),
                 'ocrRequestedTagId' => AppSetting::getValue('ocr.requested_tag_id', ''),
+                'paperlessAiSuggestEnabled' => AppSetting::getValue('paperless.ai_suggest_enabled', '1') !== '0',
+                'paperlessAiSimilarDocumentsEnabled' => AppSetting::getValue('paperless.ai_similar_documents_enabled', '0') === '1',
+                'paperlessAiAutoManageWorkflows' => AppSetting::getValue('paperless.ai_auto_manage_workflows', '1') !== '0',
             ],
         ]);
     }
@@ -97,6 +100,9 @@ class SetupController extends Controller
             'paperless_inbox_tag_id' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'paperless_processed_tag_id' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
             'ocr_requested_tag_id' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
+            'paperless_ai_suggest_enabled' => ['nullable', 'boolean'],
+            'paperless_ai_similar_documents_enabled' => ['nullable', 'boolean'],
+            'paperless_ai_auto_manage_workflows' => ['nullable', 'boolean'],
         ]);
 
         try {

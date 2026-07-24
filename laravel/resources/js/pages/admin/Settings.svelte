@@ -84,6 +84,7 @@
         paperlessTagOptions,
         webhookDevelopmentBypassActive = false,
         aiModelActions,
+        paperlessAiState,
     }: {
         groups: SettingGroup[];
         sections: SettingsSection[];
@@ -92,6 +93,17 @@
         paperlessTagOptions: PaperlessTagOption[];
         webhookDevelopmentBypassActive?: boolean;
         aiModelActions: { discover: string; validate: string };
+        paperlessAiState: {
+            desired: Record<string, unknown>;
+            remote: Record<string, unknown> | null;
+            drift_fields: Record<
+                string,
+                { desired: unknown; remote: unknown }
+            >;
+            sync_status: string;
+            last_remote_read_at: string | null;
+            error?: string;
+        };
     } = $props();
 
     let aiModelLoading = $state(false);
@@ -105,6 +117,8 @@
         type: string;
         base_url: string;
     } | null>(null);
+    let paperlessAiRefreshing = $state(false);
+    let paperlessAiRefreshError = $state('');
 
     const csrfToken = () =>
         document
@@ -206,6 +220,33 @@
                 error instanceof Error ? error.message : String(error);
         } finally {
             aiModelLoading = false;
+        }
+    }
+
+    async function refreshPaperlessAiState() {
+        paperlessAiRefreshing = true;
+        paperlessAiRefreshError = '';
+
+        try {
+            const response = await fetch('/admin/settings/paperless-ai-state', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(data?.message ?? 'Could not refresh Paperless AI state.');
+            }
+
+            paperlessAiState = data;
+        } catch (error) {
+            paperlessAiRefreshError =
+                error instanceof Error ? error.message : String(error);
+        } finally {
+            paperlessAiRefreshing = false;
         }
     }
 
@@ -512,6 +553,119 @@
                     {/if}
                 {/snippet}
             </Form>
+        </section>
+    {/if}
+
+    {#if activeSection === 'paperless-ai'}
+        <section class="grid max-w-4xl gap-5 rounded-xl border p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold">
+                        Paperless AI managed configuration
+                    </h2>
+                    <p class="text-sm text-muted-foreground">
+                        ArchiBot is the desired-state source. Drift is detected and shown here, but not overwritten automatically.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onclick={refreshPaperlessAiState}
+                    disabled={paperlessAiRefreshing}
+                >
+                    {#if paperlessAiRefreshing}<Spinner />{/if}
+                    Refresh remote state
+                </Button>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-lg border p-4">
+                    <div class="text-sm text-muted-foreground">Sync status</div>
+                    <div class="mt-1 font-medium">{paperlessAiState.sync_status}</div>
+                    {#if paperlessAiState.last_remote_read_at}
+                        <div class="mt-1 text-xs text-muted-foreground">
+                            Last remote read: {paperlessAiState.last_remote_read_at}
+                        </div>
+                    {/if}
+                    {#if paperlessAiState.error}
+                        <div class="mt-2 text-sm text-destructive">
+                            {paperlessAiState.error}
+                        </div>
+                    {/if}
+                    {#if paperlessAiRefreshError}
+                        <div class="mt-2 text-sm text-destructive">
+                            {paperlessAiRefreshError}
+                        </div>
+                    {/if}
+                </div>
+                <div class="rounded-lg border p-4">
+                    <div class="text-sm text-muted-foreground">Detected drift fields</div>
+                    <div class="mt-1 text-3xl font-semibold">
+                        {Object.keys(paperlessAiState.drift_fields ?? {}).length}
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-lg border p-4">
+                    <h3 class="font-medium">Desired state</h3>
+                    <dl class="mt-3 grid gap-2 text-sm">
+                        {#each Object.entries(paperlessAiState.desired ?? {}) as [key, value] (key)}
+                            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                                <dt class="text-muted-foreground">{key}</dt>
+                                <dd class="break-all">{String(value)}</dd>
+                            </div>
+                        {/each}
+                    </dl>
+                </div>
+                <div class="rounded-lg border p-4">
+                    <h3 class="font-medium">Remote state</h3>
+                    {#if paperlessAiState.remote}
+                        <dl class="mt-3 grid gap-2 text-sm">
+                            {#each Object.entries(paperlessAiState.remote ?? {}) as [key, value] (key)}
+                                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                                    <dt class="text-muted-foreground">{key}</dt>
+                                    <dd class="break-all">{String(value)}</dd>
+                                </div>
+                            {/each}
+                        </dl>
+                    {:else}
+                        <p class="mt-3 text-sm text-muted-foreground">
+                            No remote state available.
+                        </p>
+                    {/if}
+                </div>
+            </div>
+
+            <div class="rounded-lg border p-4">
+                <h3 class="font-medium">Drift details</h3>
+                {#if Object.keys(paperlessAiState.drift_fields ?? {}).length > 0}
+                    <div class="mt-3 overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                                <tr class="border-b text-left text-muted-foreground">
+                                    <th class="py-2 pr-4">Field</th>
+                                    <th class="py-2 pr-4">Desired</th>
+                                    <th class="py-2">Remote</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {#each Object.entries(paperlessAiState.drift_fields ?? {}) as [field, values] (field)}
+                                    <tr class="border-b align-top last:border-b-0">
+                                        <td class="py-2 pr-4 font-medium">{field}</td>
+                                        <td class="py-2 pr-4 break-all">{String(values.desired)}</td>
+                                        <td class="py-2 break-all">{String(values.remote)}</td>
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    </div>
+                {:else}
+                    <p class="mt-3 text-sm text-muted-foreground">
+                        No drift detected.
+                    </p>
+                {/if}
+            </div>
         </section>
     {/if}
 

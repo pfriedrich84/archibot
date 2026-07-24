@@ -20,6 +20,14 @@ class Command extends Model
 
     public const TYPE_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
 
+    public const TYPE_SYNC_PAPERLESS_AI_CONFIG = 'sync_paperless_ai_config';
+
+    public const TYPE_SYNC_PAPERLESS_WORKFLOWS = 'sync_paperless_workflows';
+
+    public const TYPE_PAPERLESS_SIMILARITY_INDEX = 'paperless_similarity_index';
+
+    public const TYPE_CLASSIFY_WITH_ARCHIBOT = 'classify_with_archibot';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_QUEUED = 'queued';
