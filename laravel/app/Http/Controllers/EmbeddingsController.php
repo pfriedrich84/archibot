@@ -29,6 +29,8 @@ class EmbeddingsController extends Controller
                 'id' => $latestEmbeddingBuildCommand->id,
                 'type' => $this->diagnostics->typedScalar('command_type', $latestEmbeddingBuildCommand->type),
                 'status' => $this->diagnostics->typedScalar('status', $latestEmbeddingBuildCommand->status),
+                'queue' => $latestEmbeddingBuildCommand->queue === null ? null : $this->diagnostics->queueName($latestEmbeddingBuildCommand->queue),
+                'priority' => is_int($latestEmbeddingBuildCommand->priority) ? $latestEmbeddingBuildCommand->priority : null,
                 'error' => $this->diagnostics->redactedMessage($latestEmbeddingBuildCommand->error),
                 'created_at' => $latestEmbeddingBuildCommand->created_at?->toISOString(),
                 'updated_at' => $latestEmbeddingBuildCommand->updated_at?->toISOString(),
