@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Review;
 
+use App\Models\ReviewSuggestion;
+use App\Models\User;
 use App\Services\Paperless\PaperlessClient;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -10,6 +13,8 @@ use Tests\TestCase;
 
 class PaperlessReviewedMutationTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_allowed_metadata_patch_is_dispatched(): void
     {
         Http::fake(['paperless.test/api/documents/42/' => Http::response([], 200)]);
@@ -168,5 +173,85 @@ class PaperlessReviewedMutationTest extends TestCase
         Http::fake(['paperless.test/api/ui_settings/' => Http::response([], 406)]);
 
         $this->assertFalse(app(PaperlessClient::class)->ping('reviewer-token'));
+    }
+
+    public function test_reviewer_token_is_used_for_accepting_a_worker_created_versioned_suggestion(): void
+    {
+        Http::fake([
+            'paperless.test/api/documents/42/*' => Http::response([
+                'id' => 42,
+                'checksum' => 'version-checksum',
+                'versions' => [
+                    ['id' => 55, 'checksum' => 'version-checksum'],
+                ],
+            ], 200),
+        ]);
+
+        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 42,
+            'paperless_version_id' => 55,
+            'paperless_version_checksum' => 'version-checksum',
+            'created_by_user_id' => null,
+            'reviewed_by_user_id' => null,
+        ]);
+
+        $this->actingAs($reviewer)
+            ->post(route('review.reject', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && str_ends_with($request->url(), '/api/documents/42/')
+            && $request->hasHeader('Authorization', 'Token reviewer-token'));
+        $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $suggestion->fresh()->status);
+    }
+
+    public function test_missing_reviewer_token_fails_closed_for_versioned_review(): void
+    {
+        Http::fake();
+
+        $reviewer = User::factory()->create(['paperless_token' => null]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 42,
+            'paperless_version_id' => 55,
+            'paperless_version_checksum' => 'version-checksum',
+            'created_by_user_id' => null,
+            'reviewed_by_user_id' => null,
+        ]);
+
+        $this->actingAs($reviewer)
+            ->post(route('review.reject', $suggestion))
+            ->assertStatus(409);
+
+        Http::assertNothingSent();
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $suggestion->fresh()->status);
+    }
+
+    public function test_version_mismatch_marks_suggestion_stale_before_accept(): void
+    {
+        Http::fake([
+            'paperless.test/api/documents/42/*' => Http::response([
+                'id' => 42,
+                'checksum' => 'different-checksum',
+                'versions' => [
+                    ['id' => 56, 'checksum' => 'different-checksum'],
+                ],
+            ], 200),
+        ]);
+
+        $reviewer = User::factory()->create(['paperless_token' => 'reviewer-token']);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 42,
+            'paperless_version_id' => 55,
+            'paperless_version_checksum' => 'version-checksum',
+        ]);
+
+        $this->actingAs($reviewer)
+            ->post(route('review.accept', $suggestion))
+            ->assertStatus(409);
+
+        $fresh = $suggestion->fresh();
+        $this->assertSame(ReviewSuggestion::STATUS_STALE, $fresh->status);
+        $this->assertSame('paperless_document_version_changed', $fresh->staleness_reason);
     }
 }
