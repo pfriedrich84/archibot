@@ -25,7 +25,7 @@ class PaperlessAiSuggestControllerTest extends TestCase
         AppSetting::put('paperless.ai_bearer_key', 'paperless-secret');
         AppSetting::put('paperless.ai_suggest_enabled', '1');
         AppSetting::put('llm.provider', 'openai_compatible');
-        AppSetting::put('llm.openai_base_url', 'http://openai.test/v1');
+        AppSetting::put('ollama.url', 'http://openai.test/v1');
         AppSetting::put('llm.openai_api_key', 'provider-secret');
         AppSetting::put('classification.model', 'safe-model');
 
@@ -76,5 +76,24 @@ class PaperlessAiSuggestControllerTest extends TestCase
                 'messages' => [['role' => 'user', 'content' => 'classify this']],
             ])
             ->assertStatus(409);
+    }
+
+    public function test_suggest_endpoint_is_exempt_from_csrf(): void
+    {
+        AppSetting::put('paperless.ai_bearer_key', 'paperless-secret');
+        AppSetting::put('paperless.ai_suggest_enabled', '1');
+        AppSetting::put('classification.model', 'safe-model');
+
+        Http::fake([
+            'http://ollama:11434/api/chat' => Http::response([
+                'message' => ['content' => '{"ok":true}'],
+            ]),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer paperless-secret')
+            ->post(route('paperless-ai.suggest'), [
+                'messages' => [['role' => 'user', 'content' => 'classify this']],
+            ])
+            ->assertOk();
     }
 }

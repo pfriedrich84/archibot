@@ -30,7 +30,7 @@ class PaperlessAiSuggestController extends Controller
 
         $providerAlias = (string) AppSetting::getValue('llm.provider', 'ollama');
         $providerBaseUrl = $providerAlias === 'openai_compatible'
-            ? (string) AppSetting::getValue('llm.openai_base_url', 'https://api.openai.com/v1')
+            ? (string) AppSetting::getValue('ollama.url', 'https://api.openai.com/v1')
             : (string) AppSetting::getValue('ollama.url', 'http://ollama:11434');
         $providerSecret = $providerAlias === 'openai_compatible'
             ? AppSetting::getValue('llm.openai_api_key')
