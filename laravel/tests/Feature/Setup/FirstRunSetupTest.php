@@ -118,7 +118,7 @@ class FirstRunSetupTest extends TestCase
         $this->assertSame('2', AppSetting::getValue('paperless.processed_tag_id'));
         $this->assertSame('0', AppSetting::getValue('paperless.ai_suggest_enabled'));
         $this->assertSame('0', AppSetting::getValue('paperless.ai_similar_documents_enabled'));
-        $this->assertSame('1', AppSetting::getValue('paperless.ai_auto_manage_workflows'));
+        $this->assertSame('0', AppSetting::getValue('paperless.ai_auto_manage_workflows'));
         $this->assertNull(AppSetting::getValue('ollama.url'));
 
         $user = User::query()->firstOrFail();
@@ -131,7 +131,7 @@ class FirstRunSetupTest extends TestCase
         $this->assertStringContainsString('PAPERLESS_TOKEN=paperless-token', $runtimeConfig);
         $this->assertStringContainsString('PAPERLESS_AI_SUGGEST_ENABLED=1', $runtimeConfig);
         $this->assertStringContainsString('PAPERLESS_AI_SIMILAR_DOCUMENTS_ENABLED=0', $runtimeConfig);
-        $this->assertStringContainsString('PAPERLESS_AI_AUTO_MANAGE_WORKFLOWS=1', $runtimeConfig);
+        $this->assertStringContainsString('PAPERLESS_AI_AUTO_MANAGE_WORKFLOWS=0', $runtimeConfig);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'setup.completed',
             'actor_user_id' => $user->id,
