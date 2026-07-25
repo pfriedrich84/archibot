@@ -149,7 +149,8 @@ class DocumentPipelineStarter
                         ->where('progress_current_phase', 'staged_batch_wait');
                 })->orWhere(function ($query): void {
                     $query->where('status', PipelineRun::STATUS_BLOCKED)
-                        ->where('error_type', self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY);
+                        ->where('error_type', self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+                        ->where('progress_current_phase', 'staged_batch_wait');
                 });
             })
             ->whereNull('batch_command_id')

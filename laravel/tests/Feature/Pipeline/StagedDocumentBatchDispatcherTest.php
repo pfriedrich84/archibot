@@ -126,6 +126,44 @@ class StagedDocumentBatchDispatcherTest extends TestCase
         );
     }
 
+    public function test_blocked_singleton_coalesced_with_poll_is_not_attached_to_batch(): void
+    {
+        Queue::fake();
+        $source = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_SUCCEEDED,
+            'payload' => [],
+        ]);
+        $singleton = PipelineRun::query()->create([
+            'command_id' => $source->id,
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'scope' => 'single_document',
+            'trigger_source' => 'webhook',
+            'paperless_document_id' => 301,
+            'progress_current_phase' => 'blocked',
+            'error_type' => 'embedding_index_not_ready',
+        ]);
+        $pollTarget = PipelineRun::query()->create([
+            'command_id' => $source->id,
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'scope' => 'single_document',
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 302,
+            'progress_current_phase' => 'staged_batch_wait',
+            'error_type' => 'embedding_index_not_ready',
+        ]);
+
+        $batch = app(StagedDocumentBatchDispatcher::class)->dispatchForPollCommand($source->id);
+
+        $this->assertNotNull($batch);
+        $this->assertSame(1, $batch->payload['document_count']);
+        $this->assertNull($singleton->fresh()->batch_command_id);
+        $this->assertSame($batch->id, $pollTarget->fresh()->batch_command_id);
+        Queue::assertNothingPushed();
+    }
+
     public function test_retrying_poll_command_cannot_seal_partial_candidates(): void
     {
         Queue::fake();

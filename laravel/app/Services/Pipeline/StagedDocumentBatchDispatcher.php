@@ -23,7 +23,10 @@ class StagedDocumentBatchDispatcher
             ->where('type', 'document')
             ->where(function ($query): void {
                 $query->where('progress_current_phase', 'staged_batch_wait')
-                    ->orWhere('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY);
+                    ->orWhere(function ($query): void {
+                        $query->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+                            ->where('progress_current_phase', 'staged_batch_wait');
+                    });
             })
             ->whereNull('batch_command_id')
             ->whereNotNull('command_id')
@@ -69,7 +72,8 @@ class StagedDocumentBatchDispatcher
                             ->where('progress_current_phase', 'staged_batch_wait');
                     })->orWhere(function ($query): void {
                         $query->where('status', PipelineRun::STATUS_BLOCKED)
-                            ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY);
+                            ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+                            ->where('progress_current_phase', 'staged_batch_wait');
                     });
                 })
                 ->get(['id', 'status']);
