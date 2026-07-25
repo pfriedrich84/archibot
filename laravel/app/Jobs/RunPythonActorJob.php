@@ -8,6 +8,7 @@ use App\Models\WebhookDelivery;
 use App\Services\Actors\ActorInvocationClaimer;
 use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\PollCandidateConsumer;
+use App\Services\Pipeline\StagedDocumentBatchDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,11 @@ class RunPythonActorJob implements ShouldQueue
         return new self(PythonActorRunner::ACTOR_REINDEX_OCR, $commandId);
     }
 
+    public static function stagedDocumentBatch(int $commandId): self
+    {
+        return new self(PythonActorRunner::ACTOR_STAGED_DOCUMENT_BATCH, $commandId);
+    }
+
     public static function webhookDelivery(int $deliveryId): self
     {
         return new self(PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK, $deliveryId);
@@ -71,26 +77,31 @@ class RunPythonActorJob implements ShouldQueue
         PythonActorRunner $runner,
         ?PollCandidateConsumer $pollCandidates = null,
         ?ActorInvocationClaimer $claimer = null,
+        ?StagedDocumentBatchDispatcher $stagedBatches = null,
     ): void {
         $pollCandidates ??= app(PollCandidateConsumer::class);
         $claimer ??= app(ActorInvocationClaimer::class);
+        $stagedBatches ??= app(StagedDocumentBatchDispatcher::class);
 
         match ($this->actorName) {
             PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX,
             PythonActorRunner::ACTOR_COMMIT_REVIEW_SUGGESTION,
             PythonActorRunner::ACTOR_REINDEX,
-            PythonActorRunner::ACTOR_REINDEX_OCR => $this->runCommandIfEligible($runner, $claimer),
+            PythonActorRunner::ACTOR_REINDEX_OCR,
+            PythonActorRunner::ACTOR_STAGED_DOCUMENT_BATCH => $this->runCommandIfEligible($runner, $claimer),
             PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE => $this->runPipelineIfEligible($runner, $claimer),
-            PythonActorRunner::ACTOR_POLL_RECONCILIATION => $this->runPollReconciliation($runner, $pollCandidates, $claimer),
+            PythonActorRunner::ACTOR_POLL_RECONCILIATION => $this->runPollReconciliation($runner, $pollCandidates, $claimer, $stagedBatches),
             PythonActorRunner::ACTOR_HANDLE_PAPERLESS_WEBHOOK => $this->runWebhookIfEligible($runner, $claimer),
             default => throw new InvalidArgumentException("Unsupported Python actor {$this->actorName}."),
         };
     }
 
-    private function runPollReconciliation(PythonActorRunner $runner, PollCandidateConsumer $pollCandidates, ActorInvocationClaimer $claimer): void
+    private function runPollReconciliation(PythonActorRunner $runner, PollCandidateConsumer $pollCandidates, ActorInvocationClaimer $claimer, StagedDocumentBatchDispatcher $stagedBatches): void
     {
-        if ($this->runCommandIfEligible($runner, $claimer)) {
-            $pollCandidates->consumeCommand($this->commandId);
+        if ($this->runCommandIfEligible($runner, $claimer)
+            && Command::query()->whereKey($this->commandId)->where('status', Command::STATUS_SUCCEEDED)->exists()) {
+            $pollCandidates->consumeEntireCommand($this->commandId);
+            $stagedBatches->dispatchForPollCommand($this->commandId);
         }
     }
 
@@ -125,6 +136,7 @@ class RunPythonActorJob implements ShouldQueue
             PythonActorRunner::ACTOR_POLL_RECONCILIATION => $runner->runPollReconciliation($command, $claim),
             PythonActorRunner::ACTOR_REINDEX => $runner->runReindex($command, $claim),
             PythonActorRunner::ACTOR_REINDEX_OCR => $runner->runReindexOcr($command, $claim),
+            PythonActorRunner::ACTOR_STAGED_DOCUMENT_BATCH => $runner->runStagedDocumentBatch($command, $claim),
             default => throw new InvalidArgumentException("Unsupported command actor {$this->actorName}."),
         };
 

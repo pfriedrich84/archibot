@@ -131,6 +131,7 @@ class ActiveOperationsSnapshot
             Command::TYPE_REINDEX_OCR => 'OCR reindex',
             Command::TYPE_EMBEDDING_INDEX_BUILD => 'Embedding index build',
             Command::TYPE_REVIEW_COMMIT => 'Review commit',
+            Command::TYPE_STAGED_DOCUMENT_BATCH => 'Staged document batch',
             Command::TYPE_SYNC_ENTITY_APPROVAL => 'Entity approval sync',
             default => $this->diagnostics->scalarSummary('unknown command', $command->type) ?? 'Unknown command',
         };

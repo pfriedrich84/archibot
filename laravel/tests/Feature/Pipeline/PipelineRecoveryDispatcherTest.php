@@ -622,6 +622,45 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
     }
 
+    public function test_exhausted_staged_batch_recovery_terminalizes_linked_children(): void
+    {
+        Queue::fake();
+        $command = $this->command([
+            'type' => Command::TYPE_STAGED_DOCUMENT_BATCH,
+            'status' => Command::STATUS_RUNNING,
+            'payload' => ['source_command_id' => 44],
+        ]);
+        $pending = $this->pipelineRun([
+            'batch_command_id' => $command->id,
+            'status' => PipelineRun::STATUS_PENDING,
+            'paperless_document_id' => 81,
+        ]);
+        $running = $this->pipelineRun([
+            'batch_command_id' => $command->id,
+            'status' => PipelineRun::STATUS_RUNNING,
+            'paperless_document_id' => 82,
+        ]);
+        $execution = ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => PythonActorRunner::ACTOR_STAGED_DOCUMENT_BATCH,
+            'status' => ActorExecution::STATUS_RUNNING,
+            'attempt' => 5,
+            'max_attempts' => 5,
+            'source_version' => 0,
+            'started_at' => now()->subMinutes(11),
+            'progress_updated_at' => now()->subMinutes(11),
+        ]);
+
+        $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+        $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 1], $result);
+        $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_FAILED_PERMANENT, $pending->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_FAILED_PERMANENT, $running->fresh()->status);
+        $this->assertSame('batch_failed', $running->fresh()->progress_current_phase);
+        Queue::assertNothingPushed();
+    }
+
     public function test_recovery_finalizes_cancel_requested_run_without_live_actor(): void
     {
         $run = $this->pipelineRun([

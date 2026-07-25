@@ -12,9 +12,9 @@ in Paperless-NGX.
          |
 2. Worker erkennt Dokument      Naechster Poll oder Webhook-Trigger
          |
-3. OCR-Korrektur (optional)     Nur wenn OCR_MODE != off
+3. Embedding berechnen          Fuer die gesamte Zielmenge, gespeichert in pgvector
          |
-4. Embedding berechnen          qwen3-embedding:4b (Default), gespeichert in pgvector
+4. OCR-Korrektur (optional)     Danach fuer alle berechtigten Zieldokumente
          |
 5. Kontext-Suche                KNN: aehnlichste bereits klassifizierte Dokumente finden
          |
@@ -29,11 +29,12 @@ in Paperless-NGX.
          |
 9. PATCH nach Paperless         Erst ueber den geprueften Review-Commit-Pfad
 
-Beim Inbox-Poll werden OCR und Embeddings weiterhin batchweise ausgefuehrt. Ab der
-Klassifikation veroeffentlicht ArchiBot Ergebnisse aber so frueh wie moeglich pro
-Dokument: Sobald ein Dokument klassifiziert ist und kein separates Judge-Modell
-fuer dieses Dokument geladen werden muss, wird der Vorschlag direkt als pending
-Review sichtbar. Ein Paperless-Write erfolgt erst nach manueller Annahme.
+Beim Inbox-Poll verarbeitet ArchiBot die gesamte neu erstellte Zielmenge als einen
+durable Batch. Alle Embeddings sind abgeschlossen, bevor OCR beginnt; alle
+OCR-Schritte sind abgeschlossen, bevor die Klassifikation beginnt; und kein
+Dokument startet den Judge, bevor die Klassifikation der gesamten Zielmenge
+abgeschlossen ist. Review-Vorschlaege werden erst nach der globalen Judge-Phase
+sichtbar. Ein Paperless-Write erfolgt weiterhin erst nach manueller Annahme.
 ```
 
 ## Schritt fuer Schritt
@@ -96,17 +97,17 @@ deterministische Eligibility-Gates sowie ausdrueckliche Produkt-/Security-Freiga
 Im Inbox-Poll bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,
 Klassifikations- und Judge-Modelle nicht pro Dokument hin- und hergeladen werden muessen:
 
-1. OCR fuer alle Dokumente, Ergebnisse pro Dokument speichern
-2. Embeddings/Kontextsuche fuer alle Dokumente, Ergebnisse pro Dokument merken
-3. Klassifikation fuer alle Dokumente
-4. Judge-Verifikation fuer alle erfolgreichen Klassifikationen
-5. Vorschlaege als pending Review speichern
-6. Embeddings final pro Dokument in den Kontextindex schreiben
+1. Embeddings fuer alle Dokumente erzeugen und mit korrekter Kontext-Trust-Markierung speichern
+2. OCR fuer alle berechtigten Dokumente ausfuehren und Korrekturen lokal speichern
+3. Kontextsuche und Klassifikation fuer alle Dokumente ausfuehren
+4. Judge-Verifikation fuer alle erfolgreichen Klassifikationen ausfuehren oder gemaess Einstellung ueberspringen
+5. Vorschlaege erst danach als pending Review speichern
 
-Innerhalb jeder Phase wird nach jedem Dokument persistiert. Ein Absturz in
-Dokument 12/19 verliert also nicht die Ergebnisse der ersten 11 Dokumente.
-Die durable Pipeline-/Actor-Statusanzeige zeigt den aktuellen Phasenfortschritt, z. B.
-`Embedding 4/19` oder `Judge 2/7`.
+Pipeline Items und `pipeline.batch.phase.completed`-Events dokumentieren jede
+Phasengrenze. Ein erforderlicher Klassifikationsfehler stoppt den Batch vor dem
+Judge und fuehrt gemaess Retry-Policy zu einem erneuten Batch-Versuch. Die
+durable Pipeline-/Actor-Statusanzeige zeigt den aktuellen Phasenfortschritt, z. B.
+`embedding`, `ocr`, `classification` oder `judge`.
 
 #### Judge-Verifikation (optional)
 

@@ -215,6 +215,42 @@ PHP);
         @unlink($script);
     }
 
+    public function test_staged_document_batch_actor_job_runs_fixed_python_actor_command(): void
+    {
+        $capturePath = tempnam(storage_path('framework/testing'), 'archibot-actor-args-');
+        $capturePathLiteral = var_export($capturePath, true);
+        $script = $this->writeActorStub(<<<PHP
+file_put_contents({$capturePathLiteral}, json_encode(\$argv));
+PHP);
+
+        Config::set('archibot.python_binary', $script);
+        $source = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_SUCCEEDED,
+            'payload' => [],
+        ]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_STAGED_DOCUMENT_BATCH,
+            'status' => Command::STATUS_PENDING,
+            'payload' => ['source_command_id' => $source->id],
+        ]);
+
+        RunPythonActorJob::stagedDocumentBatch($command->id)->handle(app(PythonActorRunner::class));
+
+        $argv = json_decode((string) file_get_contents($capturePath), true);
+        $this->assertSame([
+            $script,
+            '-m',
+            'app.actor_runner',
+            'process-staged-document-batch',
+            '--command-id',
+            (string) $command->id,
+        ], $argv);
+
+        @unlink($capturePath);
+        @unlink($script);
+    }
+
     public function test_reindex_actor_job_runs_fixed_python_actor_command(): void
     {
         $capturePath = tempnam(storage_path('framework/testing'), 'archibot-actor-args-');
@@ -555,6 +591,7 @@ $actor = match ($actorCommand) {
     'build-embedding-index' => 'build_embedding_index',
     'process-document' => 'handle_document_pipeline',
     'reconcile-poll' => 'reconcile_inbox_documents',
+    'process-staged-document-batch' => 'process_staged_document_batch',
     'reindex' => 'reindex',
     'reindex-ocr' => 'reindex_ocr',
     'handle-webhook' => 'handle_paperless_webhook',

@@ -198,6 +198,11 @@ def test_run_webhook_delivery_invokes_fixed_actor(monkeypatch):
             "pipeline_run",
         ),
         (["reconcile-poll", "--command-id", "1"], "reconcile_inbox_documents", "command"),
+        (
+            ["process-staged-document-batch", "--command-id", "1"],
+            "process_staged_document_batch",
+            "command",
+        ),
         (["reindex", "--command-id", "1"], "reindex", "command"),
         (["reindex-ocr", "--command-id", "1"], "reindex_ocr", "command"),
         (["handle-webhook", "--delivery-id", "1"], "handle_paperless_webhook", "webhook_delivery"),
@@ -220,6 +225,11 @@ def test_every_actor_family_has_fixed_protocol_identity(argv, actor, source_kind
             "pipeline_run",
         ),
         (["reconcile-poll", "--command-id", "1"], "reconcile_inbox_documents", "command"),
+        (
+            ["process-staged-document-batch", "--command-id", "1"],
+            "process_staged_document_batch",
+            "command",
+        ),
         (["reindex", "--command-id", "1"], "reindex", "command"),
         (["reindex-ocr", "--command-id", "1"], "reindex_ocr", "command"),
         (["handle-webhook", "--delivery-id", "1"], "handle_paperless_webhook", "webhook_delivery"),
@@ -288,6 +298,32 @@ def test_run_poll_reconciliation_uses_command_payload_limit_and_force(monkeypatc
     actor_runner.run_poll_reconciliation_command(44)
 
     assert calls == [(3, True, 44)]
+
+
+def test_staged_document_batch_uses_source_command_and_shared_embedding_gate(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        actor_runner,
+        "load_command",
+        lambda command_id: CommandRecord(
+            id=command_id,
+            type="staged_document_batch",
+            status="queued",
+            payload={"source_command_id": "44"},
+        ),
+    )
+    monkeypatch.setattr(
+        actor_runner,
+        "_handle_staged_document_batch_impl",
+        lambda command_id, source_command_id, *, embedding_ready: calls.append(
+            (command_id, source_command_id, embedding_ready)
+        ),
+    )
+
+    actor_runner.run_staged_document_batch_command(55)
+
+    assert calls == [(55, 44, True)]
 
 
 def test_embedding_build_transition_and_reindex_lifecycle_are_inside_child_exclusive_lease(

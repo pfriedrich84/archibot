@@ -2,6 +2,7 @@
 
 namespace App\Services\Pipeline;
 
+use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\PollCandidate;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,9 +30,31 @@ class PollCandidateConsumer
     }
 
     /** @return array{completed: int, skipped: int, failed: int} */
+    public function consumeEntireCommand(int $commandId, int $chunkSize = 1000): array
+    {
+        $chunkSize = max(1, $chunkSize);
+        $totals = ['completed' => 0, 'skipped' => 0, 'failed' => 0];
+        do {
+            $counts = $this->consumeCommand($commandId, $chunkSize);
+            foreach ($totals as $key => $value) {
+                $totals[$key] = $value + $counts[$key];
+            }
+            $processed = array_sum($counts);
+        } while ($counts['failed'] === 0 && $processed >= $chunkSize);
+
+        return $totals;
+    }
+
+    /** @return array{completed: int, skipped: int, failed: int} */
     public function replayPending(int $limit = 100): array
     {
-        return $this->consumeQuery(PollCandidate::query(), $limit);
+        return $this->consumeQuery(
+            PollCandidate::query()->whereHas('command', function ($query): void {
+                $query->where('type', Command::TYPE_POLL_RECONCILIATION)
+                    ->where('status', Command::STATUS_SUCCEEDED);
+            }),
+            $limit,
+        );
     }
 
     /**
@@ -141,6 +164,7 @@ class PollCandidateConsumer
                 forceNewRun: $force,
                 forceToken: $force ? $candidate->candidate_id : null,
                 commandId: $candidate->command_id,
+                deferDispatch: true,
             );
         } catch (Throwable $exception) {
             return $this->releaseFailedClaim($lease, $exception::class) ? 'failed' : 'skipped';

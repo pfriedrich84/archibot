@@ -1,9 +1,11 @@
+from app import execution_lifecycle
 from app.jobs import pipeline_items
 
 
 class FakeResult:
     def __init__(self, row=None):
         self.row = row
+        self.rowcount = 1
 
     def mappings(self):
         return self
@@ -84,6 +86,49 @@ def test_progress_from_pipeline_items_derives_counts(monkeypatch):
 
     assert pipeline_items.progress_from_pipeline_items(1) == (3, 1, 1, 0)
     assert calls[0][1] == {"pipeline_run_id": 1}
+
+
+def test_staged_pipeline_item_start_and_finish_are_attempt_fenced(monkeypatch):
+    calls = []
+    row = {"id": 6, "status": "running", "attempt": 2}
+    monkeypatch.setattr(pipeline_items, "engine", lambda: FakeEngine(calls, row))
+    monkeypatch.setattr(pipeline_items, "sql_text", lambda statement: statement)
+    token = execution_lifecycle.set_invocation_fence(
+        execution_lifecycle.InvocationFence(
+            actor_name="process_staged_document_batch",
+            execution_actor_name="process_staged_document_batch",
+            source_kind="command",
+            source_id=55,
+            execution_token="batch-token",
+            source_version=3,
+            actor_execution_id=7,
+            attempt=1,
+        )
+    )
+    try:
+        item = pipeline_items.start_or_resume_staged_pipeline_item(
+            pipeline_run_id=1,
+            batch_command_id=55,
+            item_type="classification",
+            item_key="classification:42",
+            paperless_document_id=42,
+        )
+        pipeline_items.finish_staged_pipeline_item(
+            item,
+            pipeline_run_id=1,
+            batch_command_id=55,
+            status="succeeded",
+        )
+    finally:
+        execution_lifecycle.reset_invocation_fence(token)
+
+    assert "FOR SHARE" in calls[0][0]
+    assert "active_actor_token = :execution_token" in calls[1][0]
+    assert "status NOT IN ('cancel_requested', 'cancelled')" in calls[1][0]
+    assert "FOR SHARE" in calls[2][0]
+    assert "attempt = :attempt" in calls[3][0]
+    assert calls[3][1]["attempt"] == 2
+    assert calls[3][1]["execution_token"] == "batch-token"
 
 
 def test_start_or_resume_pipeline_item_uses_stable_item_key(monkeypatch):

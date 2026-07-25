@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'command_id', 'webhook_delivery_id', 'type', 'status', 'scope', 'trigger_source',
+    'command_id', 'batch_command_id', 'webhook_delivery_id', 'type', 'status', 'scope', 'trigger_source',
     'paperless_document_id', 'paperless_modified', 'content_hash', 'pipeline_dedupe_key',
     'coalesced_sources', 'progress_total', 'progress_done', 'progress_failed',
     'progress_skipped', 'progress_current_phase', 'progress_phase_total',

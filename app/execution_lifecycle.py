@@ -88,16 +88,29 @@ def current_invocation_fence() -> InvocationFence | None:
 def source_fence(source_kind: str, source_id: int) -> tuple[str, dict[str, Any]]:
     """Return a SQL predicate fencing source writes to the active attempt."""
     fence = _invocation.get()
-    if fence is None or fence.source_kind != source_kind or fence.source_id != source_id:
+    if fence is None:
         return "", {}
-    return (
-        " AND lifecycle_version = :fence_source_version"
-        " AND active_actor_token = :fence_execution_token AND status = 'running'",
-        {
-            "fence_source_version": fence.source_version,
-            "fence_execution_token": fence.execution_token,
-        },
-    )
+    params = {
+        "fence_source_version": fence.source_version,
+        "fence_execution_token": fence.execution_token,
+    }
+    if fence.source_kind == source_kind and fence.source_id == source_id:
+        return (
+            " AND lifecycle_version = :fence_source_version"
+            " AND active_actor_token = :fence_execution_token AND status = 'running'",
+            params,
+        )
+    if source_kind == "pipeline_run" and fence.source_kind == "command":
+        return (
+            " AND batch_command_id = :fence_batch_command_id"
+            " AND EXISTS (SELECT 1 FROM commands batch_fence"
+            " WHERE batch_fence.id = pipeline_runs.batch_command_id"
+            " AND batch_fence.lifecycle_version = :fence_source_version"
+            " AND batch_fence.active_actor_token = :fence_execution_token"
+            " AND batch_fence.status = 'running')",
+            {**params, "fence_batch_command_id": fence.source_id},
+        )
+    return "", {}
 
 
 @dataclass(frozen=True)

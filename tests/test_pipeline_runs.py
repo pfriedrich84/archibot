@@ -78,6 +78,43 @@ def test_load_document_pipeline_run_returns_document_fields(monkeypatch):
     )
 
 
+def test_list_batch_runs_preserves_succeeded_children_in_durable_membership(monkeypatch):
+    calls = []
+
+    class ListResult(FakeResult):
+        def all(self):
+            return [
+                {
+                    "id": 42,
+                    "status": "succeeded",
+                    "paperless_document_id": 99,
+                    "paperless_modified": None,
+                    "content_hash": "hash",
+                    "retry_count": 0,
+                    "max_retries": 5,
+                    "command_id": 12,
+                    "batch_command_id": 55,
+                }
+            ]
+
+    class ListConnection(FakeConnection):
+        def execute(self, statement, params):
+            self.calls.append((statement, params))
+            return ListResult(None)
+
+    class ListEngine(FakeEngine):
+        def connect(self):
+            return ListConnection(self.calls)
+
+    monkeypatch.setattr(pipeline_runs, "engine", lambda: ListEngine(calls))
+    monkeypatch.setattr(pipeline_runs, "sql_text", lambda statement: statement)
+
+    runs = pipeline_runs.list_document_pipeline_runs_for_command(12, 55)
+
+    assert [run.status for run in runs] == ["succeeded"]
+    assert "status IN" not in calls[0][0]
+
+
 def test_cancel_check_treats_already_cancelled_run_as_terminal(monkeypatch):
     calls = []
     monkeypatch.setattr(pipeline_runs, "engine", lambda: FakeEngine(calls))

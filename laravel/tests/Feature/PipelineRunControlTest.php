@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
@@ -203,6 +204,40 @@ class PipelineRunControlTest extends TestCase
             ->assertStatus(409);
 
         $this->assertSame(PipelineRun::STATUS_PARTIALLY_FAILED, $run->refresh()->status);
+    }
+
+    public function test_batch_linked_child_controls_fail_closed(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $batch = Command::query()->create([
+            'type' => Command::TYPE_STAGED_DOCUMENT_BATCH,
+            'status' => Command::STATUS_FAILED_PERMANENT,
+            'payload' => ['source_command_id' => 1],
+        ]);
+        $failed = PipelineRun::query()->create([
+            'batch_command_id' => $batch->id,
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_FAILED_PERMANENT,
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 123,
+        ]);
+        $running = PipelineRun::query()->create([
+            'batch_command_id' => $batch->id,
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 124,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('pipeline-runs.retry', $failed))
+            ->assertStatus(409);
+        $this->actingAs($admin)
+            ->post(route('pipeline-runs.cancel', $running))
+            ->assertStatus(409);
+
+        $this->assertSame(PipelineRun::STATUS_FAILED_PERMANENT, $failed->fresh()->status);
+        $this->assertSame(PipelineRun::STATUS_RUNNING, $running->fresh()->status);
     }
 
     public function test_admin_can_request_cancel_for_active_pipeline_run(): void

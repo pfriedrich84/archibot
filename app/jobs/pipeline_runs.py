@@ -7,6 +7,14 @@ from dataclasses import dataclass
 from app.jobs.database import engine
 
 
+class StagedBatchFenceLost(RuntimeError):
+    """Raised when a staged actor no longer owns its batch command attempt."""
+
+
+class StagedBatchChildCancelled(ValueError):
+    """Raised when an administrator cancelled a child before a phase boundary."""
+
+
 @dataclass(frozen=True)
 class DocumentPipelineRunRecord:
     id: int
@@ -16,6 +24,8 @@ class DocumentPipelineRunRecord:
     content_hash: str | None
     retry_count: int
     max_retries: int
+    command_id: int | None = None
+    batch_command_id: int | None = None
 
 
 def sql_text(statement: str):
@@ -31,7 +41,7 @@ def load_document_pipeline_run(pipeline_run_id: int) -> DocumentPipelineRunRecor
     """Load the document-scoped fields needed by document actors."""
     statement = sql_text(
         """
-        SELECT id, status, paperless_document_id, paperless_modified, content_hash, retry_count, max_retries
+        SELECT id, status, paperless_document_id, paperless_modified, content_hash, retry_count, max_retries, command_id, batch_command_id
         FROM pipeline_runs
         WHERE id = :pipeline_run_id
           AND type = 'document'
@@ -53,7 +63,103 @@ def load_document_pipeline_run(pipeline_run_id: int) -> DocumentPipelineRunRecor
         content_hash=None if row["content_hash"] is None else str(row["content_hash"]),
         retry_count=int(row["retry_count"]),
         max_retries=int(row["max_retries"]),
+        command_id=None if row.get("command_id") is None else int(row["command_id"]),
+        batch_command_id=(
+            None if row.get("batch_command_id") is None else int(row["batch_command_id"])
+        ),
     )
+
+
+def list_document_pipeline_runs_for_command(
+    command_id: int, batch_command_id: int
+) -> list[DocumentPipelineRunRecord]:
+    """Load the complete durable document target set created by one poll command."""
+    statement = sql_text(
+        """
+        SELECT id, status, paperless_document_id, paperless_modified, content_hash,
+               retry_count, max_retries, command_id, batch_command_id
+        FROM pipeline_runs
+        WHERE command_id = :command_id
+          AND batch_command_id = :batch_command_id
+          AND type = 'document'
+          AND paperless_document_id IS NOT NULL
+        ORDER BY id ASC
+        """
+    )
+    with engine().connect() as connection:
+        rows = (
+            connection.execute(
+                statement,
+                {"command_id": command_id, "batch_command_id": batch_command_id},
+            )
+            .mappings()
+            .all()
+        )
+
+    return [
+        DocumentPipelineRunRecord(
+            id=int(row["id"]),
+            status=str(row["status"]),
+            paperless_document_id=int(row["paperless_document_id"]),
+            paperless_modified=(
+                None if row["paperless_modified"] is None else str(row["paperless_modified"])
+            ),
+            content_hash=None if row["content_hash"] is None else str(row["content_hash"]),
+            retry_count=int(row["retry_count"]),
+            max_retries=int(row["max_retries"]),
+            command_id=int(row["command_id"]),
+            batch_command_id=int(row["batch_command_id"]),
+        )
+        for row in rows
+    ]
+
+
+def ensure_staged_batch_active(batch_command_id: int, pipeline_run_ids: list[int]) -> None:
+    """Require the current command fence and reject cancelled batch children."""
+    from app.execution_lifecycle import current_invocation_fence
+
+    fence = current_invocation_fence()
+    if fence is None or fence.source_kind != "command" or fence.source_id != batch_command_id:
+        raise StagedBatchFenceLost("staged batch invocation fence is missing")
+
+    statement = sql_text(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM commands
+            WHERE id = :batch_command_id
+              AND status = 'running'
+              AND lifecycle_version = :source_version
+              AND active_actor_token = :execution_token
+        ) AS owns_fence,
+        EXISTS (
+            SELECT 1
+            FROM pipeline_runs
+            WHERE id = ANY(CAST(:pipeline_run_ids AS BIGINT[]))
+              AND batch_command_id = :batch_command_id
+              AND status IN ('cancel_requested', 'cancelled')
+        ) AS has_cancelled_child
+        """
+    )
+    with engine().connect() as connection:
+        row = (
+            connection.execute(
+                statement,
+                {
+                    "batch_command_id": batch_command_id,
+                    "pipeline_run_ids": pipeline_run_ids,
+                    "source_version": fence.source_version,
+                    "execution_token": fence.execution_token,
+                },
+            )
+            .mappings()
+            .first()
+        )
+
+    if row is None or not bool(row["owns_fence"]):
+        raise StagedBatchFenceLost("staged batch command fence was superseded")
+    if bool(row["has_cancelled_child"]):
+        raise StagedBatchChildCancelled("a staged batch child was cancelled")
 
 
 def list_embedding_blocked_pipeline_run_ids(limit: int = 100) -> list[int]:
@@ -217,6 +323,34 @@ def mark_pipeline_run_retrying(
         )
 
 
+def _lock_current_batch_command(connection) -> None:
+    """Serialize child mutations against recovery changing the command fence."""
+    from app.execution_lifecycle import current_invocation_fence
+
+    fence = current_invocation_fence()
+    if fence is None or fence.source_kind != "command":
+        return
+    locked = connection.execute(
+        sql_text(
+            """
+            SELECT id FROM commands
+            WHERE id = :batch_command_id
+              AND status = 'running'
+              AND lifecycle_version = :source_version
+              AND active_actor_token = :execution_token
+            FOR SHARE
+            """
+        ),
+        {
+            "batch_command_id": fence.source_id,
+            "source_version": fence.source_version,
+            "execution_token": fence.execution_token,
+        },
+    ).first()
+    if locked is None:
+        raise StagedBatchFenceLost("staged batch command fence was superseded")
+
+
 def mark_pipeline_run_status(
     pipeline_run_id: int,
     *,
@@ -247,6 +381,7 @@ def mark_pipeline_run_status(
         """
     )
     with engine().begin() as connection:
+        _lock_current_batch_command(connection)
         connection.execute(
             statement,
             {
