@@ -147,15 +147,21 @@
         </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Release threshold</div>
-            <div class="mt-2 text-3xl font-semibold">{snapshot.release_threshold}</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {snapshot.release_threshold}
+            </div>
         </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Target population</div>
-            <div class="mt-2 text-3xl font-semibold">{snapshot.release_target_population}</div>
+            <div class="mt-2 text-3xl font-semibold">
+                {snapshot.release_target_population}
+            </div>
         </div>
         <div class="rounded-xl border p-4">
             <div class="text-sm text-muted-foreground">Index scope</div>
-            <div class="mt-2 text-sm font-medium">{snapshot.scope ?? 'default'}</div>
+            <div class="mt-2 text-sm font-medium">
+                {snapshot.scope ?? 'default'}
+            </div>
         </div>
     </section>
 

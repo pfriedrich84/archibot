@@ -417,7 +417,8 @@
                     <div>
                         <h3 class="font-medium">Paperless AI Suggest</h3>
                         <p class="text-sm text-muted-foreground">
-                            Manual Paperless AI Suggest works immediately after setup. Similar documents remain a separate toggle.
+                            Manual Paperless AI Suggest works immediately after
+                            setup. Similar documents remain a separate toggle.
                         </p>
                     </div>
 

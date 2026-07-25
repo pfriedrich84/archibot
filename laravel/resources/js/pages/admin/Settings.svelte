@@ -96,10 +96,7 @@
         paperlessAiState: {
             desired: Record<string, unknown>;
             remote: Record<string, unknown> | null;
-            drift_fields: Record<
-                string,
-                { desired: unknown; remote: unknown }
-            >;
+            drift_fields: Record<string, { desired: unknown; remote: unknown }>;
             sync_status: string;
             last_remote_read_at: string | null;
             error?: string;
@@ -241,7 +238,9 @@
             const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
-                throw new Error(data?.message ?? 'Could not refresh Paperless AI state.');
+                throw new Error(
+                    data?.message ?? 'Could not refresh Paperless AI state.',
+                );
             }
 
             paperlessAiState = data;
@@ -329,9 +328,11 @@
     <aside
         class="max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
     >
-        <strong>Conversational document lookup is disabled for every user.</strong>
-        Its page, routes, provider setting, prompt editor, and global MCP document lookup
-        tools are unavailable.
+        <strong
+            >Conversational document lookup is disabled for every user.</strong
+        >
+        Its page, routes, provider setting, prompt editor, and global MCP document
+        lookup tools are unavailable.
         <a
             class="underline"
             href="https://github.com/pfriedrich84/archibot/issues/221"
@@ -567,7 +568,8 @@
                         Paperless AI managed configuration
                     </h2>
                     <p class="text-sm text-muted-foreground">
-                        ArchiBot is the desired-state source. Drift is detected and shown here, but not overwritten automatically.
+                        ArchiBot is the desired-state source. Drift is detected
+                        and shown here, but not overwritten automatically.
                     </p>
                 </div>
                 <Button
@@ -584,7 +586,9 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <div class="rounded-lg border p-4">
                     <div class="text-sm text-muted-foreground">Sync status</div>
-                    <div class="mt-1 font-medium">{paperlessAiState.sync_status}</div>
+                    <div class="mt-1 font-medium">
+                        {paperlessAiState.sync_status}
+                    </div>
                     {#if paperlessAiState.last_remote_read_at}
                         <div class="mt-1 text-xs text-muted-foreground">
                             Last remote read: {paperlessAiState.last_remote_read_at}
@@ -602,9 +606,12 @@
                     {/if}
                 </div>
                 <div class="rounded-lg border p-4">
-                    <div class="text-sm text-muted-foreground">Detected drift fields</div>
+                    <div class="text-sm text-muted-foreground">
+                        Detected drift fields
+                    </div>
                     <div class="mt-1 text-3xl font-semibold">
-                        {Object.keys(paperlessAiState.drift_fields ?? {}).length}
+                        {Object.keys(paperlessAiState.drift_fields ?? {})
+                            .length}
                     </div>
                 </div>
             </div>
@@ -614,11 +621,15 @@
                     <h3 class="font-medium">Desired state</h3>
                     <dl class="mt-3 grid gap-2 text-sm">
                         {#each Object.entries(paperlessAiState.desired ?? {}) as [key, value] (key)}
-                            <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                            <div
+                                class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3"
+                            >
                                 <dt class="text-muted-foreground">{key}</dt>
                                 <dd class="break-all">
                                     {#if key.endsWith('_endpoint') || key.endsWith('_url')}
-                                        <span class="break-all">{String(value)}</span>
+                                        <span class="break-all"
+                                            >{String(value)}</span
+                                        >
                                     {:else}
                                         {String(value)}
                                     {/if}
@@ -632,11 +643,15 @@
                     {#if paperlessAiState.remote}
                         <dl class="mt-3 grid gap-2 text-sm">
                             {#each Object.entries(paperlessAiState.remote ?? {}) as [key, value] (key)}
-                                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                                <div
+                                    class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3"
+                                >
                                     <dt class="text-muted-foreground">{key}</dt>
                                     <dd class="break-all">
                                         {#if key.endsWith('_endpoint') || key.endsWith('_url')}
-                                            <span class="break-all">{String(value)}</span>
+                                            <span class="break-all"
+                                                >{String(value)}</span
+                                            >
                                         {:else}
                                             {String(value)}
                                         {/if}
@@ -658,7 +673,9 @@
                     <div class="mt-3 overflow-x-auto">
                         <table class="min-w-full text-sm">
                             <thead>
-                                <tr class="border-b text-left text-muted-foreground">
+                                <tr
+                                    class="border-b text-left text-muted-foreground"
+                                >
                                     <th class="py-2 pr-4">Field</th>
                                     <th class="py-2 pr-4">Desired</th>
                                     <th class="py-2">Remote</th>
@@ -666,18 +683,30 @@
                             </thead>
                             <tbody>
                                 {#each Object.entries(paperlessAiState.drift_fields ?? {}) as [field, values] (field)}
-                                    <tr class="border-b align-top last:border-b-0">
-                                        <td class="py-2 pr-4 font-medium">{field}</td>
+                                    <tr
+                                        class="border-b align-top last:border-b-0"
+                                    >
+                                        <td class="py-2 pr-4 font-medium"
+                                            >{field}</td
+                                        >
                                         <td class="py-2 pr-4 break-all">
                                             {#if field.endsWith('_endpoint') || field.endsWith('_url')}
-                                                <span class="break-all">{String(values.desired)}</span>
+                                                <span class="break-all"
+                                                    >{String(
+                                                        values.desired,
+                                                    )}</span
+                                                >
                                             {:else}
                                                 {String(values.desired)}
                                             {/if}
                                         </td>
                                         <td class="py-2 break-all">
                                             {#if field.endsWith('_endpoint') || field.endsWith('_url')}
-                                                <span class="break-all">{String(values.remote)}</span>
+                                                <span class="break-all"
+                                                    >{String(
+                                                        values.remote,
+                                                    )}</span
+                                                >
                                             {:else}
                                                 {String(values.remote)}
                                             {/if}
