@@ -122,6 +122,15 @@
             .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
             ?.getAttribute('content') ?? '';
 
+    const csrfHeaders = (includeJsonContentType = false) => ({
+        Accept: 'application/json',
+        ...(includeJsonContentType
+            ? { 'Content-Type': 'application/json' }
+            : {}),
+        'X-CSRF-TOKEN': csrfToken(),
+        'X-Requested-With': 'XMLHttpRequest',
+    });
+
     const modelSettingInputNames = new Set([
         'classification_model',
         'embedding_model',
@@ -184,11 +193,7 @@
         try {
             const response = await fetch(aiModelActions.discover, {
                 method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
+                headers: csrfHeaders(true),
                 body: JSON.stringify({
                     llm_provider: settingValue('llm_provider'),
                     ollama_url: settingValue('ollama_url'),
@@ -230,10 +235,7 @@
         try {
             const response = await fetch(paperlessAiStateUrl(), {
                 method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
+                headers: csrfHeaders(),
             });
             const data = await response.json().catch(() => ({}));
 
@@ -274,11 +276,7 @@
             for (const configured of configuredModels) {
                 const response = await fetch(aiModelActions.validate, {
                     method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken(),
-                    },
+                    headers: csrfHeaders(true),
                     body: JSON.stringify({
                         model_id: configured.model,
                         role: configured.role,
