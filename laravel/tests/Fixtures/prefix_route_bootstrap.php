@@ -1,8 +1,8 @@
 <?php
 
-use App\Models\EntityApproval;
 use App\Models\McpToken;
 use App\Models\OcrReview;
+use App\Models\PaperlessMasterDataCase;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
 use App\Services\Paperless\PaperlessDocumentPermissions;
@@ -77,6 +77,14 @@ $app->instance(
 Http::fake(function (Illuminate\Http\Client\Request $request) {
     $url = $request->url();
 
+    if (str_contains($url, '/api/ui_settings/')) {
+        return Http::response([
+            'ai_settings' => [
+                'manual_enabled' => true,
+                'similar_documents_enabled' => false,
+            ],
+        ]);
+    }
     if (str_contains($url, 'ollama.test/api/tags')) {
         return Http::response([
             'models' => [['name' => 'safe-model']],
@@ -122,9 +130,11 @@ $ocrReview = OcrReview::query()->create([
     'status' => OcrReview::STATUS_PENDING,
     'created_by_user_id' => $user->id,
 ]);
-$entity = EntityApproval::factory()->create([
-    'type' => EntityApproval::TYPE_TAG,
-    'name' => 'Prefix matrix tag',
+$entity = PaperlessMasterDataCase::query()->create([
+    'entity_type' => 'tag',
+    'normalized_name' => 'prefix-matrix-tag',
+    'canonical_name' => 'Prefix matrix tag',
+    'status' => PaperlessMasterDataCase::STATUS_PENDING,
 ]);
 $mcpToken = McpToken::factory()->create(['user_id' => $user->id]);
 
@@ -135,17 +145,17 @@ $routeParameters = [
     'ocr-reviews.approve' => [$ocrReview],
     'ocr-reviews.reject' => [$ocrReview],
     'entities.index' => ['segment' => 'tags'],
-    'entities.reject' => ['segment' => 'tags', 'entityApproval' => $entity],
+    'master-data-cases.reject' => ['segment' => 'tags', 'paperlessMasterDataCase' => $entity],
     'mcp-tokens.destroy' => [$mcpToken],
     'admin.settings.edit' => ['section' => 'ai-provider'],
 ];
 $names = [
     'home', 'dashboard', 'admin.settings.edit', 'admin.settings.update',
-    'admin.settings.ai-models', 'admin.settings.ai-models.validate',
+    'admin.settings.ai-models', 'admin.settings.ai-models.validate', 'admin.settings.paperless-ai-state',
     'review.index', 'review.bulk.accept', 'review.bulk.reject', 'review.show',
     'review.preview', 'ocr-reviews.index', 'ocr-reviews.store',
     'ocr-reviews.show', 'ocr-reviews.approve', 'ocr-reviews.reject',
-    'entities.index', 'entities.reject', 'mcp-tokens.index',
+    'entities.index', 'master-data-cases.reject', 'mcp-tokens.index',
     'mcp-tokens.store', 'mcp-tokens.destroy',
 ];
 $routes = [];
@@ -188,8 +198,11 @@ $dispatch = static function (
             foreach ($value as $item) {
                 $collectUrls($item);
             }
-        } elseif (is_string($value)
-            && (str_starts_with($value, '/') || str_starts_with($value, 'http://localhost/'))) {
+        } elseif (
+            is_string($value)
+            && (str_starts_with($value, '/') || str_starts_with($value, 'http://localhost/'))
+            && ! preg_match('#^/paperless-ai/v\d+/#', $value)
+        ) {
             $urls[] = $value;
         }
     };
@@ -227,6 +240,7 @@ $flows = [
         'llm_provider' => 'ollama',
         'ollama_url' => 'http://ollama.test',
     ], $json),
+    'paperless_ai_state_post' => $dispatch('POST', $base.'/admin/settings/paperless-ai-state', [], $json),
     'review_bulk_accept_post' => $dispatch('POST', $base.'/review/bulk/accept', [
         'suggestion_ids' => [$acceptSuggestion->id],
     ], ['Referer' => 'http://localhost'.$base.'/review']),
@@ -242,7 +256,7 @@ $flows = [
     'ocr_reject_post' => $dispatch('POST', $base.'/ocr-reviews/'.$ocrReview->id.'/reject', [], [
         'Referer' => 'http://localhost'.$base.'/ocr-reviews/'.$ocrReview->id,
     ]),
-    'entity_reject_post' => $dispatch('POST', $base.'/tags/entity-approvals/'.$entity->id.'/reject', [], [
+    'entity_reject_post' => $dispatch('POST', $base.'/tags/master-data-cases/'.$entity->id.'/reject', [], [
         'Referer' => 'http://localhost'.$base.'/tags',
     ]),
     'mcp_index_get' => $dispatch('GET', $base.'/settings/mcp-tokens', [], $inertia),
@@ -270,4 +284,9 @@ echo json_encode([
     'configured_prefix' => config('archibot.path_prefix'),
     'routes' => $routes,
     'flows' => $flows,
+    'debug' => [
+        'settings_get_urls' => $flows['settings_get']['urls'],
+        'settings_get_body' => $flows['settings_get']['body'],
+        'settings_get_all_paths' => preg_match_all('/https?:\\/\\/[^"\\s]+|\\/[A-Za-z0-9_\\/-]+/', $flows['settings_get']['body'], $matches) ? array_values(array_unique($matches[0])) : [],
+    ],
 ], JSON_THROW_ON_ERROR);

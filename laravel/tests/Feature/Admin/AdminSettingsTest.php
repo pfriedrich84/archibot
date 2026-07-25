@@ -70,7 +70,10 @@ class AdminSettingsTest extends TestCase
 
     public function test_admin_settings_can_show_a_single_section(): void
     {
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        Http::fake([
+            'https://paperless.test/api/ui_settings/' => Http::response(['ai_settings' => ['manual_enabled' => true]]),
+        ]);
 
         $this->actingAs($admin)
             ->get(route('admin.settings.edit', ['section' => 'embedding']))
@@ -110,6 +113,49 @@ class AdminSettingsTest extends TestCase
                         && ! $keys->contains('llm.judge_provider');
                 })
             );
+    }
+
+    public function test_admin_settings_expose_paperless_ai_state_and_drift(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        AppSetting::put('gui.base_url', 'https://archibot.example');
+        Http::fake([
+            'https://paperless.test/api/ui_settings/' => Http::response([
+                'ai_settings' => [
+                    'manual_enabled' => false,
+                    'similar_documents_enabled' => false,
+                    'suggest_endpoint' => 'https://other.example/paperless-ai/v1/completions-suggest',
+                    'suggest_model' => 'wrong-model',
+                    'embedding_provider_type' => 'ollama',
+                    'embedding_provider_url' => 'http://ollama:11434',
+                    'embedding_model' => 'other-embed',
+                    'timeout_seconds' => 60,
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.settings.edit', ['section' => 'paperless-ai']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('admin/Settings')
+                ->where('activeSection', 'paperless-ai')
+                ->where('paperlessAiState.sync_status', 'drift_detected')
+                ->has('paperlessAiState.drift_fields')
+            );
+    }
+
+    public function test_admin_can_refresh_paperless_ai_state(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'paperless_token' => 'admin-token']);
+        Http::fake([
+            'https://paperless.test/api/ui_settings/' => Http::response(['ai_settings' => ['manual_enabled' => true]]),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.settings.paperless-ai-state'))
+            ->assertOk()
+            ->assertJsonPath('sync_status', 'drift_detected');
     }
 
     public function test_admin_can_update_global_settings_and_write_audit_log(): void

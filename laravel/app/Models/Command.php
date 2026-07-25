@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['type', 'status', 'payload', 'idempotency_key', 'created_by_user_id', 'started_at', 'finished_at', 'error', 'next_retry_at', 'lifecycle_version', 'active_actor_token', 'created_at', 'updated_at'])]
+#[Fillable(['type', 'queue', 'priority', 'status', 'payload', 'idempotency_key', 'created_by_user_id', 'started_at', 'finished_at', 'error', 'next_retry_at', 'lifecycle_version', 'active_actor_token', 'created_at', 'updated_at'])]
 class Command extends Model
 {
     public const TYPE_EMBEDDING_INDEX_BUILD = 'embedding_index_build';
@@ -19,6 +19,14 @@ class Command extends Model
     public const TYPE_REVIEW_COMMIT = 'review_commit';
 
     public const TYPE_SYNC_ENTITY_APPROVAL = 'sync_entity_approval';
+
+    public const TYPE_SYNC_PAPERLESS_AI_CONFIG = 'sync_paperless_ai_config';
+
+    public const TYPE_SYNC_PAPERLESS_WORKFLOWS = 'sync_paperless_workflows';
+
+    public const TYPE_PAPERLESS_SIMILARITY_INDEX = 'paperless_similarity_index';
+
+    public const TYPE_CLASSIFY_WITH_ARCHIBOT = 'classify_with_archibot';
 
     public const STATUS_PENDING = 'pending';
 
@@ -47,6 +55,7 @@ class Command extends Model
     protected function casts(): array
     {
         return [
+            'priority' => 'integer',
             'payload' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',

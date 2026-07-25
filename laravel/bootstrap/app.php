@@ -34,6 +34,8 @@ return Application::configure(basePath: dirname(__DIR__))
             '*/webhook/*',
             'api/webhooks/*',
             '*/api/webhooks/*',
+            'paperless-ai/v1/completions-suggest',
+            '*/paperless-ai/v1/completions-suggest',
         ]);
 
         $middleware->web(append: [

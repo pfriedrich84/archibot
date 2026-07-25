@@ -37,6 +37,10 @@ class EmbeddingsTest extends TestCase
             'document_count' => 3,
             'embedded_count' => 2,
             'failed_count' => 0,
+            'scope' => 'paperless_documents',
+            'release_threshold' => 2,
+            'release_target_population' => 3,
+            'release_status' => EmbeddingIndexState::RELEASE_STATUS_BLOCKED,
         ]);
         DocumentEmbedding::query()->create([
             'paperless_document_id' => 10,
@@ -68,6 +72,11 @@ class EmbeddingsTest extends TestCase
                 ->where('snapshot.stored_embedding_rows', 2)
                 ->where('snapshot.missing_count', 1)
                 ->where('snapshot.failed_count', 0)
+                ->where('snapshot.scope', 'paperless_documents')
+                ->where('snapshot.release_threshold', 2)
+                ->where('snapshot.release_target_population', 3)
+                ->where('snapshot.release_status', EmbeddingIndexState::RELEASE_STATUS_BLOCKED)
+                ->where('snapshot.released', false)
                 ->missing('buildUrl')
                 ->missing('markStaleUrl')
                 ->missing('snapshot.db_path')
@@ -109,9 +118,13 @@ class EmbeddingsTest extends TestCase
             'document_count' => 10,
             'embedded_count' => 4,
             'failed_count' => 1,
+            'release_threshold' => 4,
+            'release_target_population' => 10,
         ]);
         $command = Command::query()->create([
             'type' => Command::TYPE_REINDEX,
+            'queue' => 'maintenance',
+            'priority' => 40,
             'status' => Command::STATUS_RUNNING,
             'payload' => ['ui_surface' => 'maintenance_quick_controls'],
         ]);
@@ -130,6 +143,8 @@ class EmbeddingsTest extends TestCase
                 ->where('latestEmbeddingBuildCommand.id', $command->id)
                 ->where('latestEmbeddingBuildCommand.type', Command::TYPE_REINDEX)
                 ->where('latestEmbeddingBuildCommand.status', Command::STATUS_RUNNING)
+                ->where('latestEmbeddingBuildCommand.queue', 'maintenance')
+                ->where('latestEmbeddingBuildCommand.priority', 40)
             );
     }
 
@@ -144,6 +159,8 @@ class EmbeddingsTest extends TestCase
         ]);
         Command::query()->create([
             'type' => Command::TYPE_EMBEDDING_INDEX_BUILD,
+            'queue' => 'embeddings',
+            'priority' => 30,
             'status' => Command::STATUS_FAILED,
             'error' => 'private document content',
         ]);
