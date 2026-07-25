@@ -1135,7 +1135,7 @@ class PipelineRecoveryDispatcher
                     'updated_at' => now(),
                 ]);
         } elseif ($execution->command_id !== null) {
-            Command::query()
+            $commandFailed = Command::query()
                 ->whereKey($execution->command_id)
                 ->where('lifecycle_version', $execution->source_version)
                 ->where(function ($query) use ($execution): void {
@@ -1149,6 +1149,29 @@ class PipelineRecoveryDispatcher
                     'error' => $errorType,
                     'updated_at' => now(),
                 ]);
+
+            if ($commandFailed === 1
+                && $execution->actor_name === PythonActorRunner::ACTOR_STAGED_DOCUMENT_BATCH) {
+                PipelineRun::query()
+                    ->where('batch_command_id', $execution->command_id)
+                    ->whereNotIn('status', [
+                        PipelineRun::STATUS_SUCCEEDED,
+                        PipelineRun::STATUS_CANCELLED,
+                        PipelineRun::STATUS_FAILED_PERMANENT,
+                        PipelineRun::STATUS_CANCEL_REQUESTED,
+                    ])
+                    ->update([
+                        'status' => PipelineRun::STATUS_FAILED_PERMANENT,
+                        'progress_current_phase' => 'batch_failed',
+                        'progress_message' => 'Staged batch recovery attempts were exhausted.',
+                        'progress_updated_at' => now(),
+                        'finished_at' => now(),
+                        'next_retry_at' => null,
+                        'error_type' => $errorType,
+                        'error' => 'Staged batch recovery attempts exhausted.',
+                        'updated_at' => now(),
+                    ]);
+            }
         } elseif ($execution->webhook_delivery_id !== null) {
             WebhookDelivery::query()
                 ->whereKey($execution->webhook_delivery_id)
