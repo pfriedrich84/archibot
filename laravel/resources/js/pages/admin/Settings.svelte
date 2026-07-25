@@ -124,7 +124,9 @@
 
     const csrfHeaders = (includeJsonContentType = false) => ({
         Accept: 'application/json',
-        ...(includeJsonContentType ? { 'Content-Type': 'application/json' } : {}),
+        ...(includeJsonContentType
+            ? { 'Content-Type': 'application/json' }
+            : {}),
         'X-CSRF-TOKEN': csrfToken(),
         'X-Requested-With': 'XMLHttpRequest',
     });
