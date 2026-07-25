@@ -27,7 +27,7 @@ Evidence-based constraints for ArchiBot changes.
 ## Compatibility constraints
 
 - Python runtime targets Python 3.12.
-- Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` currently allows PHP `^8.3`.
+- Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` requires PHP `^8.4`.
 - The migration target standardizes state and vector search on PostgreSQL/pgvector.
 - Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
 - CLI commands must not diverge from Laravel UI behavior. If a UI action uses PostgreSQL/pgvector, Laravel-managed settings, Laravel queue-backed actor dispatch, or durable pipeline state, the matching CLI command must use that same path or delegate to it; do not keep a separate SQLite/legacy implementation.
