@@ -284,5 +284,6 @@ echo json_encode([
     'debug' => [
         'settings_get_urls' => $flows['settings_get']['urls'],
         'settings_get_body' => $flows['settings_get']['body'],
+        'settings_get_all_paths' => preg_match_all('/https?:\\/\\/[^"\\s]+|\\/[A-Za-z0-9_\\/-]+/', $flows['settings_get']['body'], $matches) ? array_values(array_unique($matches[0])) : [],
     ],
 ], JSON_THROW_ON_ERROR);
