@@ -93,14 +93,36 @@ def _handle_staged_document_batch_impl(
     completed_steps = 0
 
     try:
-        runs = list_document_pipeline_runs_for_command(source_command_id, command_id)
-        if not runs:
+        batch_runs = list_document_pipeline_runs_for_command(source_command_id, command_id)
+        if not batch_runs:
             finish_actor_execution(
                 actor_execution,
                 status="skipped",
                 error_type="empty_target_set",
-                error_message="Staged document batch has no pending target documents.",
+                error_message="Staged document batch has no durable target documents.",
             )
+            return
+
+        run_ids = [run.id for run in batch_runs]
+
+        def assert_batch_active() -> None:
+            ensure_staged_batch_active(command_id, run_ids)
+
+        assert_batch_active()
+        runs = [run for run in batch_runs if run.status != "succeeded"]
+        if not runs:
+            publish_pipeline_event(
+                "pipeline.batch.completed",
+                command_id=command_id,
+                message="Globally staged document batch completion reconciled after recovery.",
+                payload={
+                    "source_command_id": source_command_id,
+                    "document_count": len(batch_runs),
+                    "phase_order": ["embedding", "ocr", "classification", "judge"],
+                    "reconciled_after_recovery": True,
+                },
+            )
+            finish_actor_execution(actor_execution, status="succeeded")
             return
 
         if embedding_ready is not True:
@@ -125,17 +147,16 @@ def _handle_staged_document_batch_impl(
                 command_id=command_id,
                 level="warning",
                 message=message,
-                payload={"source_command_id": source_command_id, "document_count": len(runs)},
+                payload={
+                    "source_command_id": source_command_id,
+                    "document_count": len(batch_runs),
+                    "remaining_document_count": len(runs),
+                },
             )
             return
 
-        run_ids = [run.id for run in runs]
-
-        def assert_batch_active() -> None:
-            ensure_staged_batch_active(command_id, run_ids)
-
-        assert_batch_active()
-        total_steps = len(runs) * 6
+        total_steps = len(batch_runs) * 6
+        completed_steps = (len(batch_runs) - len(runs)) * 6
 
         def update_batch_progress(phase: str, current_document_id: int) -> None:
             if actor_execution.id is None:
@@ -329,7 +350,7 @@ def _handle_staged_document_batch_impl(
             message="Globally staged document batch completed.",
             payload={
                 "source_command_id": source_command_id,
-                "document_count": len(runs),
+                "document_count": len(batch_runs),
                 "phase_order": ["embedding", "ocr", "classification", "judge"],
             },
         )
@@ -380,6 +401,6 @@ def _handle_staged_document_batch_impl(
         actor_name=actor_name,
         command_id=command_id,
         source_command_id=source_command_id,
-        document_count=len(runs),
+        document_count=len(batch_runs),
         duration_ms=int((time.monotonic() - started) * 1000),
     )

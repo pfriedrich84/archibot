@@ -73,7 +73,7 @@ def load_document_pipeline_run(pipeline_run_id: int) -> DocumentPipelineRunRecor
 def list_document_pipeline_runs_for_command(
     command_id: int, batch_command_id: int
 ) -> list[DocumentPipelineRunRecord]:
-    """Load the non-terminal document target set created by one poll command."""
+    """Load the complete durable document target set created by one poll command."""
     statement = sql_text(
         """
         SELECT id, status, paperless_document_id, paperless_modified, content_hash,
@@ -83,7 +83,6 @@ def list_document_pipeline_runs_for_command(
           AND batch_command_id = :batch_command_id
           AND type = 'document'
           AND paperless_document_id IS NOT NULL
-          AND status IN ('pending', 'running', 'retrying', 'blocked')
         ORDER BY id ASC
         """
     )
