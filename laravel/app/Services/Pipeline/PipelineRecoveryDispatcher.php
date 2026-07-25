@@ -10,6 +10,7 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
+use App\Services\Actors\PythonActorRunner;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
