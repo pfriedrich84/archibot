@@ -33,6 +33,34 @@ def sql_text(statement: str):
     return text(statement)
 
 
+def _lock_current_batch_command(connection) -> None:
+    from app.execution_lifecycle import current_invocation_fence
+    from app.jobs.pipeline_runs import StagedBatchFenceLost
+
+    fence = current_invocation_fence()
+    if fence is None or fence.source_kind != "command":
+        return
+    locked = connection.execute(
+        sql_text(
+            """
+            SELECT id FROM commands
+            WHERE id = :batch_command_id
+              AND status = 'running'
+              AND lifecycle_version = :source_version
+              AND active_actor_token = :execution_token
+            FOR SHARE
+            """
+        ),
+        {
+            "batch_command_id": fence.source_id,
+            "source_version": fence.source_version,
+            "execution_token": fence.execution_token,
+        },
+    ).first()
+    if locked is None:
+        raise StagedBatchFenceLost("staged batch progress fence was superseded")
+
+
 def update_pipeline_run_progress(pipeline_run_id: int, snapshot: ProgressSnapshot) -> None:
     """Persist a pipeline-level progress snapshot."""
     from app.execution_lifecycle import source_fence
@@ -53,6 +81,7 @@ def update_pipeline_run_progress(pipeline_run_id: int, snapshot: ProgressSnapsho
         """
     )
     with engine().begin() as connection:
+        _lock_current_batch_command(connection)
         connection.execute(
             statement,
             {

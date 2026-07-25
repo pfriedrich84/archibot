@@ -38,6 +38,7 @@ POLL_RECONCILIATION_COMMAND_TYPE = "poll_reconciliation"
 REINDEX_COMMAND_TYPE = "reindex"
 REINDEX_OCR_COMMAND_TYPE = "reindex_ocr"
 REVIEW_COMMIT_COMMAND_TYPE = "review_commit"
+STAGED_DOCUMENT_BATCH_COMMAND_TYPE = "staged_document_batch"
 
 
 class ActorRunnerError(RuntimeError):
@@ -69,6 +70,12 @@ def _handle_document_pipeline_impl(pipeline_run_id: int, **kwargs):
     from app.actors.document import _handle_document_pipeline_impl as invoke
 
     return invoke(pipeline_run_id, **kwargs)
+
+
+def _handle_staged_document_batch_impl(command_id: int, source_command_id: int, **kwargs):
+    from app.actors.document_batch import _handle_staged_document_batch_impl as invoke
+
+    return invoke(command_id, source_command_id, **kwargs)
 
 
 def _commit_review_suggestion_impl(review_suggestion_id: int, command_id: int | None = None):
@@ -121,6 +128,17 @@ def _payload_limit(command: CommandRecord) -> int | None:
     except (TypeError, ValueError) as exc:
         raise ActorRunnerError(f"Command {command.id} has invalid payload.limit") from exc
     return limit if limit > 0 else None
+
+
+def _payload_positive_int(command: CommandRecord, key: str) -> int:
+    raw_value = command.payload.get(key)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ActorRunnerError(f"Command {command.id} has invalid payload.{key}") from exc
+    if value <= 0:
+        raise ActorRunnerError(f"Command {command.id} has invalid payload.{key}")
+    return value
 
 
 def _payload_bool(command: CommandRecord, key: str) -> bool:
@@ -263,6 +281,31 @@ def run_document_pipeline(pipeline_run_id: int) -> None:
         log.info("document actor command finished", pipeline_run_id=pipeline_run_id)
 
 
+def run_staged_document_batch_command(command_id: int) -> None:
+    """Run one poll target set through globally ordered model-role phases."""
+    command = _load_typed_command(command_id, STAGED_DOCUMENT_BATCH_COMMAND_TYPE)
+    source_command_id = _payload_positive_int(command, "source_command_id")
+    with document_actor_lease() as lease_connection:
+        ready = embedding_index_ready(lease_connection)
+        log.info(
+            "staged document batch command started",
+            command_id=command.id,
+            source_command_id=source_command_id,
+            embedding_index_ready=ready,
+        )
+        _handle_staged_document_batch_impl(
+            command.id,
+            source_command_id,
+            embedding_ready=ready,
+        )
+        _finalize_command_from_execution(command.id, "process_staged_document_batch")
+        log.info(
+            "staged document batch command finished",
+            command_id=command.id,
+            source_command_id=source_command_id,
+        )
+
+
 def run_webhook_delivery(webhook_delivery_id: int) -> None:
     """Run one durable Paperless webhook delivery."""
     log.info("webhook actor command started", webhook_delivery_id=webhook_delivery_id)
@@ -334,6 +377,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Durable commands.id for a poll_reconciliation command",
     )
 
+    staged_batch = subparsers.add_parser(
+        "process-staged-document-batch",
+        help="Run a globally staged poll target set from a durable command id",
+    )
+    staged_batch.add_argument(
+        "--command-id",
+        type=int,
+        required=True,
+        help="Durable commands.id for a staged_document_batch command",
+    )
+
     reindex = subparsers.add_parser(
         "reindex",
         help="Run reindex from a durable command id",
@@ -382,6 +436,7 @@ def build_parser() -> argparse.ArgumentParser:
         embedding,
         document,
         poll,
+        staged_batch,
         reindex,
         ocr_reindex,
         webhook,
@@ -419,6 +474,14 @@ def _invocation(args: argparse.Namespace):
             "reconcile_inbox_documents",
             "command",
             "reconcile_inbox_documents",
+        )
+    if args.command == "process-staged-document-batch":
+        return (
+            run_staged_document_batch_command,
+            args.command_id,
+            "process_staged_document_batch",
+            "command",
+            "process_staged_document_batch",
         )
     if args.command == "reindex":
         return (

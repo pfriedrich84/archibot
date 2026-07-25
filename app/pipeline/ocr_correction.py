@@ -150,9 +150,20 @@ def cache_ocr_correction(
     corrected_text: str,
     ocr_mode: str,
     num_corrections: int,
+    *,
+    batch_command_id: int | None = None,
 ) -> None:
     """Store corrected text in the shared PostgreSQL repository."""
-    store_ocr_correction(document_id, corrected_text, ocr_mode, num_corrections)
+    if batch_command_id is None:
+        store_ocr_correction(document_id, corrected_text, ocr_mode, num_corrections)
+        return
+    store_ocr_correction(
+        document_id,
+        corrected_text,
+        ocr_mode,
+        num_corrections,
+        batch_command_id=batch_command_id,
+    )
 
 
 def get_cached_ocr(document_id: int) -> str | None:

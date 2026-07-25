@@ -47,6 +47,23 @@ Blocked:
 
 The only exception is the initial embedding/indexing pipeline itself.
 
+## Staged Target-Set Order
+
+After the global readiness gate opens, a poll target set follows ADR-0021:
+
+```text
+target embeddings for all documents
+  -> configured OCR for all eligible documents
+  -> classification for all documents
+  -> configured judge verification for all documents
+  -> publish Review Suggestions
+```
+
+The target-embedding phase does not weaken the trust boundary. Inbox Document
+embeddings remain `trusted_for_context = false`. Batch-linked document Pipeline
+Runs are dispatched only through their staged-batch command so recovery cannot
+accidentally bypass the phase barrier with singleton document actors.
+
 ## Required State Model
 
 Recommended table:

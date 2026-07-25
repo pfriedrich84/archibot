@@ -18,6 +18,7 @@ class PipelineRecoveryDispatcher
     public function __construct(
         private readonly DocumentPipelineStarter $pipelineStarter,
         private readonly PollCandidateConsumer $pollCandidates,
+        private readonly StagedDocumentBatchDispatcher $stagedBatches,
     ) {}
 
     /**
@@ -33,6 +34,7 @@ class PipelineRecoveryDispatcher
         try {
             $actors = $this->recoverActorExecutions($limit);
             $pollCandidates = $this->pollCandidates->replayPending($limit);
+            $this->stagedBatches->dispatchReadyPollBatches($limit);
             $cancelled = $this->finalizeCancelRequestedRuns($limit);
             $documentRuns = $this->recoverDocumentPipelineRuns($limit);
             $webhookDeliveries = $this->recoverQueuedWebhookDeliveries($limit);
@@ -534,6 +536,11 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('batch_command_id')
+            ->where(function ($query): void {
+                $query->whereNull('progress_current_phase')
+                    ->orWhere('progress_current_phase', '!=', 'staged_batch_wait');
+            })
             ->where(function ($query): void {
                 $query->where('status', PipelineRun::STATUS_PENDING)
                     ->orWhere(function ($query): void {
@@ -569,6 +576,7 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('batch_command_id')
             ->where('status', PipelineRun::STATUS_QUEUED)
             ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()])
             ->whereDoesntHave('events', function ($query): void {
@@ -601,6 +609,7 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('batch_command_id')
             ->where('status', PipelineRun::STATUS_RUNNING)
             ->whereRaw('COALESCE(progress_updated_at, started_at, updated_at) <= ?', [$this->staleRunningCutoff()])
             ->oldest('updated_at')
@@ -850,6 +859,7 @@ class PipelineRecoveryDispatcher
             Command::TYPE_POLL_RECONCILIATION,
             Command::TYPE_REINDEX,
             Command::TYPE_REINDEX_OCR,
+            Command::TYPE_STAGED_DOCUMENT_BATCH,
             Command::TYPE_REVIEW_COMMIT,
             Command::TYPE_SYNC_ENTITY_APPROVAL,
         ];
@@ -877,6 +887,7 @@ class PipelineRecoveryDispatcher
                 Command::TYPE_POLL_RECONCILIATION => RunPythonActorJob::pollReconciliation($command->id),
                 Command::TYPE_REINDEX => RunPythonActorJob::reindex($command->id),
                 Command::TYPE_REINDEX_OCR => RunPythonActorJob::reindexOcr($command->id),
+                Command::TYPE_STAGED_DOCUMENT_BATCH => RunPythonActorJob::stagedDocumentBatch($command->id),
                 Command::TYPE_REVIEW_COMMIT => $this->reviewCommitJobOrFail($command),
                 Command::TYPE_SYNC_ENTITY_APPROVAL => new ApplyEntityApprovalCommand($command->id),
                 default => null,
@@ -1397,6 +1408,10 @@ class PipelineRecoveryDispatcher
             ->where('type', 'document')
             ->where('status', PipelineRun::STATUS_BLOCKED)
             ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+            ->where(function ($query): void {
+                $query->whereNotNull('batch_command_id')
+                    ->orWhere('progress_current_phase', '!=', 'staged_batch_wait');
+            })
             ->oldest('updated_at')
             ->oldest('id')
             ->limit($limit)
@@ -1420,14 +1435,45 @@ class PipelineRecoveryDispatcher
                 return false;
             }
 
-            $run->update([
-                'status' => PipelineRun::STATUS_PENDING,
-                'progress_current_phase' => 'queued',
-                'progress_message' => 'Released by Laravel recovery because the embedding index is complete.',
-                'progress_updated_at' => now(),
-                'error_type' => null,
-                'error' => null,
-            ]);
+            if ($run->batch_command_id !== null) {
+                $batch = Command::query()->lockForUpdate()->find($run->batch_command_id);
+                if ($batch === null
+                    || $batch->type !== Command::TYPE_STAGED_DOCUMENT_BATCH
+                    || $batch->status !== Command::STATUS_BLOCKED) {
+                    return false;
+                }
+
+                PipelineRun::query()
+                    ->where('batch_command_id', $batch->id)
+                    ->where('status', PipelineRun::STATUS_BLOCKED)
+                    ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+                    ->update([
+                        'status' => PipelineRun::STATUS_PENDING,
+                        'progress_current_phase' => 'staged_batch_wait',
+                        'progress_message' => 'Staged batch released because the embedding index is complete.',
+                        'progress_updated_at' => now(),
+                        'error_type' => null,
+                        'error' => null,
+                        'updated_at' => now(),
+                    ]);
+                $batch->update([
+                    'status' => Command::STATUS_QUEUED,
+                    'finished_at' => null,
+                    'error' => null,
+                ]);
+                dispatch(RunPythonActorJob::stagedDocumentBatch($batch->id)->onQueue(
+                    $batch->queue ?: (string) config('archibot_workers.queues.default', 'default'),
+                ));
+            } else {
+                $run->update([
+                    'status' => PipelineRun::STATUS_PENDING,
+                    'progress_current_phase' => 'queued',
+                    'progress_message' => 'Released by Laravel recovery because the embedding index is complete.',
+                    'progress_updated_at' => now(),
+                    'error_type' => null,
+                    'error' => null,
+                ]);
+            }
 
             PipelineLifecycleRecorder::event([
                 'pipeline_run_id' => $run->id,
@@ -1439,6 +1485,7 @@ class PipelineRecoveryDispatcher
                 'message' => 'Pipeline run released by Laravel recovery because the embedding index is complete.',
                 'payload' => [
                     'blocked_reason' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+                    'batch_command_id' => $run->batch_command_id,
                 ],
             ]);
 

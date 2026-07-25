@@ -31,6 +31,7 @@ class DocumentPipelineStarter
         ?int $requestedByUserId = null,
         ?int $webhookDeliveryId = null,
         ?int $commandId = null,
+        bool $deferDispatch = false,
     ): PipelineStartResult {
         $paperlessModified = $this->normalizer->modified($paperlessModified);
         $contentHash = $this->normalizer->contentHash($contentHash);
@@ -39,11 +40,19 @@ class DocumentPipelineStarter
             : $this->dedupeKey($paperlessDocumentId, $paperlessModified, $contentHash);
 
         /** @var array{run: PipelineRun, created: bool, gate_open: bool} $result */
-        $result = $this->gate->pipelineStart(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
+        $result = $this->gate->pipelineStart(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
             /** @var array{run: PipelineRun, created: bool, gate_open: bool} $committed */
-            $committed = DB::transaction(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId): array {
+            $committed = DB::transaction(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
                 $gateOpen = $this->gate->isOpen();
-                $gate = $this->gateAttributes($gateOpen, 'queued', 'Waiting for document actor.');
+                $gate = $this->gateAttributes(
+                    $gateOpen,
+                    $deferDispatch ? 'staged_batch_wait' : 'queued',
+                    $deferDispatch ? 'Waiting for the globally staged document batch.' : 'Waiting for document actor.',
+                );
+                if ($deferDispatch && ! $gateOpen) {
+                    $gate['progress_current_phase'] = 'staged_batch_wait';
+                    $gate['progress_message'] = 'Waiting for embedding readiness and the globally staged document batch.';
+                }
                 $candidate = new PipelineRun;
                 $candidate->forceFill([
                     'type' => 'document',
@@ -84,7 +93,7 @@ class DocumentPipelineStarter
                 return ['run' => $run, 'created' => $created, 'gate_open' => $gateOpen];
             });
 
-            if ($committed['created'] && $committed['gate_open']) {
+            if ($committed['created'] && $committed['gate_open'] && ! $deferDispatch) {
                 $run = $committed['run'];
                 try {
                     // Run creation is committed before this fallible operation,
@@ -124,9 +133,30 @@ class DocumentPipelineStarter
         $outcome = $this->outcome($created, $forceNewRun, $gateOpen);
         $blockedReason = $gateOpen ? null : self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY;
         $run = $run->refresh();
-        $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason);
+        $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason, $deferDispatch);
 
         return new PipelineStartResult($run->refresh(), $outcome, $dedupeKey, $blockedReason, $created);
+    }
+
+    public function attachStagedBatch(int $sourceCommandId, int $batchCommandId): int
+    {
+        return PipelineRun::query()
+            ->where('command_id', $sourceCommandId)
+            ->where('type', 'document')
+            ->where(function ($query): void {
+                $query->where(function ($query): void {
+                    $query->where('status', PipelineRun::STATUS_PENDING)
+                        ->where('progress_current_phase', 'staged_batch_wait');
+                })->orWhere(function ($query): void {
+                    $query->where('status', PipelineRun::STATUS_BLOCKED)
+                        ->where('error_type', self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY);
+                });
+            })
+            ->whereNull('batch_command_id')
+            ->update([
+                'batch_command_id' => $batchCommandId,
+                'updated_at' => now(),
+            ]);
     }
 
     /**
@@ -264,6 +294,7 @@ class DocumentPipelineStarter
         ?string $contentHash,
         bool $forceNewRun,
         ?string $blockedReason,
+        bool $deferDispatch,
     ): void {
         $eventType = match ($outcome) {
             'coalesced' => 'pipeline.start.coalesced',
@@ -293,6 +324,7 @@ class DocumentPipelineStarter
                 'force_new_run' => $forceNewRun,
                 'outcome' => $outcome,
                 'blocked_reason' => $blockedReason,
+                'dispatch_mode' => $deferDispatch ? 'staged_batch' : 'single_document',
             ],
         ]);
     }

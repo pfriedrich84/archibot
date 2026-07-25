@@ -24,6 +24,8 @@ class PythonActorRunner
 
     public const ACTOR_REINDEX_OCR = 'reindex_ocr';
 
+    public const ACTOR_STAGED_DOCUMENT_BATCH = 'process_staged_document_batch';
+
     public const ACTOR_HANDLE_PAPERLESS_WEBHOOK = 'handle_paperless_webhook';
 
     public function runEmbeddingIndexBuild(Command $command, ActorInvocationClaim $claim): void
@@ -48,6 +50,12 @@ class PythonActorRunner
     {
         $this->assertCommandType($command, Command::TYPE_REINDEX_OCR);
         $this->runCommandActor($command, $claim, self::ACTOR_REINDEX_OCR, ['reindex-ocr', '--command-id', (string) $command->id]);
+    }
+
+    public function runStagedDocumentBatch(Command $command, ActorInvocationClaim $claim): void
+    {
+        $this->assertCommandType($command, Command::TYPE_STAGED_DOCUMENT_BATCH);
+        $this->runCommandActor($command, $claim, self::ACTOR_STAGED_DOCUMENT_BATCH, ['process-staged-document-batch', '--command-id', (string) $command->id]);
     }
 
     public function runWebhookDelivery(WebhookDelivery $delivery, ActorInvocationClaim $claim): void

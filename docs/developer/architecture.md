@@ -52,12 +52,13 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │                                              │
 │  1. Start/Attach mit Dedupe-Key              │
 │  2. Embedding-Readiness-Gate                 │
-│  3. Paperless-Fetch durch Document Actor     │
-│  4. OCR-Korrektur (optional)                 │
-│  5. Kontext-Suche via document_embeddings    │
-│  6. Klassifikation + optionaler Judge        │
-│  7. Pending Review-Suggestion speichern      │
-│  8. Kein Confidence-basierter Write (ADR-0018)│
+│  3. Paperless-Fetch der Zielmenge            │
+│  4. Embeddings fuer die gesamte Zielmenge    │
+│  5. OCR fuer alle berechtigten Dokumente     │
+│  6. Klassifikation fuer die gesamte Zielmenge│
+│  7. Judge-Phase fuer die gesamte Zielmenge   │
+│  8. Pending Review-Suggestions speichern     │
+│  9. Kein Confidence-basierter Write (ADR-0018)│
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
@@ -90,7 +91,7 @@ Es gibt **vier Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → festes Python-Discovery-Kommando → versionierte `poll_candidates` → Laravel `PollCandidateConsumer` → `DocumentPipelineStarter` | Ja, Marker-Disposition wird dauerhaft protokolliert |
+| **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → festes Python-Discovery-Kommando → versionierte `poll_candidates` → Laravel `PollCandidateConsumer` → `DocumentPipelineStarter` → ein idempotentes `staged_document_batch` fuer alle neu erstellten Runs | Ja, Marker-Disposition und Batch-Zuordnung werden dauerhaft protokolliert |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware erzwingt vor Controller/Persistenz Roh-Body-Limit, gemeinsames per-Client Rate-Limit fuer beide Aliase und ein nicht leeres effektives Secret (verschluesselte globale Einstellung vor Deployment-Konfiguration) mit `hash_equals`; danach speichert Laravel redigierte `webhook_deliveries`. Create/Process-Events starten `pipeline_runs` und queuen `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, Refresh/Delete-Events queuen `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)`. | Ja, Delivery bleibt durable/Run wird blockiert |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
 | **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge (Actors nutzen `app.actor_runner`) |

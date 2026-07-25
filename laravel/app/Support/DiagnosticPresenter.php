@@ -38,7 +38,7 @@ class DiagnosticPresenter
         ],
         'command_type' => [
             'embedding_index_build', 'poll_reconciliation', 'reindex', 'reindex_ocr',
-            'review_commit', 'sync_entity_approval',
+            'review_commit', 'staged_document_batch', 'sync_entity_approval',
         ],
         'entity_type' => ['correspondent', 'document_type', 'tag'],
         'item_type' => ['classification', 'context_search', 'embedding', 'judge', 'ocr', 'paperless_fetch', 'review_suggestion'],
@@ -47,13 +47,13 @@ class DiagnosticPresenter
         'llm_provider' => ['ollama', 'openai_compatible'],
         'ocr_mode' => ['off', 'text', 'vision_light', 'vision_full'],
         'phase' => [
-            'added', 'blocked', 'classification', 'classify', 'classify_publish', 'created', 'deleted', 'document_actor',
+            'added', 'batch_failed', 'batch_retry', 'blocked', 'classification', 'classify', 'classify_publish', 'created', 'deleted', 'document_actor',
             'embed', 'embedding', 'embedding_index', 'embedding_index_prepare', 'failed',
             'delete_embedding', 'fetch', 'finalize', 'finished', 'idle', 'judge', 'modified', 'ocr', 'ocr_reindex_finished',
             'ocr_reindex_prepare', 'paperless_fetch', 'poll_reconciliation',
             'poll_reconciliation_prepare', 'postprocess', 'prepare', 'process_document', 'queued', 'refresh_embedding',
             'retry_failed_items', 'review', 'review_commit_finished', 'review_commit_load',
-            'review_commit_paperless', 'review_suggestion', 'skipped', 'store',
+            'review_commit_paperless', 'review_suggestion', 'skipped', 'staged_batch_wait', 'store',
             'updated', 'webhook_finished', 'webhook_normalize',
         ],
         'pipeline_type' => ['document', 'embedding_index', 'ocr_reindex', 'reconciliation', 'reindex'],
@@ -81,8 +81,8 @@ class DiagnosticPresenter
     /** @var list<string> */
     private const ACTOR_NAMES = [
         'build_embedding_index', 'build_initial_embedding_index', 'commit_review_suggestion',
-        'handle_document_pipeline', 'handle_paperless_webhook', 'reconcile_inbox_documents',
-        'reindex', 'reindex_ocr', 'sync_entity_approval',
+        'handle_document_pipeline', 'handle_paperless_webhook', 'process_staged_document_batch',
+        'reconcile_inbox_documents', 'reindex', 'reindex_ocr', 'sync_entity_approval',
     ];
 
     /**
@@ -106,7 +106,7 @@ class DiagnosticPresenter
         'actor_process_failed', 'actor_retry_redispatched', 'blocked_document_lock',
         'blocked_embedding_index', 'bug_unexpected', 'cancel_requested', 'cancelled',
         'embedding_documents_failed', 'embedding_index_already_building',
-        'embedding_index_not_ready', 'enqueue_failed', 'inbox_tag_not_configured',
+        'embedding_index_not_ready', 'empty_target_set', 'enqueue_failed', 'inbox_tag_not_configured',
         'invalid_webhook_action', 'missing_document_id', 'missing_entity_sync_correspondent_id',
         'missing_entity_sync_document_type_id', 'missing_entity_sync_tag_id',
         'missing_review_suggestion_id', 'ocr_mode_off', 'permanent_missing_document',
@@ -141,6 +141,8 @@ class DiagnosticPresenter
         'maintenance.poll_reconciliation_requested', 'maintenance.reindex_requested', 'maintenance.reset_requested',
         'mcp_token.created', 'mcp_token.revoked', 'ocr_review.approved', 'ocr_review.created', 'ocr_review.rejected',
         'paperless.delivery.failed',
+        'pipeline.batch.blocked.embedding_index_not_ready', 'pipeline.batch.completed',
+        'pipeline.batch.phase.completed', 'pipeline.batch.queued',
         'pipeline.blocked.embedding_index_not_ready', 'pipeline.cancelled',
         'pipeline.document_actor_queued', 'pipeline.failed', 'pipeline.running', 'pipeline.succeeded',
         'pipeline.force_reprocess.requested', 'pipeline.start.attached', 'pipeline.start.coalesced',

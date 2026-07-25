@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,8 +22,10 @@ from app.execution_lifecycle import (
     update_item_derived_progress,
 )
 from app.jobs.document_embeddings import (
+    DocumentEmbeddingInput,
     document_embedding_text,
     find_similar_with_precomputed_embedding,
+    store_document_embedding,
 )
 from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.pipeline_items import (
@@ -32,7 +35,14 @@ from app.jobs.pipeline_items import (
 )
 from app.jobs.pipeline_runs import is_pipeline_run_cancel_requested, load_document_pipeline_run
 from app.jobs.review_suggestions import store_review_suggestion
-from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
+from app.models import (
+    ClassificationResult,
+    PaperlessDocument,
+    PaperlessEntity,
+    document_date_for,
+    document_version_checksum_for,
+    document_version_id_for,
+)
 from app.pipeline.classifier import classify
 from app.pipeline.judge import maybe_run_judge
 from app.pipeline.ocr_correction import (
@@ -42,6 +52,7 @@ from app.pipeline.ocr_correction import (
     should_run_ocr_for_document,
 )
 from app.pipeline.ports import AiProviderGateway, DocumentRepository
+from app.pipeline.trusted_context import is_trusted_document
 
 log = structlog.get_logger(__name__)
 
@@ -67,6 +78,27 @@ class DocumentClassificationOutcome:
     ocr_corrected: bool = False
     ocr_corrections: int = 0
     context_count: int = 0
+
+
+@dataclass
+class StagedDocumentState:
+    original_document: PaperlessDocument
+    document: PaperlessDocument
+    catalog: EntityCatalog
+    embedding: list[float] | None = None
+    embedding_persisted: bool = False
+    context_documents: list[Any] | None = None
+    result: ClassificationResult | None = None
+    raw_response: str | None = None
+    judge_verdict: str | None = None
+    judge_reasoning: str | None = None
+    original_proposed_json: str | None = None
+    ocr_corrected: bool = False
+    ocr_corrections: int = 0
+
+
+StagedPhaseObserver = Callable[[str, str, int, int, StagedDocumentState], None]
+StagedMutationGuard = Callable[[], None]
 
 
 def run_async(coroutine):
@@ -95,104 +127,229 @@ async def _load_entity_catalog(paperless: DocumentRepository) -> EntityCatalog:
     )
 
 
-async def _classify_document(
-    document: PaperlessDocument,
+def _notify_staged_phase(
+    observer: StagedPhaseObserver | None,
+    event: str,
+    phase: str,
+    index: int,
+    total: int,
+    state: StagedDocumentState,
+) -> None:
+    if observer is not None:
+        observer(event, phase, index, total, state)
+
+
+async def _run_staged_document_phases(
+    documents: list[PaperlessDocument],
     paperless: DocumentRepository | None = None,
     ai_provider: AiProviderGateway | None = None,
-) -> DocumentClassificationOutcome:
+    observer: StagedPhaseObserver | None = None,
+    mutation_guard: StagedMutationGuard | None = None,
+    *,
+    persist_target_embeddings: bool = False,
+    batch_command_id: int | None = None,
+) -> list[DocumentClassificationOutcome]:
+    """Process a target set in global embedding, OCR, classification and judge phases."""
+    if not documents:
+        return []
+
     owns_paperless = paperless is None
     owns_ai_provider = ai_provider is None
     paperless_client = paperless or PaperlessClient()
     provider = ai_provider or create_ai_provider()
     try:
         catalog = await _load_entity_catalog(paperless_client)
-        processed_document = document
-        ocr_corrected = False
-        ocr_corrections = 0
-        ocr_mode = effective_ocr_mode()
-        eligible, reason = should_run_ocr_for_document(
-            processed_document, available_tags=catalog.tags, require_tag_info=False
-        )
-        if eligible:
-            try:
-                corrected_text, ocr_corrections = await maybe_correct_ocr(
-                    processed_document, provider, paperless_client
-                )
-                if ocr_corrections > 0:
-                    processed_document = processed_document.model_copy(
-                        update={"content": corrected_text}
-                    )
-                    cache_ocr_correction(
-                        processed_document.id, corrected_text, ocr_mode, ocr_corrections
-                    )
-                    ocr_corrected = True
-            except Exception as exc:
-                log.warning(
-                    "document OCR correction failed",
-                    paperless_document_id=document.id,
-                    error_type=type(exc).__name__,
-                )
-        else:
-            log.debug(
-                "document OCR skipped",
-                paperless_document_id=document.id,
-                reason=reason,
+        states = [
+            StagedDocumentState(
+                original_document=document,
+                document=document,
+                catalog=catalog,
+                context_documents=[],
             )
+            for document in documents
+        ]
+        total = len(states)
 
-        context_documents: list[Any] = []
-        text = document_embedding_text(processed_document.title, processed_document.content)
-        if text.strip():
-            try:
-                embedding = await provider.embed(text)
-                similar = await find_similar_with_precomputed_embedding(
-                    processed_document, embedding, paperless_client
+        # Provider roles are intentionally grouped across the whole target set.
+        # This keeps every target embedding ahead of OCR and all downstream LLM work.
+        for index, state in enumerate(states, 1):
+            _notify_staged_phase(observer, "started", "embedding", index, total, state)
+            text = document_embedding_text(
+                state.original_document.title, state.original_document.content
+            )
+            if not text.strip():
+                raise ValueError(
+                    f"Paperless document {state.original_document.id} has no embedding text"
                 )
-                context_documents = [item.document for item in similar]
-            except Exception as exc:
-                log.warning(
-                    "document context search failed",
-                    paperless_document_id=document.id,
-                    error_type=type(exc).__name__,
+            state.embedding = await provider.embed(text)
+            if mutation_guard is not None:
+                mutation_guard()
+            if not state.embedding:
+                raise ValueError(
+                    f"Paperless document {state.original_document.id} returned an empty embedding"
                 )
+            if persist_target_embeddings:
+                content_hash = store_document_embedding(
+                    DocumentEmbeddingInput(
+                        paperless_document_id=state.original_document.id,
+                        title=state.original_document.title,
+                        content=state.original_document.content,
+                        embedding_model=provider.embed_model,
+                        embedding=state.embedding,
+                        document_date=document_date_for(state.original_document),
+                        correspondent_id=state.original_document.correspondent,
+                        document_type_id=state.original_document.document_type,
+                        storage_path_id=state.original_document.storage_path,
+                        tags=state.original_document.tags,
+                        paperless_modified=(
+                            str(state.original_document.modified)
+                            if state.original_document.modified is not None
+                            else None
+                        ),
+                        trusted_for_context=is_trusted_document(state.original_document),
+                        paperless_version_id=document_version_id_for(state.original_document),
+                        paperless_version_checksum=document_version_checksum_for(
+                            state.original_document
+                        ),
+                        batch_command_id=batch_command_id,
+                    )
+                )
+                if content_hash is None:
+                    raise RuntimeError(
+                        f"Paperless document {state.original_document.id} embedding was not persisted"
+                    )
+            state.embedding_persisted = True
+            _notify_staged_phase(observer, "completed", "embedding", index, total, state)
 
-        initial_result, raw_response = await classify(
-            processed_document,
-            context_documents,
-            catalog.correspondents,
-            catalog.doctypes,
-            catalog.storage_paths,
-            catalog.tags,
-            provider,
-        )
-        judge = await maybe_run_judge(
-            processed_document,
-            initial_result,
-            raw_response,
-            context_documents,
-            catalog.correspondents,
-            catalog.doctypes,
-            catalog.storage_paths,
-            catalog.tags,
-            provider,
-        )
-        return DocumentClassificationOutcome(
-            document=processed_document,
-            result=judge.result,
-            raw_response=raw_response,
-            context_documents=context_documents,
-            catalog=catalog,
-            judge_verdict=judge.verdict,
-            judge_reasoning=judge.reasoning,
-            original_proposed_json=judge.original_proposed_json,
-            ocr_corrected=ocr_corrected,
-            ocr_corrections=ocr_corrections,
-            context_count=len(context_documents),
-        )
+        ocr_mode = effective_ocr_mode()
+        for index, state in enumerate(states, 1):
+            _notify_staged_phase(observer, "started", "ocr", index, total, state)
+            eligible, reason = should_run_ocr_for_document(
+                state.document, available_tags=catalog.tags, require_tag_info=False
+            )
+            if eligible:
+                try:
+                    corrected_text, state.ocr_corrections = await maybe_correct_ocr(
+                        state.document, provider, paperless_client
+                    )
+                    if mutation_guard is not None:
+                        mutation_guard()
+                    if state.ocr_corrections > 0:
+                        state.document = state.document.model_copy(
+                            update={"content": corrected_text}
+                        )
+                        cache_kwargs = (
+                            {"batch_command_id": batch_command_id}
+                            if batch_command_id is not None
+                            else {}
+                        )
+                        cache_ocr_correction(
+                            state.document.id,
+                            corrected_text,
+                            ocr_mode,
+                            state.ocr_corrections,
+                            **cache_kwargs,
+                        )
+                        state.ocr_corrected = True
+                except Exception as exc:
+                    log.warning(
+                        "document OCR correction failed",
+                        paperless_document_id=state.original_document.id,
+                        error_type=type(exc).__name__,
+                    )
+            else:
+                log.debug(
+                    "document OCR skipped",
+                    paperless_document_id=state.original_document.id,
+                    reason=reason,
+                )
+            _notify_staged_phase(observer, "completed", "ocr", index, total, state)
+
+        for index, state in enumerate(states, 1):
+            _notify_staged_phase(observer, "started", "classification", index, total, state)
+            if state.embedding is not None:
+                try:
+                    similar = await find_similar_with_precomputed_embedding(
+                        state.document, state.embedding, paperless_client
+                    )
+                    state.context_documents = [item.document for item in similar]
+                except Exception as exc:
+                    log.warning(
+                        "document context search failed",
+                        paperless_document_id=state.original_document.id,
+                        error_type=type(exc).__name__,
+                    )
+            state.result, state.raw_response = await classify(
+                state.document,
+                state.context_documents or [],
+                catalog.correspondents,
+                catalog.doctypes,
+                catalog.storage_paths,
+                catalog.tags,
+                provider,
+            )
+            if mutation_guard is not None:
+                mutation_guard()
+            _notify_staged_phase(observer, "completed", "classification", index, total, state)
+
+        for index, state in enumerate(states, 1):
+            _notify_staged_phase(observer, "started", "judge", index, total, state)
+            if state.result is None or state.raw_response is None:
+                raise RuntimeError("classification phase did not produce a durable candidate")
+            judge = await maybe_run_judge(
+                state.document,
+                state.result,
+                state.raw_response,
+                state.context_documents or [],
+                catalog.correspondents,
+                catalog.doctypes,
+                catalog.storage_paths,
+                catalog.tags,
+                provider,
+            )
+            state.result = judge.result
+            state.judge_verdict = judge.verdict
+            state.judge_reasoning = judge.reasoning
+            state.original_proposed_json = judge.original_proposed_json
+            if mutation_guard is not None:
+                mutation_guard()
+            _notify_staged_phase(observer, "completed", "judge", index, total, state)
+
+        return [
+            DocumentClassificationOutcome(
+                document=state.document,
+                result=state.result,
+                raw_response=state.raw_response,
+                context_documents=state.context_documents or [],
+                catalog=state.catalog,
+                judge_verdict=state.judge_verdict,
+                judge_reasoning=state.judge_reasoning,
+                original_proposed_json=state.original_proposed_json,
+                ocr_corrected=state.ocr_corrected,
+                ocr_corrections=state.ocr_corrections,
+                context_count=len(state.context_documents or []),
+            )
+            for state in states
+            if state.result is not None and state.raw_response is not None
+        ]
     finally:
         if owns_ai_provider:
             await provider.aclose()
         if owns_paperless and hasattr(paperless_client, "aclose"):
             await paperless_client.aclose()
+
+
+async def _classify_document(
+    document: PaperlessDocument,
+    paperless: DocumentRepository | None = None,
+    ai_provider: AiProviderGateway | None = None,
+) -> DocumentClassificationOutcome:
+    outcomes = await _run_staged_document_phases(
+        [document], paperless=paperless, ai_provider=ai_provider
+    )
+    if len(outcomes) != 1:
+        raise RuntimeError("single-document staged pipeline did not return one outcome")
+    return outcomes[0]
 
 
 def _update_item_derived_progress(

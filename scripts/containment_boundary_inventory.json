@@ -1,7 +1,8 @@
 {
   "authorization_command_files": {
-    "app/actors/document.py": "6e3173827e0a21c3abdcc673c17881a69fa97b546e49023f666520ecd2c7ab94",
-    "app/jobs/review_suggestions.py": "8dac732d46b0b7ab7a79f8d1809bfe127484c96d2e1c1508ca220a5318a40e34",
+    "app/actors/document.py": "7775c9b3677195b3377ab0de16052fbfe9c58cce2308be64bce099993fb92f02",
+    "app/actors/document_batch.py": "49148274bbc6d4cb32126d081da31610f82bc45073499d8fa6532739e4156d91",
+    "app/jobs/review_suggestions.py": "30ac6a6a2f88460c93e285ae84c560e983148235bae8d8c70b83fcbe0222e5ba",
     "laravel/app/Console/Commands/CommitReviewSuggestion.php": "8f8afb518f92b0165e000138b70395bc16d5cf0ddf0d97254b95cd0384bdcae8",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
     "laravel/app/Http/Controllers/ClassifyWithArchiBotController.php": "9cfb5a20ee2d5e3d8d073384974aefc745b5963d9b7024315d77aa2fb3baf14d",
@@ -11,15 +12,16 @@
     "laravel/app/Http/Controllers/PaperlessEventWebhookController.php": "a1fb5865999c17a88d61c56e4b57b52e2a0b462fb7c44d09e6752aa5d0b05748",
     "laravel/app/Http/Controllers/PaperlessMasterDataCaseController.php": "3ad85ab721e2cbd89221a8a95d8e7fc6df3a693c10ae36ed8a468aaccd4175f3",
     "laravel/app/Http/Controllers/ReviewSuggestionController.php": "c3a41ed34f39793a154915db0fef8545b7e48f763ada61d8c6aa2a752da2e43c",
-    "laravel/app/Jobs/RunPythonActorJob.php": "d43745e7940caaf18d8abb9a5632e8ad0331a9b9ac3863f5cca86725369632a4",
+    "laravel/app/Jobs/RunPythonActorJob.php": "af94171122b7b770af4cd91c960b207b0629adc4488b75485980d55d9fcc973c",
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "87e66f0215872a084f18ed201c23cc0705020e59b9de6b08ecb5ad13858d7414",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
     "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "e61f6c0434caed4ea1059f538a616c6835fc8f59b5143d413cd26108d08edad3",
+    "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "e3f661127aca9df572c153f695bcb6c2f93c35de6cde8f85049b2d4ec7b58b3c",
     "scripts/check_containment_boundaries.py": "778aecd55d20ed9a9f288f4fedca21eb8ff576d66e3a490eccccd6907033bad6"
   },
   "cli_registration_files": {
-    "app/actor_runner.py": "89c6aaac39fe36e465dc072aff01f75a9775d4de0c0d37a302e1e5ed9a8a7683",
+    "app/actor_runner.py": "8f17836b76cbb1fbb6b68afd6cf56efe1f85a12b4d3757361f2cade8b594769f",
     "app/cli.py": "7c352aa8341948f12efd3ea55440a39abcd3ec8033728ebd436c41eaf263c417"
   },
   "exposure_files": {

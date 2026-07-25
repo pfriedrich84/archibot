@@ -146,7 +146,10 @@ Polling should:
 - skip every Inbox Document that already has a Review Suggestion, regardless of Review Suggestion status or later Paperless metadata changes
 - respect embedding readiness gate
 - coalesce if an unmarked document already has an active run for the same content state
-- enqueue only unmarked or retryable document pipelines
+- create all unmarked or forced document Pipeline Runs without dispatching singleton actors
+- link newly created runs to one idempotent `staged_document_batch` command after the complete candidate set is consumed
+- process that target set globally in `embedding -> OCR -> classification -> judge` order
+- exclude batch-linked child runs from singleton recovery dispatch and recover the batch as one unit
 - emit `poll.document.skipped_already_classified` for marker skips and summary counts for skipped/coalesced/started documents
 - not bypass document locks
 

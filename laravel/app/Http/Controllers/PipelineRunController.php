@@ -58,6 +58,7 @@ class PipelineRunController extends Controller
     public function retry(Request $request, PipelineRun $pipelineRun): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
+        abort_if($pipelineRun->batch_command_id !== null || $pipelineRun->progress_current_phase === 'staged_batch_wait', 409, 'Batch-linked runs are retried through batch recovery.');
         abort_unless(in_array($pipelineRun->status, [
             PipelineRun::STATUS_BLOCKED,
             PipelineRun::STATUS_FAILED,
@@ -94,6 +95,7 @@ class PipelineRunController extends Controller
     public function retryFailedItems(Request $request, PipelineRun $pipelineRun): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
+        abort_if($pipelineRun->batch_command_id !== null || $pipelineRun->progress_current_phase === 'staged_batch_wait', 409, 'Batch-linked runs are retried through batch recovery.');
         abort_unless(in_array($pipelineRun->status, [
             PipelineRun::STATUS_FAILED,
             PipelineRun::STATUS_PARTIALLY_FAILED,
@@ -161,6 +163,7 @@ class PipelineRunController extends Controller
     public function cancel(Request $request, PipelineRun $pipelineRun): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
+        abort_if($pipelineRun->batch_command_id !== null || $pipelineRun->progress_current_phase === 'staged_batch_wait', 409, 'Batch-linked runs cannot be cancelled individually.');
         abort_unless(in_array($pipelineRun->status, [
             PipelineRun::STATUS_PENDING,
             PipelineRun::STATUS_QUEUED,
@@ -187,6 +190,8 @@ class PipelineRunController extends Controller
     private function runPayload(Request $request, PipelineRun $run, bool $includeDetails): array
     {
         $canRetry = (bool) $request->user()?->is_admin
+            && $run->batch_command_id === null
+            && $run->progress_current_phase !== 'staged_batch_wait'
             && in_array($run->status, [
                 PipelineRun::STATUS_BLOCKED,
                 PipelineRun::STATUS_FAILED,
@@ -195,8 +200,12 @@ class PipelineRunController extends Controller
                 PipelineRun::STATUS_CANCELLED,
             ], true);
         $canRetryFailedItems = (bool) $request->user()?->is_admin
+            && $run->batch_command_id === null
+            && $run->progress_current_phase !== 'staged_batch_wait'
             && in_array($run->status, [PipelineRun::STATUS_FAILED, PipelineRun::STATUS_PARTIALLY_FAILED], true);
         $canCancel = (bool) $request->user()?->is_admin
+            && $run->batch_command_id === null
+            && $run->progress_current_phase !== 'staged_batch_wait'
             && in_array($run->status, [
                 PipelineRun::STATUS_PENDING,
                 PipelineRun::STATUS_QUEUED,
@@ -206,6 +215,7 @@ class PipelineRunController extends Controller
 
         $payload = [
             'id' => $run->id,
+            'batch_command_id' => $run->batch_command_id,
             'type' => $this->diagnostics->typedScalar('pipeline_type', $run->type),
             'status' => $this->diagnostics->typedScalar('status', $run->status),
             'scope' => $this->diagnostics->opaqueReference($run->scope),

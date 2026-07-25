@@ -40,6 +40,33 @@ class Engine:
         return self.connection
 
 
+def test_command_invocation_fences_batch_linked_pipeline_run_writes():
+    token = lifecycle.set_invocation_fence(
+        lifecycle.InvocationFence(
+            actor_name="process_staged_document_batch",
+            execution_actor_name="process_staged_document_batch",
+            source_kind="command",
+            source_id=55,
+            execution_token="batch-token",
+            source_version=3,
+            actor_execution_id=7,
+            attempt=1,
+        )
+    )
+    try:
+        predicate, params = lifecycle.source_fence("pipeline_run", 101)
+    finally:
+        lifecycle.reset_invocation_fence(token)
+
+    assert "batch_command_id = :fence_batch_command_id" in predicate
+    assert "batch_fence.status = 'running'" in predicate
+    assert params == {
+        "fence_source_version": 3,
+        "fence_execution_token": "batch-token",
+        "fence_batch_command_id": 55,
+    }
+
+
 @pytest.mark.parametrize(
     ("current", "targets"),
     [(state, allowed) for state, allowed in lifecycle.TRANSITION_MATRIX.items()],

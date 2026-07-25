@@ -36,6 +36,7 @@ class DocumentEmbeddingInput:
     trusted_for_context: bool = False
     paperless_version_id: int | None = None
     paperless_version_checksum: str | None = None
+    batch_command_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,37 @@ def store_document_embedding(item: DocumentEmbeddingInput) -> str | None:
         """
     )
     with engine().begin() as connection:
+        if item.batch_command_id is not None:
+            from app.execution_lifecycle import current_invocation_fence
+            from app.jobs.pipeline_runs import StagedBatchFenceLost
+
+            fence = current_invocation_fence()
+            if (
+                fence is None
+                or fence.source_kind != "command"
+                or fence.source_id != item.batch_command_id
+            ):
+                raise StagedBatchFenceLost("document embedding batch fence is missing")
+            locked = connection.execute(
+                sql_text(
+                    """
+                    SELECT id FROM commands
+                    WHERE id = :batch_command_id
+                      AND status = 'running'
+                      AND lifecycle_version = :source_version
+                      AND active_actor_token = :execution_token
+                    FOR SHARE
+                    """
+                ),
+                {
+                    "batch_command_id": item.batch_command_id,
+                    "source_version": fence.source_version,
+                    "execution_token": fence.execution_token,
+                },
+            ).first()
+            if locked is None:
+                raise StagedBatchFenceLost("document embedding batch fence was superseded")
+
         connection.execute(
             statement,
             {

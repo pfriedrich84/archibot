@@ -36,8 +36,8 @@ def guarded(name, *args, **kwargs):
 builtins.__import__ = guarded
 from app import actor_runner
 for module in (
-    'app.actors.document', 'app.actors.embedding', 'app.actors.maintenance',
-    'app.actors.review', 'app.actors.webhook'
+    'app.actors.document', 'app.actors.document_batch', 'app.actors.embedding',
+    'app.actors.maintenance', 'app.actors.review', 'app.actors.webhook'
 ):
     __import__(module)
 assert actor_runner.build_parser()

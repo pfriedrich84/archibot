@@ -28,6 +28,8 @@ def store_ocr_correction(
     corrected_content: str,
     ocr_mode: str,
     num_corrections: int,
+    *,
+    batch_command_id: int | None = None,
 ) -> None:
     """Idempotently persist corrected OCR text in the shared schema."""
     statement = _text(
@@ -48,6 +50,37 @@ def store_ocr_correction(
         """
     )
     with engine().begin() as connection:
+        if batch_command_id is not None:
+            from app.execution_lifecycle import current_invocation_fence
+            from app.jobs.pipeline_runs import StagedBatchFenceLost
+
+            fence = current_invocation_fence()
+            if (
+                fence is None
+                or fence.source_kind != "command"
+                or fence.source_id != batch_command_id
+            ):
+                raise StagedBatchFenceLost("OCR correction batch fence is missing")
+            locked = connection.execute(
+                _text(
+                    """
+                    SELECT id FROM commands
+                    WHERE id = :batch_command_id
+                      AND status = 'running'
+                      AND lifecycle_version = :source_version
+                      AND active_actor_token = :execution_token
+                    FOR SHARE
+                    """
+                ),
+                {
+                    "batch_command_id": batch_command_id,
+                    "source_version": fence.source_version,
+                    "execution_token": fence.execution_token,
+                },
+            ).first()
+            if locked is None:
+                raise StagedBatchFenceLost("OCR correction batch fence was superseded")
+
         connection.execute(
             statement,
             {

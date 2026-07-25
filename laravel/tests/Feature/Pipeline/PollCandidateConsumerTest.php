@@ -53,7 +53,7 @@ class PollCandidateConsumerTest extends TestCase
         $this->assertSame('marker_skipped', $marked->fresh()->starter_outcome);
         $this->assertSame('force_created', $forced->fresh()->starter_outcome);
         $this->assertTrue($forced->fresh()->pipelineRun->reprocess_requested);
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertNothingPushed();
     }
 
     public function test_distinct_force_candidates_create_distinct_runs(): void
@@ -73,7 +73,7 @@ class PollCandidateConsumerTest extends TestCase
         $this->assertSame('force_created', $second->fresh()->starter_outcome);
         $this->assertNotSame($first->fresh()->pipeline_run_id, $second->fresh()->pipeline_run_id);
         $this->assertDatabaseCount('pipeline_runs', 2);
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        Queue::assertNothingPushed();
     }
 
     public function test_unsupported_protocol_is_terminal_without_normalizing_untrusted_state(): void
@@ -133,7 +133,7 @@ class PollCandidateConsumerTest extends TestCase
         $this->assertSame('coalesced', $candidate->fresh()->starter_outcome);
         $this->assertSame($runId, $candidate->fresh()->pipeline_run_id);
         $this->assertDatabaseCount('pipeline_runs', 1);
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertNothingPushed();
     }
 
     public function test_reclaimed_candidate_rejects_stale_consumer_completion_and_failure(): void

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.actors import document
 from app.jobs.actor_execution import ActorExecutionHandle
 from app.jobs.pipeline_items import PipelineItemRecord
@@ -393,6 +395,191 @@ def test_document_actor_classification_uses_pgvector_context(monkeypatch):
     assert captured["embedding"] == [0.1, 0.2]
     assert captured["context_docs"] == [context_doc]
     assert outcome.context_documents == [context_doc]
+
+
+def test_document_target_set_runs_global_staged_phases(monkeypatch):
+    calls = []
+    phase_events = []
+
+    class FakePaperless:
+        async def list_correspondents(self):
+            return []
+
+        async def list_document_types(self):
+            return []
+
+        async def list_storage_paths(self):
+            return []
+
+        async def list_tags(self):
+            return []
+
+    class FakeProvider:
+        embed_model = "embed-model"
+
+        async def embed(self, text):
+            calls.append(("embedding", text))
+            return [0.1, 0.2]
+
+    async def fake_ocr(doc, provider, paperless):
+        calls.append(("ocr", doc.id))
+        return f"Corrected {doc.id}", 1
+
+    async def fake_similar(doc, embedding, paperless):
+        return []
+
+    async def fake_classify(doc, context_docs, *args):
+        calls.append(("classification", doc.id))
+        return ClassificationResult(title=f"Classified {doc.id}", confidence=50), "{}"
+
+    async def fake_judge(doc, initial, *args):
+        calls.append(("judge", doc.id))
+        return SimpleNamespace(
+            result=initial, verdict="agree", reasoning=None, original_proposed_json=None
+        )
+
+    monkeypatch.setattr(document, "effective_ocr_mode", lambda: "text")
+    monkeypatch.setattr(
+        document, "should_run_ocr_for_document", lambda *args, **kwargs: (True, "no_filter")
+    )
+    monkeypatch.setattr(document, "maybe_correct_ocr", fake_ocr)
+    monkeypatch.setattr(document, "cache_ocr_correction", lambda *args: None)
+    stored_embeddings = []
+    monkeypatch.setattr(
+        document,
+        "store_document_embedding",
+        lambda item: stored_embeddings.append(item) or "content-hash",
+    )
+    monkeypatch.setattr(document, "find_similar_with_precomputed_embedding", fake_similar)
+    monkeypatch.setattr(document, "classify", fake_classify)
+    monkeypatch.setattr(document, "maybe_run_judge", fake_judge)
+
+    outcomes = document.run_async(
+        document._run_staged_document_phases(
+            [
+                PaperlessDocument(id=1, title="One", content="Text one", tags=[]),
+                PaperlessDocument(id=2, title="Two", content="Text two", tags=[]),
+            ],
+            paperless=FakePaperless(),
+            ai_provider=FakeProvider(),
+            observer=lambda event, phase, index, total, state: phase_events.append(
+                (event, phase, index, total, state.original_document.id)
+            ),
+            persist_target_embeddings=True,
+        )
+    )
+
+    assert [call[0] for call in calls] == [
+        "embedding",
+        "embedding",
+        "ocr",
+        "ocr",
+        "classification",
+        "classification",
+        "judge",
+        "judge",
+    ]
+    assert [event for event in phase_events if event[0] == "completed"] == [
+        ("completed", "embedding", 1, 2, 1),
+        ("completed", "embedding", 2, 2, 2),
+        ("completed", "ocr", 1, 2, 1),
+        ("completed", "ocr", 2, 2, 2),
+        ("completed", "classification", 1, 2, 1),
+        ("completed", "classification", 2, 2, 2),
+        ("completed", "judge", 1, 2, 1),
+        ("completed", "judge", 2, 2, 2),
+    ]
+    assert [item.paperless_document_id for item in stored_embeddings] == [1, 2]
+    assert [outcome.result.title for outcome in outcomes] == ["Classified 1", "Classified 2"]
+
+
+def test_staged_document_batch_stops_before_ocr_when_required_embedding_fails(monkeypatch):
+    calls = []
+
+    class FakePaperless:
+        async def list_correspondents(self):
+            return []
+
+        async def list_document_types(self):
+            return []
+
+        async def list_storage_paths(self):
+            return []
+
+        async def list_tags(self):
+            return []
+
+    class FailingProvider:
+        embed_model = "embed-model"
+
+        async def embed(self, text):
+            calls.append("embedding")
+            raise ConnectionError("provider unavailable")
+
+    monkeypatch.setattr(
+        document,
+        "maybe_correct_ocr",
+        lambda *args, **kwargs: calls.append("ocr"),
+    )
+
+    with pytest.raises(ConnectionError):
+        document.run_async(
+            document._run_staged_document_phases(
+                [PaperlessDocument(id=1, title="One", content="Text", tags=[])],
+                paperless=FakePaperless(),
+                ai_provider=FailingProvider(),
+                persist_target_embeddings=True,
+            )
+        )
+
+    assert calls == ["embedding"]
+
+
+def test_staged_document_batch_retries_when_embedding_persistence_fails(monkeypatch):
+    calls = []
+
+    class FakePaperless:
+        async def list_correspondents(self):
+            return []
+
+        async def list_document_types(self):
+            return []
+
+        async def list_storage_paths(self):
+            return []
+
+        async def list_tags(self):
+            return []
+
+    class FakeProvider:
+        embed_model = "embed-model"
+
+        async def embed(self, text):
+            calls.append("embedding")
+            return [0.1]
+
+    monkeypatch.setattr(
+        document,
+        "store_document_embedding",
+        lambda item: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+    monkeypatch.setattr(
+        document,
+        "maybe_correct_ocr",
+        lambda *args, **kwargs: calls.append("ocr"),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        document.run_async(
+            document._run_staged_document_phases(
+                [PaperlessDocument(id=1, title="One", content="Text", tags=[])],
+                paperless=FakePaperless(),
+                ai_provider=FakeProvider(),
+                persist_target_embeddings=True,
+            )
+        )
+
+    assert calls == ["embedding"]
 
 
 def test_document_actor_keeps_adversarial_confidence_100_judge_result_pending(monkeypatch):

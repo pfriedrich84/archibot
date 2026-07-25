@@ -191,6 +191,7 @@ def store_review_suggestion(
     judge_verdict: str | None = None,
     judge_reasoning: str | None = None,
     original_proposed_json: str | None = None,
+    batch_command_id: int | None = None,
 ) -> StoredReviewSuggestion:
     """Persist or update a Laravel review suggestion from an event-driven actor."""
     proposed_correspondent_id = _entity_id(result.correspondent, correspondents)
@@ -302,6 +303,37 @@ def store_review_suggestion(
             original_snapshot = {"raw": original_proposed_json}
 
     with engine().begin() as connection:
+        if batch_command_id is not None:
+            from app.execution_lifecycle import current_invocation_fence
+            from app.jobs.pipeline_runs import StagedBatchFenceLost
+
+            fence = current_invocation_fence()
+            if (
+                fence is None
+                or fence.source_kind != "command"
+                or fence.source_id != batch_command_id
+            ):
+                raise StagedBatchFenceLost("review suggestion batch fence is missing")
+            locked = connection.execute(
+                sql_text(
+                    """
+                    SELECT id FROM commands
+                    WHERE id = :batch_command_id
+                      AND status = 'running'
+                      AND lifecycle_version = :source_version
+                      AND active_actor_token = :execution_token
+                    FOR SHARE
+                    """
+                ),
+                {
+                    "batch_command_id": batch_command_id,
+                    "source_version": fence.source_version,
+                    "execution_token": fence.execution_token,
+                },
+            ).first()
+            if locked is None:
+                raise StagedBatchFenceLost("review suggestion batch fence was superseded")
+
         row = (
             connection.execute(
                 statement,
