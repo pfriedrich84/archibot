@@ -198,8 +198,11 @@ $dispatch = static function (
             foreach ($value as $item) {
                 $collectUrls($item);
             }
-        } elseif (is_string($value)
-            && (str_starts_with($value, '/') || str_starts_with($value, 'http://localhost/'))) {
+        } elseif (
+            is_string($value)
+            && (str_starts_with($value, '/') || str_starts_with($value, 'http://localhost/'))
+            && ! preg_match('#^/paperless-ai/v\d+/#', $value)
+        ) {
             $urls[] = $value;
         }
     };

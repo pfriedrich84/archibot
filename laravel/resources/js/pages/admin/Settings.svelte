@@ -616,7 +616,13 @@
                         {#each Object.entries(paperlessAiState.desired ?? {}) as [key, value] (key)}
                             <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
                                 <dt class="text-muted-foreground">{key}</dt>
-                                <dd class="break-all">{String(value)}</dd>
+                                <dd class="break-all">
+                                    {#if key.endsWith('_endpoint') || key.endsWith('_url')}
+                                        <span class="break-all">{String(value)}</span>
+                                    {:else}
+                                        {String(value)}
+                                    {/if}
+                                </dd>
                             </div>
                         {/each}
                     </dl>
@@ -628,7 +634,13 @@
                             {#each Object.entries(paperlessAiState.remote ?? {}) as [key, value] (key)}
                                 <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
                                     <dt class="text-muted-foreground">{key}</dt>
-                                    <dd class="break-all">{String(value)}</dd>
+                                    <dd class="break-all">
+                                        {#if key.endsWith('_endpoint') || key.endsWith('_url')}
+                                            <span class="break-all">{String(value)}</span>
+                                        {:else}
+                                            {String(value)}
+                                        {/if}
+                                    </dd>
                                 </div>
                             {/each}
                         </dl>
@@ -656,8 +668,20 @@
                                 {#each Object.entries(paperlessAiState.drift_fields ?? {}) as [field, values] (field)}
                                     <tr class="border-b align-top last:border-b-0">
                                         <td class="py-2 pr-4 font-medium">{field}</td>
-                                        <td class="py-2 pr-4 break-all">{String(values.desired)}</td>
-                                        <td class="py-2 break-all">{String(values.remote)}</td>
+                                        <td class="py-2 pr-4 break-all">
+                                            {#if field.endsWith('_endpoint') || field.endsWith('_url')}
+                                                <span class="break-all">{String(values.desired)}</span>
+                                            {:else}
+                                                {String(values.desired)}
+                                            {/if}
+                                        </td>
+                                        <td class="py-2 break-all">
+                                            {#if field.endsWith('_endpoint') || field.endsWith('_url')}
+                                                <span class="break-all">{String(values.remote)}</span>
+                                            {:else}
+                                                {String(values.remote)}
+                                            {/if}
+                                        </td>
                                     </tr>
                                 {/each}
                             </tbody>
