@@ -79,6 +79,10 @@ class CompleteSetup
                 'completed_at' => now(),
             ])->save();
 
+            $aiProviderConfigured = AppSetting::getValue('llm.provider') !== null
+                || AppSetting::getValue('ollama.url') !== null
+                || AppSetting::getValue('classification.model') !== null;
+
             AuditLog::query()->create([
                 'actor_user_id' => $user->id,
                 'event' => 'setup.completed',
@@ -90,7 +94,7 @@ class CompleteSetup
                     'paperless_user_id' => $paperlessUser->id,
                     'imported_setting_keys' => $importedKeys,
                     'paperless_inbox_tag_id' => (int) $data['paperless_inbox_tag_id'],
-                    'ai_provider_configuration' => 'deferred_until_authenticated_admin_session',
+                    'ai_provider_configuration' => $aiProviderConfigured ? 'imported_or_preconfigured' : 'deferred_until_authenticated_admin_session',
                     'paperless_ai_suggest_enabled' => ! empty($data['paperless_ai_suggest_enabled']),
                     'paperless_ai_similar_documents_enabled' => ! empty($data['paperless_ai_similar_documents_enabled']),
                     'paperless_ai_auto_manage_workflows' => ! empty($data['paperless_ai_auto_manage_workflows']),

@@ -120,6 +120,8 @@ class FirstRunSetupTest extends TestCase
         $this->assertSame('0', AppSetting::getValue('paperless.ai_similar_documents_enabled'));
         $this->assertSame('0', AppSetting::getValue('paperless.ai_auto_manage_workflows'));
         $this->assertNull(AppSetting::getValue('ollama.url'));
+        $this->assertNull(AppSetting::getValue('llm.provider'));
+        $this->assertNull(AppSetting::getValue('classification.model'));
 
         $user = User::query()->firstOrFail();
         $this->assertSame('admin', $user->paperless_username);

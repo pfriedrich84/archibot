@@ -142,9 +142,10 @@
         <h1 class="text-3xl font-semibold tracking-tight">ArchiBot setup</h1>
         <p class="text-sm text-muted-foreground">
             Verify a live Paperless superuser at the deployment-pinned
-            destination, then choose the Paperless tags ArchiBot should use. AI
-            provider endpoints become editable only after the administrator
-            session is created.
+            destination, then choose the Paperless tags ArchiBot should use.
+            The setup wizard does not configure the installation-wide AI provider
+            endpoint, model IDs, or Paperless workflows; finish setup first, then
+            complete those steps in Admin settings.
         </p>
     </div>
 
@@ -417,8 +418,9 @@
                     <div>
                         <h3 class="font-medium">Paperless AI Suggest</h3>
                         <p class="text-sm text-muted-foreground">
-                            Manual Paperless AI Suggest works immediately after
-                            setup. Similar documents remain a separate toggle.
+                            Manual Paperless AI Suggest can be enabled here, but the
+                            provider connection, model IDs, and Paperless workflow
+                            synchronization are completed afterward in Admin settings.
                         </p>
                     </div>
 
