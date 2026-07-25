@@ -203,6 +203,7 @@ class DashboardController extends Controller
                     ->get()
                     ->map(fn (PipelineRun $run) => [
                         'id' => $run->id,
+                        'batch_command_id' => $run->batch_command_id,
                         'type' => $this->diagnostics->typedScalar('pipeline_type', $run->type),
                         'status' => $this->diagnostics->typedScalar('status', $run->status),
                         'trigger_source' => $this->diagnostics->typedScalar('trigger_source', $run->trigger_source),
@@ -222,23 +223,30 @@ class DashboardController extends Controller
                         'retry_failed_items_url' => route('pipeline-runs.retry-failed-items', $run),
                         'cancel_url' => route('pipeline-runs.cancel', $run),
                         'failed_items_count' => $run->failed_items_count,
-                        'can_retry' => in_array($run->status, [
-                            PipelineRun::STATUS_BLOCKED,
-                            PipelineRun::STATUS_FAILED,
-                            PipelineRun::STATUS_FAILED_PERMANENT,
-                            PipelineRun::STATUS_PARTIALLY_FAILED,
-                            PipelineRun::STATUS_CANCELLED,
-                        ], true),
-                        'can_retry_failed_items' => $run->failed_items_count > 0 && in_array($run->status, [
-                            PipelineRun::STATUS_FAILED,
-                            PipelineRun::STATUS_PARTIALLY_FAILED,
-                        ], true),
-                        'can_cancel' => in_array($run->status, [
-                            PipelineRun::STATUS_PENDING,
-                            PipelineRun::STATUS_QUEUED,
-                            PipelineRun::STATUS_RUNNING,
-                            PipelineRun::STATUS_RETRYING,
-                        ], true),
+                        'can_retry' => $run->batch_command_id === null
+                            && $run->progress_current_phase !== 'staged_batch_wait'
+                            && in_array($run->status, [
+                                PipelineRun::STATUS_BLOCKED,
+                                PipelineRun::STATUS_FAILED,
+                                PipelineRun::STATUS_FAILED_PERMANENT,
+                                PipelineRun::STATUS_PARTIALLY_FAILED,
+                                PipelineRun::STATUS_CANCELLED,
+                            ], true),
+                        'can_retry_failed_items' => $run->batch_command_id === null
+                            && $run->progress_current_phase !== 'staged_batch_wait'
+                            && $run->failed_items_count > 0
+                            && in_array($run->status, [
+                                PipelineRun::STATUS_FAILED,
+                                PipelineRun::STATUS_PARTIALLY_FAILED,
+                            ], true),
+                        'can_cancel' => $run->batch_command_id === null
+                            && $run->progress_current_phase !== 'staged_batch_wait'
+                            && in_array($run->status, [
+                                PipelineRun::STATUS_PENDING,
+                                PipelineRun::STATUS_QUEUED,
+                                PipelineRun::STATUS_RUNNING,
+                                PipelineRun::STATUS_RETRYING,
+                            ], true),
                     ]),
                 'recentErrors' => $this->recentErrors(),
             ] : [

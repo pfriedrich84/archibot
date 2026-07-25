@@ -493,6 +493,55 @@ def test_document_target_set_runs_global_staged_phases(monkeypatch):
     assert [outcome.result.title for outcome in outcomes] == ["Classified 1", "Classified 2"]
 
 
+def test_single_document_pipeline_classifies_without_context_when_embedding_fails(monkeypatch):
+    calls = []
+
+    class FakePaperless:
+        async def list_correspondents(self):
+            return []
+
+        async def list_document_types(self):
+            return []
+
+        async def list_storage_paths(self):
+            return []
+
+        async def list_tags(self):
+            return []
+
+    class FailingProvider:
+        async def embed(self, text):
+            calls.append("embedding")
+            raise ConnectionError("embedding unavailable")
+
+    async def fake_classify(doc, context_docs, *args):
+        calls.append(("classification", context_docs))
+        return ClassificationResult(title="Fallback", confidence=50), "{}"
+
+    async def fake_judge(doc, initial, *args):
+        return SimpleNamespace(
+            result=initial, verdict="skipped", reasoning=None, original_proposed_json=None
+        )
+
+    monkeypatch.setattr(document, "effective_ocr_mode", lambda: "off")
+    monkeypatch.setattr(
+        document, "should_run_ocr_for_document", lambda *args, **kwargs: (False, "off")
+    )
+    monkeypatch.setattr(document, "classify", fake_classify)
+    monkeypatch.setattr(document, "maybe_run_judge", fake_judge)
+
+    outcome = document.run_async(
+        document._classify_document(
+            PaperlessDocument(id=1, title="One", content="Text", tags=[]),
+            paperless=FakePaperless(),
+            ai_provider=FailingProvider(),
+        )
+    )
+
+    assert outcome.result.title == "Fallback"
+    assert calls == ["embedding", ("classification", [])]
+
+
 def test_staged_document_batch_stops_before_ocr_when_required_embedding_fails(monkeypatch):
     calls = []
 

@@ -1,6 +1,6 @@
 {
   "authorization_command_files": {
-    "app/actors/document.py": "7775c9b3677195b3377ab0de16052fbfe9c58cce2308be64bce099993fb92f02",
+    "app/actors/document.py": "af4d1a29b0b31aa4e760e7ba1403b15daa6d674da5b233798f223147e7486627",
     "app/actors/document_batch.py": "49148274bbc6d4cb32126d081da31610f82bc45073499d8fa6532739e4156d91",
     "app/jobs/review_suggestions.py": "30ac6a6a2f88460c93e285ae84c560e983148235bae8d8c70b83fcbe0222e5ba",
     "laravel/app/Console/Commands/CommitReviewSuggestion.php": "8f8afb518f92b0165e000138b70395bc16d5cf0ddf0d97254b95cd0384bdcae8",
@@ -32,7 +32,7 @@
     "app/config_writer.py": "774666f0df4534be77d010d3d4b5389f0c5d51e3568e242aefe6ac88f82bde22",
     "app/mcp_server.py": "6386edad626ce25ed76cd9be21e711be99e3a7cc77409ce09a3828719dbc564a",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
-    "laravel/app/Http/Controllers/DashboardController.php": "f0e1322846275bd0790583640fd4d0e79ea1afc97a223b10edab3ec4ca62ad7c",
+    "laravel/app/Http/Controllers/DashboardController.php": "04c6f9c96f7d5864df0b0e67b105d872b36ac9ab320bd198da25cffb6196499a",
     "laravel/app/Models/AppSetting.php": "9b331973d126283b0ecf16b0d42df1bcd3e79f1167d75d1152342c4bc8a540dc",
     "laravel/app/Models/PaperlessAiConfigState.php": "57f446f81566291ec2b12544d041c54e79703f184d4d0c748006dc823653fd44",
     "laravel/app/Providers/FortifyServiceProvider.php": "9b5be937ea82e3fe0569643eab3555f289ad54d96dee3e2f1b81f2a5a0f6409f",

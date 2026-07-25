@@ -63,4 +63,32 @@ class DashboardTest extends TestCase
                 ->where('recentWebhookDeliveries.0.event_type', 'document_added')
             );
     }
+
+    public function test_dashboard_hides_singleton_controls_for_staged_batch_children(): void
+    {
+        $user = User::factory()->create(['is_admin' => true]);
+        $batch = Command::query()->create([
+            'type' => Command::TYPE_STAGED_DOCUMENT_BATCH,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => ['source_command_id' => 1],
+        ]);
+        PipelineRun::query()->create([
+            'batch_command_id' => $batch->id,
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 42,
+            'progress_current_phase' => 'classification',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('recentPipelineRuns.0.batch_command_id', $batch->id)
+                ->where('recentPipelineRuns.0.can_retry', false)
+                ->where('recentPipelineRuns.0.can_retry_failed_items', false)
+                ->where('recentPipelineRuns.0.can_cancel', false)
+            );
+    }
 }

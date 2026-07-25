@@ -178,16 +178,33 @@ async def _run_staged_document_phases(
                 state.original_document.title, state.original_document.content
             )
             if not text.strip():
-                raise ValueError(
-                    f"Paperless document {state.original_document.id} has no embedding text"
+                if persist_target_embeddings:
+                    raise ValueError(
+                        f"Paperless document {state.original_document.id} has no embedding text"
+                    )
+                _notify_staged_phase(observer, "completed", "embedding", index, total, state)
+                continue
+            try:
+                state.embedding = await provider.embed(text)
+            except Exception as exc:
+                if persist_target_embeddings:
+                    raise
+                log.warning(
+                    "document context embedding failed",
+                    paperless_document_id=state.original_document.id,
+                    error_type=type(exc).__name__,
                 )
-            state.embedding = await provider.embed(text)
+                _notify_staged_phase(observer, "completed", "embedding", index, total, state)
+                continue
             if mutation_guard is not None:
                 mutation_guard()
             if not state.embedding:
-                raise ValueError(
-                    f"Paperless document {state.original_document.id} returned an empty embedding"
-                )
+                if persist_target_embeddings:
+                    raise ValueError(
+                        f"Paperless document {state.original_document.id} returned an empty embedding"
+                    )
+                _notify_staged_phase(observer, "completed", "embedding", index, total, state)
+                continue
             if persist_target_embeddings:
                 content_hash = store_document_embedding(
                     DocumentEmbeddingInput(
