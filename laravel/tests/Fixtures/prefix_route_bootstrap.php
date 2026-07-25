@@ -281,4 +281,8 @@ echo json_encode([
     'configured_prefix' => config('archibot.path_prefix'),
     'routes' => $routes,
     'flows' => $flows,
+    'debug' => [
+        'settings_get_urls' => $flows['settings_get']['urls'],
+        'settings_get_body' => $flows['settings_get']['body'],
+    ],
 ], JSON_THROW_ON_ERROR);
