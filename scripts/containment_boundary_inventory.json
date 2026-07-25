@@ -17,7 +17,7 @@
     "laravel/app/Services/Paperless/PaperlessClient.php": "87e66f0215872a084f18ed201c23cc0705020e59b9de6b08ecb5ad13858d7414",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
     "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "e61f6c0434caed4ea1059f538a616c6835fc8f59b5143d413cd26108d08edad3",
-    "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "e3f661127aca9df572c153f695bcb6c2f93c35de6cde8f85049b2d4ec7b58b3c",
+    "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "839ce88db7f1d8d6bb771835d1fbfdde8b54041a9ace94e69f16faeb792efffa",
     "scripts/check_containment_boundaries.py": "778aecd55d20ed9a9f288f4fedca21eb8ff576d66e3a490eccccd6907033bad6"
   },
   "cli_registration_files": {
