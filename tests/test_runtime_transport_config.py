@@ -13,6 +13,12 @@ def test_supervisor_uses_laravel_as_exclusive_queue_and_recovery_owner():
     assert "[program:laravel-durable-recovery]" in supervisor
     assert "php artisan schedule:work" in supervisor
     assert "php artisan archibot:recovery-scan" in supervisor
+    assert (
+        "${ARCHIBOT_QUEUE_INTERACTIVE:-interactive},"
+        "${ARCHIBOT_QUEUE_DEFAULT:-default},"
+        "${ARCHIBOT_QUEUE_MAINTENANCE:-maintenance},"
+        "${ARCHIBOT_QUEUE_EMBEDDINGS:-embeddings}"
+    ) in supervisor
     assert "python -m app.event_worker" not in supervisor
     assert "start-workers" not in supervisor
     assert "[program:event-queue-workers]" not in supervisor
