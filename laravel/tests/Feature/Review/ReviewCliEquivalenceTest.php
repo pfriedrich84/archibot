@@ -26,7 +26,7 @@ class ReviewCliEquivalenceTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('review.accept', $uiSuggestion))
-            ->assertRedirect(route('review.index'));
+            ->assertRedirect(route('review.show', $cliSuggestion));
         $this->artisan('archibot:review-commit', [
             'suggestion-id' => $cliSuggestion->id,
             '--user-id' => $admin->id,
