@@ -22,8 +22,8 @@
     import { formatDateTime } from '@/lib/datetime';
     import { paperlessLabel } from '@/lib/paperless';
     import { toUrl } from '@/lib/utils';
-    import type { Paginator } from '@/types';
     import { show } from '@/routes/review';
+    import type { Paginator } from '@/types';
 
     type Suggestion = {
         id: number;

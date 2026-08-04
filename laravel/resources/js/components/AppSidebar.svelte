@@ -32,7 +32,6 @@
         SidebarMenuItem,
     } from '@/components/ui/sidebar';
     import { toUrl } from '@/lib/utils';
-    import type { NavItem } from '@/types';
     import { dashboard } from '@/routes';
     import { index as auditLogsIndex } from '@/routes/admin/audit-logs';
     import { index as maintenanceIndex } from '@/routes/admin/maintenance';
@@ -48,6 +47,7 @@
     import { index as reviewIndex } from '@/routes/review';
     import { index as statsIndex } from '@/routes/stats';
     import { index as webhookDeliveriesIndex } from '@/routes/webhook-deliveries';
+    import type { NavItem } from '@/types';
 
     let {
         children,
