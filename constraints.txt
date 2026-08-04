@@ -25,8 +25,8 @@ python-multipart<=0.0.32
 pip-audit<=2.10.1
 cyclonedx-python-lib<=11.11.0
 sortedcontainers<=2.4.0
-# cryptography 48.0.1 fixes GHSA-537c-gmf6-5ccf (vulnerable bundled OpenSSL in wheels).
-cryptography>=48.0.1,<=48.0.1
+# cryptography 50.0.0 fixes PYSEC-2026-3552, PYSEC-2026-3553, and PYSEC-2026-3554.
+cryptography>=50.0.0,<=50.0.0
 charset-normalizer<=3.4.9
 # platformdirs 4.10.1 remains in the 3-day supply-chain quarantine through 2026-07-20.
 platformdirs<=4.11.0
