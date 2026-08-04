@@ -62,4 +62,4 @@ php artisan storage:link >/dev/null 2>&1 || true
 # server, and web server independently restartable
 # and visible in container logs.
 echo "Starting supervised ArchiBot processes"
-exec /usr/bin/supervisord -c /app/docker/supervisord.conf
+exec /usr/local/bin/supervisord -c /app/docker/supervisord.conf

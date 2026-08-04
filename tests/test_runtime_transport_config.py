@@ -7,7 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_supervisor_uses_laravel_as_exclusive_queue_and_recovery_owner():
     supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
 
+    assert "exec /usr/local/bin/supervisord" in entrypoint
     assert "[program:laravel-queue-worker]" in supervisor
     assert "[program:laravel-scheduler]" in supervisor
     assert "[program:laravel-durable-recovery]" in supervisor
