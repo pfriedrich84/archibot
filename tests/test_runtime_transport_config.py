@@ -70,3 +70,5 @@ def test_runtime_manifests_have_only_laravel_database_queue_transport():
         assert all(token not in source for token in forbidden)
     assert "QUEUE_CONNECTION=database" in env_example
     assert "QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}" in compose
+    assert "pip uninstall -y pip setuptools wheel" in dockerfile
+    assert "rm -rf /usr/local/lib/python*/ensurepip" in dockerfile

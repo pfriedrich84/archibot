@@ -89,6 +89,8 @@ COPY --from=laravel-vendor /laravel ./laravel
 COPY --from=laravel-build /laravel/public/build ./laravel/public/build
 
 RUN pip install --no-deps . \
+    && pip uninstall -y pip setuptools wheel \
+    && rm -rf /usr/local/lib/python*/ensurepip \
     && chmod +x /app/entrypoint.sh /app/docker/healthcheck.sh \
     && mkdir -p /data /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache \
     && chown -R www-data:www-data /app/laravel/storage /app/laravel/bootstrap/cache
