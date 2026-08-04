@@ -7,7 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_supervisor_uses_laravel_as_exclusive_queue_and_recovery_owner():
     supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
+    entrypoint = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
 
+    assert "exec /usr/local/bin/supervisord" in entrypoint
     assert "[program:laravel-queue-worker]" in supervisor
     assert "[program:laravel-scheduler]" in supervisor
     assert "[program:laravel-durable-recovery]" in supervisor
@@ -68,3 +70,5 @@ def test_runtime_manifests_have_only_laravel_database_queue_transport():
         assert all(token not in source for token in forbidden)
     assert "QUEUE_CONNECTION=database" in env_example
     assert "QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}" in compose
+    assert "pip uninstall -y pip setuptools wheel" in dockerfile
+    assert "rm -rf /usr/local/lib/python*/ensurepip" in dockerfile

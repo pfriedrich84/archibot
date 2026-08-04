@@ -46,6 +46,7 @@ class AdminSettingsTest extends TestCase
     {
         $admin = User::factory()->create(['is_admin' => true]);
         Config::set('archibot.paperless_webhook_development_bypass', true);
+        Config::set('inertia.devtools.enabled', false);
         $this->app->detectEnvironment(fn (): string => 'local');
         Log::spy();
         $database = Config::get('database.default');

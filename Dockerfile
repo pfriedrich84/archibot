@@ -55,7 +55,6 @@ RUN apt-get update \
     && apt-get dist-upgrade -y \
     && apt-get install -y --no-install-recommends \
         tini \
-        supervisor \
         curl \
         php-cli \
         php-curl \
@@ -77,6 +76,7 @@ RUN pip install --upgrade pip setuptools wheel \
         "psycopg[binary]>=3.2.0,<4.0.0" \
         "pgvector>=0.3.0,<1.0.0" \
         "structlog>=24.4.0,<=25.5.0" \
+        "supervisor>=4.3.0,<=4.3.0" \
         "mcp[cli]>=1.20.0,<=1.28.1" \
         "pymupdf>=1.24.0,<=1.28.0"
 
@@ -89,6 +89,8 @@ COPY --from=laravel-vendor /laravel ./laravel
 COPY --from=laravel-build /laravel/public/build ./laravel/public/build
 
 RUN pip install --no-deps . \
+    && pip uninstall -y pip setuptools wheel \
+    && rm -rf /usr/local/lib/python*/ensurepip \
     && chmod +x /app/entrypoint.sh /app/docker/healthcheck.sh \
     && mkdir -p /data /app/laravel/storage/framework/cache /app/laravel/storage/framework/sessions /app/laravel/storage/framework/views /app/laravel/bootstrap/cache \
     && chown -R www-data:www-data /app/laravel/storage /app/laravel/bootstrap/cache
@@ -98,7 +100,7 @@ VOLUME ["/data"]
 EXPOSE 8088 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD /app/docker/healthcheck.sh || exit 1
+    CMD ["/app/docker/healthcheck.sh"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["./entrypoint.sh"]
