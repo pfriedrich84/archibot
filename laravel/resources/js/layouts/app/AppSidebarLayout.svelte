@@ -17,12 +17,21 @@
     } = $props();
 </script>
 
+<a
+    href="#main-content"
+    class="fixed top-3 left-3 z-50 -translate-y-24 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg transition-transform focus:translate-y-0"
+>
+    Skip to content
+</a>
+
 <AppShell variant="sidebar">
     <AppSidebar />
     <AppContent variant="sidebar" class="overflow-x-hidden">
         <AppSidebarHeader {breadcrumbs} />
         <GlobalFlash />
-        {@render children?.()}
+        <div class="register-page-frame">
+            {@render children?.()}
+        </div>
     </AppContent>
     <Toaster />
 </AppShell>

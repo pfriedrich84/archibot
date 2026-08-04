@@ -1,4 +1,5 @@
 <script lang="ts">
+    import StatusBadge from '@/components/StatusBadge.svelte';
     import { formatDateTime } from '@/lib/datetime';
 
     type ActiveOperation = {
@@ -33,31 +34,6 @@
 
     let { operations }: { operations: ActiveOperations } = $props();
 
-    const statusClasses: Record<string, string> = {
-        pending:
-            'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-        queued: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200',
-        running:
-            'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200',
-        retrying:
-            'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
-        blocked:
-            'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200',
-        cancel_requested:
-            'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-200',
-    };
-
-    function statusClass(status: string): string {
-        return (
-            statusClasses[status] ??
-            'bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
-        );
-    }
-
-    function statusLabel(status: string): string {
-        return status.replaceAll('_', ' ');
-    }
-
     function progressValue(operation: ActiveOperation): number | null {
         if (operation.progress_total <= 0) {
             return null;
@@ -83,7 +59,7 @@
     }
 </script>
 
-<section class="rounded-xl border p-4">
+<section class="register-panel p-4 sm:p-5">
     <div
         class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
     >
@@ -130,11 +106,7 @@
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
                                 <p class="font-medium">{operation.label}</p>
-                                <span
-                                    class={`rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(operation.status)}`}
-                                >
-                                    {statusLabel(operation.status)}
-                                </span>
+                                <StatusBadge status={operation.status} />
                             </div>
                             <p class="mt-1 text-sm text-muted-foreground">
                                 {operation.detail}
@@ -163,6 +135,11 @@
                             </div>
                             <div
                                 class="h-2 overflow-hidden rounded-full bg-muted"
+                                role="progressbar"
+                                aria-label={`${operation.label} progress`}
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow={progress}
                             >
                                 <div
                                     class="h-full rounded-full bg-primary transition-all"

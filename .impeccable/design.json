@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-04T14:35:12Z",
+  "title": "Design System: ArchiBot",
+  "extensions": {
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page headline",
+        "purpose": "Page titles above the opening ledger rule; grows to 1.875rem from the small breakpoint."
+      },
+      "body": {
+        "displayName": "Register body",
+        "purpose": "Descriptions, metadata, evidence, and form help."
+      },
+      "navigation-label": {
+        "displayName": "Register group marker",
+        "purpose": "Uppercase labels for Review, Library, Monitor, and Configure groups."
+      }
+    },
+    "shadows": [
+      {
+        "name": "register-structure",
+        "value": "0 10px 30px -26px hsl(162 17% 11% / 0.45)",
+        "purpose": "Restrained structural separation for document and operations panels."
+      },
+      {
+        "name": "decision-sleeve",
+        "value": "0 18px 44px -24px hsl(162 17% 11% / 0.55)",
+        "purpose": "Keeps the sticky accept/reject boundary attached to the current document."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-color",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Quiet hover and color-state transitions on controls."
+      },
+      {
+        "name": "sidebar-collapse",
+        "value": "200ms linear",
+        "purpose": "Width and position changes when the desktop archive rail collapses."
+      },
+      {
+        "name": "mobile-rail-entry",
+        "value": "300ms cubic-out",
+        "purpose": "The narrow-screen archive rail enters from the viewport edge."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ],
+    "layout": {
+      "contentMaxWidth": "96rem",
+      "sidebarWidth": "16rem",
+      "sidebarCollapsedWidth": "3rem",
+      "sidebarMobileWidth": "18rem",
+      "stickyHeaderHeight": "3.5rem",
+      "reviewColumns": "minmax(0, 1.2fr) minmax(24rem, 0.8fr)"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The next safe action in a review or settings workflow.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Accept and review next</button>",
+      "css": ".ds-btn-primary { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem; border: 0; border-radius: var(--radius, 0.375rem); background: var(--primary, hsl(169 32% 28%)); color: var(--primary-foreground, hsl(96 25% 97%)); font: 500 0.875rem/1.25 'Public Sans', ui-sans-serif, system-ui, sans-serif; transition: filter 150ms cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; } .ds-btn-primary:hover { filter: brightness(0.92); } .ds-btn-primary:active { filter: brightness(0.86); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; } .ds-btn-primary:disabled { pointer-events: none; opacity: 0.5; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "A secondary decision or conventional administrative action.",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">Reject and review next</button>",
+      "css": ".ds-btn-outline { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.5rem 1rem; border: 1px solid var(--input, hsl(135 10% 76%)); border-radius: var(--radius, 0.375rem); background: var(--background, hsl(105 14% 96%)); color: var(--foreground, hsl(162 17% 11%)); font: 500 0.875rem/1.25 'Public Sans', ui-sans-serif, system-ui, sans-serif; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; } .ds-btn-outline:hover { background: var(--accent, hsl(150 18% 88%)); color: var(--accent-foreground, hsl(169 32% 22%)); } .ds-btn-outline:active { filter: brightness(0.96); } .ds-btn-outline:focus-visible { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The standard 44px field used in review, maintenance, and settings forms.",
+      "html": "<label class=\"ds-field\"><span>Find a document</span><input class=\"ds-input\" type=\"search\" placeholder=\"Search title or correspondent\"></label>",
+      "css": ".ds-field { display: grid; gap: 0.375rem; color: var(--foreground, hsl(162 17% 11%)); font: 500 0.875rem/1.25 'Public Sans', ui-sans-serif, system-ui, sans-serif; } .ds-input { width: 100%; height: 2.75rem; padding: 0.5rem 0.75rem; border: 1px solid var(--input, hsl(135 10% 76%)); border-radius: var(--radius, 0.375rem); background: var(--background, hsl(105 14% 96%)); color: var(--foreground, hsl(162 17% 11%)); font: 400 0.875rem/1.25 'Public Sans', ui-sans-serif, system-ui, sans-serif; box-shadow: 0 1px 2px 0 hsl(162 17% 11% / 0.05); transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-input::placeholder { color: var(--muted-foreground, hsl(156 7% 36%)); } .ds-input:hover { border-color: var(--ring, hsl(169 32% 32%)); } .ds-input:focus-visible { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; } .ds-input:disabled { cursor: not-allowed; opacity: 0.5; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "An active item in the Review, Library, Monitor, or Configure rail.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Review\"><div class=\"ds-nav-label\">Review</div><a class=\"ds-nav-item\" href=\"#\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 11l3 3L22 4\"/><path d=\"M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11\"/></svg><span>Review queue</span></a></nav>",
+      "css": ".ds-nav { width: 16rem; padding: 0.25rem 0.5rem; color: var(--sidebar-foreground, hsl(162 17% 17%)); font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif; } .ds-nav-label { padding: 0.5rem; font-size: 0.68rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; } .ds-nav-item { height: 2.5rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-radius: var(--radius, 0.375rem); color: inherit; font-size: 0.875rem; text-decoration: none; transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-nav-item svg { width: 1rem; height: 1rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-item:hover, .ds-nav-item[aria-current='page'] { background: var(--sidebar-accent, hsl(145 15% 85%)); color: var(--sidebar-accent-foreground, hsl(169 32% 20%)); } .ds-nav-item[aria-current='page'] { font-weight: 500; } .ds-nav-item:focus-visible { outline: 2px solid var(--sidebar-ring, hsl(169 32% 32%)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Queued Status Badge",
+      "kind": "chip",
+      "refersTo": "status-pending",
+      "description": "A semantic status pill that pairs a clock icon, text, and archival-green color.",
+      "html": "<span class=\"ds-status-pending\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/></svg><span>Queued</span></span>",
+      "css": ".ds-status-pending { min-height: 1.75rem; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.625rem; border: 1px solid color-mix(in srgb, var(--primary, hsl(169 32% 28%)) 20%, transparent); border-radius: 9999px; background: color-mix(in srgb, var(--primary, hsl(169 32% 28%)) 10%, transparent); color: var(--primary, hsl(169 32% 28%)); font: 500 0.75rem/1rem 'Public Sans', ui-sans-serif, system-ui, sans-serif; text-transform: capitalize; } .ds-status-pending svg { width: 0.875rem; height: 0.875rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }"
+    },
+    {
+      "name": "Register Panel",
+      "kind": "card",
+      "refersTo": "register-panel",
+      "description": "The square-edged document and operations sleeve defined by a rule and restrained shadow.",
+      "html": "<section class=\"ds-register-panel\"><h2>Active operations</h2><p>Nothing running right now.</p></section>",
+      "css": ".ds-register-panel { padding: 1rem; border: 1px solid color-mix(in srgb, var(--border, hsl(135 10% 82%)) 90%, transparent); border-radius: 0; background: var(--card, hsl(90 20% 99%)); color: var(--card-foreground, hsl(162 17% 11%)); box-shadow: 0 10px 30px -26px hsl(162 17% 11% / 0.45); font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif; } .ds-register-panel h2 { margin: 0; font-size: 1rem; line-height: 1.5; font-weight: 600; } .ds-register-panel p { margin: 0.125rem 0 0; color: var(--muted-foreground, hsl(156 7% 36%)); font-size: 0.875rem; line-height: 1.5rem; } .ds-register-panel:hover { border-color: var(--border, hsl(135 10% 82%)); } .ds-register-panel:focus-within { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Register Disclosure",
+      "kind": "custom",
+      "description": "Progressive disclosure for evidence, filters, maintenance, recovery, and danger.",
+      "html": "<details class=\"ds-disclosure\"><summary>Decision evidence</summary><div class=\"ds-disclosure-body\">Classification and judge reasoning remain available without competing with the decision.</div></details>",
+      "css": ".ds-disclosure { border: 1px solid color-mix(in srgb, var(--border, hsl(135 10% 82%)) 90%, transparent); background: var(--card, hsl(90 20% 99%)); color: var(--card-foreground, hsl(162 17% 11%)); font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif; } .ds-disclosure summary { min-height: 2.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 1rem; cursor: pointer; list-style: none; font-size: 0.875rem; font-weight: 500; } .ds-disclosure summary::-webkit-details-marker { display: none; } .ds-disclosure summary::after { content: '+'; color: var(--muted-foreground, hsl(156 7% 36%)); font-size: 1.125rem; font-weight: 400; } .ds-disclosure[open] summary::after { content: '−'; } .ds-disclosure summary:hover { background: color-mix(in srgb, var(--muted, hsl(110 11% 92%)) 40%, transparent); } .ds-disclosure summary:focus-visible { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; } .ds-disclosure-body { padding: 1rem; border-top: 1px solid var(--border, hsl(135 10% 82%)); color: var(--muted-foreground, hsl(156 7% 36%)); font-size: 0.875rem; line-height: 1.5rem; }"
+    },
+    {
+      "name": "Changed Register Row",
+      "kind": "custom",
+      "description": "The signature proposed-value row that keeps changed and prior document metadata together.",
+      "html": "<dl class=\"ds-change-list\"><div class=\"ds-change-row\"><dt>Correspondent</dt><dd><strong>City Utilities</strong><del>Unknown</del><span class=\"ds-sr-only\">Changed</span></dd></div></dl>",
+      "css": ".ds-change-list { margin: 0; border: 1px solid var(--border, hsl(135 10% 82%)); background: var(--card, hsl(90 20% 99%)); color: var(--card-foreground, hsl(162 17% 11%)); font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif; } .ds-change-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: 1rem; padding: 0.75rem 1.25rem; background: color-mix(in srgb, var(--primary, hsl(169 32% 28%)) 4.5%, transparent); } .ds-change-row dt { font-size: 0.875rem; font-weight: 500; } .ds-change-row dd { min-width: 0; margin: 0; font-size: 0.875rem; overflow-wrap: anywhere; } .ds-change-row strong { display: block; font-weight: 500; } .ds-change-row del { display: block; margin-top: 0.25rem; color: var(--muted-foreground, hsl(156 7% 36%)); font-size: 0.75rem; text-decoration-color: var(--border, hsl(135 10% 82%)); } .ds-change-row:hover { background: color-mix(in srgb, var(--primary, hsl(169 32% 28%)) 7%, transparent); } .ds-change-list:focus-within { outline: 2px solid var(--ring, hsl(169 32% 32%)); outline-offset: 2px; } .ds-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; } @media (max-width: 639px) { .ds-change-row { grid-template-columns: 1fr; gap: 0.25rem; padding: 0.75rem 1rem; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Transfer Register",
+    "overview": "ArchiBot feels like a municipal transfer register refined into a modern personal admin tool: mineral stock, archival green dividers, oxide decision marks, and crisp ledger rules organize one document at a time. The interface is calm, factual, and document-centric rather than dashboard-like or decorative.\n\nRoutine review is deliberately fast and open. The current document, proposed changes, and next safe action dominate; technical evidence, advanced filters, maintenance, and danger controls remain available through progressive disclosure. New entity approvals deserve additional visual pause and explicit consequence language because they cross a higher-risk boundary.\n\nPublic Sans gives the register a polished conventional admin voice. Light and dark themes preserve the same semantic roles, compact geometry, and rule-led hierarchy rather than becoming separate visual identities.",
+    "keyCharacteristics": [
+      "Mineral-stock surfaces and archival-green structure with oxide reserved for destructive decisions.",
+      "Crisp ledger dividers, restrained structural shadows, and a compact 0.375rem corner language.",
+      "One dominant document workspace with routine decisions kept close and secondary evidence disclosed on demand.",
+      "Conventional, accessible admin controls with 44px targets, strong focus, and non-color status cues."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Use archival green for primary decisions and active structure; reserve oxide for destructive or failure states rather than decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Pairing Rule",
+        "body": "Every status combines a recognizable icon, explicit text, and semantic color; color alone is never the message.",
+        "section": "colors"
+      },
+      {
+        "name": "The Register Voice Rule",
+        "body": "Use Public Sans and restrained weight changes for hierarchy; reserve monospace for literal operational identifiers, event names, and editable prompt content.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Document Rule",
+        "body": "Give the current document and its next safe action the dominant column; never let operational summaries compete with the review workspace.",
+        "section": "layout"
+      },
+      {
+        "name": "The Disclosure Rule",
+        "body": "Keep routine review content open, but place technical evidence, advanced filters, admin recovery, and danger controls behind clearly labeled native disclosures.",
+        "section": "layout"
+      },
+      {
+        "name": "The Structural Shadow Rule",
+        "body": "Use borders and tonal layering first; add shadow only to clarify a panel, sticky decision boundary, or inset shell—not to make every container float.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Crisp Sleeve Rule",
+        "body": "Prefer one bordered register surface with internal dividers over a cluster of separately rounded cards.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do preserve semantic light and dark role pairs; let inherited tokens change the theme rather than hard-coding a second component style.",
+      "Do keep primary buttons, inputs, selects, disclosure summaries, and checkbox hit areas at least 44px tall or wide.",
+      "Do use ledger rules, wrapping metadata, and progressive disclosure to simplify dense operational evidence.",
+      "Do pair every status color with its implemented icon and explicit text label.",
+      "Do keep the source document, changed metadata, and accept/reject consequences visible together when space permits.",
+      "Do slow the workflow at new correspondent, document type, or tag approvals with explicit labels and consequence copy."
+    ],
+    "donts": [
+      "Don't turn the page into a generic grid of floating dashboard cards or give every container a shadow.",
+      "Don't use pure white page chrome, oversized radii, gradients, glass effects, or decorative color outside the implemented semantic roles.",
+      "Don't expose pipeline, webhook, recovery, and danger controls at the same hierarchy as routine document review.",
+      "Don't use oxide for ordinary emphasis, archival green for destructive actions, or any status color without icon and text.",
+      "Don't shrink controls below 44px, hide keyboard focus, or make unchanged facts as prominent as changed values.",
+      "Don't collapse higher-risk new entity approvals into the fast bulk-review treatment."
+    ]
+  }
+}

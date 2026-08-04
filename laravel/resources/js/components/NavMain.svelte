@@ -22,8 +22,12 @@
     const url = currentUrlState();
 </script>
 
-<SidebarGroup class="px-2 py-0">
-    <SidebarGroupLabel>{label}</SidebarGroupLabel>
+<SidebarGroup class="px-2 py-1">
+    <SidebarGroupLabel
+        class="text-[0.68rem] font-semibold tracking-[0.08em] uppercase"
+    >
+        {label}
+    </SidebarGroupLabel>
     <SidebarMenu>
         {#each items as item (toUrl(item.href))}
             <SidebarMenuItem>
