@@ -9,6 +9,7 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
+use App\Services\Paperless\PaperlessDocumentPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -132,6 +133,73 @@ class ReviewSuggestionTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->has('suggestions.data', 3)
             );
+    }
+
+    public function test_accepting_a_review_opens_the_next_pending_document(): void
+    {
+        Queue::fake();
+        $admin = User::factory()->create(['is_admin' => true]);
+        $next = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 456,
+        ]);
+        $current = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 123,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('review.accept', $current))
+            ->assertRedirect(route('review.show', $next));
+    }
+
+    public function test_rejecting_a_review_opens_the_next_pending_document(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $next = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 456,
+        ]);
+        $current = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 123,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('review.reject', $current))
+            ->assertRedirect(route('review.show', $next));
+    }
+
+    public function test_next_review_skips_documents_the_user_cannot_view(): void
+    {
+        $user = User::factory()->create([
+            'is_admin' => false,
+            'paperless_token' => 'user-token',
+        ]);
+        $visibleNext = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 456,
+        ]);
+        $hiddenNext = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 789,
+        ]);
+        $current = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 123,
+        ]);
+
+        $permissions = $this->mock(PaperlessDocumentPermissions::class);
+        $permissions->shouldReceive('assertCanChangeDocument')
+            ->once()
+            ->with($user, 123);
+        $permissions->shouldReceive('canViewDocument')
+            ->once()
+            ->with($user, 789)
+            ->andReturnFalse();
+        $permissions->shouldReceive('canViewDocument')
+            ->once()
+            ->with($user, 456)
+            ->andReturnTrue();
+
+        $this->actingAs($user)
+            ->post(route('review.reject', $current))
+            ->assertRedirect(route('review.show', $visibleNext));
+
+        $this->assertSame(ReviewSuggestion::STATUS_PENDING, $hiddenNext->refresh()->status);
     }
 
     public function test_older_pending_suggestions_can_not_be_reviewed_after_a_newer_suggestion_exists(): void

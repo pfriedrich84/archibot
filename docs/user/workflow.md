@@ -73,12 +73,20 @@ Das LLM liefert strukturiertes JSON mit:
 
 #### In der GUI (`/review`)
 
-- Alle offenen Vorschlaege in einer Queue
-- Pro Vorschlag: Original vs. Vorschlag nebeneinander
-- Felder einzeln editieren oder uebernehmen
-- Annehmen oder Ablehnen mit einem Klick
-- Nicht-Admins sehen Vorschlaege nur, wenn ihr gespeicherter Paperless-Token Zugriff auf das konkrete Paperless-Dokument nachweist
-- Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist
+Die Navigation priorisiert den taeglichen Dokumentfluss: **Today** zeigt die
+naechste Review-Aufgabe, **Review queue** fuehrt das Register der Vorschlaege und
+**Inbox** zeigt die eingegangenen Paperless-Dokumente. Monitoring-, Recovery- und
+Konfigurationsseiten bleiben fuer Admins unter **Admin tools** erreichbar, ohne
+den normalen Reviewpfad zu ueberladen.
+
+- Alle offenen Vorschlaege stehen in einer durchsuchbaren Queue; selten benoetigte Filter bleiben unter „More filters and sorting“ eingeklappt.
+- Die Detailansicht haelt die Dokumentvorschau neben den vorgeschlagenen Aenderungen sichtbar.
+- Geaenderte Werte werden hervorgehoben; unveraenderter Kontext tritt visuell zurueck.
+- Felder lassen sich unter „Edit proposed metadata“ einzeln bearbeiten und speichern.
+- Annehmen reiht den geprueften Paperless-Metadaten-Write ein; Ablehnen veraendert Paperless nicht. Danach oeffnet ArchiBot direkt das naechste sichtbare Review oder kehrt bei leerer Queue zum Register zurueck.
+- Modell- und Judge-Begruendungen bleiben als einklappbare Entscheidungs-Evidenz verfuegbar und autorisieren nie selbst einen Write.
+- Nicht-Admins sehen Vorschlaege nur, wenn ihr gespeicherter Paperless-Token Zugriff auf das konkrete Paperless-Dokument nachweist.
+- Nicht-Admins duerfen Vorschlaege nur bearbeiten, annehmen oder ablehnen, wenn ihr gespeicherter Paperless-Token fuer das konkrete Dokument Aenderungsrechte nachweist.
 
 #### OCR-Review (`/ocr-reviews`)
 

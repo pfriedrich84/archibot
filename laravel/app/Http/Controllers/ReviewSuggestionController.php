@@ -134,7 +134,7 @@ class ReviewSuggestionController extends Controller
 
         $this->queueCommitCommand($request, $reviewSuggestion);
 
-        return redirect()->route('review.index')
+        return redirect()->to($this->nextReviewUrl($request))
             ->with('status', 'Review accepted; the Paperless metadata update was queued.');
     }
 
@@ -144,7 +144,7 @@ class ReviewSuggestionController extends Controller
         $this->assertReviewable($request, $reviewSuggestion);
         $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
-        return redirect()->route('review.index')
+        return redirect()->to($this->nextReviewUrl($request))
             ->with('status', 'Review rejected; no Paperless metadata was changed.');
     }
 
@@ -456,6 +456,29 @@ class ReviewSuggestionController extends Controller
             $suggestion->markStale('paperless_document_version_changed');
             abort(409);
         }
+    }
+
+    private function nextReviewUrl(Request $request): string
+    {
+        $user = $request->user();
+        abort_unless($user !== null, 403);
+
+        $query = ReviewSuggestion::pendingReviewQueueQuery()->latest();
+
+        if ((bool) $user->is_admin) {
+            $next = $query->first();
+        } else {
+            $next = $query
+                ->get()
+                ->first(fn (ReviewSuggestion $suggestion): bool => $this->permissions->canViewDocument(
+                    $user,
+                    $suggestion->paperless_document_id,
+                ));
+        }
+
+        return $next instanceof ReviewSuggestion
+            ? route('review.show', $next)
+            : route('review.index');
     }
 
     private function isLatestForDocument(ReviewSuggestion $suggestion): bool

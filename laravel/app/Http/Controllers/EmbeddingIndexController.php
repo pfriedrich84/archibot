@@ -8,6 +8,7 @@ use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use App\Services\Pipeline\PipelineStartGate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class EmbeddingIndexController extends Controller
 {
@@ -29,6 +30,10 @@ class EmbeddingIndexController extends Controller
     public function markStale(Request $request): RedirectResponse
     {
         abort_unless((bool) $request->user()?->is_admin, 403);
+
+        $request->validate([
+            'confirmation' => ['required', 'string', Rule::in(['STALE'])],
+        ]);
 
         $state = app(PipelineStartGate::class)->markStale('Marked stale by admin.');
 

@@ -56,12 +56,30 @@
     } = $props();
 
     const user = $derived(page.props.auth.user);
+    const adminToolsOpen = $derived(
+        [
+            '/stats',
+            '/operations-log',
+            '/pipeline-runs',
+            '/webhook-deliveries',
+            '/embeddings',
+            '/errors',
+            '/admin/maintenance',
+            '/admin/audit-logs',
+            '/admin/settings',
+        ].some((path) => page.url.includes(path)),
+    );
 
-    const platformNavItems: NavItem[] = $derived([
+    const reviewNavItems: NavItem[] = $derived([
         {
-            title: 'Dashboard',
+            title: 'Today',
             href: dashboard(),
             icon: LayoutGrid,
+        },
+        {
+            title: 'Review queue',
+            href: reviewIndex(),
+            icon: ClipboardCheck,
         },
         {
             title: 'Inbox',
@@ -69,18 +87,13 @@
             icon: Inbox,
         },
         {
-            title: 'Review',
-            href: reviewIndex(),
-            icon: ClipboardCheck,
-        },
-        {
-            title: 'OCR reviews',
+            title: 'OCR review',
             href: ocrReviewsIndex(),
             icon: FileText,
         },
     ]);
 
-    const masterDataNavItems: NavItem[] = $derived([
+    const libraryNavItems: NavItem[] = $derived([
         {
             title: 'Correspondents',
             href: masterDataCasesIndex({ segment: 'correspondents' }),
@@ -98,7 +111,7 @@
         },
     ]);
 
-    const processingNavItems: NavItem[] = $derived([
+    const monitorNavItems: NavItem[] = $derived([
         ...(user?.is_admin
             ? [
                   {
@@ -107,7 +120,7 @@
                       icon: Sigma,
                   },
                   {
-                      title: 'Operations Log',
+                      title: 'Operations log',
                       href: operationsLogIndex(),
                       icon: Workflow,
                   },
@@ -131,23 +144,23 @@
                       href: errorsIndex(),
                       icon: TriangleAlert,
                   },
+              ]
+            : []),
+    ]);
+
+    const configureNavItems: NavItem[] = $derived([
+        ...(user?.is_admin
+            ? [
                   {
                       title: 'Maintenance',
                       href: maintenanceIndex(),
                       icon: Wrench,
                   },
                   {
-                      title: 'Logs',
+                      title: 'Audit logs',
                       href: auditLogsIndex(),
                       icon: ScrollText,
                   },
-              ]
-            : []),
-    ]);
-
-    const settingsNavItems: NavItem[] = $derived([
-        ...(user?.is_admin
-            ? [
                   {
                       title: 'Admin settings',
                       href: adminSettingsEdit(),
@@ -199,10 +212,30 @@
     </SidebarHeader>
 
     <SidebarContent>
-        <NavMain label="Platform" items={platformNavItems} />
-        <NavMain label="Attributes" items={masterDataNavItems} />
-        <NavMain label="Processing" items={processingNavItems} />
-        <NavMain label="Settings" items={settingsNavItems} />
+        <NavMain label="Review" items={reviewNavItems} />
+        <NavMain label="Library" items={libraryNavItems} />
+        {#if user?.is_admin}
+            <details
+                class="mx-2 mt-1 border-t border-sidebar-border/80 pt-2"
+                open={adminToolsOpen}
+            >
+                <summary
+                    class="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 [&::-webkit-details-marker]:hidden"
+                    title="Admin tools"
+                >
+                    <Wrench class="size-4 shrink-0" />
+                    <span class="group-data-[collapsible=icon]:hidden"
+                        >Admin tools</span
+                    >
+                </summary>
+                <div class="-mx-2 mt-1">
+                    <NavMain label="Monitor" items={monitorNavItems} />
+                    <NavMain label="Configure" items={configureNavItems} />
+                </div>
+            </details>
+        {:else}
+            <NavMain label="Configure" items={configureNavItems} />
+        {/if}
     </SidebarContent>
 
     <SidebarFooter>

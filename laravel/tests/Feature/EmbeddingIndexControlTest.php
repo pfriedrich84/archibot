@@ -84,7 +84,9 @@ class EmbeddingIndexControlTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->post(route('embedding-index.mark-stale'))
+            ->post(route('embedding-index.mark-stale'), [
+                'confirmation' => 'STALE',
+            ])
             ->assertRedirect();
 
         $state->refresh();
@@ -93,6 +95,29 @@ class EmbeddingIndexControlTest extends TestCase
 
         $this->assertSame('embedding_index.marked_stale', PipelineEvent::query()->firstOrFail()->event_type);
         $this->assertSame('embedding_index.marked_stale', AuditLog::query()->firstOrFail()->event);
+    }
+
+    public function test_admin_must_confirm_before_marking_embedding_index_stale(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $state = EmbeddingIndexState::query()->create([
+            'status' => 'complete',
+            'embedding_model' => 'nomic-embed-text',
+            'document_count' => 10,
+            'embedded_count' => 10,
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.maintenance.index'))
+            ->post(route('embedding-index.mark-stale'), [
+                'confirmation' => 'stale',
+            ])
+            ->assertRedirect(route('admin.maintenance.index'))
+            ->assertSessionHasErrors('confirmation');
+
+        $this->assertSame('complete', $state->refresh()->status);
+        $this->assertDatabaseCount('pipeline_events', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 
     public function test_non_admin_cannot_mark_embedding_index_stale(): void

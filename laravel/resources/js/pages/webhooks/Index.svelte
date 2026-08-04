@@ -16,6 +16,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import Pagination from '@/components/Pagination.svelte';
+    import StatusBadge from '@/components/StatusBadge.svelte';
     import { formatDateTime } from '@/lib/datetime';
     import { formatDisplayValue } from '@/lib/display';
     import type { Paginator } from '@/types';
@@ -63,7 +64,7 @@
         description="Inspect Paperless webhook deliveries, payload summaries, and failure controls."
     />
 
-    <div class="rounded-xl border">
+    <div class="register-panel">
         <div class="border-b px-4 py-3 text-sm text-muted-foreground">
             {deliveries.total} webhook deliver{deliveries.total === 1
                 ? 'y'
@@ -71,7 +72,7 @@
         </div>
 
         {#each deliveries.data as delivery (delivery.id)}
-            <div class="grid gap-3 border-b p-4 text-sm last:border-b-0">
+            <div class="register-ledger-row grid gap-3 p-4 text-sm sm:p-5">
                 <div class="flex flex-wrap items-center gap-2">
                     <a
                         class="font-semibold underline-offset-4 hover:underline"
@@ -79,9 +80,7 @@
                     >
                         Webhook {delivery.id} · {delivery.event_type}
                     </a>
-                    <span class="rounded-full bg-muted px-2 py-0.5">
-                        {delivery.status}
-                    </span>
+                    <StatusBadge status={delivery.status} />
                     <span class="text-muted-foreground">
                         source {delivery.source}
                     </span>

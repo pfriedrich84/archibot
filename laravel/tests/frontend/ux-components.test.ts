@@ -29,9 +29,7 @@ const submitted = () => {
 };
 
 describe('executable mutation controls', () => {
-    it('renders Maintenance destructive effect, confirms, disables, and suppresses a duplicate submit', async () => {
-        const confirm = vi.fn(() => true);
-        vi.stubGlobal('confirm', confirm);
+    it('requires typed confirmation for the embedding gate and suppresses duplicate submission', async () => {
         const calls = submitted();
         render(Maintenance, {
             commandCounts: { pending: 1, queued: 2, running: 3, failed: 4 },
@@ -49,12 +47,14 @@ describe('executable mutation controls', () => {
         const button = screen.getByRole('button', {
             name: 'Mark embedding index stale',
         }) as HTMLButtonElement;
-        await fireEvent.submit(button.closest('form')!);
-        await fireEvent.click(button);
-        expect(confirm).toHaveBeenCalledTimes(1);
-        expect(confirm).toHaveBeenCalledWith(
-            'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
+        expect(button.disabled).toBe(true);
+        await fireEvent.input(
+            screen.getByLabelText('Type STALE to close document processing'),
+            { target: { value: 'STALE' } },
         );
+        expect(button.disabled).toBe(false);
+        await fireEvent.click(button);
+        await fireEvent.click(button);
         expect(button.disabled).toBe(true);
         expect(calls).toHaveLength(1);
         expect(calls[0]).toEqual({ action: '/stale', method: 'post' });
@@ -132,7 +132,11 @@ describe('executable mutation controls', () => {
                 bulkReject: '/reject',
             },
         });
-        await fireEvent.click(screen.getByRole('checkbox'));
+        await fireEvent.click(
+            screen.getByRole('checkbox', {
+                name: 'Select review suggestion 3',
+            }),
+        );
         expect(
             screen.getByRole('button', { name: 'Bulk accept (1)' }),
         ).toBeTruthy();
@@ -333,14 +337,10 @@ describe('executable mutation controls', () => {
             ],
         });
         await fireEvent.click(
-            screen.getByRole('button', { name: 'Mark embedding index stale' }),
-        );
-        await fireEvent.click(
             screen.getByRole('button', { name: 'Dismiss webhook failure' }),
         );
         await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(confirm.mock.calls.map(([message]) => message)).toEqual([
-            'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
             'Dismiss webhook failure 8? It will no longer appear as an active failure.',
             'Cancel pipeline run 12? Remaining queued work will not start.',
         ]);

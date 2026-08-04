@@ -88,6 +88,8 @@
         recentAuditLogs: AuditLog[];
     } = $props();
 
+    let embeddingStaleConfirmation = $state('');
+
     const jobActions = [
         {
             label: 'Start poll reconciliation',
@@ -141,7 +143,7 @@
 
     <ActiveOperationsPanel operations={activeOperations} />
 
-    <section class="rounded-xl border p-4">
+    <section class="register-panel p-4 sm:p-5">
         <h2 class="mb-3 font-semibold">Command status</h2>
         <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -163,7 +165,7 @@
         </dl>
     </section>
 
-    <section class="rounded-xl border p-4">
+    <section class="register-panel p-4 sm:p-5">
         <h2 class="mb-3 font-semibold">Durable recovery</h2>
         <p class="mb-4 text-sm text-muted-foreground">
             Redispatch safe queued webhook deliveries, document pipeline runs
@@ -178,9 +180,9 @@
         </Form>
     </section>
 
-    <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Maintenance commands</h2>
-        <div class="grid gap-3 lg:grid-cols-2">
+    <details class="register-disclosure">
+        <summary>Advanced maintenance commands</summary>
+        <div class="grid gap-3 border-t p-4 lg:grid-cols-2 sm:p-5">
             {#each jobActions as action (action.label)}
                 <Form
                     method="post"
@@ -207,142 +209,173 @@
                 </Form>
             {/each}
         </div>
-    </section>
+    </details>
 
-    <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Embedding gate</h2>
-        <p class="mb-4 text-sm text-muted-foreground">
-            Mark the embedding index stale to close the document-processing gate
-            until a fresh build completes.
-        </p>
-        <Form
-            method="post"
-            action={actionUrls.mark_embedding_stale}
-            onsubmit={(event) => {
-                if (
-                    !confirm(
-                        'Mark the embedding index stale? Document processing will stop until a fresh embedding build completes.',
-                    )
-                ) {
-                    event.preventDefault();
-                }
-            }}
-        >
-            {#snippet children({ processing })}
-                <Button type="submit" variant="outline" disabled={processing}
-                    >Mark embedding index stale</Button
-                >
-            {/snippet}
-        </Form>
-    </section>
-
-    <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Manual document pipeline</h2>
-        <p class="mb-4 text-sm text-muted-foreground">
-            Queue one Paperless document through the durable document pipeline.
-        </p>
-        <Form
-            method="post"
-            action={actionUrls.document_pipeline}
-            class="grid max-w-2xl gap-4"
-        >
-            {#snippet children({ errors, processing })}
-                <div class="grid gap-2">
-                    <Label for="paperless_document_id"
-                        >Paperless document ID</Label
-                    >
-                    <Input
-                        id="paperless_document_id"
-                        name="paperless_document_id"
-                        type="number"
-                        min="1"
-                        required
-                        placeholder="Paperless document reference"
-                    />
-                    <InputError message={errors.paperless_document_id} />
-                </div>
-                <label class="flex items-center gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        name="force"
-                        value="1"
-                        class="h-4 w-4 rounded border-input"
-                    />
-                    Force a new reprocess run
-                </label>
-                <InputError message={errors.force} />
-                <Button type="submit" disabled={processing} class="w-fit">
-                    Queue document pipeline
-                </Button>
-            {/snippet}
-        </Form>
-    </section>
-
-    <section class="rounded-xl border border-destructive/40 p-4">
-        <h2 class="mb-3 font-semibold">Reset operational state</h2>
-        <p class="mb-4 text-sm text-muted-foreground">
-            This uses the same Laravel/PostgreSQL reset backend as
-            <code>archibot reset</code>. Type RESET to confirm. Configuration
-            and setup credentials are retained.
-        </p>
-        <Form
-            method="post"
-            action={actionUrls.reset}
-            class="grid max-w-md gap-3"
-        >
-            {#snippet children({ errors, processing })}
-                <Label for="reset_confirmation">Confirmation</Label>
-                <Input
-                    id="reset_confirmation"
-                    name="confirmation"
-                    required
-                    autocomplete="off"
-                    placeholder="RESET"
-                />
-                <InputError message={errors.confirmation} />
-                <Button
-                    type="submit"
-                    variant="destructive"
-                    disabled={processing}
-                >
-                    Reset operational state
-                </Button>
-            {/snippet}
-        </Form>
-    </section>
-
-    <section class="rounded-xl border p-4">
-        <h2 class="mb-3 font-semibold">Recent maintenance audit logs</h2>
-        {#if recentAuditLogs.length === 0}
-            <p class="text-sm text-muted-foreground">
-                No maintenance audit logs yet.
+    <details class="register-disclosure border-destructive/30">
+        <summary>Embedding gate control</summary>
+        <div class="border-t p-4 sm:p-5">
+            <h2 class="sr-only">Embedding gate</h2>
+            <p class="mb-4 text-sm text-muted-foreground">
+                Mark the embedding index stale to close the document-processing
+                gate until a fresh build completes.
             </p>
-        {:else}
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b text-left">
-                            <th class="py-2 pr-3">Time</th>
-                            <th class="py-2 pr-3">Event</th>
-                            <th class="py-2 pr-3">Target</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {#each recentAuditLogs as log (log.id)}
-                            <tr class="border-b last:border-0">
-                                <td class="py-2 pr-3"
-                                    >{formatDateTime(log.created_at, '-')}</td
-                                >
-                                <td class="py-2 pr-3 font-mono">{log.event}</td>
-                                <td class="py-2 pr-3">
-                                    {log.target_type ?? '-'}:{log.target_id ??
-                                        '-'}
-                                </td>
+            <Form
+                method="post"
+                action={actionUrls.mark_embedding_stale}
+                class="grid max-w-md gap-3"
+            >
+                {#snippet children({ processing })}
+                    <Label for="embedding_stale_confirmation">
+                        Type STALE to close document processing
+                    </Label>
+                    <input
+                        id="embedding_stale_confirmation"
+                        name="confirmation"
+                        bind:value={embeddingStaleConfirmation}
+                        autocomplete="off"
+                        placeholder="STALE"
+                        class="h-11 rounded-md border border-input bg-background px-3 text-sm"
+                    />
+                    <Button
+                        type="submit"
+                        variant="outline"
+                        disabled={processing ||
+                            embeddingStaleConfirmation !== 'STALE'}
+                    >
+                        Mark embedding index stale
+                    </Button>
+                {/snippet}
+            </Form>
+        </div>
+    </details>
+
+    <details class="register-disclosure">
+        <summary>Queue one document manually</summary>
+        <div class="border-t p-4 sm:p-5">
+            <h2 class="sr-only">Manual document pipeline</h2>
+            <p class="mb-4 text-sm text-muted-foreground">
+                Queue one Paperless document through the durable document
+                pipeline.
+            </p>
+            <Form
+                method="post"
+                action={actionUrls.document_pipeline}
+                class="grid max-w-2xl gap-4"
+            >
+                {#snippet children({ errors, processing })}
+                    <div class="grid gap-2">
+                        <Label for="paperless_document_id"
+                            >Paperless document ID</Label
+                        >
+                        <Input
+                            id="paperless_document_id"
+                            name="paperless_document_id"
+                            type="number"
+                            min="1"
+                            required
+                            placeholder="Paperless document reference"
+                        />
+                        <InputError message={errors.paperless_document_id} />
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            name="force"
+                            value="1"
+                            class="h-4 w-4 rounded border-input"
+                        />
+                        Force a new reprocess run
+                    </label>
+                    <InputError message={errors.force} />
+                    <Button type="submit" disabled={processing} class="w-fit">
+                        Queue document pipeline
+                    </Button>
+                {/snippet}
+            </Form>
+        </div>
+    </details>
+
+    <details class="register-disclosure border-destructive/40">
+        <summary class="text-destructive"
+            >Danger zone · reset operational state</summary
+        >
+        <div class="border-t border-destructive/30 p-4 sm:p-5">
+            <h2 class="sr-only">Reset operational state</h2>
+            <p class="mb-4 text-sm text-muted-foreground">
+                This uses the same Laravel/PostgreSQL reset backend as
+                <code>archibot reset</code>. Type RESET to confirm.
+                Configuration and setup credentials are retained.
+            </p>
+            <Form
+                method="post"
+                action={actionUrls.reset}
+                class="grid max-w-md gap-3"
+            >
+                {#snippet children({ errors, processing })}
+                    <Label for="reset_confirmation">Confirmation</Label>
+                    <Input
+                        id="reset_confirmation"
+                        name="confirmation"
+                        required
+                        autocomplete="off"
+                        placeholder="RESET"
+                    />
+                    <InputError message={errors.confirmation} />
+                    <Button
+                        type="submit"
+                        variant="destructive"
+                        disabled={processing}
+                    >
+                        Reset operational state
+                    </Button>
+                {/snippet}
+            </Form>
+        </div>
+    </details>
+
+    <details class="register-disclosure">
+        <summary>Recent maintenance audit logs</summary>
+        <div class="border-t p-4 sm:p-5">
+            <h2 class="sr-only">Recent maintenance audit logs</h2>
+            {#if recentAuditLogs.length === 0}
+                <p class="text-sm text-muted-foreground">
+                    No maintenance audit logs yet.
+                </p>
+            {:else}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <caption class="sr-only"
+                            >Recent maintenance audit events</caption
+                        >
+                        <thead>
+                            <tr class="border-b text-left">
+                                <th class="py-2 pr-3">Time</th>
+                                <th class="py-2 pr-3">Event</th>
+                                <th class="py-2 pr-3">Target</th>
                             </tr>
-                        {/each}
-                    </tbody>
-                </table>
-            </div>
-        {/if}
-    </section>
+                        </thead>
+                        <tbody>
+                            {#each recentAuditLogs as log (log.id)}
+                                <tr class="border-b last:border-0">
+                                    <td class="py-2 pr-3"
+                                        >{formatDateTime(
+                                            log.created_at,
+                                            '-',
+                                        )}</td
+                                    >
+                                    <td class="py-2 pr-3 font-mono"
+                                        >{log.event}</td
+                                    >
+                                    <td class="py-2 pr-3">
+                                        {log.target_type ??
+                                            '-'}:{log.target_id ?? '-'}
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </div>
+            {/if}
+        </div>
+    </details>
 </div>

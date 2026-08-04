@@ -382,7 +382,7 @@
     </nav>
 
     {#if activeSection === 'ai-provider'}
-        <section class="grid max-w-3xl gap-4 rounded-xl border p-6">
+        <section class="register-panel grid max-w-3xl gap-4 p-5 sm:p-6">
             <div>
                 <h2 class="text-lg font-semibold">AI provider configuration</h2>
                 <p class="text-sm text-muted-foreground">
@@ -559,7 +559,7 @@
     {/if}
 
     {#if activeSection === 'paperless-ai'}
-        <section class="grid max-w-4xl gap-5 rounded-xl border p-6">
+        <section class="register-panel grid max-w-4xl gap-5 p-5 sm:p-6">
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h2 class="text-lg font-semibold">
@@ -670,6 +670,10 @@
                 {#if Object.keys(paperlessAiState.drift_fields ?? {}).length > 0}
                     <div class="mt-3 overflow-x-auto">
                         <table class="min-w-full text-sm">
+                            <caption class="sr-only">
+                                Differences between desired and remote Paperless
+                                AI configuration
+                            </caption>
                             <thead>
                                 <tr
                                     class="border-b text-left text-muted-foreground"
@@ -729,7 +733,7 @@
                 {#each groups as group (group.name)}
                     {#if !(activeSection === 'ai-provider' && group.slug === 'ai-provider')}
                         <section
-                            class="grid max-w-3xl gap-5 rounded-xl border p-6"
+                            class="register-panel grid max-w-3xl gap-5 p-5 sm:p-6"
                         >
                             <div>
                                 <h2 class="text-lg font-semibold">
@@ -877,7 +881,9 @@
                 {/each}
 
                 {#if activeSection === 'ai-provider'}
-                    <section class="grid max-w-3xl gap-5 rounded-xl border p-6">
+                    <section
+                        class="register-panel grid max-w-3xl gap-5 p-5 sm:p-6"
+                    >
                         <div>
                             <h2 class="text-lg font-semibold">
                                 Role model selection
@@ -945,7 +951,7 @@
     {/if}
 
     {#if activeSection === 'prompts'}
-        <section class="grid gap-5 rounded-xl border p-6">
+        <section class="register-panel grid gap-5 p-5 sm:p-6">
             <div>
                 <h2 class="text-lg font-semibold">System prompts</h2>
                 <p class="text-sm text-muted-foreground">
@@ -956,11 +962,9 @@
             </div>
 
             {#each prompts as prompt (prompt.key)}
-                <article class="grid gap-3 rounded-lg border p-4">
-                    <div
-                        class="flex flex-wrap items-center justify-between gap-3"
-                    >
-                        <div>
+                <details class="register-disclosure">
+                    <summary class="flex-wrap">
+                        <div class="min-w-0">
                             <h3 class="font-medium">{prompt.label}</h3>
                             <p class="text-sm text-muted-foreground">
                                 {prompt.description}
@@ -971,72 +975,74 @@
                                 ? 'Custom override'
                                 : 'Bundled default'}
                         </span>
-                    </div>
+                    </summary>
 
-                    <Form
-                        method="patch"
-                        action={prompt.update_url}
-                        class="grid gap-3"
-                    >
-                        {#snippet children({
-                            errors,
-                            processing,
-                            recentlySuccessful,
-                        })}
-                            <textarea
-                                name="content"
-                                rows="8"
-                                maxlength="80000"
-                                class="min-h-48 rounded-md border bg-background p-3 font-mono text-sm"
-                                placeholder="Leave empty only if you want to write an empty override."
-                                >{prompt.content}</textarea
-                            >
-                            <InputError message={errors.content} />
-                            <div class="flex flex-wrap items-center gap-3">
-                                <Button
-                                    type="submit"
-                                    size="sm"
-                                    disabled={processing}
-                                >
-                                    {#if processing}<Spinner />{/if}
-                                    Save prompt
-                                </Button>
-                                {#if recentlySuccessful}
-                                    <span class="text-sm text-green-600"
-                                        >Prompt saved.</span
-                                    >
-                                {/if}
-                            </div>
-                        {/snippet}
-                    </Form>
-
-                    {#if prompt.has_override}
+                    <div class="grid gap-3 border-t p-4">
                         <Form
-                            method="delete"
-                            action={prompt.reset_url}
-                            onsubmit={(event) => {
-                                if (
-                                    !confirm(
-                                        `Reset the ${prompt.label} override? The bundled default will take effect immediately.`,
-                                    )
-                                ) {
-                                    event.preventDefault();
-                                }
-                            }}
+                            method="patch"
+                            action={prompt.update_url}
+                            class="grid gap-3"
                         >
-                            {#snippet children({ processing })}
-                                <Button
-                                    type="submit"
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={processing}
+                            {#snippet children({
+                                errors,
+                                processing,
+                                recentlySuccessful,
+                            })}
+                                <textarea
+                                    name="content"
+                                    rows="8"
+                                    maxlength="80000"
+                                    class="min-h-48 rounded-md border bg-background p-3 font-mono text-sm"
+                                    placeholder="Leave empty only if you want to write an empty override."
+                                    >{prompt.content}</textarea
                                 >
-                                    Reset to bundled default
-                                </Button>
+                                <InputError message={errors.content} />
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        disabled={processing}
+                                    >
+                                        {#if processing}<Spinner />{/if}
+                                        Save prompt
+                                    </Button>
+                                    {#if recentlySuccessful}
+                                        <span class="text-sm text-green-600"
+                                            >Prompt saved.</span
+                                        >
+                                    {/if}
+                                </div>
                             {/snippet}
                         </Form>
-                    {/if}
-                </article>
+
+                        {#if prompt.has_override}
+                            <Form
+                                method="delete"
+                                action={prompt.reset_url}
+                                onsubmit={(event) => {
+                                    if (
+                                        !confirm(
+                                            `Reset the ${prompt.label} override? The bundled default will take effect immediately.`,
+                                        )
+                                    ) {
+                                        event.preventDefault();
+                                    }
+                                }}
+                            >
+                                {#snippet children({ processing })}
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={processing}
+                                    >
+                                        Reset to bundled default
+                                    </Button>
+                                {/snippet}
+                            </Form>
+                        {/if}
+                    </div>
+                </details>
             {/each}
         </section>
     {/if}

@@ -11,6 +11,7 @@
     import AppHead from '@/components/AppHead.svelte';
     import Heading from '@/components/Heading.svelte';
     import Pagination from '@/components/Pagination.svelte';
+    import StatusBadge from '@/components/StatusBadge.svelte';
     import { Button } from '@/components/ui/button';
     import { formatDateTime } from '@/lib/datetime';
     import { formatDisplayValue } from '@/lib/display';
@@ -69,7 +70,7 @@
     <form
         method="get"
         action={errorsIndex().url}
-        class="grid gap-3 rounded-xl border p-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto]"
+        class="register-panel grid gap-3 p-4 text-sm md:grid-cols-[1fr_1fr_1fr_auto]"
     >
         <label class="grid gap-1">
             <span class="font-medium">Source</span>
@@ -118,7 +119,7 @@
         </div>
     </form>
 
-    <section class="rounded-xl border">
+    <section class="register-panel">
         <div class="border-b px-4 py-3 text-sm text-muted-foreground">
             {webhookErrors.total} webhook delivery error{webhookErrors.total ===
             1
@@ -127,16 +128,14 @@
         </div>
 
         {#each webhookErrors.data as delivery (delivery.id)}
-            <article class="space-y-3 border-b p-4 text-sm last:border-b-0">
+            <article class="register-ledger-row space-y-3 p-4 text-sm sm:p-5">
                 <div class="flex flex-wrap items-center gap-2">
                     <a
                         class="font-medium underline-offset-4 hover:underline"
                         href={delivery.show_url}
                         >Webhook {delivery.id} · {delivery.event_type}</a
                     >
-                    <span class="rounded-full bg-muted px-2 py-0.5">
-                        {delivery.status}
-                    </span>
+                    <StatusBadge status={delivery.status} />
                     <span class="text-muted-foreground">
                         source {delivery.source}
                     </span>

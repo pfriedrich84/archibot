@@ -3,7 +3,6 @@
     import Folder from 'lucide-svelte/icons/folder';
     import LayoutGrid from 'lucide-svelte/icons/layout-grid';
     import Menu from 'lucide-svelte/icons/menu';
-    import Search from 'lucide-svelte/icons/search';
     import AppLogo from '@/components/AppLogo.svelte';
     import AppLogoIcon from '@/components/AppLogoIcon.svelte';
     import Breadcrumbs from '@/components/Breadcrumbs.svelte';
@@ -189,16 +188,6 @@
 
             <div class="ml-auto flex items-center space-x-2">
                 <div class="relative flex items-center space-x-1">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        class="group h-9 w-9 cursor-pointer"
-                    >
-                        <Search
-                            class="size-5 opacity-80 group-hover:opacity-100"
-                        />
-                    </Button>
-
                     <div class="hidden space-x-1 lg:flex">
                         {#each rightNavItems as item (toUrl(item.href))}
                             <TooltipProvider delayDuration={0}>

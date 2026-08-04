@@ -539,10 +539,9 @@ describe('all changed mutation surfaces', () => {
                 },
             ],
         });
-        const calls = await submitEveryFormOnce(dashboard, 9);
+        const calls = await submitEveryFormOnce(dashboard, 8);
         expect(calls.map(({ action }) => action)).toEqual([
             '/build',
-            '/stale',
             '/poll',
             '/reindex',
             '/w/7/retry',
