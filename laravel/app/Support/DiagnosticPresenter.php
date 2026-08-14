@@ -9,8 +9,8 @@ class DiagnosticPresenter
 {
     /** @var list<string> */
     private const INTEGER_KEYS = [
-        'actor_user_id', 'attempt', 'command_id', 'document_id', 'duration_ms',
-        'embedding_index_state_id', 'failed_count', 'failed_item_count',
+        'actor_execution_id', 'actor_user_id', 'attempt', 'command_id', 'document_id', 'duration_ms',
+        'embedding_index_state_id', 'failed_count', 'failed_item_count', 'http_status',
         'max_attempts', 'max_retries', 'pipeline_run_id', 'paperless_document_id',
         'progress_done', 'progress_failed', 'progress_total', 'retry_count',
         'webhook_delivery_id',
@@ -148,7 +148,7 @@ class DiagnosticPresenter
         'pipeline.force_reprocess.requested', 'pipeline.start.attached', 'pipeline.start.coalesced',
         'pipeline.start.pending', 'pipeline.unblocked.embedding_index_ready',
         'ocr.reindex.completed', 'ocr.reindex.skipped',
-        'poll.document.skipped_already_classified', 'poll.reconciliation.completed', 'poll.reconciliation.skipped',
+        'poll.document.skipped_already_classified', 'poll.reconciliation.completed', 'poll.reconciliation.failed', 'poll.reconciliation.skipped',
         'pipeline_run.cancel_requested', 'pipeline_run.manual_reprocess_queued',
         'pipeline_run.retry_failed_items_queued', 'pipeline_run.retry_queued',
         'recovery.actor_execution_claim_lost', 'recovery.actor_execution_failed_permanent',

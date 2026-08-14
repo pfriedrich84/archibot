@@ -70,7 +70,7 @@
     "laravel/resources/js/pages/entities/Index.svelte": "8ddcaafc7825fc4a7f3bd6af398cce41982f848befcd3fe7345d53eafcf4be53",
     "laravel/resources/js/pages/inbox/Index.svelte": "51cf642d38829df6d55f21d8d23d3f740f883fba6d34a5c7bb077652d1f3dd2e",
     "laravel/resources/js/pages/ocr/Index.svelte": "b6e6f63e7ac81c0f9f10eb8141ce90078c6450f219c0ccb9506fcefe3277df47",
-    "laravel/resources/js/pages/operations-log/Index.svelte": "aa2ad93907760122a691d976c85bb16f0c3c77199d9cfe966c3493686e27cda8",
+    "laravel/resources/js/pages/operations-log/Index.svelte": "da184c7e28d8e094494605d2fd2066ebbad26213a26ea4ddac807f6b7e85f78c",
     "laravel/resources/js/pages/pipeline-runs/Index.svelte": "a2a1fbc480d397497a6e7d90aa2ec370dd8fcafb50f450bf62ec1453de4fe807",
     "laravel/resources/js/pages/pipeline-runs/Show.svelte": "b425a77f4744620a338d7b75cce46ebfe3b0e99fe871edfef5fcc80a24395744",
     "laravel/resources/js/pages/processing/Embeddings.svelte": "63b77561d0b65175b21024fb5af3a67a865e3e5afe663103755feee05105348d",
@@ -89,7 +89,7 @@
     "laravel/routes/web.php": "f4d447c2f609ba651e635707720e1513ce92fccbd77f4d7b41510c805ba4da22"
   },
   "paperless_mutation_files": {
-    "app/clients/paperless.py": "5dbe4ca6e3a3b1db94922684483572a28cb49676b71869defd0bb7face203b7c",
+    "app/clients/paperless.py": "82539db3e2fb18e589b6c6f13b165c8e8eeaf089dc07ea0cae07a887d62415a4",
     "app/jobs/review_commit.py": "9ffedfd2e0af63e924fc7d6c064a9503013185847dfc4af6f77652faf180fa0b",
     "app/pipeline/ports.py": "a0ea8d567166f757c089618e4d50004caf22ce20278734a02331ea5ea86e2a1a",
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",

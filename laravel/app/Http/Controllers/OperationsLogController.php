@@ -55,13 +55,15 @@ class OperationsLogController extends Controller
             'pipelineEvents' => PipelineEvent::query()
                 ->latest()
                 ->limit(25)
-                ->get(['id', 'pipeline_run_id', 'event_type', 'level', 'message', 'paperless_document_id', 'created_at'])
+                ->get(['id', 'pipeline_run_id', 'command_id', 'event_type', 'level', 'message', 'payload', 'paperless_document_id', 'created_at'])
                 ->map(fn (PipelineEvent $event): array => [
                     'id' => $event->id,
                     'pipeline_run_id' => $event->pipeline_run_id,
+                    'command_id' => $event->command_id,
                     'event_type' => $this->diagnostics->diagnosticEventType($event->event_type),
                     'level' => $this->diagnostics->typedScalar('level', $event->level),
                     'message' => $this->diagnostics->redactedMessage($event->message),
+                    'metadata' => $this->diagnostics->metadata($event->payload),
                     'paperless_document_id' => $event->paperless_document_id,
                     'created_at' => $event->created_at?->toISOString(),
                 ]),

@@ -1,6 +1,13 @@
+import httpx
 import pytest
 
-from app.jobs.retry import RetryClass, classify_exception, retry_backoff_seconds, should_retry
+from app.jobs.retry import (
+    RetryClass,
+    classify_exception,
+    http_status_code,
+    retry_backoff_seconds,
+    should_retry,
+)
 
 
 @pytest.mark.parametrize(
@@ -37,8 +44,26 @@ def test_classify_exception_classifies_missing_document_status():
     assert classify_exception(exc) == RetryClass.PERMANENT_MISSING_DOCUMENT
 
 
+def test_classify_exception_reads_httpx_response_status_without_exposing_response():
+    request = httpx.Request("GET", "http://paperless/api/documents/")
+    response = httpx.Response(401, request=request)
+    exc = httpx.HTTPStatusError("unauthorized", request=request, response=response)
+
+    assert http_status_code(exc) == 401
+    assert classify_exception(exc) == RetryClass.PERMANENT_VALIDATION
+
+
 def test_classify_exception_classifies_timeout_as_transient_network():
     assert classify_exception(TimeoutError("timed out")) == RetryClass.TRANSIENT_NETWORK
+
+
+def test_classify_exception_classifies_httpx_connect_error_as_transient_network():
+    request = httpx.Request("GET", "http://paperless/api/documents/")
+
+    assert (
+        classify_exception(httpx.ConnectError("connection refused", request=request))
+        == RetryClass.TRANSIENT_NETWORK
+    )
 
 
 def test_classify_exception_classifies_value_error_as_recoverable_processing():

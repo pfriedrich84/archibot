@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from typing import Any
 
 import httpx
 import structlog
 
 from app.config import settings
+from app.jobs.retry import http_status_code
 from app.models import PaperlessDocument, PaperlessEntity
 
 log = structlog.get_logger(__name__)
@@ -68,18 +70,72 @@ class PaperlessClient:
         """Return all documents tagged with the inbox tag, paginated."""
         docs: list[PaperlessDocument] = []
         url = f"/documents/?tags__id__all={inbox_tag_id}&page_size=50"
+        page = 0
         while url:
-            r = await self._client.get(url)
-            r.raise_for_status()
-            data = r.json()
-            for item in data.get("results", []):
+            page += 1
+            request_started = time.monotonic()
+            response: httpx.Response | None = None
+            try:
+                response = await self._client.get(url)
+                response.raise_for_status()
+                data = response.json()
+                page_results = data.get("results", [])
+                if not isinstance(page_results, list):
+                    raise ValueError("Paperless documents response results must be a list")
+            except Exception as exc:
+                log.warning(
+                    "paperless request failed",
+                    operation="list_inbox_documents",
+                    method="GET",
+                    endpoint="documents",
+                    page=page,
+                    status_code=http_status_code(exc)
+                    or (response.status_code if response is not None else None),
+                    exception_type=type(exc).__name__,
+                    duration_ms=int((time.monotonic() - request_started) * 1000),
+                )
+                raise
+
+            parsed_count = 0
+            for item in page_results:
                 try:
                     docs.append(PaperlessDocument.model_validate(item))
+                    parsed_count += 1
                 except Exception as exc:
-                    log.warning("failed to parse document", error=str(exc), id=item.get("id"))
+                    raw_document_id = item.get("id") if isinstance(item, dict) else None
+                    paperless_document_id = (
+                        raw_document_id
+                        if isinstance(raw_document_id, int)
+                        and not isinstance(raw_document_id, bool)
+                        else None
+                    )
+                    log.warning(
+                        "paperless document response could not be parsed",
+                        operation="list_inbox_documents",
+                        endpoint="documents",
+                        page=page,
+                        paperless_document_id=paperless_document_id,
+                        exception_type=type(exc).__name__,
+                    )
+            log.info(
+                "paperless request completed",
+                operation="list_inbox_documents",
+                method="GET",
+                endpoint="documents",
+                page=page,
+                status_code=response.status_code,
+                result_count=len(page_results),
+                parsed_count=parsed_count,
+                duration_ms=int((time.monotonic() - request_started) * 1000),
+            )
             next_url = data.get("next")
             url = self._relative(next_url) if next_url else None
-        log.info("fetched inbox documents", count=len(docs))
+        log.info(
+            "paperless inbox discovery completed",
+            operation="list_inbox_documents",
+            page_count=page,
+            document_count=len(docs),
+        )
         return docs
 
     async def get_document(self, document_id: int) -> PaperlessDocument:

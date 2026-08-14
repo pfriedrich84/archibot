@@ -106,6 +106,7 @@ class DiagnosticPresenterTest extends TestCase
         $this->assertSame('review_commit_paperless', $presenter->typedScalar('phase', 'review_commit_paperless'));
         $this->assertSame('pipeline_run.retry_queued', $presenter->diagnosticEventType('pipeline_run.retry_queued'));
         $this->assertSame('poll.reconciliation.completed', $presenter->diagnosticEventType('poll.reconciliation.completed'));
+        $this->assertSame('poll.reconciliation.failed', $presenter->diagnosticEventType('poll.reconciliation.failed'));
         $this->assertSame('ocr.reindex.skipped', $presenter->diagnosticEventType('ocr.reindex.skipped'));
         $this->assertSame('scheduler.poll_reconciliation_enqueue_failed', $presenter->diagnosticEventType('scheduler.poll_reconciliation_enqueue_failed'));
         $this->assertSame('transient_network', $presenter->typedScalar('retry_class', 'transient_network'));
@@ -122,6 +123,10 @@ class DiagnosticPresenterTest extends TestCase
         $this->assertSame([
             ['key' => 'error_type', 'label' => 'Error Type', 'value' => $errorReference],
         ], $presenter->metadata(['error_type' => 'AuthorizationTokenSecretError']));
+        $this->assertSame([
+            ['key' => 'actor_execution_id', 'label' => 'Actor Execution ID', 'value' => 91],
+            ['key' => 'http_status', 'label' => 'HTTP Status', 'value' => 401],
+        ], $presenter->metadata(['actor_execution_id' => 91, 'http_status' => 401]));
     }
 
     public function test_configurable_provider_and_model_identifiers_never_echo_grammar_conforming_secrets(): void

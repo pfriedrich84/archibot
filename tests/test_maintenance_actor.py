@@ -118,6 +118,7 @@ def test_forced_poll_bypasses_marker_and_persists_force_metadata(monkeypatch):
 
 def test_poll_reconciliation_schedules_retry_for_transient_fetch_failure(monkeypatch):
     retries = []
+    events = []
     monkeypatch.setattr(maintenance.settings, "paperless_inbox_tag_id", 123)
     _actor(monkeypatch)
 
@@ -130,12 +131,32 @@ def test_poll_reconciliation_schedules_retry_for_transient_fetch_failure(monkeyp
         "app.execution_lifecycle.execution_store.schedule_actor_execution_retry",
         lambda *a, **k: retries.append((a, k)),
     )
-    monkeypatch.setattr(maintenance, "publish_pipeline_event", lambda *a, **k: None)
+    monkeypatch.setattr(
+        maintenance,
+        "publish_pipeline_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
 
     with pytest.raises(TimeoutError):
         maintenance._reconcile_inbox_documents_impl(command_id=57)
 
     assert retries[0][1]["retry_class"] == "transient_network"
+    assert events == [
+        (
+            ("poll.reconciliation.failed",),
+            {
+                "command_id": 57,
+                "level": "error",
+                "message": "Polling reconciliation failed.",
+                "payload": {
+                    "actor_execution_id": 7,
+                    "phase": "paperless_fetch",
+                    "error_type": "transient_network",
+                    "http_status": None,
+                },
+            },
+        )
+    ]
 
 
 def test_poll_reconciliation_skips_without_inbox_tag(monkeypatch):

@@ -34,11 +34,19 @@
         show_url: string;
     };
 
+    type DiagnosticMetadataEntry = {
+        key: string;
+        label: string;
+        value: string | number | boolean;
+    };
+
     type PipelineEventEntry = {
         id: number;
+        command_id: number | null;
         event_type: string;
         level: string;
         message: string | null;
+        metadata: DiagnosticMetadataEntry[];
         created_at: string | null;
     };
 
@@ -143,9 +151,17 @@
             headers: ['Time', 'Event', 'Level', 'Message'],
             rows: pipelineEvents.map((event) => ({
                 time: formatDateTime(event.created_at, '-'),
-                label: `Event #${event.id}: ${event.event_type}`,
+                label: `Event #${event.id}: ${event.event_type}${event.command_id ? ` · Command #${event.command_id}` : ''}`,
                 status: event.level,
-                message: event.message ?? '-',
+                message:
+                    event.metadata.length > 0
+                        ? event.metadata
+                              .map(
+                                  (entry) =>
+                                      `${entry.label}: ${String(entry.value)}`,
+                              )
+                              .join(' · ')
+                        : (event.message ?? '-'),
             })),
         },
         {
