@@ -73,6 +73,7 @@ def test_poll_reconciliation_persists_marked_and_unmarked_candidates(monkeypatch
     ]
     assert progresses[-1][0][1].done == 2
     assert events[-1][1]["payload"] == {
+        "actor_execution_id": 7,
         "documents_seen": 2,
         "candidates_persisted": 2,
         "candidates_replayed": 0,
