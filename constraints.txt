@@ -38,6 +38,8 @@ rpds-py<=0.30.0
 pydantic<=2.13.4
 pydantic-core<=2.48.0
 annotated-types<=0.8.0
+# Keep the pydantic transitive dependency outside the 3-day quarantine window.
+typing-inspection<=0.4.3
 # pydantic-settings 2.14.2 fixes GHSA-4xgf-cpjx-pc3j (secrets-dir symlink escape).
 pydantic-settings>=2.14.2,<=2.14.2
 rpds-py<2026.5.1
