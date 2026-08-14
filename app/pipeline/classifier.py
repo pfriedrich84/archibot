@@ -66,12 +66,7 @@ def _format_document_block(doc: PaperlessDocument, max_bytes: int) -> str:
     content = _truncate_to_budget(
         doc.content or "", max_chars=settings.max_doc_chars, max_bytes=max_bytes
     )
-    return (
-        f"--- Dokument #{doc.id} ---\n"
-        f"Titel: {doc.title}\n"
-        "Inhalt:\n"
-        f"{content}\n"
-    )
+    return f"--- Dokument #{doc.id} ---\nTitel: {doc.title}\nInhalt:\n{content}\n"
 
 
 def _resolve_entity_name(entity_id: int | None, entities: list[PaperlessEntity]) -> str | None:
@@ -298,9 +293,7 @@ def build_user_prompt(
         context_budget_tokens = 0
 
     target_bytes = target_budget_tokens
-    context_bytes_per_doc = (
-        context_budget_tokens // len(active_context) if active_context else 0
-    )
+    context_bytes_per_doc = context_budget_tokens // len(active_context) if active_context else 0
 
     # --- Assemble prompt ---
     sections: list[str] = [entity_section]
