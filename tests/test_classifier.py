@@ -378,9 +378,23 @@ class TestPromptBudget:
         sample_storage_paths: list[PaperlessEntity],
         sample_tags: list[PaperlessEntity],
     ):
-        target = self._make_long_doc(content_len=24000)
-        context = self._make_context_docs(5, content_len=12000)
-        system_chars = 3500
+        target = PaperlessDocument(
+            id=1,
+            title="Dense OCR",
+            content=("漢🙂§" * 8000)[:24000],
+        )
+        context = [
+            PaperlessDocument(
+                id=100 + index,
+                title=f"Context {index}",
+                content=("語�!" * 4000)[:12000],
+                correspondent=1,
+                document_type=10,
+                tags=[20],
+            )
+            for index in range(5)
+        ]
+        system = "§" * 3500
 
         prompt = build_user_prompt(
             target=target,
@@ -390,10 +404,10 @@ class TestPromptBudget:
             storage_paths=sample_storage_paths,
             tags=sample_tags,
             num_ctx=16384,
-            system_prompt_chars=system_chars,
+            system_prompt_tokens=_estimate_tokens(system),
         )
 
-        conservative_input_tokens = (len(prompt) + system_chars + 1) // 2
+        conservative_input_tokens = len((system + prompt).encode("utf-8"))
         assert conservative_input_tokens <= 16384 - 512
 
     def test_drops_context_when_tight(

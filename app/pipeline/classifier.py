@@ -34,32 +34,43 @@ def _load_judge_system_prompt() -> str:
     return load_prompt("classify_judge")
 
 
-def _truncate(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[:limit] + "\n...[abgeschnitten]"
+_TRUNCATION_MARKER = "\n...[abgeschnitten]"
+
+
+def _truncate_to_budget(text: str, *, max_chars: int, max_bytes: int) -> str:
+    """Bound content by product character cap and tokenizer-safe UTF-8 bytes."""
+    candidate = text[:max_chars]
+    truncated = len(candidate) < len(text)
+    encoded = candidate.encode("utf-8")
+    marker_bytes = _TRUNCATION_MARKER.encode("utf-8")
+
+    if len(encoded) > max_bytes:
+        content_bytes = max(0, max_bytes - len(marker_bytes))
+        candidate = encoded[:content_bytes].decode("utf-8", errors="ignore")
+        truncated = True
+
+    return candidate + (_TRUNCATION_MARKER if truncated else "")
 
 
 def _estimate_tokens(text: str) -> int:
-    """Conservatively estimate tokens for multilingual and noisy OCR text.
+    """Return a tokenizer-independent upper bound based on UTF-8 bytes.
 
-    OCR output, identifiers and punctuation can tokenize much more densely than
-    ordinary prose. Budgeting at two characters per token keeps requests below
-    provider context limits without depending on a model-specific tokenizer.
+    Byte-fallback tokenizers can emit one token per byte for dense OCR,
+    mojibake, rare Unicode or punctuation. Treating every byte as one token is
+    intentionally conservative and avoids provider context-limit rejections.
     """
-    return max(1, (len(text) + 1) // 2)
+    return max(1, len(text.encode("utf-8")))
 
 
-def _tokens_to_chars(tokens: int) -> int:
-    """Convert a token budget to the matching conservative character limit."""
-    return tokens * 2
-
-
-def _format_document_block(doc: PaperlessDocument, max_chars: int) -> str:
+def _format_document_block(doc: PaperlessDocument, max_bytes: int) -> str:
+    content = _truncate_to_budget(
+        doc.content or "", max_chars=settings.max_doc_chars, max_bytes=max_bytes
+    )
     return (
         f"--- Dokument #{doc.id} ---\n"
         f"Titel: {doc.title}\n"
-        f"Inhalt:\n{_truncate(doc.content or '', max_chars)}\n"
+        "Inhalt:\n"
+        f"{content}\n"
     )
 
 
@@ -75,7 +86,7 @@ def _resolve_entity_name(entity_id: int | None, entities: list[PaperlessEntity])
 
 def _format_context_block(
     doc: PaperlessDocument,
-    max_chars: int,
+    max_bytes: int,
     correspondents: list[PaperlessEntity],
     doctypes: list[PaperlessEntity],
     storage_paths: list[PaperlessEntity],
@@ -104,7 +115,12 @@ def _format_context_block(
         if tag_names:
             lines.append(f"Tags: {', '.join(tag_names)}")
 
-    lines.append(f"Inhalt:\n{_truncate(doc.content or '', max_chars)}")
+    lines.append(
+        "Inhalt:\n"
+        + _truncate_to_budget(
+            doc.content or "", max_chars=settings.max_doc_chars, max_bytes=max_bytes
+        )
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -207,6 +223,7 @@ def build_user_prompt(
     *,
     num_ctx: int = 8192,
     system_prompt_chars: int = 0,
+    system_prompt_tokens: int | None = None,
 ) -> str:
     # --- Fixed sections (entity lists + task instructions) ---
     max_tags = _classification_max_tags()
@@ -247,7 +264,11 @@ def build_user_prompt(
     RESPONSE_RESERVE = 512  # tokens reserved for the model's output
     MIN_CONTEXT_DOC_TOKENS = 100
 
-    system_tokens = _estimate_tokens("x" * system_prompt_chars) if system_prompt_chars else 0
+    system_tokens = (
+        system_prompt_tokens
+        if system_prompt_tokens is not None
+        else (_estimate_tokens("x" * system_prompt_chars) if system_prompt_chars else 0)
+    )
     fixed_tokens = _estimate_tokens(entity_section) + _estimate_tokens(task_section) + 50
     # 15% safety margin — chars-to-tokens estimation is inherently approximate
     doc_budget_tokens = int((num_ctx - RESPONSE_RESERVE - system_tokens - fixed_tokens) * 0.85)
@@ -276,9 +297,9 @@ def build_user_prompt(
         target_budget_tokens = doc_budget_tokens
         context_budget_tokens = 0
 
-    target_chars = min(_tokens_to_chars(target_budget_tokens), settings.max_doc_chars)
-    context_chars_per_doc = (
-        _tokens_to_chars(context_budget_tokens // len(active_context)) if active_context else 0
+    target_bytes = target_budget_tokens
+    context_bytes_per_doc = (
+        context_budget_tokens // len(active_context) if active_context else 0
     )
 
     # --- Assemble prompt ---
@@ -291,12 +312,12 @@ def build_user_prompt(
         for c in active_context:
             sections.append(
                 _format_context_block(
-                    c, context_chars_per_doc, correspondents, doctypes, storage_paths, tags
+                    c, context_bytes_per_doc, correspondents, doctypes, storage_paths, tags
                 )
             )
 
     sections.append("\n# Zu klassifizierendes Dokument")
-    sections.append(_format_document_block(target, target_chars))
+    sections.append(_format_document_block(target, target_bytes))
     sections.append(task_section)
 
     return "\n".join(sections)
@@ -321,7 +342,7 @@ async def classify(
         storage_paths,
         tags,
         num_ctx=settings.ollama_num_ctx,
-        system_prompt_chars=len(system),
+        system_prompt_tokens=_estimate_tokens(system),
     )
 
     log.info(
@@ -373,6 +394,7 @@ def build_judge_user_prompt(
     *,
     num_ctx: int = 8192,
     system_prompt_chars: int = 0,
+    system_prompt_tokens: int | None = None,
 ) -> str:
     """Build a user prompt for the judge pass (base prompt + proposal appendix)."""
     proposal_json = _classification_to_prompt_json(initial)
@@ -390,6 +412,7 @@ def build_judge_user_prompt(
         tags,
         num_ctx=base_budget_ctx,
         system_prompt_chars=system_prompt_chars,
+        system_prompt_tokens=system_prompt_tokens,
     )
     return f"{base}\n# Bestehender Klassifikations-Vorschlag (vom ersten Pass)\n{proposal_json}\n"
 
@@ -448,7 +471,7 @@ async def verify(
         storage_paths,
         tags,
         num_ctx=settings.ollama_num_ctx,
-        system_prompt_chars=len(system),
+        system_prompt_tokens=_estimate_tokens(system),
     )
 
     model = settings.ollama_judge_model.strip() or None
