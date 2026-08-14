@@ -429,7 +429,11 @@ class DiagnosticPresenter
             if ($safeValue !== null) {
                 $entries[] = [
                     'key' => $key,
-                    'label' => Str::of($key)->replace('_', ' ')->title()->toString(),
+                    'label' => match ($key) {
+                        'actor_execution_id' => 'Actor Execution ID',
+                        'http_status' => 'HTTP Status',
+                        default => Str::of($key)->replace('_', ' ')->title()->toString(),
+                    },
                     'value' => $safeValue,
                 ];
             }

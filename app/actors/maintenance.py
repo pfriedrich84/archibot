@@ -22,8 +22,8 @@ from app.execution_lifecycle import (
 )
 from app.jobs.poll_candidates import persist_poll_candidate
 from app.jobs.progress import ProgressSnapshot
-from app.jobs.review_suggestions import classified_document_ids
 from app.jobs.retry import classify_exception, http_status_code
+from app.jobs.review_suggestions import classified_document_ids
 from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
 log = structlog.get_logger(__name__)
