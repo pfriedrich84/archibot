@@ -28,7 +28,7 @@ class OperationsLogController extends Controller
                     'id' => $command->id,
                     'type' => $this->diagnostics->typedScalar('command_type', $command->type),
                     'status' => $this->diagnostics->typedScalar('status', $command->status),
-                    'error' => $this->diagnostics->redactedMessage($command->error),
+                    'error' => $this->diagnostics->errorType($command->error),
                     'created_at' => $command->created_at?->toISOString(),
                     'started_at' => $command->started_at?->toISOString(),
                     'finished_at' => $command->finished_at?->toISOString(),
@@ -68,10 +68,11 @@ class OperationsLogController extends Controller
             'actorExecutions' => ActorExecution::query()
                 ->latest()
                 ->limit(25)
-                ->get(['id', 'pipeline_run_id', 'actor_name', 'status', 'attempt', 'progress_message', 'error_type', 'error_message', 'created_at', 'started_at', 'finished_at'])
+                ->get(['id', 'pipeline_run_id', 'command_id', 'actor_name', 'status', 'attempt', 'progress_message', 'error_type', 'error_message', 'created_at', 'started_at', 'finished_at'])
                 ->map(fn (ActorExecution $execution): array => [
                     'id' => $execution->id,
                     'pipeline_run_id' => $execution->pipeline_run_id,
+                    'command_id' => $execution->command_id,
                     'actor_name' => $this->diagnostics->actorName($execution->actor_name),
                     'status' => $this->diagnostics->typedScalar('status', $execution->status),
                     'attempt' => $execution->attempt,

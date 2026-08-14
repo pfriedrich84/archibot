@@ -378,6 +378,34 @@ class DiagnosticAuthorizationTest extends TestCase
             ->assertSessionHasErrors('status');
     }
 
+    public function test_command_failures_expose_safe_error_type_and_actor_link(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_FAILED_PERMANENT,
+            'payload' => ['source' => 'scheduler'],
+            'error' => 'bug_unexpected',
+        ]);
+        ActorExecution::query()->create([
+            'command_id' => $command->id,
+            'actor_name' => 'reconcile_inbox_documents',
+            'status' => ActorExecution::STATUS_FAILED_PERMANENT,
+            'error_type' => 'bug_unexpected',
+            'error_message' => 'sensitive internal failure detail',
+        ]);
+
+        $this->actingAs($admin)->get(route('operations-log.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('commands.0.id', $command->id)
+                ->where('commands.0.error', 'bug_unexpected')
+                ->where('actorExecutions.0.command_id', $command->id)
+                ->where('actorExecutions.0.error_type', 'bug_unexpected')
+                ->where('actorExecutions.0.error_message', 'Details redacted. Use the status, error type, identifiers and timeline to diagnose or recover this operation.')
+            );
+    }
+
     public function test_canonical_recovery_identifiers_survive_the_endpoint_boundary(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
