@@ -355,7 +355,7 @@ class TestPromptBudget:
         """With num_ctx=4096 and a large doc, prompt stays within budget."""
         target = self._make_long_doc(content_len=20000)
         context = self._make_context_docs(5, content_len=5000)
-        system_chars = 3500  # approximate system prompt size
+        system_chars = 1000  # leaves room for metadata and document content
 
         prompt = build_user_prompt(
             target=target,
@@ -370,6 +370,25 @@ class TestPromptBudget:
         total_tokens = _estimate_tokens(prompt) + _estimate_tokens("x" * system_chars)
         # Total should fit within num_ctx (with some margin for response)
         assert total_tokens < 4096
+
+    def test_rejects_context_window_smaller_than_fixed_prompt_sections(
+        self,
+        sample_correspondents: list[PaperlessEntity],
+        sample_doctypes: list[PaperlessEntity],
+        sample_storage_paths: list[PaperlessEntity],
+        sample_tags: list[PaperlessEntity],
+    ):
+        with pytest.raises(ValueError, match="context window is too small"):
+            build_user_prompt(
+                target=self._make_long_doc(),
+                context_docs=[],
+                correspondents=sample_correspondents,
+                doctypes=sample_doctypes,
+                storage_paths=sample_storage_paths,
+                tags=sample_tags,
+                num_ctx=2048,
+                system_prompt_chars=3500,
+            )
 
     def test_16384_context_budget_handles_dense_ocr_without_provider_overflow(
         self,
@@ -429,7 +448,7 @@ class TestPromptBudget:
             storage_paths=sample_storage_paths,
             tags=sample_tags,
             num_ctx=2048,
-            system_prompt_chars=3500,
+            system_prompt_chars=200,
         )
         # With such a tight budget, not all 5 context docs can fit
         context_count = prompt.count("--- Dokument #10")
@@ -453,7 +472,7 @@ class TestPromptBudget:
             storage_paths=sample_storage_paths,
             tags=sample_tags,
             num_ctx=4096,
-            system_prompt_chars=3500,
+            system_prompt_chars=1000,
         )
         prompt_with_ctx = build_user_prompt(
             target=target,
@@ -463,7 +482,7 @@ class TestPromptBudget:
             storage_paths=sample_storage_paths,
             tags=sample_tags,
             num_ctx=4096,
-            system_prompt_chars=3500,
+            system_prompt_chars=1000,
         )
         # Target section should be larger without context (gets 100% vs 60% of budget)
         target_no_ctx = prompt_no_ctx.split("# Zu klassifizierendes Dokument")[1]

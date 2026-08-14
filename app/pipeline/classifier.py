@@ -265,12 +265,14 @@ def build_user_prompt(
         else (_estimate_tokens("x" * system_prompt_chars) if system_prompt_chars else 0)
     )
     fixed_tokens = _estimate_tokens(entity_section) + _estimate_tokens(task_section) + 50
-    # 15% safety margin — chars-to-tokens estimation is inherently approximate
-    doc_budget_tokens = int((num_ctx - RESPONSE_RESERVE - system_tokens - fixed_tokens) * 0.85)
+    available_doc_tokens = num_ctx - RESPONSE_RESERVE - system_tokens - fixed_tokens
+    if available_doc_tokens < 200:
+        raise ValueError(
+            "Classification context window is too small for the system prompt and metadata"
+        )
 
-    if doc_budget_tokens < 200:
-        log.warning("very tight token budget", budget=doc_budget_tokens, num_ctx=num_ctx)
-        doc_budget_tokens = 200
+    # Keep headroom for document titles, context metadata and tokenizer variation.
+    doc_budget_tokens = int(available_doc_tokens * 0.85)
 
     # Split: target gets 60%, context docs share 40% (target gets all if no context)
     active_context = list(context_docs)
