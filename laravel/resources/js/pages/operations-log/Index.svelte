@@ -44,9 +44,11 @@
 
     type ActorExecutionEntry = {
         id: number;
+        command_id: number | null;
         actor_name: string;
         status: string;
         progress_message: string | null;
+        error_type: string | null;
         error_message: string | null;
         created_at: string | null;
     };
@@ -127,9 +129,13 @@
             headers: ['Time', 'Actor', 'Status', 'Message'],
             rows: actorExecutions.map((actor) => ({
                 time: formatDateTime(actor.created_at, '-'),
-                label: `Actor #${actor.id}: ${actor.actor_name}`,
+                label: `Actor #${actor.id}: ${actor.actor_name}${actor.command_id ? ` · Command #${actor.command_id}` : ''}`,
                 status: actor.status,
-                message: actor.error_message ?? actor.progress_message ?? '-',
+                message:
+                    actor.error_type ??
+                    actor.error_message ??
+                    actor.progress_message ??
+                    '-',
             })),
         },
         {
