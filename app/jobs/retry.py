@@ -72,6 +72,8 @@ def classify_exception(exc: BaseException) -> RetryClass:
     """
     status_code = http_status_code(exc)
     if status_code is not None:
+        if status_code == 408:
+            return RetryClass.TRANSIENT_NETWORK
         if status_code == 429:
             return RetryClass.RATE_LIMITED
         if status_code == 404:

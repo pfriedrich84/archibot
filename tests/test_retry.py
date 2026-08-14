@@ -44,6 +44,14 @@ def test_classify_exception_classifies_missing_document_status():
     assert classify_exception(exc) == RetryClass.PERMANENT_MISSING_DOCUMENT
 
 
+def test_classify_exception_keeps_http_request_timeout_retryable():
+    request = httpx.Request("GET", "http://paperless/api/documents/")
+    response = httpx.Response(408, request=request)
+    exc = httpx.HTTPStatusError("request timeout", request=request, response=response)
+
+    assert classify_exception(exc) == RetryClass.TRANSIENT_NETWORK
+
+
 def test_classify_exception_reads_httpx_response_status_without_exposing_response():
     request = httpx.Request("GET", "http://paperless/api/documents/")
     response = httpx.Response(401, request=request)
