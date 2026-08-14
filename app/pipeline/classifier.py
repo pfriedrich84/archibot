@@ -41,13 +41,18 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _estimate_tokens(text: str) -> int:
-    """Rough chars-to-tokens estimate (~3.0 chars/token for multilingual German)."""
-    return max(1, len(text) * 10 // 30)
+    """Conservatively estimate tokens for multilingual and noisy OCR text.
+
+    OCR output, identifiers and punctuation can tokenize much more densely than
+    ordinary prose. Budgeting at two characters per token keeps requests below
+    provider context limits without depending on a model-specific tokenizer.
+    """
+    return max(1, (len(text) + 1) // 2)
 
 
 def _tokens_to_chars(tokens: int) -> int:
-    """Convert a token budget back to approximate character count."""
-    return tokens * 30 // 10
+    """Convert a token budget to the matching conservative character limit."""
+    return tokens * 2
 
 
 def _format_document_block(doc: PaperlessDocument, max_chars: int) -> str:
@@ -326,6 +331,7 @@ async def classify(
         model=ollama.model,
         prompt_chars=len(user),
         estimated_tokens=_estimate_tokens(system) + _estimate_tokens(user),
+        context_window_tokens=settings.ollama_num_ctx,
     )
 
     raw = await ollama.chat_json(system=system, user=user)
@@ -452,6 +458,8 @@ async def verify(
         context_docs=len(context_docs),
         model=model or ollama.model,
         prompt_chars=len(user),
+        estimated_tokens=_estimate_tokens(system) + _estimate_tokens(user),
+        context_window_tokens=settings.ollama_num_ctx,
     )
 
     try:

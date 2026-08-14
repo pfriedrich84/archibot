@@ -111,8 +111,8 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `CLASSIFICATION_MODEL` / `OLLAMA_MODEL` | `gemma4:e4b` | Klassifikations-Modell (6GB-Empfehlung; Alternativen: `qwen3:4b`). `CLASSIFICATION_MODEL` ist der bevorzugte Name. |
-| `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation und Judge (Tokens). `CHAT_CONTEXT_WINDOW` ist keine Runtime-Setting; Chat/RAG ist deaktiviert. `JUDGE_CONTEXT_WINDOW` ist derzeit ebenfalls keine Runtime-Setting. |
-| `MAX_DOC_CHARS` | `24000` | Max. Zeichen des Dokumenttexts im LLM-Prompt |
+| `CLASSIFICATION_CONTEXT_WINDOW` / `OLLAMA_NUM_CTX` | `16384` | Kontextfenster fuer Klassifikation und Judge (Tokens). ArchiBot budgetiert System-Prompt, Entitaeten, Ziel- und Kontextdokumente konservativ gegen dieses Limit, damit dichter OCR-Text das Provider-Fenster nicht ueberschreitet. `CHAT_CONTEXT_WINDOW` ist keine Runtime-Setting; Chat/RAG ist deaktiviert. `JUDGE_CONTEXT_WINDOW` ist derzeit ebenfalls keine Runtime-Setting. |
+| `MAX_DOC_CHARS` | `24000` | Obergrenze fuer Zeichen des Dokumenttexts; das effektive Prompt-Limit kann wegen des Tokenbudgets niedriger sein. |
 | `CONTEXT_MAX_DOCS` | `5` | Wieviele aehnliche Dokumente als Few-Shot-Kontext |
 | `AUTO_COMMIT_CONFIDENCE` | `0` (fest) | Legacy-Kompatibilitaetsname ohne schreibwirksame Konfiguration. Jeder gelieferte Wert wird auf `0` normalisiert; Modell-/Judge-Confidence bleibt nur Review-Evidenz. |
 | `ENABLE_JUDGE_VERIFICATION` | `false` | Zweiter LLM-Pass, der Klassifikationen prueft und ggf. korrigiert. |

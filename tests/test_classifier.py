@@ -371,6 +371,31 @@ class TestPromptBudget:
         # Total should fit within num_ctx (with some margin for response)
         assert total_tokens < 4096
 
+    def test_16384_context_budget_handles_dense_ocr_without_provider_overflow(
+        self,
+        sample_correspondents: list[PaperlessEntity],
+        sample_doctypes: list[PaperlessEntity],
+        sample_storage_paths: list[PaperlessEntity],
+        sample_tags: list[PaperlessEntity],
+    ):
+        target = self._make_long_doc(content_len=24000)
+        context = self._make_context_docs(5, content_len=12000)
+        system_chars = 3500
+
+        prompt = build_user_prompt(
+            target=target,
+            context_docs=context,
+            correspondents=sample_correspondents,
+            doctypes=sample_doctypes,
+            storage_paths=sample_storage_paths,
+            tags=sample_tags,
+            num_ctx=16384,
+            system_prompt_chars=system_chars,
+        )
+
+        conservative_input_tokens = (len(prompt) + system_chars + 1) // 2
+        assert conservative_input_tokens <= 16384 - 512
+
     def test_drops_context_when_tight(
         self,
         sample_correspondents: list[PaperlessEntity],
