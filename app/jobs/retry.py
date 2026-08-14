@@ -46,6 +46,23 @@ def should_retry(retry_class: RetryClass, *, attempt: int, max_attempts: int = 5
     return retry_class in RETRYABLE_CLASSES and attempt < max_attempts
 
 
+def http_status_code(exc: BaseException) -> int | None:
+    """Extract an HTTP status without importing or exposing transport details."""
+    candidates = (
+        getattr(exc, "status_code", None),
+        getattr(exc, "status", None),
+        getattr(getattr(exc, "response", None), "status_code", None),
+    )
+    return next(
+        (
+            status
+            for status in candidates
+            if isinstance(status, int) and not isinstance(status, bool)
+        ),
+        None,
+    )
+
+
 def classify_exception(exc: BaseException) -> RetryClass:
     """Classify common actor exceptions without logging sensitive payloads.
 
@@ -53,8 +70,10 @@ def classify_exception(exc: BaseException) -> RetryClass:
     with stdlib, httpx/aiohttp-style errors, Paperless client errors and LLM
     provider errors without importing optional transport libraries.
     """
-    status_code = getattr(exc, "status_code", None) or getattr(exc, "status", None)
-    if isinstance(status_code, int):
+    status_code = http_status_code(exc)
+    if status_code is not None:
+        if status_code == 408:
+            return RetryClass.TRANSIENT_NETWORK
         if status_code == 429:
             return RetryClass.RATE_LIMITED
         if status_code == 404:
@@ -76,7 +95,7 @@ def classify_exception(exc: BaseException) -> RetryClass:
         return RetryClass.TRANSIENT_PROVIDER
     if "timeout" in class_name:
         return RetryClass.TRANSIENT_NETWORK
-    if "connection" in class_name or "network" in class_name:
+    if "connect" in class_name or "network" in class_name:
         return RetryClass.TRANSIENT_NETWORK
 
     if isinstance(exc, ValueError):

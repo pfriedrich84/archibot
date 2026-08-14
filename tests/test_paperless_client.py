@@ -4,6 +4,7 @@ import json
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from app.clients.paperless import PaperlessClient
 
@@ -11,6 +12,33 @@ from app.clients.paperless import PaperlessClient
 def test_paperless_client_rejects_empty_token():
     with pytest.raises(ValueError, match="Paperless API token is empty"):
         PaperlessClient("http://paperless", "")
+
+
+@pytest.mark.asyncio
+async def test_inbox_request_failure_logs_safe_transport_diagnostics():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, request=request)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://paperless/api") as client:
+        paperless = PaperlessClient("http://paperless", "secret-token")
+        paperless._client = client
+        with capture_logs() as logs, pytest.raises(httpx.HTTPStatusError):
+            await paperless.list_inbox_documents(7)
+
+    failure = next(log for log in logs if log["event"] == "paperless request failed")
+    assert failure == {
+        "operation": "list_inbox_documents",
+        "method": "GET",
+        "endpoint": "documents",
+        "page": 1,
+        "status_code": 401,
+        "exception_type": "HTTPStatusError",
+        "duration_ms": failure["duration_ms"],
+        "event": "paperless request failed",
+        "log_level": "warning",
+    }
+    assert "secret-token" not in repr(failure)
 
 
 @pytest.mark.asyncio

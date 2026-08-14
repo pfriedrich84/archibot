@@ -22,6 +22,7 @@ from app.execution_lifecycle import (
 )
 from app.jobs.poll_candidates import persist_poll_candidate
 from app.jobs.progress import ProgressSnapshot
+from app.jobs.retry import classify_exception, http_status_code
 from app.jobs.review_suggestions import classified_document_ids
 from app.pipeline.ocr_correction import batch_correct_documents, effective_ocr_mode
 
@@ -60,6 +61,8 @@ def _reconcile_inbox_documents_impl(
         "poll reconciliation actor started",
         event_type=types.ACTOR_STARTED,
         actor_name=actor_name,
+        actor_execution_id=actor_execution.id,
+        command_id=command_id,
         queue_name=LARAVEL_DATABASE_QUEUE,
         limit=limit,
         force=force,
@@ -76,6 +79,7 @@ def _reconcile_inbox_documents_impl(
             ),
         )
 
+    phase = "poll_reconciliation_prepare"
     try:
         if command_id is None:
             raise ValueError("Poll reconciliation requires a durable Laravel command id.")
@@ -83,7 +87,13 @@ def _reconcile_inbox_documents_impl(
             message = (
                 "Polling reconciliation skipped because PAPERLESS_INBOX_TAG_ID is not configured."
             )
-            publish_pipeline_event("poll.reconciliation.skipped", level="warning", message=message)
+            publish_pipeline_event(
+                "poll.reconciliation.skipped",
+                command_id=command_id,
+                level="warning",
+                message=message,
+                payload={"actor_execution_id": actor_execution.id, "phase": phase},
+            )
             finish_actor_execution(
                 actor_execution,
                 status="skipped",
@@ -92,10 +102,12 @@ def _reconcile_inbox_documents_impl(
             )
             return
 
+        phase = "paperless_fetch"
         documents = asyncio.run(_fetch_inbox_documents())
         if limit is not None:
             documents = documents[:limit]
 
+        phase = "poll_reconciliation"
         total = len(documents)
         marked_document_ids = (
             set()
@@ -148,8 +160,10 @@ def _reconcile_inbox_documents_impl(
 
         publish_pipeline_event(
             "poll.reconciliation.completed",
+            command_id=command_id,
             message="Polling reconciliation completed.",
             payload={
+                "actor_execution_id": actor_execution.id,
                 "documents_seen": total,
                 "candidates_persisted": persisted_count,
                 "candidates_replayed": replayed_count,
@@ -159,6 +173,39 @@ def _reconcile_inbox_documents_impl(
         )
         finish_actor_execution(actor_execution, status="succeeded")
     except Exception as exc:
+        retry_class = classify_exception(exc)
+        status_code = http_status_code(exc)
+        failure_context = {
+            "actor_name": actor_name,
+            "actor_execution_id": actor_execution.id,
+            "command_id": command_id,
+            "queue_name": LARAVEL_DATABASE_QUEUE,
+            "phase": phase,
+            "error_type": retry_class.value,
+            "exception_type": type(exc).__name__,
+            "http_status": status_code,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
+        log.error("poll reconciliation actor failed", **failure_context)
+        try:
+            publish_pipeline_event(
+                "poll.reconciliation.failed",
+                command_id=command_id,
+                level="error",
+                message="Polling reconciliation failed.",
+                payload={
+                    "actor_execution_id": actor_execution.id,
+                    "phase": phase,
+                    "error_type": retry_class.value,
+                    "http_status": status_code,
+                },
+            )
+        except Exception as diagnostic_exc:
+            log.warning(
+                "poll reconciliation failure event could not be persisted",
+                **failure_context,
+                diagnostic_exception_type=type(diagnostic_exc).__name__,
+            )
         ExecutionLifecycle(actor_execution).fail(exc)
         raise
 
@@ -166,6 +213,8 @@ def _reconcile_inbox_documents_impl(
         "poll reconciliation actor succeeded",
         event_type=types.ACTOR_SUCCEEDED,
         actor_name=actor_name,
+        actor_execution_id=actor_execution.id,
+        command_id=command_id,
         queue_name=LARAVEL_DATABASE_QUEUE,
         duration_ms=int((time.monotonic() - started) * 1000),
     )

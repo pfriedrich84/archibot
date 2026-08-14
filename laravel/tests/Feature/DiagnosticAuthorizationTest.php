@@ -417,10 +417,23 @@ class DiagnosticAuthorizationTest extends TestCase
             'paperless_document_id' => 42,
             'progress_current_phase' => 'review_commit_paperless',
         ]);
+        $command = Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_FAILED_PERMANENT,
+            'payload' => ['source' => 'scheduler'],
+            'error' => 'permanent_validation',
+        ]);
         PipelineEvent::query()->create([
-            'pipeline_run_id' => $run->id,
-            'event_type' => 'poll.reconciliation.completed',
-            'level' => 'info',
+            'command_id' => $command->id,
+            'event_type' => 'poll.reconciliation.failed',
+            'level' => 'error',
+            'payload' => [
+                'actor_execution_id' => 91,
+                'phase' => 'paperless_fetch',
+                'error_type' => 'permanent_validation',
+                'http_status' => 401,
+                'secret' => 'must-not-cross-boundary',
+            ],
         ]);
         ActorExecution::query()->create([
             'pipeline_run_id' => $run->id,
@@ -441,7 +454,14 @@ class DiagnosticAuthorizationTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pipelineRuns.0.progress_current_phase', 'review_commit_paperless')
-                ->where('pipelineEvents.0.event_type', 'poll.reconciliation.completed')
+                ->where('pipelineEvents.0.command_id', $command->id)
+                ->where('pipelineEvents.0.event_type', 'poll.reconciliation.failed')
+                ->where('pipelineEvents.0.metadata', [
+                    ['key' => 'actor_execution_id', 'label' => 'Actor Execution ID', 'value' => 91],
+                    ['key' => 'phase', 'label' => 'Phase', 'value' => 'paperless_fetch'],
+                    ['key' => 'error_type', 'label' => 'Error Type', 'value' => 'permanent_validation'],
+                    ['key' => 'http_status', 'label' => 'HTTP Status', 'value' => 401],
+                ])
                 ->where('actorExecutions.0.actor_name', 'reindex_ocr')
                 ->where('actorExecutions.0.error_type', 'transient_network')
                 ->where('auditLogs.0.event', 'scheduler.poll_reconciliation_enqueue_failed')
