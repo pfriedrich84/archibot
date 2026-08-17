@@ -17,21 +17,21 @@ mcp<=1.29.0
 # anyio 4.14.2 is still inside the 3-day quarantine window as of 2026-07-14.
 anyio<=4.14.2
 # starlette 1.0.1 is a security fix for PYSEC-2026-161 (allowed as age exception)
-starlette<=1.4.1
-uvicorn<=0.52.1
+starlette<=1.6.0
+uvicorn<=0.52.3
 sse-starlette<=3.4.8
 python-multipart<=0.0.32
 # Keep pip-audit and key transitive deps stable in CI.
 pip-audit<=2.10.1
-cyclonedx-python-lib<=11.11.0
+cyclonedx-python-lib<=11.12.0
 sortedcontainers<=2.4.0
 # cryptography 50.0.0 fixes PYSEC-2026-3552, PYSEC-2026-3553, and PYSEC-2026-3554.
 cryptography>=50.0.0,<=50.0.0
 # cryptography requires cffi>=2.0.0; keep same-day cffi releases quarantined.
 cffi<=2.1.1,>=2.1.1
-charset-normalizer<=3.4.9
+charset-normalizer<=3.5.0
 # platformdirs 4.10.1 remains in the 3-day supply-chain quarantine through 2026-07-20.
-platformdirs<=4.11.0
+platformdirs<=4.11.3
 requests<=2.34.2
 # jsonschema/referencing transitive dependency; keep off same-day releases for age gate.
 rpds-py<=0.30.0
@@ -39,17 +39,17 @@ pydantic<=2.13.4
 pydantic-core<=2.48.0
 annotated-types<=0.8.0
 # Keep the pydantic transitive dependency outside the 3-day quarantine window.
-typing-inspection<=0.4.3
+typing-inspection<=0.4.4
 # pydantic-settings 2.14.2 fixes GHSA-4xgf-cpjx-pc3j (secrets-dir symlink escape).
-pydantic-settings>=2.14.2,<=2.14.2
+pydantic-settings>=2.14.2,<=2.15.0
 rpds-py<2026.5.1
 pymupdf<=1.28.2
-ruff<=0.16.1
+ruff<=0.16.3
 structlog<=25.5.0
 supervisor>=4.3.0,<=4.3.0
 # Event-driven runtime dependencies: PostgreSQL/pgvector state used by fixed actors.
-sqlalchemy<=2.0.51
-greenlet<3.5.5
+sqlalchemy<=2.0.52
+greenlet<3.5.6
 psycopg<=3.3.4
 pgvector<=0.5.0
 pygments<=2.20.0
