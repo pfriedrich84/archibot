@@ -119,6 +119,8 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
 | `JUDGE_MODEL` / `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `CLASSIFICATION_MODEL`/`OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
 
+Strukturierte Provider-Antworten sind auf 2048 Tokens fuer Klassifikation und Judge sowie 8192 Tokens fuer OCR begrenzt. ArchiBot sendet dafuer `max_tokens` an OpenAI-kompatible Provider und `num_predict` an Ollama-kompatible Provider. Dadurch enden fehlerhafte Modellantworten auch dann begrenzt, wenn das Modell kein gueltiges Ende-Token erzeugt.
+
 ## Worker
 
 | Variable | Default | Beschreibung |

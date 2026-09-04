@@ -104,23 +104,39 @@ class PaperlessClient
      */
     public function documents(string $token, int $inboxTagId, int $pageSize = 25): array
     {
-        $response = $this->request($token)->get('/api/documents/', [
+        $items = [];
+        $nextPath = '/api/documents/';
+        $query = [
             'tags__id__all' => $inboxTagId,
             'page_size' => $pageSize,
-        ]);
+        ];
 
-        if (! $response->successful()) {
-            throw new RuntimeException('Could not fetch Paperless documents.');
+        while ($nextPath !== null) {
+            $response = $this->request($token)->get($nextPath, $query);
+
+            if (! $response->successful()) {
+                throw new RuntimeException('Could not fetch Paperless documents.');
+            }
+
+            $payload = $response->json();
+            $pageItems = is_array($payload) ? ($payload['results'] ?? $payload) : [];
+
+            if (! is_array($pageItems)) {
+                throw new RuntimeException('Paperless documents response was not JSON.');
+            }
+
+            foreach ($pageItems as $item) {
+                if (is_array($item)) {
+                    $items[] = $item;
+                }
+            }
+
+            $next = is_array($payload) ? ($payload['next'] ?? null) : null;
+            $nextPath = is_string($next) && $next !== '' ? $this->safePaginationPath($next) : null;
+            $query = [];
         }
 
-        $payload = $response->json();
-        $items = is_array($payload) ? ($payload['results'] ?? $payload) : [];
-
-        if (! is_array($items)) {
-            throw new RuntimeException('Paperless documents response was not JSON.');
-        }
-
-        return array_values(array_filter($items, fn ($item) => is_array($item)));
+        return $items;
     }
 
     public function document(string $token, int $documentId): array

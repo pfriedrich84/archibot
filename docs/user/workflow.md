@@ -75,7 +75,8 @@ Das LLM liefert strukturiertes JSON mit:
 
 Die Navigation priorisiert den taeglichen Dokumentfluss: **Today** zeigt die
 naechste Review-Aufgabe, **Review queue** fuehrt das Register der Vorschlaege und
-**Inbox** zeigt die eingegangenen Paperless-Dokumente. Monitoring-, Recovery- und
+**Inbox** zeigt alle eingegangenen Paperless-Dokumente ueber saemtliche Paperless-
+Ergebnisseiten hinweg. Monitoring-, Recovery- und
 Konfigurationsseiten bleiben fuer Admins unter **Admin tools** erreichbar, ohne
 den normalen Reviewpfad zu ueberladen.
 
