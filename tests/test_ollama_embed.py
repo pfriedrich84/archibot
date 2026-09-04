@@ -95,6 +95,7 @@ async def test_openai_compatible_chat_json_parses_choice_content(client: OllamaC
     assert result == {"ok": True}
     payload = client._client.post.await_args.kwargs["json"]
     assert payload["response_format"] == {"type": "json_object"}
+    assert payload["max_tokens"] == 2048
     assert payload["messages"][0] == {"role": "system", "content": "system"}
 
 
@@ -411,6 +412,23 @@ async def test_chat_json_passes_num_ctx(client: OllamaClient):
 
     sent_payload = client._client.post.call_args[1]["json"]
     assert sent_payload["options"]["num_ctx"] == 8192
+    assert sent_payload["options"]["num_predict"] == 2048
+
+
+async def test_openai_compatible_ocr_uses_larger_bounded_completion(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps({"text": "corrected"})}}]},
+            request=httpx.Request("POST", "http://test/v1/chat/completions"),
+        )
+    )
+
+    await client.chat_json(system="system", user="user", role="ocr")
+
+    payload = client._client.post.await_args.kwargs["json"]
+    assert payload["max_tokens"] == 8192
 
 
 async def test_chat_json_passes_custom_num_ctx(client: OllamaClient):
@@ -465,6 +483,7 @@ async def test_chat_vision_json_passes_default_num_ctx(client: OllamaClient):
 
     sent_payload = client._client.post.call_args[1]["json"]
     assert sent_payload["options"]["num_ctx"] == 8192
+    assert sent_payload["options"]["num_predict"] == 8192
 
 
 async def test_chat_vision_json_passes_custom_num_ctx(client: OllamaClient):

@@ -17,6 +17,21 @@ log = structlog.get_logger(__name__)
 
 _MD_JSON_RE = re.compile(r"^\s*```(?:json)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL)
 
+# Structured classification responses are small, while OCR may need to return
+# a corrected document body. Always bound generation so a model that misses
+# its end token cannot occupy a provider slot until the HTTP timeout.
+_STRUCTURED_OUTPUT_TOKEN_LIMITS = {
+    "classification": 2048,
+    "judge": 2048,
+    "ocr": 8192,
+}
+
+
+def _structured_output_token_limit(role: str) -> int:
+    return _STRUCTURED_OUTPUT_TOKEN_LIMITS.get(
+        role, _STRUCTURED_OUTPUT_TOKEN_LIMITS["classification"]
+    )
+
 
 def _strip_markdown_fences(text: str) -> str:
     """Extract raw JSON from Ollama responses.
@@ -384,6 +399,7 @@ class AiProviderClient:
                 "model": model or self.model,
                 "stream": False,
                 "temperature": temperature,
+                "max_tokens": _structured_output_token_limit(role),
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": system},
@@ -399,6 +415,7 @@ class AiProviderClient:
             "options": {
                 "temperature": temperature,
                 "num_ctx": num_ctx if num_ctx is not None else settings.ollama_num_ctx,
+                "num_predict": _structured_output_token_limit(role),
             },
             "messages": [
                 {"role": "system", "content": system},
@@ -441,6 +458,7 @@ class AiProviderClient:
                 "model": model or self.model,
                 "stream": False,
                 "temperature": temperature,
+                "max_tokens": _structured_output_token_limit(role),
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": system},
@@ -456,6 +474,7 @@ class AiProviderClient:
             "options": {
                 "temperature": temperature,
                 "num_ctx": num_ctx if num_ctx is not None else settings.ollama_num_ctx,
+                "num_predict": _structured_output_token_limit(role),
             },
             "messages": [
                 {"role": "system", "content": system},
