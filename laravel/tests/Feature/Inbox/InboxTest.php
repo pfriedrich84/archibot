@@ -72,6 +72,46 @@ class InboxTest extends TestCase
             && str_contains($request->url(), 'tags__id__all=7'));
     }
 
+    public function test_inbox_page_loads_all_paperless_pages(): void
+    {
+        AppSetting::put('paperless.url', 'https://paperless.example');
+        AppSetting::put('paperless.inbox_tag_id', '7');
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/api/documents/')) {
+                return str_contains($request->url(), 'page=2')
+                    ? Http::response([
+                        'count' => 36,
+                        'next' => null,
+                        'results' => collect(range(26, 36))
+                            ->map(fn (int $id): array => ['id' => $id, 'title' => "Inbox {$id}"])
+                            ->all(),
+                    ])
+                    : Http::response([
+                        'count' => 36,
+                        'next' => 'https://paperless.example/api/documents/?page=2&page_size=25&tags__id__all=7',
+                        'results' => collect(range(1, 25))
+                            ->map(fn (int $id): array => ['id' => $id, 'title' => "Inbox {$id}"])
+                            ->all(),
+                    ]);
+            }
+
+            return Http::response(['results' => []]);
+        });
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->get(route('inbox.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('kpis.total', 36)
+                ->has('documents', 36)
+                ->where('documents.35.id', 36)
+            );
+
+        Http::assertSentCount(5);
+    }
+
     public function test_inbox_page_reports_missing_configuration(): void
     {
         $user = User::factory()->create(['paperless_token' => 'user-token']);
