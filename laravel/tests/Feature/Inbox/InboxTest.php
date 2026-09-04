@@ -5,9 +5,11 @@ namespace Tests\Feature\Inbox;
 use App\Models\AppSetting;
 use App\Models\ReviewSuggestion;
 use App\Models\User;
+use App\Services\Paperless\PaperlessClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
+use RuntimeException;
 use Tests\TestCase;
 
 class InboxTest extends TestCase
@@ -110,6 +112,24 @@ class InboxTest extends TestCase
             );
 
         Http::assertSentCount(5);
+    }
+
+    public function test_paperless_document_pagination_rejects_repeated_pages(): void
+    {
+        Http::fake([
+            'paperless.example/api/documents/*' => Http::response([
+                'count' => 1,
+                'next' => 'https://paperless.example/api/documents/?tags__id__all=7&page_size=25',
+                'results' => [
+                    ['id' => 123, 'title' => 'Inbox scan'],
+                ],
+            ], 200),
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Paperless documents pagination repeated a page.');
+
+        app(PaperlessClient::class)->documents('user-token', 7);
     }
 
     public function test_inbox_page_reports_missing_configuration(): void
