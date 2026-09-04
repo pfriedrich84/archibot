@@ -111,7 +111,15 @@ class PaperlessClient
             'page_size' => $pageSize,
         ];
 
+        $seenPaginationTargets = [];
+
         while ($nextPath !== null) {
+            $targetKey = $this->paginationTargetKey($nextPath, $query);
+            if (isset($seenPaginationTargets[$targetKey])) {
+                throw new RuntimeException('Paperless documents pagination repeated a page.');
+            }
+            $seenPaginationTargets[$targetKey] = true;
+
             $response = $this->request($token)->get($nextPath, $query);
 
             if (! $response->successful()) {
@@ -132,8 +140,12 @@ class PaperlessClient
             }
 
             $next = is_array($payload) ? ($payload['next'] ?? null) : null;
-            $nextPath = is_string($next) && $next !== '' ? $this->safePaginationPath($next) : null;
-            $query = [];
+            if (is_string($next) && $next !== '') {
+                [$nextPath, $query] = $this->safePaginationTarget($next);
+            } else {
+                $nextPath = null;
+                $query = [];
+            }
         }
 
         return $items;
@@ -501,7 +513,15 @@ class PaperlessClient
         $nextPath = $endpoint;
         $query = ['page_size' => 200];
 
+        $seenPaginationTargets = [];
+
         while ($nextPath !== null) {
+            $targetKey = $this->paginationTargetKey($nextPath, $query);
+            if (isset($seenPaginationTargets[$targetKey])) {
+                throw new RuntimeException("Paperless {$label} pagination repeated a page.");
+            }
+            $seenPaginationTargets[$targetKey] = true;
+
             $response = $this->request($token)->get($nextPath, $query);
 
             if (! $response->successful()) {
@@ -525,8 +545,12 @@ class PaperlessClient
             }
 
             $next = is_array($payload) ? ($payload['next'] ?? null) : null;
-            $nextPath = is_string($next) && $next !== '' ? $this->safePaginationPath($next) : null;
-            $query = [];
+            if (is_string($next) && $next !== '') {
+                [$nextPath, $query] = $this->safePaginationTarget($next);
+            } else {
+                $nextPath = null;
+                $query = [];
+            }
         }
 
         return collect($items)
@@ -535,25 +559,43 @@ class PaperlessClient
             ->all();
     }
 
-    private function safePaginationPath(string $next): string
+    /**
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private function safePaginationTarget(string $next): array
     {
-        if (str_starts_with($next, '/')) {
-            if (str_starts_with($next, '//')) {
-                throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
-            }
-
-            return $next;
+        if (str_starts_with($next, '//')) {
+            throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
         }
 
-        if (! $this->canonicalOrigin->isSameOriginUrl($next)) {
+        if (! str_starts_with($next, '/') && ! $this->canonicalOrigin->isSameOriginUrl($next)) {
             throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
         }
 
         $parts = parse_url($next);
-        $path = is_array($parts) ? (string) ($parts['path'] ?? '/') : '/';
-        $query = is_array($parts) && isset($parts['query']) ? '?'.$parts['query'] : '';
+        if (! is_array($parts)) {
+            throw new RuntimeException('Paperless pagination response was not a valid URL.');
+        }
 
-        return $path.$query;
+        $path = (string) ($parts['path'] ?? '/');
+        if ($path === '') {
+            $path = '/';
+        }
+
+        $query = [];
+        if (isset($parts['query'])) {
+            parse_str((string) $parts['query'], $query);
+        }
+
+        return [$path, $query];
+    }
+
+    /** @param array<string, mixed> $query */
+    private function paginationTargetKey(string $path, array $query): string
+    {
+        ksort($query);
+
+        return $path.'?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
     private function findEntityByName(string $token, string $endpoint, string $name, string $label): ?int
