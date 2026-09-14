@@ -22,8 +22,8 @@ from app.execution_lifecycle import (
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
     content_hash_for_text,
-    document_embedding_text,
     document_embedding_exists,
+    document_embedding_text,
     store_document_embedding,
 )
 from app.jobs.embedding_index import (
