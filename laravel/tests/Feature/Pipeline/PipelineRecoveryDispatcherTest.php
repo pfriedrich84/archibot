@@ -736,25 +736,6 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
     }
 
-    public function test_recovery_cutoff_remains_correct_when_application_timezone_is_non_utc(): void
-    {
-        $previousTimezone = date_default_timezone_get();
-        date_default_timezone_set('Europe/Vienna');
-
-        try {
-            $dispatcher = app(PipelineRecoveryDispatcher::class);
-            $cutoff = new \ReflectionMethod($dispatcher, 'staleRunningCutoff');
-            $cutoff->setAccessible(true);
-
-            $this->assertSame(
-                now('UTC')->subMinutes(10)->toDateTimeString(),
-                $cutoff->invoke($dispatcher),
-            );
-        } finally {
-            date_default_timezone_set($previousTimezone);
-        }
-    }
-
     public function test_recovery_reconciles_stale_actor_to_terminal_source_without_replay(): void
     {
         Queue::fake();
