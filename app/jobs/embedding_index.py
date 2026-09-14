@@ -62,6 +62,7 @@ def start_embedding_index_build(
     dimensions: int | None,
     content_scope: str | None,
     document_count: int = 0,
+    command_id: int | None = None,
 ) -> EmbeddingIndexBuild:
     """Create a durable embedding-index build row unless one is already building."""
     running_statement = sql_text(
@@ -76,6 +77,7 @@ def start_embedding_index_build(
     insert_statement = sql_text(
         """
         INSERT INTO embedding_index_state (
+            command_id,
             status,
             embedding_model,
             dimensions,
@@ -87,6 +89,7 @@ def start_embedding_index_build(
             created_at,
             updated_at
         ) VALUES (
+            :command_id,
             'building',
             :embedding_model,
             :dimensions,
@@ -104,14 +107,16 @@ def start_embedding_index_build(
     with engine().begin() as connection:
         running = connection.execute(running_statement).mappings().first()
         if running is not None:
-            return EmbeddingIndexBuild(
-                id=int(running["id"]), status=str(running["status"]), already_running=True
-            )
+            same_command = command_id is not None and running.get("command_id") == command_id
+            if same_command:
+                return EmbeddingIndexBuild(id=int(running["id"]), status=str(running["status"]))
+            return EmbeddingIndexBuild(id=int(running["id"]), status=str(running["status"]), already_running=True)
         row = (
             connection.execute(
                 insert_statement,
                 {
                     "embedding_model": embedding_model,
+                    "command_id": command_id,
                     "dimensions": dimensions,
                     "content_scope": content_scope,
                     "document_count": document_count,

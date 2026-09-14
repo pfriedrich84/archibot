@@ -1010,6 +1010,33 @@ class PipelineRecoveryDispatcher
 
     private function reconcileActorExecutionToTerminalSource(ActorExecution $execution): bool
     {
+        if ($execution->command_id !== null
+            && $execution->actor_name === PythonActorRunner::ACTOR_BUILD_EMBEDDING_INDEX) {
+            $embeddingState = EmbeddingIndexState::query()
+                ->where('command_id', $execution->command_id)
+                ->latest('id')
+                ->first();
+            if ($embeddingState !== null && in_array($embeddingState->status, [
+                EmbeddingIndexState::STATUS_COMPLETE,
+                EmbeddingIndexState::STATUS_FAILED,
+            ], true)) {
+                Command::query()
+                    ->whereKey($execution->command_id)
+                    ->where('lifecycle_version', $execution->source_version)
+                    ->where('active_actor_token', $execution->execution_token)
+                    ->whereIn('status', [Command::STATUS_RUNNING, Command::STATUS_PENDING, Command::STATUS_QUEUED])
+                    ->update([
+                        'status' => $embeddingState->status === EmbeddingIndexState::STATUS_COMPLETE
+                            ? Command::STATUS_SUCCEEDED
+                            : Command::STATUS_FAILED_PERMANENT,
+                        'finished_at' => now(),
+                        'active_actor_token' => null,
+                        'error' => $embeddingState->error,
+                        'updated_at' => now(),
+                    ]);
+            }
+        }
+
         $terminal = false;
         if ($execution->pipeline_run_id !== null) {
             $sourceStatus = PipelineRun::query()->whereKey($execution->pipeline_run_id)->value('status');

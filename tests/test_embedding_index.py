@@ -54,6 +54,7 @@ def test_start_embedding_index_build_creates_building_state(monkeypatch):
 
     assert build == embedding_index.EmbeddingIndexBuild(id=55, status="building")
     assert calls[1][1] == {
+        "command_id": None,
         "embedding_model": "embed-model",
         "dimensions": 1024,
         "content_scope": "trusted_documents_without_inbox_tag",
