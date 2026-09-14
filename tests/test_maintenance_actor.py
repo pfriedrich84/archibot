@@ -7,6 +7,11 @@ from app.actors import maintenance
 from app.jobs.actor_execution import ActorExecutionHandle
 
 
+@pytest.fixture(autouse=True)
+def _embedding_index_ready(monkeypatch):
+    monkeypatch.setattr(maintenance, "ensure_embedding_index_ready", lambda: True)
+
+
 def _actor(monkeypatch, actor_id=7):
     monkeypatch.setattr(
         maintenance,
@@ -173,3 +178,48 @@ def test_poll_reconciliation_skips_without_inbox_tag(monkeypatch):
     maintenance._reconcile_inbox_documents_impl(command_id=58)
 
     assert finishes[0][1]["status"] == "skipped"
+
+
+def test_poll_reconciliation_blocks_before_fetch_when_embedding_index_is_not_ready(monkeypatch):
+    finishes = []
+    events = []
+    monkeypatch.setattr(maintenance.settings, "paperless_inbox_tag_id", 123)
+    monkeypatch.setattr(maintenance, "ensure_embedding_index_ready", lambda: False)
+    _actor(monkeypatch)
+    monkeypatch.setattr(maintenance, "update_actor_execution_progress", lambda *a, **k: None)
+    monkeypatch.setattr(
+        maintenance,
+        "_fetch_inbox_documents",
+        lambda: (_ for _ in ()).throw(AssertionError("Paperless was fetched")),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "publish_pipeline_event",
+        lambda *args, **kwargs: events.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        maintenance, "finish_actor_execution", lambda *a, **k: finishes.append((a, k))
+    )
+
+    maintenance._reconcile_inbox_documents_impl(command_id=59)
+
+    assert events == [
+        (
+            ("poll.reconciliation.skipped",),
+            {
+                "command_id": 59,
+                "level": "warning",
+                "message": "Polling reconciliation blocked because the embedding index is not ready.",
+                "payload": {
+                    "actor_execution_id": 7,
+                    "phase": "poll_reconciliation_prepare",
+                    "reason": "embedding_index_not_ready",
+                },
+            },
+        )
+    ]
+    assert finishes[0][1] == {
+        "status": "blocked",
+        "error_type": "embedding_index_not_ready",
+        "error_message": "Polling reconciliation blocked because the embedding index is not ready.",
+    }

@@ -20,6 +20,7 @@ from app.execution_lifecycle import (
     start_actor_execution,
     update_actor_execution_progress,
 )
+from app.jobs.embedding_gate import ensure_embedding_index_ready
 from app.jobs.poll_candidates import persist_poll_candidate
 from app.jobs.progress import ProgressSnapshot
 from app.jobs.retry import classify_exception, http_status_code
@@ -98,6 +99,27 @@ def _reconcile_inbox_documents_impl(
                 actor_execution,
                 status="skipped",
                 error_type="inbox_tag_not_configured",
+                error_message=message,
+            )
+            return
+
+        if not ensure_embedding_index_ready():
+            message = "Polling reconciliation blocked because the embedding index is not ready."
+            publish_pipeline_event(
+                "poll.reconciliation.skipped",
+                command_id=command_id,
+                level="warning",
+                message=message,
+                payload={
+                    "actor_execution_id": actor_execution.id,
+                    "phase": phase,
+                    "reason": "embedding_index_not_ready",
+                },
+            )
+            finish_actor_execution(
+                actor_execution,
+                status="blocked",
+                error_type="embedding_index_not_ready",
                 error_message=message,
             )
             return

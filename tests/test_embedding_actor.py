@@ -234,12 +234,12 @@ async def test_build_pgvector_embeddings_accepts_string_limit(monkeypatch):
         async def aclose(self):
             return None
 
-    class FakeOllama:
-        async def aclose(self):
-            return None
-
     monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
-    monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
+    monkeypatch.setattr(
+        embedding,
+        "create_ai_provider",
+        lambda: (_ for _ in ()).throw(AssertionError("provider initialized for empty index")),
+    )
     monkeypatch.setattr(embedding, "update_embedding_index_progress", lambda *args, **kwargs: None)
 
     assert await embedding._build_pgvector_embeddings(55, "50", None) == (0, 0, 0)

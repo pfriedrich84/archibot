@@ -57,7 +57,7 @@ async def _build_pgvector_embeddings(
 ) -> tuple[int, int, int]:
     limit = _coerce_limit(limit)
     paperless = PaperlessClient()
-    ollama = create_ai_provider()
+    ollama = None
     embedded_count = 0
     failed_count = 0
     total = 0
@@ -106,6 +106,8 @@ async def _build_pgvector_embeddings(
             embedded_count=embedded_count,
             failed_count=failed_count,
         )
+        if documents_with_text:
+            ollama = create_ai_provider()
         for index, (document, text) in enumerate(documents_with_text, 1):
             try:
                 if document_embedding_exists(
@@ -172,7 +174,8 @@ async def _build_pgvector_embeddings(
                     current_item=f"paperless_document:{document.id}",
                 )
     finally:
-        await ollama.aclose()
+        if ollama is not None:
+            await ollama.aclose()
         await paperless.aclose()
 
     return total, embedded_count, failed_count
