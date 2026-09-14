@@ -102,9 +102,11 @@ def embedding_index_ready(connection: Any) -> bool:
             """
             SELECT status
             FROM embedding_index_state
+            WHERE embedding_model = %s
             ORDER BY created_at DESC, id DESC
             LIMIT 1
-            """
+            """,
+            (settings.ollama_embed_model,),
         )
         row = cursor.fetchone()
     return row is not None and row[0] == "complete"

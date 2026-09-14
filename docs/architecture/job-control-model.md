@@ -4,7 +4,7 @@
 
 This document records the current ArchiBot job-control model during the bounded migration to Temporal and the rules that prevent drift back to retired worker-job and queue paths.
 
-`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. Per [ADR-0022](../decisions/0022-use-temporal-for-durable-workflow-orchestration.md), Temporal now owns embedding generation, poll discovery and per-document review production. Laravel database queues remain only for flows whose explicit cutover phase has not yet landed.
+`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. Per [ADR-0022](../decisions/0022-use-temporal-for-durable-workflow-orchestration.md), Temporal now owns embedding generation, poll discovery, per-document review production and review commits. Laravel database queues remain only for flows whose explicit cutover phase has not yet landed.
 
 Productive SQLite processing and the former Python queue transport, decorators, workers, schema installer and dependencies are removed. ADR-0017 makes the Laravel/PostgreSQL model below the sole runtime path. Existing historical queue schema objects may remain inert on upgraded volumes solely for retention and rollback; they are never created on a clean install or used by current code.
 
@@ -40,7 +40,7 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Embedding build | `Command(type=embedding_index_build)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with Temporal retry and heartbeat | Operations Log, embedding pages/state |
 | Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` plus transactional Temporal outbox intent | one stable `DocumentWorkflow` per requested version | Pipeline Runs, Operations Log |
 | Paperless process-document webhook | `WebhookDelivery` + `PipelineRun(type=document)` plus transactional Temporal outbox intent | same stable document workflow path | Webhook Deliveries, Pipeline Runs, Operations Log |
-| Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
+| Review decision and commit | accepted/rejected suggestion plus transactional Temporal outbox intent; acceptance also creates `Command(type=review_commit)` | signal the waiting `DocumentWorkflow`; upgraded or legacy suggestions start a stable `ReviewCommitWorkflow` | Review page, Operations Log, audit logs |
 | Entity approval application | `Command(type=sync_entity_approval)` | queued Laravel `ApplyEntityApprovalCommand`; PostgreSQL decision/recovery service, no Python/SQLite actor | Entity approval status, Operations Log, audit logs |
 | Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check atomically creates one command and Temporal start intent | Operations Log, command events |
 | Durable recovery scan | `php artisan archibot:recovery-scan` | recovers remaining legacy actor attempts, cancellations, and safe pending/stale commands/runs/webhooks; Temporal-owned commands are excluded | Pipeline/command/webhook/actor events |
@@ -62,7 +62,7 @@ Rejected entity names are read from PostgreSQL for every classification prompt; 
 actual command retry/backoff representation; it must not be displayed as an
 immediately runnable queued command.
 
-Command payloads are the durable source of truth for actor options such as `limit`, OCR `force`, review suggestion id, or entity approval id. Actor runner invocations should pass only stable ids (`--command-id`, `--pipeline-run-id`, `--webhook-delivery-id`) and load options from PostgreSQL.
+Command payloads are the durable source of truth for options such as `limit`, OCR `force`, review suggestion id, or entity approval id. Temporal workflow arguments and remaining actor runner invocations contain only stable row IDs and workflow identity; activities load protected state from PostgreSQL.
 
 ### `pipeline_runs`
 
@@ -132,7 +132,7 @@ Poll discovery is the one additional reviewed creation seam: `app/temporal/docum
 
 ### Temporal owns workflow execution
 
-Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A document workflow waits for embedding readiness without occupying a worker, produces one idempotent review, and then waits for the authorized review signal. Laravel stale-actor recovery explicitly excludes Temporal-owned commands and runs.
+Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A document workflow waits for embedding readiness without occupying a worker, produces one idempotent review, and then waits for the authorized review signal. Acceptance executes the idempotent Paperless commit activity; rejection ends without a write. Suggestions that predate a waiting document workflow use a stable standalone review-commit workflow. Laravel stale-actor recovery and old queued jobs explicitly refuse Temporal-owned commands and runs.
 
 ### Python owns document processing activities
 

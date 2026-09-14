@@ -137,7 +137,14 @@ async def test_commit_review_suggestion_to_paperless_fails_closed_on_version_mis
     class FakePaperless:
         async def get_document(self, document_id):
             return SimpleNamespace(
-                tags=[4], storage_path=None, current_version_id=78, current_version_checksum="abc"
+                title="Different",
+                document_date=None,
+                correspondent=None,
+                document_type=None,
+                tags=[4],
+                storage_path=None,
+                current_version_id=78,
+                current_version_checksum="abc",
             )
 
     record = review_commit.ReviewCommitRecord(
@@ -155,3 +162,42 @@ async def test_commit_review_suggestion_to_paperless_fails_closed_on_version_mis
 
     with pytest.raises(ValueError, match="version changed"):
         await review_commit.commit_review_suggestion_to_paperless(record, FakePaperless())
+
+
+@pytest.mark.asyncio
+async def test_retry_after_successful_patch_is_recognized_as_committed():
+    patched = []
+
+    class FakePaperless:
+        async def get_document(self, document_id):
+            return SimpleNamespace(
+                title="Reviewed title",
+                document_date="2026-05-08",
+                correspondent=1,
+                document_type=2,
+                tags=[4, 9],
+                storage_path=3,
+                current_version_id=78,
+                current_version_checksum="changed-by-patch",
+            )
+
+        async def patch_reviewed_document(self, document_id, fields):
+            patched.append((document_id, fields))
+
+    record = review_commit.ReviewCommitRecord(
+        id=1,
+        paperless_document_id=42,
+        paperless_version_id=77,
+        paperless_version_checksum="before-patch",
+        proposed_title="Reviewed title",
+        proposed_date="2026-05-08",
+        proposed_correspondent_id=1,
+        proposed_document_type_id=2,
+        proposed_storage_path_id=3,
+        proposed_tags=[{"id": 9}],
+    )
+
+    fields = await review_commit.commit_review_suggestion_to_paperless(record, FakePaperless())
+
+    assert fields == {}
+    assert patched == []

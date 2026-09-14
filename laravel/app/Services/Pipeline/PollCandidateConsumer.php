@@ -146,6 +146,7 @@ class PollCandidateConsumer
         $candidate = $lease->candidate;
         $metadata = $candidate->trigger_metadata ?? [];
         $force = $metadata['force'];
+        $temporalOwned = $this->isTemporalCommand($candidate->command_id);
         if ($candidate->marker_disposition === PollCandidate::MARKER_ALREADY_CLASSIFIED && ! $force) {
             $this->skipMarkerCandidate($lease);
 
@@ -164,7 +165,7 @@ class PollCandidateConsumer
                 forceNewRun: $force,
                 forceToken: $force ? $candidate->candidate_id : null,
                 commandId: $candidate->command_id,
-                deferDispatch: true,
+                deferDispatch: ! $temporalOwned,
             );
         } catch (Throwable $exception) {
             return $this->releaseFailedClaim($lease, $exception::class) ? 'failed' : 'skipped';
@@ -264,5 +265,12 @@ class PollCandidateConsumer
         }
 
         return null;
+    }
+
+    private function isTemporalCommand(int $commandId): bool
+    {
+        $payload = Command::query()->find($commandId)?->payload;
+
+        return is_array($payload) && ($payload['orchestration_driver'] ?? null) === 'temporal';
     }
 }

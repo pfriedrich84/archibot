@@ -39,11 +39,34 @@ class DocumentPipelineStarter
             ? $this->forceDedupeKey($paperlessDocumentId, $paperlessModified, $contentHash, $forceToken ?? (string) Str::uuid())
             : $this->dedupeKey($paperlessDocumentId, $paperlessModified, $contentHash);
 
-        /** @var array{run: PipelineRun, created: bool, gate_open: bool} $result */
-        $result = $this->gate->pipelineStart(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
-            /** @var array{run: PipelineRun, created: bool, gate_open: bool} $committed */
-            $committed = DB::transaction(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
+        /** @var array{run: PipelineRun, created: bool, gate_open: bool, dispatched: bool} $result */
+        $result = $this->gate->pipelineStart(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $forceNewRun, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
+            /** @var array{run: PipelineRun, created: bool, gate_open: bool, dispatched: bool} $committed */
+            $committed = DB::transaction(function () use ($paperlessDocumentId, $paperlessModified, $contentHash, $dedupeKey, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $forceNewRun, $requestedByUserId, $webhookDeliveryId, $commandId, $deferDispatch): array {
                 $gateOpen = $this->gate->isOpen();
+                if (! $forceNewRun) {
+                    $existing = PipelineRun::query()
+                        ->where('temporal_workflow_id', "archibot/document/{$paperlessDocumentId}")
+                        ->lockForUpdate()
+                        ->first();
+                    if ($existing instanceof PipelineRun) {
+                        return [
+                            'run' => $this->coalesceExistingRun(
+                                $existing,
+                                $triggerSource,
+                                $reprocessRequested,
+                                $reprocessReason,
+                                $reprocessMode,
+                                $requestedByUserId,
+                                $webhookDeliveryId,
+                                $commandId,
+                            ),
+                            'created' => false,
+                            'gate_open' => $gateOpen,
+                            'dispatched' => false,
+                        ];
+                    }
+                }
                 $gate = $this->gateAttributes(
                     $gateOpen,
                     $deferDispatch ? 'staged_batch_wait' : 'queued',
@@ -88,11 +111,18 @@ class DocumentPipelineStarter
 
                 if (! $created) {
                     $run = $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId);
-                } else {
-                    $run = $this->temporal->startDocumentProcessing($run);
+                } elseif ($gateOpen && ! $deferDispatch) {
+                    $run = $this->temporal->startDocumentProcessing($run, $forceNewRun);
+                } elseif (! $deferDispatch) {
+                    $run = $this->temporal->reserveDocumentProcessing($run, $forceNewRun);
                 }
 
-                return ['run' => $run, 'created' => $created, 'gate_open' => $gateOpen];
+                return [
+                    'run' => $run,
+                    'created' => $created,
+                    'gate_open' => $gateOpen,
+                    'dispatched' => $created && $gateOpen && ! $deferDispatch,
+                ];
             });
 
             return $committed;
@@ -105,7 +135,7 @@ class DocumentPipelineStarter
         $outcome = $this->outcome($created, $forceNewRun, $gateOpen);
         $blockedReason = $gateOpen ? null : self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY;
         $run = $run->refresh();
-        if ($created) {
+        if ($result['dispatched']) {
             $this->recordTemporalQueuedEvent($run);
         }
         $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason, $deferDispatch);

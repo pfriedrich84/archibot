@@ -110,6 +110,7 @@ class RunPythonActorJob implements ShouldQueue
         $claimed = DB::transaction(function () use ($claimer): ?array {
             $command = Command::query()->lockForUpdate()->findOrFail($this->commandId);
             if (! in_array($command->status, [Command::STATUS_PENDING, Command::STATUS_QUEUED], true)
+                || ($command->payload['orchestration_driver'] ?? null) === 'temporal'
                 || $command->next_retry_at?->isFuture()
                 || $claimer->suppresses($this->actorName, 'command_id', $command->id)) {
                 return null;

@@ -326,8 +326,11 @@ async def classify(
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
     ollama: AiProviderGateway,
+    *,
+    num_ctx: int | None = None,
 ) -> tuple[ClassificationResult, str]:
     """Call the LLM and return (parsed result, raw JSON string)."""
+    resolved_num_ctx = num_ctx if num_ctx is not None else settings.ollama_num_ctx
     system = _load_system_prompt()
     user = build_user_prompt(
         target,
@@ -336,7 +339,7 @@ async def classify(
         doctypes,
         storage_paths,
         tags,
-        num_ctx=settings.ollama_num_ctx,
+        num_ctx=resolved_num_ctx,
         system_prompt_tokens=_estimate_tokens(system),
     )
 
@@ -347,10 +350,10 @@ async def classify(
         model=ollama.model,
         prompt_chars=len(user),
         estimated_tokens=_estimate_tokens(system) + _estimate_tokens(user),
-        context_window_tokens=settings.ollama_num_ctx,
+        context_window_tokens=resolved_num_ctx,
     )
 
-    raw = await ollama.chat_json(system=system, user=user)
+    raw = await ollama.chat_json(system=system, user=user, num_ctx=resolved_num_ctx)
     raw_str = json.dumps(raw, ensure_ascii=False)
 
     try:
@@ -448,6 +451,9 @@ async def verify(
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
     ollama: AiProviderGateway,
+    *,
+    model: str | None = None,
+    num_ctx: int | None = None,
 ) -> JudgeVerdict:
     """Run a second LLM pass that verifies and optionally corrects *initial*.
 
@@ -465,11 +471,11 @@ async def verify(
         doctypes,
         storage_paths,
         tags,
-        num_ctx=settings.ollama_num_ctx,
+        num_ctx=num_ctx or settings.ollama_num_ctx,
         system_prompt_tokens=_estimate_tokens(system),
     )
 
-    model = settings.ollama_judge_model.strip() or None
+    model = model or settings.ollama_judge_model.strip() or None
     log.info(
         "calling AI provider (judge)",
         doc_id=target.id,
@@ -477,11 +483,17 @@ async def verify(
         model=model or ollama.model,
         prompt_chars=len(user),
         estimated_tokens=_estimate_tokens(system) + _estimate_tokens(user),
-        context_window_tokens=settings.ollama_num_ctx,
+        context_window_tokens=num_ctx or settings.ollama_num_ctx,
     )
 
     try:
-        raw = await ollama.chat_json(system=system, user=user, model=model, role="judge")
+        raw = await ollama.chat_json(
+            system=system,
+            user=user,
+            model=model,
+            num_ctx=num_ctx,
+            role="judge",
+        )
     except Exception as exc:
         log.warning("judge call failed", doc_id=target.id, error=str(exc))
         return JudgeVerdict(verdict="error", reasoning=str(exc)[:300])

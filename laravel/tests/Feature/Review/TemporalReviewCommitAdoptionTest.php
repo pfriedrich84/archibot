@@ -1,0 +1,81 @@
+<?php
+
+namespace Tests\Feature\Review;
+
+use App\Models\Command;
+use App\Models\PipelineRun;
+use App\Models\ReviewSuggestion;
+use App\Models\TemporalOutboxIntent;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class TemporalReviewCommitAdoptionTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_upgrade_adopts_stuck_review_commits_without_legacy_redispatch(): void
+    {
+        $documentWorkflowId = 'archibot/document/501/version-1';
+        $run = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_SUCCEEDED,
+            'scope' => 'single_document',
+            'trigger_source' => 'poll',
+            'orchestration_driver' => 'temporal',
+            'temporal_workflow_id' => $documentWorkflowId,
+            'paperless_document_id' => 501,
+            'pipeline_dedupe_key' => 'temporal-adoption-501',
+        ]);
+        $temporal = $this->stuckCommit(501, $run->id);
+        $legacy = $this->stuckCommit(502);
+
+        $migration = require database_path(
+            'migrations/2026_09_14_000003_adopt_pending_review_commits_into_temporal.php',
+        );
+        $migration->up();
+
+        $temporalCommand = $temporal->commitCommand()->firstOrFail();
+        $legacyCommand = $legacy->commitCommand()->firstOrFail();
+        $this->assertSame('temporal', $temporalCommand->payload['orchestration_driver']);
+        $this->assertSame($documentWorkflowId, $temporalCommand->payload['temporal_workflow_id']);
+        $this->assertSame('temporal', $legacyCommand->payload['orchestration_driver']);
+        $this->assertSame(
+            "archibot/review-commit/{$legacy->id}",
+            $legacyCommand->payload['temporal_workflow_id'],
+        );
+
+        $signal = TemporalOutboxIntent::query()
+            ->where('operation', TemporalOutboxIntent::OPERATION_SIGNAL)
+            ->firstOrFail();
+        $this->assertSame($documentWorkflowId, $signal->workflow_id);
+        $this->assertSame('review_decision', $signal->signal_name);
+        $this->assertSame($temporal->id, $signal->payload['review_suggestion_id']);
+
+        $start = TemporalOutboxIntent::query()
+            ->where('operation', TemporalOutboxIntent::OPERATION_START)
+            ->firstOrFail();
+        $this->assertSame("archibot/review-commit/{$legacy->id}", $start->workflow_id);
+        $this->assertSame('archibot.review_commit', $start->workflow_type);
+        $this->assertSame($legacy->id, $start->payload['review_suggestion_id']);
+        $this->assertDatabaseCount('temporal_outbox_intents', 2);
+        $this->assertDatabaseCount('actor_executions', 0);
+    }
+
+    private function stuckCommit(int $paperlessDocumentId, ?int $pipelineRunId = null): ReviewSuggestion
+    {
+        $command = Command::query()->create([
+            'type' => Command::TYPE_REVIEW_COMMIT,
+            'status' => Command::STATUS_RUNNING,
+            'payload' => ['paperless_document_id' => $paperlessDocumentId],
+            'started_at' => now()->subMinutes(10),
+        ]);
+
+        return ReviewSuggestion::factory()->create([
+            'pipeline_run_id' => $pipelineRunId,
+            'paperless_document_id' => $paperlessDocumentId,
+            'status' => ReviewSuggestion::STATUS_ACCEPTED,
+            'commit_status' => ReviewSuggestion::COMMIT_STATUS_RUNNING,
+            'commit_command_id' => $command->id,
+        ]);
+    }
+}

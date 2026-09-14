@@ -11,6 +11,7 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,8 @@ class PipelineRecoveryDispatcher
         private readonly DocumentPipelineStarter $pipelineStarter,
         private readonly PollCandidateConsumer $pollCandidates,
         private readonly StagedDocumentBatchDispatcher $stagedBatches,
+        private readonly TemporalWorkflowDispatcher $temporal,
+        private readonly PipelineStartGate $pipelineStartGate,
     ) {}
 
     /**
@@ -605,7 +608,7 @@ class PipelineRecoveryDispatcher
     {
         $this->releaseEmbeddingBlockedRuns($limit);
 
-        $recovered = 0;
+        $recovered = $this->releaseTemporalEmbeddingBlockedRuns($limit);
 
         PipelineRun::query()
             ->where('type', 'document')
@@ -1452,7 +1455,7 @@ class PipelineRecoveryDispatcher
 
     private function releaseEmbeddingBlockedWebhookDeliveries(int $limit): int
     {
-        if (EmbeddingIndexState::query()->latest()->value('status') !== EmbeddingIndexState::STATUS_COMPLETE) {
+        if (! $this->pipelineStartGate->isOpen()) {
             return 0;
         }
 
@@ -1536,7 +1539,7 @@ class PipelineRecoveryDispatcher
 
     private function releaseEmbeddingBlockedRuns(int $limit): int
     {
-        if (EmbeddingIndexState::query()->latest()->value('status') !== EmbeddingIndexState::STATUS_COMPLETE) {
+        if (! $this->pipelineStartGate->isOpen()) {
             return 0;
         }
 
@@ -1630,5 +1633,66 @@ class PipelineRecoveryDispatcher
 
             return true;
         });
+    }
+
+    private function releaseTemporalEmbeddingBlockedRuns(int $limit): int
+    {
+        if (! $this->pipelineStartGate->isOpen()) {
+            return 0;
+        }
+
+        $released = 0;
+        PipelineRun::query()
+            ->where('type', 'document')
+            ->where('orchestration_driver', TemporalWorkflowDispatcher::DRIVER)
+            ->whereNull('batch_command_id')
+            ->where('status', PipelineRun::STATUS_BLOCKED)
+            ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
+            ->oldest('updated_at')
+            ->oldest('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (PipelineRun $run) use (&$released): void {
+                $started = DB::transaction(function () use ($run): bool {
+                    $run = PipelineRun::query()->lockForUpdate()->find($run->id);
+                    if ($run === null
+                        || $run->orchestration_driver !== TemporalWorkflowDispatcher::DRIVER
+                        || $run->status !== PipelineRun::STATUS_BLOCKED
+                        || $run->error_type !== DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY) {
+                        return false;
+                    }
+                    $run->update([
+                        'status' => PipelineRun::STATUS_PENDING,
+                        'progress_current_phase' => 'queued',
+                        'progress_message' => 'Released to Temporal because the embedding index is complete.',
+                        'progress_updated_at' => now(),
+                        'error_type' => null,
+                        'error' => null,
+                    ]);
+                    $this->temporal->startDocumentProcessing($run);
+
+                    PipelineLifecycleRecorder::event([
+                        'pipeline_run_id' => $run->id,
+                        'webhook_delivery_id' => $run->webhook_delivery_id,
+                        'command_id' => $run->command_id,
+                        'event_type' => 'recovery.embedding_gate_released_to_temporal',
+                        'paperless_document_id' => $run->paperless_document_id,
+                        'level' => 'info',
+                        'message' => 'Blocked document workflow released to Temporal after embedding readiness.',
+                        'payload' => [
+                            'blocked_reason' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+                            'workflow_id' => $run->temporal_workflow_id,
+                            'transport' => 'temporal_outbox',
+                        ],
+                    ]);
+
+                    return true;
+                });
+                if ($started) {
+                    $released++;
+                }
+            });
+
+        return $released;
     }
 }

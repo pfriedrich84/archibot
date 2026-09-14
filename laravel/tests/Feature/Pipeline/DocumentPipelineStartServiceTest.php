@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Pipeline;
 
+use App\Models\AppSetting;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\TemporalOutboxIntent;
@@ -111,6 +112,34 @@ class DocumentPipelineStartServiceTest extends TestCase
             'pipeline_run_id' => $run->id,
             'event_type' => 'pipeline.blocked.embedding_index_not_ready',
         ]);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $run->orchestration_driver);
+        $this->assertSame('archibot/document/42', $run->temporal_workflow_id);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.document_actor_queued',
+        ]);
+        $this->assertDatabaseCount('temporal_outbox_intents', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_complete_index_from_another_configured_model_keeps_gate_closed(): void
+    {
+        Queue::fake();
+        AppSetting::put('embedding.model', 'new-embed');
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'old-embed',
+        ]);
+
+        $result = app(DocumentPipelineStarter::class)->start(
+            triggerSource: 'webhook',
+            paperlessDocumentId: 44,
+            paperlessModified: null,
+        );
+
+        $this->assertSame('blocked', $result->outcome);
+        $this->assertSame(PipelineRun::STATUS_BLOCKED, $result->pipelineRun->status);
+        $this->assertDatabaseCount('temporal_outbox_intents', 0);
         Queue::assertNothingPushed();
     }
 
@@ -180,10 +209,11 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('blocked', $result->outcome);
         $this->assertSame(PipelineRun::STATUS_BLOCKED, $result->pipelineRun->status);
         $this->assertSame('embedding_index_not_ready', $result->pipelineRun->error_type);
+        $this->assertDatabaseCount('temporal_outbox_intents', 0);
         Queue::assertNothingPushed();
     }
 
-    public function test_same_document_content_coalesces_sources_and_changed_modified_creates_new_run(): void
+    public function test_normal_document_identity_coalesces_even_when_modified_time_changes(): void
     {
         Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'complete']);
@@ -198,12 +228,14 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertFalse($second->created);
         $this->assertSame($first->pipelineRun->id, $second->pipelineRun->id);
         $this->assertEqualsCanonicalizing(['webhook', 'poll'], $second->pipelineRun->coalesced_sources);
-        $this->assertSame('created', $changed->outcome);
+        $this->assertSame('coalesced', $changed->outcome);
         $this->assertNotSame($first->dedupeKey, $changed->dedupeKey);
-        $this->assertDatabaseCount('pipeline_runs', 2);
+        $this->assertSame($first->pipelineRun->id, $changed->pipelineRun->id);
+        $this->assertSame('archibot/document/42', $changed->pipelineRun->temporal_workflow_id);
+        $this->assertDatabaseCount('pipeline_runs', 1);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
         Queue::assertNothingPushed();
-        $this->assertDatabaseCount('temporal_outbox_intents', 2);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
     }
 
     public function test_manual_force_always_creates_new_run_for_identical_content(): void

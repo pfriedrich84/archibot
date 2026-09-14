@@ -384,6 +384,8 @@ async def find_similar_with_precomputed_embedding(
     embedding: list[float],
     paperless,
     limit: int | None = None,
+    *,
+    embedding_model: str | None = None,
 ) -> list[SimilarDocument]:
     """Load trusted context documents from Paperless using pgvector search."""
     hits = find_similar_document_ids(
@@ -391,6 +393,8 @@ async def find_similar_with_precomputed_embedding(
         exclude_id=doc.id,
         limit=limit or settings.context_max_docs,
         max_distance=settings.context_max_distance,
+        embedding_model=embedding_model,
+        dimensions=len(embedding),
     )
     similar: list[SimilarDocument] = []
     for doc_id, distance in hits:
@@ -405,24 +409,38 @@ async def find_similar_with_precomputed_embedding(
     return similar
 
 
-def load_document_embedding_vector(document_id: int) -> list[float] | None:
+def load_document_embedding_vector(
+    document_id: int,
+    *,
+    embedding_model: str | None = None,
+    trusted_only: bool = True,
+) -> list[float] | None:
     """Load a stored pgvector as a Python list when the driver returns one.
 
     This is primarily a compatibility helper for callers that search by id. If
     the installed driver returns pgvector as a string, parse the simple literal.
     """
+    trust_filter = "AND trusted_for_context = TRUE" if trusted_only else ""
     statement = sql_text(
-        """
+        f"""
         SELECT embedding
         FROM document_embeddings
         WHERE paperless_document_id = :document_id
-          AND trusted_for_context = TRUE
+          AND (:embedding_model IS NULL OR embedding_model = :embedding_model)
+          {trust_filter}
         ORDER BY updated_at DESC, id DESC
         LIMIT 1
         """
     )
     with engine().begin() as connection:
-        row = connection.execute(statement, {"document_id": document_id}).mappings().first()
+        row = (
+            connection.execute(
+                statement,
+                {"document_id": document_id, "embedding_model": embedding_model},
+            )
+            .mappings()
+            .first()
+        )
     if row is None:
         return None
     value = row["embedding"]

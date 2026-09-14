@@ -25,7 +25,7 @@ class StagedDocumentBatchDispatcherTest extends TestCase
         $source = Command::query()->create([
             'type' => Command::TYPE_POLL_RECONCILIATION,
             'status' => Command::STATUS_SUCCEEDED,
-            'payload' => ['force' => true],
+            'payload' => ['force' => true, 'orchestration_driver' => 'temporal'],
         ]);
         foreach ([101, 102] as $documentId) {
             PollCandidate::query()->create([
@@ -68,7 +68,7 @@ class StagedDocumentBatchDispatcherTest extends TestCase
         $source = Command::query()->create([
             'type' => Command::TYPE_POLL_RECONCILIATION,
             'status' => Command::STATUS_SUCCEEDED,
-            'payload' => ['force' => true],
+            'payload' => ['force' => true, 'orchestration_driver' => 'temporal'],
         ]);
         PollCandidate::query()->create([
             'candidate_id' => (string) Str::uuid(),
@@ -105,9 +105,10 @@ class StagedDocumentBatchDispatcherTest extends TestCase
         $this->assertDatabaseHas('pipeline_runs', [
             'command_id' => $source->id,
             'batch_command_id' => null,
-            'status' => 'blocked',
+            'status' => 'queued',
             'orchestration_driver' => 'temporal',
         ]);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
         Queue::assertNothingPushed();
     }
 

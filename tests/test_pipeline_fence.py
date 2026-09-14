@@ -94,6 +94,8 @@ def test_readiness_is_revalidated_on_lease_owning_session():
 
     assert pipeline_fence.embedding_index_ready(connection) is True
     assert "FROM embedding_index_state" in connection.calls[0][1]
+    assert "WHERE embedding_model = %s" in connection.calls[0][1]
+    assert connection.calls[0][2] == (pipeline_fence.settings.ollama_embed_model,)
 
 
 def test_parent_protocol_does_not_share_or_transfer_a_lease_to_child(monkeypatch):

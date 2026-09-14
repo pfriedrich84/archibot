@@ -2,6 +2,10 @@ name: Build & Publish Docker Image
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -10,7 +14,7 @@ permissions:
 jobs:
   build-and-push:
     if: >-
-      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-latest
@@ -51,7 +55,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' || github.event.workflow_run.head_branch == 'main' }}
             type=raw,value=feat-laravel,enable=${{ github.ref_name == 'feat/laravel' || github.event.workflow_run.head_branch == 'feat/laravel' }}
             type=raw,value=sha-${{ steps.vars.outputs.short_sha }}
 

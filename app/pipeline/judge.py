@@ -23,18 +23,39 @@ async def maybe_run_judge(
     storage_paths: list[PaperlessEntity],
     tags: list[PaperlessEntity],
     provider: AiProviderGateway,
+    *,
+    enabled: bool | None = None,
+    confidence_threshold: int | None = None,
+    model: str | None = None,
+    num_ctx: int | None = None,
 ) -> JudgeOutcome:
     """Run optional judge verification without legacy timing/state writes."""
-    if getattr(settings, "enable_judge_verification", False) is not True:
+    judge_enabled = (
+        getattr(settings, "enable_judge_verification", False) if enabled is None else enabled
+    )
+    if judge_enabled is not True:
         return JudgeOutcome(result=initial)
-    threshold = getattr(settings, "judge_confidence_threshold", 101)
+    threshold = (
+        getattr(settings, "judge_confidence_threshold", 101)
+        if confidence_threshold is None
+        else confidence_threshold
+    )
     if not isinstance(threshold, int | float):
         threshold = 101
     if initial.confidence >= threshold:
         return JudgeOutcome(result=initial, verdict="skipped")
     try:
         verdict: JudgeVerdict = await classifier.verify(
-            doc, context_docs, initial, correspondents, doctypes, storage_paths, tags, provider
+            doc,
+            context_docs,
+            initial,
+            correspondents,
+            doctypes,
+            storage_paths,
+            tags,
+            provider,
+            model=model,
+            num_ctx=num_ctx,
         )
     except Exception as exc:
         log.warning("judge verification raised", doc_id=doc.id, error_type=type(exc).__name__)

@@ -2,11 +2,11 @@
 
 namespace Tests\Feature\Review;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\ReviewSuggestion;
+use App\Models\TemporalOutboxIntent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -41,7 +41,7 @@ class ReviewCliEquivalenceTest extends TestCase
             $this->assertSame(Command::STATUS_QUEUED, $suggestion->commitCommand->status);
             $this->assertSame([
                 'job_control.review_commit_requested',
-                'job_control.review_commit_actor_queued',
+                'job_control.review_commit_temporal_queued',
             ], PipelineEvent::query()->where('command_id', $suggestion->commit_command_id)->orderBy('id')->pluck('event_type')->all());
             $audit = AuditLog::query()->where('event', 'review_suggestion.accepted')
                 ->where('target_id', (string) $suggestion->id)->firstOrFail();
@@ -61,7 +61,8 @@ class ReviewCliEquivalenceTest extends TestCase
 
         $this->assertSame(2, AuditLog::query()->where('event', 'review_suggestion.accepted')->count());
         $this->assertSame(0, AuditLog::query()->where('event', 'review_suggestion.accepted')->where('actor_user_id', $uninvolvedAdmin->id)->count());
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        $this->assertSame(2, TemporalOutboxIntent::query()->count());
+        Queue::assertNothingPushed();
 
         $commandIds = [$uiSuggestion->commit_command_id, $cliSuggestion->commit_command_id];
         $this->restartApplicationPreservingDatabase();

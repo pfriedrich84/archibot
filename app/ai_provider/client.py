@@ -62,12 +62,24 @@ def _exc_to_str(exc: Exception) -> str:
 
 
 class AiProviderClient:
-    def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
-        self.provider = (settings.llm_provider or "ollama").strip().lower()
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str | None = None,
+        *,
+        provider_type: str | None = None,
+        embed_model: str | None = None,
+        embed_num_ctx: int | None = None,
+        ocr_model: str | None = None,
+    ) -> None:
+        self.provider = (provider_type or settings.llm_provider or "ollama").strip().lower()
         self.base_url = (base_url or settings.ollama_url).rstrip("/")
         self.model = model or settings.ollama_model
-        self.embed_model = settings.ollama_embed_model
-        self.ocr_model = settings.ollama_ocr_model
+        self.embed_model = embed_model or settings.ollama_embed_model
+        self.embed_num_ctx = (
+            embed_num_ctx if embed_num_ctx is not None else settings.ollama_embed_num_ctx
+        )
+        self.ocr_model = ocr_model or settings.ollama_ocr_model
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(settings.ollama_timeout_seconds),
@@ -566,7 +578,9 @@ class AiProviderClient:
                 payload = {
                     "model": self.embed_model,
                     "prompt": prompt,
-                    "options": {"num_ctx": settings.ollama_embed_num_ctx},
+                    "options": {
+                        "num_ctx": getattr(self, "embed_num_ctx", settings.ollama_embed_num_ctx)
+                    },
                 }
             try:
                 if self._provider_type(provider) == "openai_compatible":

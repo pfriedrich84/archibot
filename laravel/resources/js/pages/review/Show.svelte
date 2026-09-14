@@ -28,6 +28,7 @@
         context_documents: Record<string, unknown>[];
         save_url: string;
         reprocess_url: string;
+        storage_path_locked: boolean;
     };
 
     let {
@@ -399,6 +400,8 @@
                                 <select
                                     name="proposed_storage_path_id"
                                     bind:value={selectedStoragePathId}
+                                    disabled={processing ||
+                                        suggestion.storage_path_locked}
                                     class="h-11 rounded-md border bg-background px-3"
                                 >
                                     <option value="">No storage path</option>
@@ -411,6 +414,19 @@
                                         </option>
                                     {/each}
                                 </select>
+                                {#if suggestion.storage_path_locked}
+                                    <input
+                                        type="hidden"
+                                        name="proposed_storage_path_id"
+                                        value={selectedStoragePathId}
+                                    />
+                                    <span
+                                        class="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Paperless already assigned this storage
+                                        path, so it stays unchanged.
+                                    </span>
+                                {/if}
                                 <input
                                     type="hidden"
                                     name="proposed_storage_path_name"

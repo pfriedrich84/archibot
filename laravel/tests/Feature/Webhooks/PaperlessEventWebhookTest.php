@@ -336,7 +336,7 @@ class PaperlessEventWebhookTest extends TestCase
         $this->assertDatabaseMissing('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
     }
 
-    public function test_changed_modified_time_creates_second_pipeline_run_for_create_events(): void
+    public function test_changed_modified_time_keeps_one_normal_document_workflow(): void
     {
         $this->markEmbeddingIndexComplete();
 
@@ -348,10 +348,10 @@ class PaperlessEventWebhookTest extends TestCase
         $this->postJson(route('api.webhooks.paperless'), [
             'event' => 'document_created',
             'object' => ['id' => 7, 'modified' => '2026-05-08T14:00:00Z'],
-        ])->assertOk()->assertJson(['pipeline_outcome' => 'created']);
+        ])->assertOk()->assertJson(['pipeline_outcome' => 'coalesced']);
 
         $this->assertDatabaseCount('webhook_deliveries', 2);
-        $this->assertDatabaseCount('pipeline_runs', 2);
+        $this->assertDatabaseCount('pipeline_runs', 1);
     }
 
     public function test_event_webhook_returns_retryable_failure_when_laravel_queue_dispatch_fails(): void

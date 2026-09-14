@@ -340,7 +340,7 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
     }
 
-    public function test_laravel_recovery_never_redispatches_temporal_document_runs(): void
+    public function test_laravel_recovery_releases_embedding_blocked_temporal_document_run(): void
     {
         Queue::fake();
         $this->markEmbeddingIndexComplete();
@@ -357,10 +357,18 @@ class PipelineRecoveryDispatcherTest extends TestCase
 
         $count = app(PipelineRecoveryDispatcher::class)->recoverDocumentPipelineRuns(limit: 10);
 
-        $this->assertSame(0, $count);
+        $this->assertSame(1, $count);
         Queue::assertNothingPushed();
-        $this->assertSame(PipelineRun::STATUS_BLOCKED, $temporal->fresh()->status);
-        $this->assertDatabaseCount('pipeline_events', 0);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $temporal->fresh()->status);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => 'archibot/document/62/version',
+            'workflow_type' => 'archibot.document',
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $temporal->id,
+            'event_type' => 'recovery.embedding_gate_released_to_temporal',
+        ]);
     }
 
     public function test_recovery_scan_redispatches_stale_queued_document_runs_without_active_actor(): void

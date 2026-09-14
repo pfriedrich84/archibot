@@ -3,6 +3,7 @@
 from app.temporal.workflows import (
     DocumentWorkflow,
     EmbeddingIndexWorkflow,
+    ModelPhaseSchedulerWorkflow,
     PollReconciliationWorkflow,
     RuntimeProbeWorkflow,
 )
@@ -10,6 +11,7 @@ from app.temporal.workflows import (
 __all__ = [
     "DocumentWorkflow",
     "EmbeddingIndexWorkflow",
+    "ModelPhaseSchedulerWorkflow",
     "PollReconciliationWorkflow",
     "RuntimeProbeWorkflow",
 ]

@@ -114,10 +114,12 @@ def _embedding_ready(connection) -> bool:
             sql_text(
                 """
                 SELECT status FROM embedding_index_state
+                WHERE embedding_model = :embedding_model
                 ORDER BY completed_at DESC NULLS LAST, updated_at DESC, id DESC
                 LIMIT 1
                 """
-            )
+            ),
+            {"embedding_model": settings.ollama_embed_model},
         )
         .mappings()
         .first()
@@ -133,8 +135,58 @@ def _persist_observation_and_run(
         modified,
         force_command_id=command_id if force else None,
     )
-    workflow_id = f"archibot/document/{paperless_document_id}/{dedupe_key}"
+    workflow_id = (
+        f"archibot/document/{paperless_document_id}/reprocess/poll-{command_id}"
+        if force
+        else f"archibot/document/{paperless_document_id}"
+    )
     with engine().begin() as connection:
+        if not force:
+            existing = (
+                connection.execute(
+                    sql_text(
+                        """
+                        SELECT id
+                        FROM pipeline_runs
+                        WHERE temporal_workflow_id = :workflow_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"workflow_id": workflow_id},
+                )
+                .mappings()
+                .first()
+            )
+            if existing is not None:
+                connection.execute(
+                    sql_text(
+                        """
+                        INSERT INTO document_observations (
+                            paperless_document_id, paperless_modified, content_hash,
+                            version_key, source, source_command_id, pipeline_run_id,
+                            observed_at, created_at, updated_at
+                        ) VALUES (
+                            :paperless_document_id, :modified, NULL, :version_key,
+                            'poll', :command_id, :pipeline_run_id, CURRENT_TIMESTAMP,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                        )
+                        ON CONFLICT (paperless_document_id, version_key)
+                        DO UPDATE SET source = EXCLUDED.source,
+                                      source_command_id = EXCLUDED.source_command_id,
+                                      pipeline_run_id = EXCLUDED.pipeline_run_id,
+                                      observed_at = CURRENT_TIMESTAMP,
+                                      updated_at = CURRENT_TIMESTAMP
+                        """
+                    ),
+                    {
+                        "paperless_document_id": paperless_document_id,
+                        "modified": modified,
+                        "version_key": dedupe_key,
+                        "command_id": command_id,
+                        "pipeline_run_id": int(existing["id"]),
+                    },
+                )
+                return None
         gate_open = _embedding_ready(connection)
         status = "queued" if gate_open else "blocked"
         phase = "document_activity" if gate_open else "waiting_for_embedding"
@@ -251,7 +303,7 @@ def _persist_observation_and_run(
                 "pipeline_run_id": pipeline_run_id,
             },
         )
-        if run["orchestration_driver"] != "temporal":
+        if run["orchestration_driver"] != "temporal" or not gate_open:
             return None
         return DocumentWorkflowStart(
             pipeline_run_id=pipeline_run_id,

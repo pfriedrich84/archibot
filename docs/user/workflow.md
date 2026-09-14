@@ -12,9 +12,9 @@ in Paperless-NGX.
          |
 2. Worker erkennt Dokument      Naechster Poll oder Webhook-Trigger
          |
-3. Embedding berechnen          Fuer die gesamte Zielmenge, gespeichert in pgvector
+3. Embedding-Phase              Fuer alle aktuell wartenden Dokumente
          |
-4. OCR-Korrektur (optional)     Danach fuer alle berechtigten Zieldokumente
+4. OCR-Phase (optional)         Danach fuer alle berechtigten Dokumente
          |
 5. Kontext-Suche                KNN: aehnlichste bereits klassifizierte Dokumente finden
          |
@@ -28,14 +28,15 @@ in Paperless-NGX.
 8. Manuelles Review             Autorisierte Annahme in der GUI (/review)
          |
 9. PATCH nach Paperless         Erst ueber den geprueften Review-Commit-Pfad
-
-Beim Inbox-Poll verarbeitet ArchiBot die gesamte neu erstellte Zielmenge als einen
-durable Batch. Alle Embeddings sind abgeschlossen, bevor OCR beginnt; alle
-OCR-Schritte sind abgeschlossen, bevor die Klassifikation beginnt; und kein
-Dokument startet den Judge, bevor die Klassifikation der gesamten Zielmenge
-abgeschlossen ist. Review-Vorschlaege werden erst nach der globalen Judge-Phase
-sichtbar. Ein Paperless-Write erfolgt weiterhin erst nach manueller Annahme.
 ```
+
+Beim Inbox-Poll entdeckt ArchiBot nur Dokument-IDs. Jede ID besitzt einen eigenen
+dauerhaften Temporal-Workflow, waehrend ein globaler Scheduler die Modellarbeit in
+Phasen buendelt: zuerst alle aktuell wartenden Embeddings, danach OCR, danach alle
+Klassifikationen und zuletzt alle Judges. Reviews dieses Zyklus werden erst nach der
+Judge-Phasengrenze sichtbar. Dokumente, die nach Ende der Embedding-Phase eintreffen,
+warten auf den naechsten Zyklus. Ein Paperless-Write erfolgt weiterhin erst nach
+manueller Annahme.
 
 ## Schritt fuer Schritt
 
@@ -84,6 +85,7 @@ den normalen Reviewpfad zu ueberladen.
 - Die Detailansicht haelt die Dokumentvorschau neben den vorgeschlagenen Aenderungen sichtbar.
 - Geaenderte Werte werden hervorgehoben; unveraenderter Kontext tritt visuell zurueck.
 - Felder lassen sich unter „Edit proposed metadata“ einzeln bearbeiten und speichern.
+- Der Speicherpfad wird fuer die Detailansicht live aus Paperless geladen. Ein vorhandener, aufgeloester Wert wird immer angezeigt, ist gesperrt und bleibt beim Commit unveraendert.
 - Annehmen reiht den geprueften Paperless-Metadaten-Write ein; Ablehnen veraendert Paperless nicht. Danach oeffnet ArchiBot direkt das naechste sichtbare Review oder kehrt bei leerer Queue zum Register zurueck.
 - Modell- und Judge-Begruendungen bleiben als einklappbare Entscheidungs-Evidenz verfuegbar und autorisieren nie selbst einen Write.
 - Nicht-Admins sehen Vorschlaege nur, wenn ihr gespeicherter Paperless-Token Zugriff auf das konkrete Paperless-Dokument nachweist.
@@ -103,20 +105,23 @@ oder Judge-Confidence von `100` bleibt lediglich Review-Evidenz und kann weder e
 Annahme noch einen Paperless-Write ausloesen. Eine spaetere sichere Automation braucht
 deterministische Eligibility-Gates sowie ausdrueckliche Produkt-/Security-Freigabe.
 
-Im Inbox-Poll bleiben die Modellphasen strikt gebuendelt, damit OCR-, Embedding-,
-Klassifikations- und Judge-Modelle nicht pro Dokument hin- und hergeladen werden muessen:
+Jeder Dokument-Workflow behaelt seine eigene ID, Snapshots, Ergebnisse, Retries und
+Review-Entscheidung. Provider-Arbeit darf er aber nur ausfuehren, wenn der globale
+Temporal-Scheduler seine aktuelle Phase freigibt:
 
-1. Embeddings fuer alle Dokumente erzeugen und mit korrekter Kontext-Trust-Markierung speichern
-2. OCR fuer alle berechtigten Dokumente ausfuehren und Korrekturen lokal speichern
-3. Kontextsuche und Klassifikation fuer alle Dokumente ausfuehren
-4. Judge-Verifikation fuer alle erfolgreichen Klassifikationen ausfuehren oder gemaess Einstellung ueberspringen
-5. Vorschlaege erst danach als pending Review speichern
+1. alle aktuell benoetigten Dokument- und Index-Embeddings abschliessen
+2. optionale OCR-Arbeit fuer die aktuelle Zielmenge abschliessen
+3. alle Klassifikationen der Zielmenge abschliessen
+4. alle erforderlichen Judges abschliessen oder deterministisch ueberspringen
+5. Reviews des Zyklus freigeben
 
-Pipeline Items und `pipeline.batch.phase.completed`-Events dokumentieren jede
-Phasengrenze. Ein erforderlicher Klassifikationsfehler stoppt den Batch vor dem
-Judge und fuehrt gemaess Retry-Policy zu einem erneuten Batch-Versuch. Die
-durable Pipeline-/Actor-Statusanzeige zeigt den aktuellen Phasenfortschritt, z. B.
-`embedding`, `ocr`, `classification` oder `judge`.
+Feste Temporal-Task-Queues halten jede Aktivitaet bei ihrem Modell. Innerhalb einer
+Phase koennen mehrere Dokumente parallel laufen, der Scheduler springt aber nie zu
+einem frueheren Modell zurueck. Eine leere Instanz beendet einen angeforderten
+Embedding-Index ohne Provider-Aufruf sofort als `0/0 complete`. Temporal speichert den
+Ablauf, wartet ohne belegten Worker und wiederholt fehlgeschlagene externe Aktivitaeten
+nach der festgelegten Retry-Policy. PostgreSQL zeigt die aktuelle Phase und ihren
+terminalen Fortschritt.
 
 #### Judge-Verifikation (optional)
 
@@ -137,6 +142,7 @@ eine eigene "Judge Verification"-Dauer-Kachel und ein Verdict-Breakdown-Panel.
 ### 5. Commit nach Paperless
 
 Nach Freigabe werden die Metadaten via PATCH an Paperless geschrieben:
+- Laravel speichert Annahme und Temporal-Intent gemeinsam. Temporal wiederholt voruebergehende Fehler und erkennt einen bereits erfolgreichen PATCH beim Retry, sodass der Commit genau einmal wirksam wird.
 - Titel, Datum, Korrespondent und Dokumenttyp werden aus der manuellen Freigabe aktualisiert.
 - Ein Speicherpfad wird nur ueber diese manuelle Review-Naht gesetzt, wenn Paperless unmittelbar vor dem PATCH live `null` meldet; ein vorhandener Speicherpfad bleibt unveraenderlich.
 - **Tags:** Nur Tags mit bekannter Paperless-ID werden geschrieben. Neue Tags

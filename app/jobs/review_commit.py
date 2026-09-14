@@ -132,20 +132,57 @@ def build_paperless_patch(
     return fields
 
 
+def paperless_document_matches_review(record: ReviewCommitRecord, document: Any) -> bool:
+    """Return whether Paperless already contains every reviewed writable value.
+
+    This closes the activity retry gap after Paperless accepted a PATCH but the
+    worker stopped before ArchiBot persisted the successful projection.
+    """
+    if record.proposed_title and document.title != record.proposed_title:
+        return False
+    if record.proposed_date and document.document_date != record.proposed_date:
+        return False
+    if (
+        record.proposed_correspondent_id is not None
+        and document.correspondent != record.proposed_correspondent_id
+    ):
+        return False
+    if (
+        record.proposed_document_type_id is not None
+        and document.document_type != record.proposed_document_type_id
+    ):
+        return False
+    if document.storage_path is None and record.proposed_storage_path_id is not None:
+        return False
+
+    proposed_tag_ids = {
+        int(tag["id"])
+        for tag in record.proposed_tags
+        if isinstance(tag, dict) and tag.get("id") is not None
+    }
+    return proposed_tag_ids.issubset(set(document.tags))
+
+
 async def commit_review_suggestion_to_paperless(
     record: ReviewCommitRecord, paperless: PaperlessClient
 ) -> dict[str, Any]:
     """Patch Paperless for one accepted review suggestion."""
     document = await paperless.get_document(record.paperless_document_id)
-    if (
+    version_changed = (
         record.paperless_version_id is not None
         and document.current_version_id != record.paperless_version_id
-    ):
-        raise ValueError("Paperless document version changed before commit")
-    if (
+    )
+    checksum_changed = (
         record.paperless_version_checksum is not None
         and document.current_version_checksum != record.paperless_version_checksum
+    )
+    if (version_changed or checksum_changed) and paperless_document_matches_review(
+        record, document
     ):
+        return {}
+    if version_changed:
+        raise ValueError("Paperless document version changed before commit")
+    if checksum_changed:
         raise ValueError("Paperless document checksum changed before commit")
     fields = build_paperless_patch(record, document.tags, document.storage_path)
     if fields:

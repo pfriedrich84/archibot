@@ -126,6 +126,33 @@ def test_transient_outbox_failure_does_not_terminalize_command(monkeypatch):
     assert calls[0][1]["status"] == "pending"
 
 
+def test_exhausted_review_signal_terminalizes_command_and_suggestion(monkeypatch):
+    calls = []
+    connection = Mock()
+    connection.execute.side_effect = lambda statement, params=None: (
+        calls.append((statement, params or {})) or SimpleNamespace(rowcount=1)
+    )
+    database = Mock()
+    database.begin.return_value = nullcontext(connection)
+    monkeypatch.setattr(outbox, "engine", lambda: database)
+    monkeypatch.setattr(outbox, "sql_text", lambda statement: statement)
+    value = intent(
+        operation="signal_workflow",
+        workflow_id="archibot/document/261/version",
+        workflow_type=None,
+        task_queue=None,
+        signal_name="review_decision",
+        payload={"command_id": 15, "review_suggestion_id": 34},
+        attempts=20,
+    )
+
+    outbox.mark_failed(value, "Temporal unavailable", max_attempts=20)
+
+    assert len(calls) == 3
+    assert "UPDATE commands" in calls[1][0]
+    assert "UPDATE review_suggestions" in calls[2][0]
+
+
 def test_exhausted_document_start_terminalizes_its_pipeline_run(monkeypatch):
     calls = []
     connection = Mock()

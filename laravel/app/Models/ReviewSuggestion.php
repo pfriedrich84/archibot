@@ -64,6 +64,8 @@ class ReviewSuggestion extends Model
 
     public const COMMIT_STATUS_QUEUED = 'queued';
 
+    public const COMMIT_STATUS_RUNNING = 'running';
+
     public const COMMIT_STATUS_COMMITTED = 'committed';
 
     public const COMMIT_STATUS_FAILED = 'failed';

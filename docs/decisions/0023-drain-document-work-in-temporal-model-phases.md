@@ -84,12 +84,12 @@ activation of that phase, never to already granted work. Dedicated activity task
 model affinity explicit:
 
 ```text
-archibot.embedding
-archibot.ocr-text
-archibot.ocr-vision
-archibot.classification
-archibot.judge
-archibot.paperless
+archibot-model-embedding
+archibot-model-ocr-text
+archibot-model-ocr-vision
+archibot-model-classification
+archibot-model-judge
+archibot-paperless
 ```
 
 Multiple activities may run concurrently within the active phase, but each activity handles

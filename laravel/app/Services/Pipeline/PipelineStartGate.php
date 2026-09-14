@@ -2,6 +2,7 @@
 
 namespace App\Services\Pipeline;
 
+use App\Models\AppSetting;
 use App\Models\EmbeddingIndexState;
 use Closure;
 use Illuminate\Database\ConnectionInterface;
@@ -57,7 +58,17 @@ class PipelineStartGate
     /** Must be called while the caller owns the appropriate fence. */
     public function isOpen(): bool
     {
-        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
+        $configuredModel = AppSetting::getValue('embedding.model');
+        $query = EmbeddingIndexState::query();
+
+        // Older installations may not have imported their configured model
+        // into app_settings yet. Once it is present, an index built by a
+        // different model must never release document processing.
+        if (is_string($configuredModel) && trim($configuredModel) !== '') {
+            $query->where('embedding_model', trim($configuredModel));
+        }
+
+        return $query->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
     }
 
     public function markStale(string $reason): EmbeddingIndexState

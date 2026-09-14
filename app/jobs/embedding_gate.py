@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.config import settings
 from app.jobs.database import engine
 
 
@@ -14,18 +15,20 @@ def sql_text(statement: str):
     return text(statement)
 
 
-def latest_embedding_index_status() -> str | None:
-    """Return the newest durable embedding-index status from PostgreSQL."""
+def latest_embedding_index_status(embedding_model: str | None = None) -> str | None:
+    """Return the newest durable status for the configured embedding model."""
+    selected_model = embedding_model or settings.ollama_embed_model
     statement = sql_text(
         """
         SELECT status
         FROM embedding_index_state
+        WHERE embedding_model = :embedding_model
         ORDER BY completed_at DESC NULLS LAST, updated_at DESC, id DESC
         LIMIT 1
         """
     )
     with engine().connect() as connection:
-        row = connection.execute(statement).mappings().first()
+        row = connection.execute(statement, {"embedding_model": selected_model}).mappings().first()
 
     if row is None:
         return None

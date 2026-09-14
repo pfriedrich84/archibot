@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineEvent;
@@ -10,6 +9,7 @@ use App\Models\ReviewSuggestion;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessDocumentPermissions;
 use App\Services\Pipeline\DocumentPipelineStarter;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use App\Support\OperatorPrincipal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,10 @@ use Inertia\Response;
 
 class ReviewSuggestionController extends Controller
 {
-    public function __construct(private readonly PaperlessDocumentPermissions $permissions) {}
+    public function __construct(
+        private readonly PaperlessDocumentPermissions $permissions,
+        private readonly TemporalWorkflowDispatcher $temporal,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -119,9 +122,14 @@ class ReviewSuggestionController extends Controller
     {
         $this->assertCanViewSuggestion($request, $reviewSuggestion);
         $entityOptions = $this->entityOptions($request);
+        $storagePathId = $this->liveStoragePathId($request, $reviewSuggestion);
+        if ($storagePathId !== null
+            && $this->entityName($entityOptions['storagePaths'], $storagePathId) === null) {
+            abort(502, 'The current Paperless storage path could not be resolved.');
+        }
 
         return Inertia::render('review/Show', [
-            'suggestion' => $this->detail($reviewSuggestion, $entityOptions),
+            'suggestion' => $this->detail($reviewSuggestion, $entityOptions, $storagePathId),
             'entityOptions' => $entityOptions,
         ]);
     }
@@ -129,10 +137,7 @@ class ReviewSuggestionController extends Controller
     public function accept(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
-        $this->assertReviewable($request, $reviewSuggestion);
-        $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
-
-        $this->queueCommitCommand($request, $reviewSuggestion);
+        $this->decide($request, $reviewSuggestion, ReviewSuggestion::STATUS_ACCEPTED);
 
         return redirect()->to($this->nextReviewUrl($request))
             ->with('status', 'Review accepted; the Paperless metadata update was queued.');
@@ -141,8 +146,7 @@ class ReviewSuggestionController extends Controller
     public function reject(Request $request, ReviewSuggestion $reviewSuggestion): RedirectResponse
     {
         $this->assertCanMutateSuggestion($request, $reviewSuggestion);
-        $this->assertReviewable($request, $reviewSuggestion);
-        $this->review($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
+        $this->decide($request, $reviewSuggestion, ReviewSuggestion::STATUS_REJECTED);
 
         return redirect()->to($this->nextReviewUrl($request))
             ->with('status', 'Review rejected; no Paperless metadata was changed.');
@@ -280,10 +284,8 @@ class ReviewSuggestionController extends Controller
                 continue;
             }
 
-            $this->review($request, $suggestion, $status);
-            if ($status === ReviewSuggestion::STATUS_ACCEPTED) {
-                $this->queueCommitCommand($request, $suggestion);
-            }
+            $this->assertReviewable($request, $suggestion);
+            $this->decide($request, $suggestion, $status, reviewableAlreadyChecked: true);
             $changed++;
         }
 
@@ -328,31 +330,60 @@ class ReviewSuggestionController extends Controller
                 'commit_command_id' => $command->id,
             ])->save();
 
-            $command->forceFill(['status' => Command::STATUS_QUEUED])->save();
-            dispatch(RunPythonActorJob::reviewCommit($command->id));
+            return $command;
+        });
+    }
 
-            PipelineEvent::query()->create([
-                'command_id' => $command->id,
-                'event_type' => 'job_control.review_commit_actor_queued',
-                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-                'level' => 'info',
-                'message' => 'Review suggestion commit queued through Laravel actor transport.',
-                'payload' => [
-                    'review_suggestion_id' => $reviewSuggestion->id,
-                    'actor_name' => 'commit_review_suggestion',
+    private function decide(
+        Request $request,
+        ReviewSuggestion $suggestion,
+        string $status,
+        bool $reviewableAlreadyChecked = false,
+    ): void {
+        if (! $reviewableAlreadyChecked) {
+            $this->assertReviewable($request, $suggestion);
+        }
+
+        DB::transaction(function () use ($request, $suggestion, $status): void {
+            $suggestion = ReviewSuggestion::query()->lockForUpdate()->findOrFail($suggestion->id);
+            abort_unless($suggestion->status === ReviewSuggestion::STATUS_PENDING
+                && $this->isLatestForDocument($suggestion), 409);
+
+            $this->review($request, $suggestion, $status);
+            $command = $status === ReviewSuggestion::STATUS_ACCEPTED
+                ? $this->queueCommitCommand($request, $suggestion)
+                : null;
+            $dispatch = $this->temporal->dispatchReviewDecision(
+                $suggestion,
+                $command,
+                $status,
+                [
                     'actor_principal' => OperatorPrincipal::name($request),
                     'actor_user_id' => $request->user()->id,
+                    'actor_is_admin' => (bool) $request->user()->is_admin,
                 ],
-            ]);
-
-            return $command;
+            );
+            if ($command instanceof Command && $dispatch !== null) {
+                PipelineEvent::query()->create([
+                    'command_id' => $command->id,
+                    'event_type' => 'job_control.review_commit_temporal_queued',
+                    'paperless_document_id' => $suggestion->paperless_document_id,
+                    'level' => 'info',
+                    'message' => 'Review suggestion commit queued through Temporal.',
+                    'payload' => [
+                        'review_suggestion_id' => $suggestion->id,
+                        ...$dispatch,
+                        'actor_principal' => OperatorPrincipal::name($request),
+                        'actor_user_id' => $request->user()->id,
+                        'actor_is_admin' => (bool) $request->user()->is_admin,
+                    ],
+                ]);
+            }
         });
     }
 
     private function review(Request $request, ReviewSuggestion $suggestion, string $status): void
     {
-        $this->assertReviewable($request, $suggestion);
-
         $suggestion->markReviewed($status, $request->user());
 
         AuditLog::query()->create([
@@ -410,6 +441,29 @@ class ReviewSuggestionController extends Controller
         }
 
         return null;
+    }
+
+    private function liveStoragePathId(Request $request, ReviewSuggestion $suggestion): ?int
+    {
+        $token = $request->user()?->paperless_token;
+        abort_if(blank($token), 503, 'Paperless connection is not available.');
+
+        try {
+            $document = app(PaperlessClient::class)->document($token, $suggestion->paperless_document_id);
+        } catch (\Throwable) {
+            abort(502, 'The current Paperless document metadata could not be loaded.');
+        }
+        abort_unless(array_key_exists('storage_path', $document), 502, 'Paperless did not report the current storage path.');
+        $value = $document['storage_path'];
+        if (is_array($value)) {
+            $value = $value['id'] ?? null;
+        }
+        if ($value === null) {
+            return null;
+        }
+        abort_unless(is_numeric($value) && (int) $value > 0, 502, 'Paperless reported an invalid storage path.');
+
+        return (int) $value;
     }
 
     private function assertCanViewSuggestion(Request $request, ReviewSuggestion $suggestion): void
@@ -551,8 +605,14 @@ class ReviewSuggestionController extends Controller
      * @param  array{correspondents: array<int, array{id: int, name: string}>, documentTypes: array<int, array{id: int, name: string}>, storagePaths: array<int, array{id: int, name: string}>}  $entityOptions
      * @return array<string, mixed>
      */
-    private function detail(ReviewSuggestion $suggestion, array $entityOptions): array
+    private function detail(ReviewSuggestion $suggestion, array $entityOptions, ?int $liveStoragePathId): array
     {
+        $storagePathName = $this->entityName($entityOptions['storagePaths'], $liveStoragePathId);
+        $proposedStoragePathId = $liveStoragePathId ?? $suggestion->proposed_storage_path_id;
+        $proposedStoragePathName = $liveStoragePathId === null
+            ? $suggestion->proposed_storage_path_name
+            : $storagePathName;
+
         return [
             ...$this->summary($suggestion),
             'reasoning' => $suggestion->reasoning,
@@ -565,8 +625,8 @@ class ReviewSuggestionController extends Controller
                 'correspondent_name' => $this->entityName($entityOptions['correspondents'], $suggestion->original_correspondent_id),
                 'document_type_id' => $suggestion->original_document_type_id,
                 'document_type_name' => $this->entityName($entityOptions['documentTypes'], $suggestion->original_document_type_id),
-                'storage_path_id' => $suggestion->original_storage_path_id,
-                'storage_path_name' => $this->entityName($entityOptions['storagePaths'], $suggestion->original_storage_path_id),
+                'storage_path_id' => $liveStoragePathId,
+                'storage_path_name' => $storagePathName,
                 'tags' => $suggestion->original_tags ?? [],
             ],
             'proposed' => [
@@ -576,13 +636,14 @@ class ReviewSuggestionController extends Controller
                 'correspondent_name' => $suggestion->proposed_correspondent_name,
                 'document_type_id' => $suggestion->proposed_document_type_id,
                 'document_type_name' => $suggestion->proposed_document_type_name,
-                'storage_path_id' => $suggestion->proposed_storage_path_id,
-                'storage_path_name' => $suggestion->proposed_storage_path_name,
+                'storage_path_id' => $proposedStoragePathId,
+                'storage_path_name' => $proposedStoragePathName,
                 'tags' => $suggestion->proposed_tags ?? [],
             ],
             'context_documents' => $suggestion->context_documents ?? [],
             'save_url' => route('review.save', $suggestion),
             'reprocess_url' => route('review.reprocess', $suggestion),
+            'storage_path_locked' => $liveStoragePathId !== null,
         ];
     }
 }

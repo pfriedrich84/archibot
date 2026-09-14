@@ -76,9 +76,15 @@ async def find_similar_with_precomputed_embedding(
     embedding: list[float],
     paperless: PaperlessClient,
     limit: int | None = None,
+    *,
+    embedding_model: str | None = None,
 ) -> list[SimilarDocument]:
     """Vector search using a pre-computed embedding vector."""
-    return await _find_similar_with_precomputed_embedding(doc, embedding, paperless, limit)
+    if embedding_model is None:
+        return await _find_similar_with_precomputed_embedding(doc, embedding, paperless, limit)
+    return await _find_similar_with_precomputed_embedding(
+        doc, embedding, paperless, limit, embedding_model=embedding_model
+    )
 
 
 async def find_similar_with_distances(

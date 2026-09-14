@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Review;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
@@ -11,6 +10,7 @@ use App\Models\ReviewSuggestion;
 use App\Models\TemporalOutboxIntent;
 use App\Models\User;
 use App\Services\Paperless\PaperlessDocumentPermissions;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -238,6 +238,7 @@ class ReviewSuggestionTest extends TestCase
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::fake([
+            'paperless.example/api/documents/456/' => Http::response(['id' => 456, 'storage_path' => 9], 200),
             'paperless.example/api/correspondents/*' => Http::response(['results' => [['id' => 7, 'name' => 'Original sender']]], 200),
             'paperless.example/api/document_types/*' => Http::response(['results' => [['id' => 8, 'name' => 'Invoice']]], 200),
             'paperless.example/api/storage_paths/*' => Http::response(['results' => [['id' => 9, 'name' => 'Archive']]], 200),
@@ -249,7 +250,8 @@ class ReviewSuggestionTest extends TestCase
             'reasoning' => 'Classifier reasoning',
             'original_correspondent_id' => 7,
             'original_document_type_id' => 8,
-            'original_storage_path_id' => 9,
+            'original_storage_path_id' => null,
+            'proposed_storage_path_id' => null,
         ]);
 
         $this->actingAs($user)
@@ -263,6 +265,10 @@ class ReviewSuggestionTest extends TestCase
                 ->where('suggestion.original.correspondent_name', 'Original sender')
                 ->where('suggestion.original.document_type_name', 'Invoice')
                 ->where('suggestion.original.storage_path_name', 'Archive')
+                ->where('suggestion.original.storage_path_id', 9)
+                ->where('suggestion.proposed.storage_path_name', 'Archive')
+                ->where('suggestion.proposed.storage_path_id', 9)
+                ->where('suggestion.storage_path_locked', true)
             );
     }
 
@@ -332,8 +338,11 @@ class ReviewSuggestionTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
-            && $job->commandId === $command->id);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertSame(TemporalOutboxIntent::OPERATION_START, $intent->operation);
+        $this->assertSame(TemporalWorkflowDispatcher::REVIEW_COMMIT_WORKFLOW, $intent->workflow_type);
+        Queue::assertNothingPushed();
     }
 
     public function test_manual_acceptance_still_queues_reviewed_commit_while_confidence_auto_commit_is_suspended(): void
@@ -357,8 +366,8 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
         $this->assertSame($command->id, $suggestion->commit_command_id);
         $this->assertSame('100', AppSetting::getValue('classification.auto_commit_confidence'));
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
-            && $job->commandId === $command->id);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
+        Queue::assertNothingPushed();
     }
 
     public function test_accepting_python_origin_suggestion_queues_durable_commit_command(): void
@@ -389,11 +398,83 @@ class ReviewSuggestionTest extends TestCase
         ]);
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,
-            'event_type' => 'job_control.review_commit_actor_queued',
+            'event_type' => 'job_control.review_commit_temporal_queued',
             'paperless_document_id' => 789,
         ]);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'commit_review_suggestion'
-            && $job->commandId === $command->id);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'operation' => TemporalOutboxIntent::OPERATION_START,
+            'workflow_type' => TemporalWorkflowDispatcher::REVIEW_COMMIT_WORKFLOW,
+        ]);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_accepting_temporal_document_review_signals_its_existing_workflow(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+        $workflowId = 'archibot/document/789/version-key';
+        $run = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_SUCCEEDED,
+            'scope' => 'single_document',
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 789,
+            'pipeline_dedupe_key' => 'accepted-temporal-review',
+            'orchestration_driver' => TemporalWorkflowDispatcher::DRIVER,
+            'temporal_workflow_id' => $workflowId,
+        ]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 789,
+            'pipeline_run_id' => $run->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('review.accept', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $suggestion->refresh();
+        $command = $suggestion->commitCommand()->firstOrFail();
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertSame(TemporalOutboxIntent::OPERATION_SIGNAL, $intent->operation);
+        $this->assertSame('review_decision', $intent->signal_name);
+        $this->assertSame($workflowId, $intent->workflow_id);
+        $this->assertSame('accepted', $intent->payload['decision']);
+        $this->assertSame($suggestion->id, $intent->payload['review_suggestion_id']);
+        $this->assertSame($command->id, $intent->payload['command_id']);
+        $this->assertSame($workflowId, $command->payload['temporal_workflow_id']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_rejecting_temporal_document_review_signals_without_commit_command(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create(['is_admin' => true]);
+        $workflowId = 'archibot/document/456/version-key';
+        $run = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_SUCCEEDED,
+            'scope' => 'single_document',
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 456,
+            'pipeline_dedupe_key' => 'rejected-temporal-review',
+            'orchestration_driver' => TemporalWorkflowDispatcher::DRIVER,
+            'temporal_workflow_id' => $workflowId,
+        ]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 456,
+            'pipeline_run_id' => $run->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('review.reject', $suggestion))
+            ->assertRedirect(route('review.index'));
+
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertSame(TemporalOutboxIntent::OPERATION_SIGNAL, $intent->operation);
+        $this->assertSame('rejected', $intent->payload['decision']);
+        $this->assertNull($intent->payload['command_id']);
+        $this->assertDatabaseCount('commands', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_admin_can_queue_manual_reprocess_from_review_detail(): void
@@ -598,7 +679,8 @@ class ReviewSuggestionTest extends TestCase
         $this->assertSame(ReviewSuggestion::STATUS_ACCEPTED, $second->refresh()->status);
         $this->assertSame(ReviewSuggestion::STATUS_REJECTED, $reviewed->refresh()->status);
         $this->assertSame(2, Command::query()->where('type', Command::TYPE_REVIEW_COMMIT)->count());
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        $this->assertSame(2, TemporalOutboxIntent::query()->where('operation', TemporalOutboxIntent::OPERATION_START)->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_bulk_reject_marks_pending_suggestions_and_skips_reviewed(): void
@@ -685,7 +767,8 @@ class ReviewSuggestionTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame(Command::TYPE_REVIEW_COMMIT, $command->type);
         $this->assertSame(Command::STATUS_QUEUED, $command->status);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $command->id);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
+        Queue::assertNothingPushed();
         Http::assertSent(fn ($request) => $request->method() === 'OPTIONS'
             && $request->url() === 'https://paperless.example/api/documents/789/');
     }

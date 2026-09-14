@@ -48,14 +48,15 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
                    │
                    ▼
 ┌─────────────────────────────────────────────┐
-│  DocumentWorkflow je Dokumentversion         │
+│  DocumentWorkflow je Dokument-ID/Generation  │
 │                                              │
 │  1. Start/Attach mit stabilem Workflow-ID    │
-│  2. Durable Wait auf Embedding-Readiness     │
-│  3. Paperless-Fetch fuer dieses Dokument     │
-│  4. OCR/Kontext/Klassifikation/Judge          │
-│  5. Review sofort idempotent speichern       │
-│  6. Auf autorisierte Review-Entscheidung warten│
+│  2. Beim globalen Modellphasen-Scheduler      │
+│     registrieren und durable warten           │
+│  3. Embedding → OCR → Klassifikation → Judge │
+│     nur nach globaler Phasenfreigabe          │
+│  4. Review nach Judge-Barriere speichern      │
+│  5. Auf autorisierte Review-Entscheidung warten│
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
@@ -70,7 +71,7 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
                    │ Accept
                    ▼
 ┌─────────────────────────────────────────────┐
-│  Review-Commit Actor (app/actors/review.py)  │
+│  Temporal Review-Commit Activity             │
 │                                              │
 │  PATCH /api/documents/{id}/ →                │
 │   - Titel, Datum, Korrespondent              │
@@ -88,10 +89,10 @@ Es gibt **vier Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Temporal-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` + transaktionaler Outbox-Intent → `PollReconciliationWorkflow` → globale `document_observations` → ein unabhaengiger `DocumentWorkflow` je Dokumentversion | Der Dokument-Workflow wartet per Temporal-Timer; der Poll selbst blockiert nicht |
+| **Temporal-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` + transaktionaler Outbox-Intent → `PollReconciliationWorkflow` → globale `document_observations` → ein stabiler `DocumentWorkflow` je Dokument-ID | Der Start wird bis zum vollstaendigen Index fuer das konfigurierte Embedding-Modell reserviert; der Poll selbst blockiert nicht |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware prueft Secret, Groesse und Rate-Limit und speichert die redigierte Delivery. Create/Process-Events schreiben `pipeline_runs` und Temporal-Start-Intent atomar. Refresh/Delete bleiben bis zu ihrer Cutover-Phase auf dem festen Legacy-Actor. | Ja, der Temporal-Workflow wartet durable |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Embedding, Reindex, Poll und Dokument-Reprocess verwenden Laravel `commands`/`pipeline_runs` plus transaktionalen Temporal-Outbox-Intent; noch nicht migrierte Aktionen verwenden voruebergehend feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Temporal-Wait und Run-Projektion |
-| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge (Actors nutzen `app.actor_runner`) |
+| **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review; Review-Entscheidungen schreiben denselben Temporal-Intent wie die GUI | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge |
 
 ## Inbox-Seite (`/inbox`)
 
@@ -109,6 +110,24 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 Die Temporal-Poll-Aktivitaet laedt vor dem Workflow-Start die dauerhaften Klassifikationsmarker aus PostgreSQL: Sobald fuer ein Paperless-Dokument ein `review_suggestions`-Eintrag existiert, ist die Klassifikation mindestens einmal erfolgreich abgeschlossen. Solche Inbox-Dokumente werden bei automatischen Polls uebersprungen. Das verhindert erneute LLM-Klassifikation nach Review/Commit, wenn `KEEP_INBOX_TAG=true` ist.
 
 Fuer noch nicht markierte Dokumente koordinieren Poll, Webhook und manuelle Starts ueber `pipeline_runs.pipeline_dedupe_key` und den stabilen Temporal-Workflow-ID. Poll-Beobachtungen sind global und nicht an die Lebensdauer des Poll-Kommandos gebunden. Explizite Force-Polls und manuelles Force-Reprocess erzeugen absichtlich eine neue Version. Ein vorhandener pending/blocked Legacy-Run darf atomar uebernommen werden; queued/running Legacy-Runs werden wegen moeglicher Parallelausfuehrung nie adoptiert.
+
+Normale Starts verwenden `archibot/document/{paperless_document_id}` und werden nach
+erfolgreichem Abschluss nicht automatisch wiederholt. Ein autorisiertes Force-Reprocess
+verwendet `archibot/document/{paperless_document_id}/reprocess/{generation}`. Ist der
+Embedding-Index fuer das aktuell konfigurierte Embedding-Modell noch nicht vollstaendig,
+bleibt die Identitaet reserviert, ohne einen DocumentWorkflow zu starten. Recovery gibt
+den Start frei, sobald genau dieses Modell einen vollstaendigen Index besitzt.
+
+Ein singleton `ModelPhaseSchedulerWorkflow` buendelt alle freigegebenen Dokumente eines
+Zyklus. Er leert nacheinander Embedding, konfigurierte OCR-Phase, Klassifikation und
+Judge; erst danach signalisiert er die Review-Freigabe. Neue Dokumente duerfen nur
+waehrend der offenen Embedding-Grenze in den aktuellen Zyklus eintreten, spaetere warten
+auf den naechsten Zyklus. Provider, alle Rollenmodelle und Kontextfenster werden einmal
+pro Zyklus eingefroren. Die festen Activity-Queues `archibot-model-embedding`,
+`archibot-model-ocr-text`, `archibot-model-ocr-vision`,
+`archibot-model-classification`, `archibot-model-judge` und `archibot-paperless`
+verhindern Modellwechsel innerhalb einer Phase. Eine leere Index-Generation endet ohne
+Provider-Aufruf terminal als `0/0 complete`.
 
 ### 2. OCR-Korrektur (optional)
 
@@ -150,11 +169,11 @@ Der Judge bekommt Zieldokument + Kontext + den Erst-Vorschlag und gibt einen `Ju
 
 ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Der Document Actor speichert auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
 
-Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerhaften `commands`-Eintrag vom Typ `review_commit` und queued `RunPythonActorJob::reviewCommit(<command-id>)`. Das feste Python-Kommando `python -m app.actor_runner commit-review --command-id <commands.id>` laedt die `review_suggestion_id` aus `commands.payload` und fuehrt den Paperless-PATCH in Python aus; Laravel bleibt Transport und Kontrollflaeche. Der zentrale Client erlaubt dabei nur die geprueften Metadatenfelder. `storage_path` besitzt eine eigene manuelle Review-Naht: Der Client liest den aktuellen Dokumentzustand erneut und erlaubt nur `null` zu einer positiven ID; ein fehlendes Feld oder ein vorhandener Wert schliesst den Schreibvorgang. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
+Eine autorisierte manuelle Entscheidung schreibt Review-Status und Temporal-Outbox-Intent atomar. Bei einem aktuellen Dokument-Workflow sendet der Relay ein stabiles `review_decision`-Signal; angenommene Vorschlaege ohne wartenden Dokument-Workflow starten `ReviewCommitWorkflow` mit stabiler ID. Ablehnung beendet den Dokument-Workflow ohne Paperless-Write. Die Commit-Aktivitaet laedt die `review_suggestion_id` aus PostgreSQL und fuehrt den Paperless-PATCH idempotent aus. Ein Worker-Ausfall nach erfolgreichem PATCH erkennt beim Retry bereits passende Metadaten und schliesst die Projektion ohne zweiten Write. Der zentrale Client erlaubt nur die geprueften Metadatenfelder. Die Review-Seite laedt `storage_path` live aus Paperless und zeigt den aufgeloesten Namen; ein vorhandener Wert ist gesperrt und bleibt unveraenderlich. Nur ein live gemeldetes `null` darf ueber die Review-Naht zu einer positiven ID werden. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
 
 ## Reindex
 
-Embedding-Build, Reindex, Poll-Reconciliation und Dokumentverarbeitung werden von Temporal ausgefuehrt. Review-Commit, OCR-Reindex und nicht-prozessierende Webhook-Aktionen verwenden bis zu ihrer jeweiligen Cutover-Phase weiterhin Laravel queued actor jobs mit festen Python-Actor-Kommandos. Webhook-Refresh/Delete nutzt `python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>`; Python laedt die von Laravel normalisierte Aktion aus der Delivery.
+Embedding-Build, Reindex, Poll-Reconciliation, Dokumentverarbeitung und Review-Commit werden von Temporal ausgefuehrt. OCR-Reindex und nicht-prozessierende Webhook-Aktionen verwenden bis zu ihrer jeweiligen Cutover-Phase weiterhin Laravel queued actor jobs mit festen Python-Actor-Kommandos. Webhook-Refresh/Delete nutzt `python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>`; Python laedt die von Laravel normalisierte Aktion aus der Delivery.
 
 1. Laravel legt einen `commands`-Eintrag vom Typ `embedding_index_build` oder `reindex` an
 2. Laravel setzt das Gate unter einem exklusiven PostgreSQL-Fence auf `stale` und schreibt Command sowie unveraenderlichen Temporal-Outbox-Intent atomar

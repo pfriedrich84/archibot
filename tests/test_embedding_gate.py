@@ -22,16 +22,18 @@ class FakeConnection:
     def __exit__(self, exc_type, exc, traceback):
         return None
 
-    def execute(self, statement):
+    def execute(self, statement, parameters=None):
+        self.statement = statement
+        self.parameters = parameters
         return FakeResult(self.row)
 
 
 class FakeEngine:
     def __init__(self, row):
-        self.row = row
+        self.connection = FakeConnection(row)
 
     def connect(self):
-        return FakeConnection(self.row)
+        return self.connection
 
 
 def test_embedding_gate_allows_only_complete_status(monkeypatch):
@@ -56,3 +58,13 @@ def test_embedding_gate_fails_closed_for_incomplete_status(monkeypatch):
 
     assert embedding_gate.latest_embedding_index_status() == "building"
     assert embedding_gate.ensure_embedding_index_ready() is False
+
+
+def test_embedding_gate_queries_only_the_configured_model(monkeypatch):
+    fake_engine = FakeEngine({"status": "complete"})
+    monkeypatch.setattr(embedding_gate, "engine", lambda: fake_engine)
+    monkeypatch.setattr(embedding_gate, "sql_text", lambda statement: statement)
+
+    assert embedding_gate.latest_embedding_index_status("new-embed") == "complete"
+    assert "WHERE embedding_model = :embedding_model" in fake_engine.connection.statement
+    assert fake_engine.connection.parameters == {"embedding_model": "new-embed"}

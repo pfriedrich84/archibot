@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineItem;
 use App\Models\PipelineRun;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineLifecycleRecorder;
+use App\Services\Pipeline\PipelineStartGate;
 use App\Support\DiagnosticPresenter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +18,10 @@ use Inertia\Response;
 
 class PipelineRunController extends Controller
 {
-    public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
+    public function __construct(
+        private readonly DiagnosticPresenter $diagnostics,
+        private readonly PipelineStartGate $pipelineStartGate,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -365,7 +368,7 @@ class PipelineRunController extends Controller
             return true;
         }
 
-        return EmbeddingIndexState::query()->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
+        return $this->pipelineStartGate->isOpen();
     }
 
     /**

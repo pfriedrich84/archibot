@@ -9,6 +9,7 @@ use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
+use App\Models\TemporalOutboxIntent;
 use App\Models\User;
 use App\Services\ArchibotResetService;
 use Illuminate\Support\Facades\Artisan;
@@ -20,8 +21,8 @@ use Tests\TestCase;
 
 /**
  * PostgreSQL-only cross-process acceptance coverage. Each producer request or
- * CLI subprocess commits before a fresh queue-worker process claims the jobs,
- * modelling the durable handoff across an application/worker restart.
+ * CLI subprocess commits before a fresh execution process observes the rows,
+ * modelling durable handoff across an application/worker restart.
  *
  * @group postgres
  */
@@ -163,45 +164,32 @@ class PostgresCliUiTerminalEquivalenceTest extends TestCase
         $this->assertSame(0, DB::table('jobs')->count());
     }
 
-    public function test_review_commit_ui_and_cli_reach_terminal_outcome_in_restarted_workers(): void
+    public function test_review_commit_ui_and_cli_persist_equivalent_temporal_handoff_across_processes(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
         $uiSuggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 910]);
         $cliSuggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 911]);
         $this->actingAs($admin)->post(route('review.accept', $uiSuggestion))->assertRedirect();
         $this->artisanProcess(['archibot:review-commit', (string) $cliSuggestion->id, '--user-id', (string) $admin->id]);
-        $this->workerProcess(2);
 
         foreach ([$uiSuggestion->fresh(), $cliSuggestion->fresh()] as $suggestion) {
             $command = $suggestion->commitCommand()->firstOrFail();
-            $this->assertSame(Command::STATUS_SUCCEEDED, $command->status);
-            $this->assertSame(ActorExecution::STATUS_SUCCEEDED, ActorExecution::query()->where('command_id', $command->id)->latest()->firstOrFail()->status);
+            $this->assertSame(Command::STATUS_QUEUED, $command->status);
+            $this->assertSame('temporal', $command->payload['orchestration_driver']);
+            $this->assertSame("archibot/review-commit/{$suggestion->id}", $command->payload['temporal_workflow_id']);
+            $intent = TemporalOutboxIntent::query()
+                ->where('workflow_id', $command->payload['temporal_workflow_id'])
+                ->firstOrFail();
+            $this->assertSame(TemporalOutboxIntent::OPERATION_START, $intent->operation);
+            $this->assertSame('archibot.review_commit', $intent->workflow_type);
+            $this->assertSame($suggestion->id, $intent->payload['review_suggestion_id']);
             $this->assertTrue(AuditLog::query()->where('event', 'review_suggestion.accepted')->where('target_id', (string) $suggestion->id)->exists());
+            $this->assertFalse(ActorExecution::query()->where('command_id', $command->id)->exists());
         }
         $uiCommand = $uiSuggestion->fresh()->commitCommand()->firstOrFail();
         $cliCommand = $cliSuggestion->fresh()->commitCommand()->firstOrFail();
-        $this->assertSame($this->commandTerminalSnapshot($uiCommand), $this->commandTerminalSnapshot($cliCommand));
         $this->assertSame($this->reviewDurableSideEffects($uiSuggestion, $uiCommand), $this->reviewDurableSideEffects($cliSuggestion, $cliCommand));
-        $this->assertSame(0, DB::table('jobs')->count());
-    }
-
-    public function test_review_commit_ui_and_cli_failures_are_terminally_equivalent_after_worker_restart(): void
-    {
-        $admin = User::factory()->create(['is_admin' => true]);
-        $uiSuggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 930]);
-        $cliSuggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 931]);
-        $this->actingAs($admin)->post(route('review.accept', $uiSuggestion))->assertRedirect();
-        $this->artisanProcess(['archibot:review-commit', (string) $cliSuggestion->id, '--user-id', (string) $admin->id]);
-        $this->workerProcess(2, 'failed-permanent');
-
-        $uiCommand = $uiSuggestion->fresh()->commitCommand()->firstOrFail();
-        $cliCommand = $cliSuggestion->fresh()->commitCommand()->firstOrFail();
-        foreach ([$uiCommand, $cliCommand] as $command) {
-            $this->assertSame(Command::STATUS_FAILED_PERMANENT, $command->status);
-            $this->assertSame(ActorExecution::STATUS_FAILED_PERMANENT, ActorExecution::query()->where('command_id', $command->id)->latest()->firstOrFail()->status);
-        }
-        $this->assertSame($this->commandTerminalSnapshot($uiCommand), $this->commandTerminalSnapshot($cliCommand));
-        $this->assertSame($this->reviewDurableSideEffects($uiSuggestion, $uiCommand), $this->reviewDurableSideEffects($cliSuggestion, $cliCommand));
+        $this->assertSame(2, TemporalOutboxIntent::query()->count());
         $this->assertSame(0, DB::table('jobs')->count());
     }
 

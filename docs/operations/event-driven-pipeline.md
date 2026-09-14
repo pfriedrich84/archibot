@@ -25,33 +25,23 @@ ARCHIBOT_STALE_RUNNING_MINUTES=10
 PAPERLESS_WEBHOOK_SECRET=<generate-a-random-secret>
 ```
 
-Laravel queue jobs use small durable identifiers such as command IDs, pipeline run IDs and webhook delivery IDs. Fixed Python actor commands perform the processing work and write durable state/events back to PostgreSQL.
+Laravel writes stable Temporal workflow starts and signals to a transactional outbox. The supervised Python relay delivers those intents, and Temporal workflows run idempotent Python activities that project business state and events to PostgreSQL. Laravel queued actors remain temporarily for OCR reindex and non-process webhook actions only.
 
 Fixed actor-runner contracts:
 
 ```bash
-python -m app.actor_runner build-embedding-index --command-id <commands.id>
-python -m app.actor_runner process-document --pipeline-run-id <pipeline_runs.id>
-python -m app.actor_runner reconcile-poll --command-id <commands.id>
-python -m app.actor_runner reindex --command-id <commands.id>
 python -m app.actor_runner reindex-ocr --command-id <commands.id>
 python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>
-python -m app.actor_runner commit-review --command-id <commands.id>
 ```
 
 Laravel queued wrappers:
 
 ```php
-RunPythonActorJob::embeddingIndexBuild($commandId)
-RunPythonActorJob::documentPipeline($pipelineRunId)
-RunPythonActorJob::pollReconciliation($commandId)
-RunPythonActorJob::reindex($commandId)
 RunPythonActorJob::reindexOcr($commandId)
 RunPythonActorJob::webhookDelivery($deliveryId)
-RunPythonActorJob::reviewCommit($commandId)
 ```
 
-The embedding actor runner accepts only `--command-id`; options such as `limit` are loaded from the durable `commands.payload` row so the database command remains the single source of truth. Admin embedding-build requests dispatch this Laravel queued wrapper directly and never branch to another transport. Document pipeline starts dispatch the document actor wrapper with only a durable `pipeline_runs.id`; document processing, Paperless/LLM calls, retries and progress remain Python-owned and PostgreSQL-backed. ADR-0018 containment is implemented: the actor always stores model/judge results as pending Review Suggestions and cannot accept or queue a commit from confidence. Non-process webhook actions dispatch the webhook delivery wrapper with only a durable `webhook_deliveries.id`; Python loads the Laravel-normalized action and owns embedding refresh/delete execution. Admin poll reconciliation, full reindex, and OCR reindex controls create durable commands and dispatch the corresponding Laravel actor wrappers; Python loads options such as `limit` and OCR `force` from `commands.payload` and owns the Paperless/OCR/embedding work. Accepted review suggestions create durable `review_commit` commands and dispatch the review-commit actor wrapper with only the command id; Python loads `commands.payload.review_suggestion_id` before patching Paperless. The Laravel queued wrapper is allowlisted to these actor names and invokes the fixed runner module instead of arbitrary Python command strings.
+Embedding builds, full reindex, poll discovery, document processing and review commits use stable Temporal workflow IDs. Accepted current reviews signal the waiting document workflow; accepted pre-cutover reviews start a standalone `ReviewCommitWorkflow`. ADR-0018 containment remains in force: model and judge output only creates pending Review Suggestions. OCR reindex and non-process webhook actions still use the fixed actor contracts above until Phase 5 retirement.
 
 ## Database migrations
 
@@ -74,11 +64,11 @@ The event-driven state tables are owned by PostgreSQL and include:
 - `llm_calls`
 - `document_embeddings`
 
-PostgreSQL is the source of truth for progress, retries, audit and recovery state. Laravel database queues are the enforced event-driven transport; queue payloads must remain small references to durable database rows. The queue connection is pinned to Laravel's application database so recovery can claim the source row and insert the job in one transaction. The six-hour actor timeout remains below the default `DB_QUEUE_RETRY_AFTER=21720` lease; keep that invariant if either setting changes so a long-running actor cannot be reclaimed concurrently.
+PostgreSQL is the source of truth for business state, progress projections and audit. Temporal history is authoritative for workflow execution, retries, timers and recovery. The transactional outbox contains only stable IDs and bounded workflow payloads; secrets and document content are loaded inside activities. Laravel queue settings still apply to the remaining migration-only actors.
 
 The source-link migration cannot safely infer a command or webhook delivery for non-pipeline actor attempts created by older releases. It marks any such in-flight `running` or `retrying` execution `failed_permanent` with `error_type=source_link_unavailable_after_upgrade`. After upgrading, operators should inspect those rows and rerun the corresponding maintenance command or webhook from the operations UI only after confirming that the old actor process has stopped. The migration does not guess links or replay ambiguous work.
 
-ADR-0015 and ADR-0017 govern the final transport: Laravel Database Queues and fixed Python actor commands are the only productive path. The previous Python queue backend, SDK, schema installer, workers and configuration have been removed. Existing historical schema objects on upgraded volumes are inert; see the [retired transport upgrade notes](../implementation-notes/absurd-removal.md).
+ADR-0022 governs the target transport: Temporal is the sole owner of migrated productive flows. The previous Python queue backend has been removed, and the bounded Laravel actor transport is retired one flow at a time. Existing historical schema objects on upgraded volumes are inert; see the [retired transport upgrade notes](../implementation-notes/absurd-removal.md).
 
 ## Paperless webhook setup
 
@@ -100,28 +90,25 @@ Webhook ingestion is intentionally lightweight:
 2. persist redacted raw and normalized delivery data in `webhook_deliveries`;
 3. compute a dedupe key;
 4. record pipeline events;
-5. dispatch the appropriate Laravel queued actor job;
+5. write the appropriate Temporal outbox intent or remaining legacy actor job;
 6. return quickly.
 
 Do not perform OCR, embedding, classification, Paperless fetches or LLM calls inside the HTTP request.
 
 ## Worker startup
 
-In the target container entrypoint, Laravel's queue worker consumes event-driven actor jobs:
+The container supervisor starts the Temporal worker and transactional outbox relay:
 
 ```bash
-cd laravel
-php artisan queue:work --sleep=3 --tries=1
+python -m app.temporal.worker
+python -m app.temporal.relay
 ```
 
-The supervised runtime uses Laravel as the exclusive queue, scheduler and recovery owner. Supervisor starts no Python queue or recovery worker.
+Laravel's scheduler remains active for discovery timing, and its queue worker serves only migration flows that have not yet moved to Temporal. Laravel recovery excludes all Temporal-owned commands and runs.
 
 Useful manual commands:
 
 ```bash
-# Run one embedding build command through the fixed actor-runner contract.
-python -m app.actor_runner build-embedding-index --command-id=123
-
 # One Laravel-native recovery scan and exit.
 cd laravel
 php artisan archibot:recovery-scan --limit=100
@@ -136,11 +123,14 @@ php artisan archibot:scheduled-poll
 python -m app.actor_runner handle-webhook --delivery-id=123
 ```
 
-The recovery path scans durable PostgreSQL state and safely redispatches Laravel queued actor jobs. Actor executions link to their source command, pipeline run or webhook delivery so stale running and due retrying attempts can be recovered without global actor-name guesses. Laravel-native recovery finalizes safe cancellation requests, releases embedding-blocked work, suppresses fresh duplicate webhook dispatch, and handles pending/stale actor-backed commands. Entity approval decisions use a queued, fenced Laravel/PostgreSQL Command seam and never enter Python actor recovery; matching token/version checks prevent stale deliveries from applying a conflicting decision. Process-document webhooks recover by starting or reconciling their durable pipeline runs rather than invoking the webhook actor; blocked deliveries become processed after the embedding gate releases and the linked run is queued.
+Temporal recovers migrated workflows from durable history and heartbeat state. Laravel recovery scans only remaining legacy-owned rows; it cannot reclaim commands or runs whose orchestration driver is `temporal`. Entity approval decisions retain their queued, fenced Laravel/PostgreSQL command seam during the bounded migration.
 
 ## Embedding readiness gate
 
-Document processing is blocked until the latest durable `embedding_index_state.status` is `complete`.
+Document processing is blocked until the durable `embedding_index_state` for the
+currently configured embedding model has `status = complete`. A completed generation
+for another model does not open the gate. Installations that predate model-aware state
+use the latest row only until a configured model is available.
 
 Allowed before the index is complete:
 
@@ -163,7 +153,16 @@ Admin dashboard controls:
 - **Mark embedding index stale** sets durable state to `stale`, closing the document-processing gate.
 - **Start reindex** also marks the embedding index stale and creates a durable `reindex` command.
 
-Recovery releases runs blocked by `embedding_index_not_ready` back to pending after the index becomes complete.
+Gate-closed discoveries reserve the stable document workflow identity but do not start
+the Temporal `DocumentWorkflow`. Recovery releases them after the matching model index
+becomes complete. An empty index build reaches `0/0 complete` immediately and opens the
+same gate without calling the provider.
+
+After release, the singleton Temporal model-phase scheduler drains the current work set
+in this order: embedding, configured OCR, classification, judge, review release. Work
+arriving after the embedding boundary waits for the next cycle. Fixed model-specific
+task queues allow concurrency within a phase while preventing requests for another role
+from causing a model swap.
 
 ## Admin dashboard operations
 
@@ -198,15 +197,15 @@ Durable state lives in PostgreSQL:
 Recovery behavior:
 
 - queued non-process webhook deliveries are redispatched to the webhook actor through Laravel queues;
-- pending document runs are redispatched to the document actor through Laravel queues;
-- due retrying document runs are redispatched after backoff;
-- pending embedding-build, poll, reindex, OCR reindex and review-commit commands are redispatched through Laravel queues; entity approval application is also a queued, PostgreSQL-owned Laravel command (with no Python actor) and pending, stale-queued, or stale-running application commands are redispatched through its allowlisted `ApplyEntityApprovalCommand`;
+- Temporal-owned embedding, poll, document and review-commit work is never redispatched by Laravel recovery;
+- pending OCR reindex commands and queued non-process webhook deliveries remain recoverable through the bounded Laravel actor transport;
+- entity approval application remains a queued, PostgreSQL-owned Laravel command with its allowlisted `ApplyEntityApprovalCommand`;
 - stale `running` and due `retrying` actor executions are recovered through their linked durable source with bounded attempts;
 - exhausted or unlinked actor retries fail permanently instead of looping forever;
 - `cancel_requested` pipeline runs without a live actor are finalized as `cancelled`;
-- embedding-blocked runs are released when the embedding index is complete;
-- authorized manually accepted review suggestions create durable pending `review_commit` commands that Laravel recovery dispatches;
-- pending embedding, poll, reindex and OCR reindex commands are bridged to actors.
+- legacy embedding-blocked rows can be reconciled after the embedding index is complete;
+- authorized review decisions create a transactional Temporal signal or workflow-start intent;
+- an upgrade migration adopts accepted queued/running legacy review commits into Temporal.
 
 Document actor retry classification uses bounded default backoff for retryable failures such as transient network/provider/Paperless errors, rate limiting and recoverable processing failures. Permanent validation or missing-document failures should not retry forever.
 
@@ -232,15 +231,16 @@ Live integration smoke checklist:
 2. Start PostgreSQL.
 3. Run Laravel migrations against PostgreSQL.
 4. Confirm `pgvector` extension is available.
-5. Start Laravel, the Laravel queue worker, `schedule:work`, and Laravel-native recovery; verify no Python queue/recovery process starts and no historical queue schema exists on the clean database.
+5. Start Laravel, the Temporal worker and relay, `schedule:work`, and the bounded Laravel queue/recovery processes; verify the Temporal namespace and task queue are ready.
 6. Configure a non-empty secret on both sides, then point Paperless to `POST /api/webhooks/paperless` with `X-Webhook-Secret`. Missing configuration and missing/wrong headers fail closed without a Delivery. Use the rotation and rollback order in the [webhook runbook](../user/webhooks.md#secret-sicher-rotieren).
 7. Send a test Paperless webhook for a document.
 8. Verify a row exists in `webhook_deliveries`.
-9. Run or wait for the Laravel queue worker to consume the queued actor job.
-10. Verify `actor_executions` and `pipeline_events` rows are created.
+9. Run or wait for the Temporal relay and worker to consume the outbox intent.
+10. Verify the Temporal workflow ID, `pipeline_runs` projection and `pipeline_events` rows are created.
 11. Complete or start the embedding index and verify blocked work remains blocked until `embedding_index_state.status = complete`.
 12. Verify a document run reaches `pipeline_runs`, `pipeline_items` and, after classification, `review_suggestions`.
-13. Exercise admin retry/cancel/reprocess/webhook/reindex/poll controls from the dashboard.
+13. Accept and reject reviews; verify acceptance commits once through Temporal, rejection performs no PATCH, and the current Paperless storage path is shown and preserved.
+14. Exercise admin retry/cancel/reprocess/webhook/reindex/poll controls from the dashboard.
 
 ## Security and redaction
 

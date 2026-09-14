@@ -129,7 +129,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
         if (
             exhausted
             and updated.rowcount == 1
-            and intent.operation == "start_workflow"
+            and intent.operation in {"start_workflow", "signal_workflow"}
             and isinstance(command_id, int)
             and not isinstance(command_id, bool)
         ):
@@ -138,7 +138,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
                     """
                     UPDATE commands
                     SET status = 'failed_permanent', finished_at = CURRENT_TIMESTAMP,
-                        error = 'Temporal workflow start delivery exhausted its retries.',
+                        error = 'Temporal workflow intent delivery exhausted its retries.',
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = :command_id
                       AND status IN ('pending', 'queued')
@@ -147,6 +147,31 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
                     """
                 ),
                 {"command_id": command_id, "workflow_id": intent.workflow_id},
+            )
+        review_suggestion_id = intent.payload.get("review_suggestion_id")
+        if (
+            exhausted
+            and updated.rowcount == 1
+            and intent.operation in {"start_workflow", "signal_workflow"}
+            and isinstance(review_suggestion_id, int)
+            and not isinstance(review_suggestion_id, bool)
+            and isinstance(command_id, int)
+            and not isinstance(command_id, bool)
+        ):
+            connection.execute(
+                sql_text(
+                    """
+                    UPDATE review_suggestions
+                    SET commit_status = 'failed', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :review_suggestion_id
+                      AND commit_command_id = :command_id
+                      AND commit_status <> 'committed'
+                    """
+                ),
+                {
+                    "review_suggestion_id": review_suggestion_id,
+                    "command_id": command_id,
+                },
             )
         pipeline_run_id = intent.payload.get("pipeline_run_id")
         if (

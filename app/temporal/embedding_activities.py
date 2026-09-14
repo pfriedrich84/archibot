@@ -75,7 +75,7 @@ def _command_limit(command_id: int) -> int | None:
     return limit if limit > 0 else None
 
 
-def _prepare_build_projection(command_id: int) -> int:
+def _prepare_build_projection(command_id: int, embedding_model: str | None = None) -> int:
     """Close the old gate and create or resume this command's generation atomically."""
     with engine().begin() as connection:
         command = (
@@ -149,7 +149,10 @@ def _prepare_build_projection(command_id: int) -> int:
                         RETURNING id
                         """
                     ),
-                    {"command_id": command_id, "embedding_model": settings.ollama_embed_model},
+                    {
+                        "command_id": command_id,
+                        "embedding_model": embedding_model or settings.ollama_embed_model,
+                    },
                 )
                 .mappings()
                 .one()
@@ -186,7 +189,14 @@ def _prepare_build_projection(command_id: int) -> int:
 async def prepare_embedding_generation(
     request: EmbeddingWorkflowRequest,
 ) -> PreparedEmbeddingBuild:
-    build_id = await asyncio.to_thread(_prepare_build_projection, request.command_id)
+    if request.configuration is None:
+        build_id = await asyncio.to_thread(_prepare_build_projection, request.command_id)
+    else:
+        build_id = await asyncio.to_thread(
+            _prepare_build_projection,
+            request.command_id,
+            request.configuration.embedding_model,
+        )
     limit = await asyncio.to_thread(_command_limit, request.command_id)
     paperless = PaperlessClient()
     try:
@@ -230,7 +240,18 @@ async def embed_document(request: EmbedDocumentRequest) -> EmbedDocumentResult:
         if not text:
             return EmbedDocumentResult(request.paperless_document_id, "skipped")
 
-        provider = create_ai_provider()
+        configuration = request.configuration
+        if configuration is None:
+            provider = create_ai_provider()
+        else:
+            provider = create_ai_provider(
+                base_url=configuration.provider_base_url,
+                model=configuration.classification_model,
+                provider_type=configuration.provider_type,
+                embed_model=configuration.embedding_model,
+                embed_num_ctx=configuration.embedding_num_ctx,
+                ocr_model=configuration.ocr_text_model,
+            )
         content_hash = content_hash_for_text(text)
         exists = await asyncio.to_thread(
             document_embedding_exists,

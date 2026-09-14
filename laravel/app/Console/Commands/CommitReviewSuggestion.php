@@ -17,7 +17,7 @@ class CommitReviewSuggestion extends Command
         {suggestion-id : Laravel review_suggestions id}
         {--user-id= : Explicit ArchiBot/Paperless user performing the review decision}';
 
-    protected $description = 'Accept and queue a review commit through the same Laravel action used by the Review UI.';
+    protected $description = 'Accept and start a Temporal review commit through the same Laravel action used by the Review UI.';
 
     public function handle(ReviewSuggestionController $reviews): int
     {

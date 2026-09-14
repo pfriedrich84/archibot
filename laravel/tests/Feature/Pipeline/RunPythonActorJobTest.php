@@ -355,6 +355,28 @@ PHP);
         @unlink($script);
     }
 
+    public function test_legacy_queue_job_cannot_claim_temporal_review_commit(): void
+    {
+        $command = Command::query()->create([
+            'type' => Command::TYPE_REVIEW_COMMIT,
+            'status' => Command::STATUS_QUEUED,
+            'payload' => [
+                'review_suggestion_id' => 88,
+                'paperless_document_id' => 123,
+                'orchestration_driver' => 'temporal',
+                'temporal_workflow_id' => 'archibot/review-commit/88',
+            ],
+        ]);
+        $runner = $this->mock(PythonActorRunner::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('runReviewCommit');
+        });
+
+        RunPythonActorJob::reviewCommit($command->id)->handle($runner);
+
+        $this->assertSame(Command::STATUS_QUEUED, $command->fresh()->status);
+        $this->assertDatabaseCount('actor_executions', 0);
+    }
+
     public function test_embedding_actor_job_rejects_wrong_command_type_without_running_process(): void
     {
         $capturePath = tempnam(storage_path('framework/testing'), 'archibot-actor-args-');
