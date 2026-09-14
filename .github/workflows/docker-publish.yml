@@ -1,14 +1,7 @@
 name: Build & Publish Docker Image
 
 on:
-  push:
-    branches: [feat/laravel]
-    paths:
-      - .github/workflows/docker-publish.yml
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main, feat/laravel]
+  workflow_dispatch:
 
 permissions:
   contents: read
