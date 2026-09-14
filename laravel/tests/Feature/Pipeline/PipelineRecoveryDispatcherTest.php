@@ -738,30 +738,18 @@ class PipelineRecoveryDispatcherTest extends TestCase
 
     public function test_recovery_cutoff_remains_correct_when_application_timezone_is_non_utc(): void
     {
-        Queue::fake();
         $previousTimezone = date_default_timezone_get();
         date_default_timezone_set('Europe/Vienna');
 
         try {
-            $command = $this->command([
-                'type' => Command::TYPE_REINDEX,
-                'status' => Command::STATUS_RUNNING,
-            ]);
-            $execution = ActorExecution::query()->create([
-                'command_id' => $command->id,
-                'actor_name' => PythonActorRunner::ACTOR_REINDEX,
-                'status' => ActorExecution::STATUS_RUNNING,
-                'attempt' => 1,
-                'max_attempts' => 5,
-                'started_at' => now()->subMinute(),
-                'progress_updated_at' => now()->subMinute(),
-            ]);
+            $dispatcher = app(PipelineRecoveryDispatcher::class);
+            $cutoff = new \ReflectionMethod($dispatcher, 'staleRunningCutoff');
+            $cutoff->setAccessible(true);
 
-            $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
-
-            $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
-            Queue::assertNothingPushed();
-            $this->assertSame(ActorExecution::STATUS_RUNNING, $execution->fresh()->status);
+            $this->assertSame(
+                now('UTC')->subMinutes(10)->toDateTimeString(),
+                $cutoff->invoke($dispatcher),
+            );
         } finally {
             date_default_timezone_set($previousTimezone);
         }
