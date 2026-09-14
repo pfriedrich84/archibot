@@ -103,7 +103,7 @@ class TemporalOutbox
             return TemporalOutboxIntent::query()->create([
                 ...$attributes,
                 'status' => TemporalOutboxIntent::STATUS_PENDING,
-                'available_at' => now(),
+                'available_at' => now('UTC'),
             ]);
         });
     }

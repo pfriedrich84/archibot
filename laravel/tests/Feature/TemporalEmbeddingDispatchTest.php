@@ -53,6 +53,22 @@ class TemporalEmbeddingDispatchTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_repeated_embedding_build_reuses_the_active_temporal_generation(): void
+    {
+        Queue::fake();
+        $request = Request::create('/admin/maintenance', 'POST');
+        $dispatcher = app(MaintenanceCommandDispatcher::class);
+
+        $first = $dispatcher->queueEmbeddingIndexBuild($request);
+        $second = $dispatcher->queueEmbeddingIndexBuild($request);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertDatabaseCount('commands', 1);
+        $this->assertDatabaseCount('embedding_index_state', 1);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
+        Queue::assertNothingPushed();
+    }
+
     public function test_laravel_recovery_does_not_redispatch_temporal_embedding_commands(): void
     {
         Queue::fake();

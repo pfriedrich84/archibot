@@ -216,6 +216,16 @@ class MaintenanceCommandDispatcher
         return $this->pipelineStartGate->embeddingMutation(function () use ($request, $limit, $metadata): DispatchCommand {
             return DB::transaction(function () use ($request, $limit, $metadata): DispatchCommand {
                 $limit = $this->normalizedLimit($limit);
+                $activeCommand = DispatchCommand::query()
+                    ->where('type', DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD)
+                    ->whereIn('status', DispatchCommand::activeStatuses())
+                    ->oldest('id')
+                    ->lockForUpdate()
+                    ->first();
+                if ($activeCommand !== null) {
+                    return $activeCommand;
+                }
+
                 $embeddingState = $this->pipelineStartGate->markStaleInsideMutation('Embedding index build requested by admin.');
                 $payload = array_filter([
                     'limit' => $limit,

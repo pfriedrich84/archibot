@@ -25,8 +25,13 @@ class EmbeddingIndexControlTest extends TestCase
         $this->actingAs($admin)
             ->post(route('embedding-index.build'), ['limit' => 10])
             ->assertRedirect();
+        $this->actingAs($admin)
+            ->post(route('embedding-index.build'), ['limit' => 10])
+            ->assertRedirect();
 
         $command = Command::query()->firstOrFail();
+        $this->assertDatabaseCount('commands', 1);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
         $this->assertSame('embedding_index_build', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(10, $command->payload['limit']);
@@ -52,6 +57,8 @@ class EmbeddingIndexControlTest extends TestCase
             'actor_user_id' => $admin->id,
             'event' => 'embedding_index.build_requested',
         ]);
+        $this->assertSame(2, PipelineEvent::query()->where('command_id', $command->id)->count());
+        $this->assertSame(1, AuditLog::query()->where('event', 'embedding_index.build_requested')->count());
     }
 
     public function test_maintenance_quick_control_can_queue_embedding_index_build_command(): void

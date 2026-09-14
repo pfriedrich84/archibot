@@ -19,9 +19,9 @@ return new class extends Migration
             $table->json('payload');
             $table->string('status')->default('pending');
             $table->unsignedInteger('attempts')->default(0);
-            $table->timestamp('available_at')->useCurrent();
-            $table->timestamp('locked_at')->nullable();
-            $table->timestamp('delivered_at')->nullable();
+            $table->timestampTz('available_at')->useCurrent();
+            $table->timestampTz('locked_at')->nullable();
+            $table->timestampTz('delivered_at')->nullable();
             $table->text('last_error')->nullable();
             $table->timestamps();
 

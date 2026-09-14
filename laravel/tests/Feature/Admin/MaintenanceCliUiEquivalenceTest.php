@@ -28,6 +28,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         string $commandType,
         string $auditEvent,
         array $eventTypes,
+        bool $coalescesActive = false,
     ): void {
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
@@ -37,6 +38,20 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
 
         $this->artisan('archibot:maintenance-command', $cliArguments)->assertSuccessful();
         $cliCommand = Command::query()->latest('id')->firstOrFail();
+
+        if ($coalescesActive) {
+            $this->assertSame($uiCommand->id, $cliCommand->id);
+            $this->assertSame(Command::STATUS_QUEUED, $cliCommand->status);
+            $this->assertDatabaseCount('commands', 1);
+            $this->assertDatabaseCount('temporal_outbox_intents', 1);
+            $this->assertSame($eventTypes, PipelineEvent::query()
+                ->where('command_id', $cliCommand->id)
+                ->orderBy('id')
+                ->pluck('event_type')
+                ->all());
+
+            return;
+        }
 
         foreach ([$uiCommand, $cliCommand] as $command) {
             $this->assertSame($commandType, $command->type);
@@ -77,7 +92,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
         $this->assertSame(2, AuditLog::query()->where('event', $auditEvent)->whereIn('target_id', array_map('strval', $ids))->count());
     }
 
-    /** @return array<string, array{array<string, mixed>, array<string, mixed>, string, string, array<int, string>}> */
+    /** @return array<string, array{array<string, mixed>, array<string, mixed>, string, string, array<int, string>, 5?: bool}> */
     public static function commandCases(): array
     {
         return [
@@ -115,6 +130,7 @@ class MaintenanceCliUiEquivalenceTest extends TestCase
                 Command::TYPE_EMBEDDING_INDEX_BUILD,
                 'embedding_index.build_requested',
                 ['job_control.embedding_build_requested', 'job_control.embedding_build_actor_queued'],
+                true,
             ],
         ];
     }

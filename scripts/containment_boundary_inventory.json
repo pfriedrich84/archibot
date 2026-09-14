@@ -17,7 +17,7 @@
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "4fe250771dd3c8aceb94453ac400ef63e2155125f510d9f3dbf4927591472343",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
-    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "525d3fe578153b3e270f46cc574616b7a933af79804f40e178d0166ee85f10c0",
+    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "d6e78f31fa5b834cf16962815ca8ca8c7ae4a94341c08c1edcdd7be766777378",
     "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "7c86ef13eb46d3e161cdf7193426dcb1daef52d84df1d66e414d841666e08cf7",
     "scripts/check_containment_boundaries.py": "308252bab5ed83749a7c2b9fc2859278b69660f15aa5e648b00565e1f78e7e60"
   },

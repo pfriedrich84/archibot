@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\TemporalOutboxIntent;
 use App\Services\Temporal\TemporalOutbox;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 use Tests\TestCase;
 
@@ -54,6 +56,27 @@ class TemporalOutboxTest extends TestCase
             "archibot/runtime-probe/{$key}",
             'archibot.runtime_probe',
             ['request_id' => 'changed'],
+        );
+    }
+
+    public function test_available_at_is_persisted_as_utc_when_the_application_uses_a_local_timezone(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-14 22:27:00', 'Europe/Vienna'));
+
+        try {
+            app(TemporalOutbox::class)->startWorkflow(
+                '39df97c0-ea27-49f5-8e47-a409633495af',
+                'archibot/runtime-probe/39df97c0-ea27-49f5-8e47-a409633495af',
+                'archibot.runtime_probe',
+                ['request_id' => '39df97c0-ea27-49f5-8e47-a409633495af'],
+            );
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+
+        $this->assertSame(
+            '2026-09-14 20:27:00',
+            DB::table('temporal_outbox_intents')->value('available_at'),
         );
     }
 
