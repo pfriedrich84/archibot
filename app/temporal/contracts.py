@@ -53,3 +53,58 @@ class EmbeddingWorkflowResult:
 class EmbeddingPreparationFailure:
     command_id: int
     error: str
+
+
+@dataclass(frozen=True)
+class PollWorkflowRequest:
+    command_id: int
+
+
+@dataclass(frozen=True)
+class DocumentWorkflowRequest:
+    pipeline_run_id: int
+
+
+@dataclass(frozen=True)
+class DocumentWorkflowStart:
+    pipeline_run_id: int
+    workflow_id: str
+
+
+@dataclass(frozen=True)
+class PollDiscoveryResult:
+    command_id: int
+    documents_seen: int
+    documents_skipped: int
+    workflow_starts: list[DocumentWorkflowStart]
+    status: str
+
+
+@dataclass(frozen=True)
+class PollWorkflowResult:
+    command_id: int
+    documents_seen: int
+    documents_started: int
+    documents_skipped: int
+    status: str
+
+
+@dataclass(frozen=True)
+class DocumentReadiness:
+    pipeline_run_id: int
+    status: str
+    review_suggestion_id: int | None = None
+
+
+@dataclass(frozen=True)
+class DocumentProcessResult:
+    pipeline_run_id: int
+    review_suggestion_id: int
+    status: str
+
+
+@dataclass(frozen=True)
+class DocumentWorkflowResult:
+    pipeline_run_id: int
+    review_suggestion_id: int | None
+    status: str

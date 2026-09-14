@@ -40,6 +40,13 @@ Temporal, PostgreSQL and the dashboard.
 
 ## Phase 3: Discovery and document workflows
 
+Current implementation state: poll commands and new webhook/manual document runs use the
+transactional Temporal outbox. Poll discovery writes global document observations, starts
+independent document workflows, and completes without waiting for their classification.
+Each document workflow waits on a Temporal timer for embedding readiness and persists its
+review as soon as that document finishes. The legacy batch and recovery code remains only
+for pre-cutover rows and explicitly excludes `orchestration_driver=temporal`.
+
 - Implement scheduled poll discovery and webhook signal-with-start.
 - Replace poll-owned candidates with global document observations.
 - Implement one workflow per Paperless document content version.

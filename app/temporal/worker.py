@@ -9,6 +9,14 @@ from temporalio.worker import Worker
 
 from app.config import settings
 from app.temporal.client import connect_temporal
+from app.temporal.document_activities import (
+    check_document_readiness,
+    discover_inbox_documents,
+    fail_document_processing,
+    fail_poll_discovery,
+    finish_poll_discovery,
+    process_document_for_review,
+)
 from app.temporal.embedding_activities import (
     embed_document,
     fail_embedding_preparation,
@@ -16,7 +24,12 @@ from app.temporal.embedding_activities import (
     prepare_embedding_generation,
     project_embedding_progress,
 )
-from app.temporal.workflows import EmbeddingIndexWorkflow, RuntimeProbeWorkflow
+from app.temporal.workflows import (
+    DocumentWorkflow,
+    EmbeddingIndexWorkflow,
+    PollReconciliationWorkflow,
+    RuntimeProbeWorkflow,
+)
 
 
 async def run_worker() -> None:
@@ -25,13 +38,24 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[RuntimeProbeWorkflow, EmbeddingIndexWorkflow],
+        workflows=[
+            RuntimeProbeWorkflow,
+            EmbeddingIndexWorkflow,
+            PollReconciliationWorkflow,
+            DocumentWorkflow,
+        ],
         activities=[
             prepare_embedding_generation,
             embed_document,
             fail_embedding_preparation,
             project_embedding_progress,
             finish_embedding_generation,
+            discover_inbox_documents,
+            finish_poll_discovery,
+            fail_poll_discovery,
+            check_document_readiness,
+            process_document_for_review,
+            fail_document_processing,
         ],
     )
     logging.getLogger(__name__).info(

@@ -609,6 +609,7 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('orchestration_driver')
             ->whereNull('batch_command_id')
             ->where(function ($query): void {
                 $query->whereNull('progress_current_phase')
@@ -649,6 +650,7 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('orchestration_driver')
             ->whereNull('batch_command_id')
             ->where('status', PipelineRun::STATUS_QUEUED)
             ->whereRaw('COALESCE(progress_updated_at, updated_at) <= ?', [$this->staleQueuedCutoff()])
@@ -682,6 +684,7 @@ class PipelineRecoveryDispatcher
 
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('orchestration_driver')
             ->whereNull('batch_command_id')
             ->where('status', PipelineRun::STATUS_RUNNING)
             ->whereRaw('COALESCE(progress_updated_at, started_at, updated_at) <= ?', [$this->staleRunningCutoff()])
@@ -1540,6 +1543,7 @@ class PipelineRecoveryDispatcher
         $released = 0;
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('orchestration_driver')
             ->where('status', PipelineRun::STATUS_BLOCKED)
             ->where('error_type', DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY)
             ->where(function ($query): void {
@@ -1564,6 +1568,7 @@ class PipelineRecoveryDispatcher
         return DB::transaction(function () use ($selected): bool {
             $run = PipelineRun::query()->lockForUpdate()->find($selected->id);
             if ($run === null
+                || $run->orchestration_driver !== null
                 || $run->status !== PipelineRun::STATUS_BLOCKED
                 || $run->error_type !== DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY) {
                 return false;

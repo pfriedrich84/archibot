@@ -21,6 +21,7 @@ class StagedDocumentBatchDispatcher
         $dispatched = 0;
         PipelineRun::query()
             ->where('type', 'document')
+            ->whereNull('orchestration_driver')
             ->where(function ($query): void {
                 $query->where('progress_current_phase', 'staged_batch_wait')
                     ->orWhere(function ($query): void {
@@ -65,6 +66,7 @@ class StagedDocumentBatchDispatcher
             $targetRuns = PipelineRun::query()
                 ->where('command_id', $sourceCommandId)
                 ->where('type', 'document')
+                ->whereNull('orchestration_driver')
                 ->whereNull('batch_command_id')
                 ->where(function ($query): void {
                     $query->where(function ($query): void {

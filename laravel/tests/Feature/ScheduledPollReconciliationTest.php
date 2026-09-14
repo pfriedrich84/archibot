@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\Command;
 use App\Models\PipelineEvent;
-use App\Services\Actors\PythonActorRunner;
+use App\Models\TemporalOutboxIntent;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,8 +30,12 @@ class ScheduledPollReconciliationTest extends TestCase
         $this->assertNull($command->created_by_user_id);
         $this->assertSame('scheduler', $command->payload['source']);
         $this->assertSame(600, $command->payload['interval_seconds']);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_POLL_RECONCILIATION
-            && $job->commandId === $command->id);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => "archibot/poll-reconciliation/{$command->id}",
+            'workflow_type' => 'archibot.poll_reconciliation',
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,
             'event_type' => 'scheduler.poll_reconciliation_actor_queued',
@@ -89,7 +92,8 @@ class ScheduledPollReconciliationTest extends TestCase
 
         $this->travel(6)->minutes();
         $this->artisan('archibot:scheduled-poll')->assertSuccessful();
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
         $this->assertDatabaseCount('commands', 2);
     }
 

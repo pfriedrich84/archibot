@@ -8,11 +8,12 @@ use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
+use App\Models\TemporalOutboxIntent;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineRecoveryDispatcher;
-use Illuminate\Contracts\Queue\Queue as QueueContract;
+use App\Services\Temporal\TemporalOutbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -159,11 +160,14 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(WebhookDelivery::STATUS_PROCESSED, $delivery->fresh()->status);
         $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
         $this->assertSame($delivery->id, $run->webhook_delivery_id);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === PythonActorRunner::ACTOR_HANDLE_DOCUMENT_PIPELINE
-            && $job->commandId === $run->id);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => $run->temporal_workflow_id,
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
     }
 
-    public function test_recovery_enqueue_failure_keeps_committed_pending_run(): void
+    public function test_recovery_outbox_failure_keeps_delivery_retryable_without_partial_run(): void
     {
         EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
         $delivery = $this->webhookDelivery([
@@ -176,26 +180,13 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
         $delivery->timestamps = false;
         $delivery->forceFill(['updated_at' => now()->subMinutes(6)])->save();
-        $queue = $this->mock(QueueContract::class);
-        Queue::shouldReceive('connection')->once()->andReturn($queue);
-        $queue->shouldReceive('push')->once()->andReturnUsing(function (): never {
-            $this->assertDatabaseHas('pipeline_runs', [
-                'status' => PipelineRun::STATUS_PENDING,
-            ]);
-            throw new \RuntimeException('queue unavailable during recovery');
-        });
+        $outbox = $this->mock(TemporalOutbox::class);
+        $outbox->shouldReceive('startWorkflow')->once()->andThrow(new \RuntimeException('outbox unavailable during recovery'));
 
         $result = app(PipelineRecoveryDispatcher::class)->runRecoveryScan(limit: 10);
 
         $this->assertSame(0, $result['webhook_deliveries_redispatched']);
-        $this->assertDatabaseHas('pipeline_runs', [
-            'webhook_delivery_id' => $delivery->id,
-            'status' => PipelineRun::STATUS_PENDING,
-        ]);
-        $this->assertDatabaseHas('pipeline_events', [
-            'webhook_delivery_id' => $delivery->id,
-            'event_type' => 'pipeline.document_actor_enqueue_failed',
-        ]);
+        $this->assertDatabaseCount('pipeline_runs', 0);
         $this->assertDatabaseHas('pipeline_events', [
             'webhook_delivery_id' => $delivery->id,
             'event_type' => 'recovery.process_webhook_reconciliation_failed',
@@ -347,6 +338,29 @@ class PipelineRecoveryDispatcherTest extends TestCase
             'event_type' => 'recovery.document_actor_redispatched',
             'paperless_document_id' => 51,
         ]);
+    }
+
+    public function test_laravel_recovery_never_redispatches_temporal_document_runs(): void
+    {
+        Queue::fake();
+        $this->markEmbeddingIndexComplete();
+
+        $temporal = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'paperless_document_id' => 62,
+            'orchestration_driver' => 'temporal',
+            'temporal_workflow_id' => 'archibot/document/62/version',
+            'error_type' => DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+            'progress_updated_at' => now()->subHour(),
+            'updated_at' => now()->subHour(),
+        ]);
+
+        $count = app(PipelineRecoveryDispatcher::class)->recoverDocumentPipelineRuns(limit: 10);
+
+        $this->assertSame(0, $count);
+        Queue::assertNothingPushed();
+        $this->assertSame(PipelineRun::STATUS_BLOCKED, $temporal->fresh()->status);
+        $this->assertDatabaseCount('pipeline_events', 0);
     }
 
     public function test_recovery_scan_redispatches_stale_queued_document_runs_without_active_actor(): void

@@ -25,7 +25,9 @@ class MaintenanceCommandTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame('poll_reconciliation', $command->type);
         $this->assertSame('queued', $command->status);
-        $this->assertSame(['limit' => 25], $command->payload);
+        $this->assertSame(25, $command->payload['limit']);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
+        $this->assertSame("archibot/poll-reconciliation/{$command->id}", $command->payload['temporal_workflow_id']);
         $this->assertSame('maintenance', $command->queue);
         $this->assertSame(40, $command->priority);
         $this->assertSame($admin->id, $command->created_by_user_id);

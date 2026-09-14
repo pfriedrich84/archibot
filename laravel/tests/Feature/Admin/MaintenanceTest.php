@@ -137,9 +137,9 @@ class MaintenanceTest extends TestCase
         $ocrCommand = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
         $this->assertTrue($ocrCommand->payload['force']);
 
-        Queue::assertPushed(RunPythonActorJob::class, 2);
-        $this->assertSame(2, TemporalOutboxIntent::query()->count());
-        $this->assertSame(2, Command::query()
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+        $this->assertSame(3, TemporalOutboxIntent::query()->count());
+        $this->assertSame(3, Command::query()
             ->where('payload->orchestration_driver', TemporalWorkflowDispatcher::DRIVER)
             ->count());
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
@@ -175,8 +175,8 @@ class MaintenanceTest extends TestCase
         }
 
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
-        Queue::assertPushed(RunPythonActorJob::class, 3);
-        $this->assertSame(2, TemporalOutboxIntent::query()->count());
+        Queue::assertPushed(RunPythonActorJob::class, 1);
+        $this->assertSame(4, TemporalOutboxIntent::query()->count());
     }
 
     public function test_cli_maintenance_command_starts_manual_document_pipeline(): void

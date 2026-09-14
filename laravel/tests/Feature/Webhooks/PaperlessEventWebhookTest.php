@@ -112,7 +112,11 @@ class PaperlessEventWebhookTest extends TestCase
             'event_type' => 'webhook.process_delivery_handled',
             'paperless_document_id' => 42,
         ]);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $run->id);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => $run->temporal_workflow_id,
+            'workflow_type' => 'archibot.document',
+        ]);
     }
 
     public function test_event_webhook_endpoint_persists_delivery_and_starts_pipeline_run(): void

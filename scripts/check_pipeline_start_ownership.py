@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 START_OWNER = "laravel/app/Services/Pipeline/DocumentPipelineStarter.php"
+TEMPORAL_DOCUMENT_START_OWNER = "app/temporal/document_activities.py"
+PIPELINE_RUN_CREATION_OWNERS = {START_OWNER, TEMPORAL_DOCUMENT_START_OWNER}
 PYTHON_ACTOR_OWNER = "app/actor_runner.py"
 PYTHON_LAUNCH_OWNER = "laravel/app/Services/Actors/PythonActorRunner.php"
 PYTHON_EMBEDDING_TRANSITION_OWNER = "app/actors/embedding.py"
@@ -237,8 +239,9 @@ PIPELINE_RUN_MUTATION_OWNERS = {
     "laravel/app/Jobs/RunPythonActorJob.php",
     "laravel/app/Services/Actors/PythonActorRunner.php",
     "laravel/app/Services/Pipeline/PipelineRecoveryDispatcher.php",
+    "laravel/app/Services/Temporal/TemporalWorkflowDispatcher.php",
 }
-PIPELINE_RUN_LIFECYCLE_OWNERS = PIPELINE_RUN_MUTATION_OWNERS - {START_OWNER}
+PIPELINE_RUN_LIFECYCLE_OWNERS = PIPELINE_RUN_MUTATION_OWNERS - PIPELINE_RUN_CREATION_OWNERS
 # The only variable functions permitted in a lifecycle owner are the two
 # explicitly typed, private runProcess completion hooks. They are supplied only
 # by literal closures at internal call sites; strings and generic callables are
@@ -471,9 +474,23 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
         "whereraw",
         "withinconservativelivenesswindow",
     },
+    "laravel/app/Services/Temporal/TemporalWorkflowDispatcher.php": {
+        "findorfail",
+        "fresh",
+        "intentkey",
+        "lockforupdate",
+        "query",
+        "startworkflow",
+        "tostring",
+        "transaction",
+        "update",
+        "uuid5",
+        "wherekey",
+    },
 }
 PIPELINE_RUN_TABLE_MUTATION_OWNERS = {
     START_OWNER,
+    TEMPORAL_DOCUMENT_START_OWNER,
     "laravel/app/Services/ArchibotResetService.php",
 }
 
@@ -781,7 +798,9 @@ def scan_python(relative: str, text: str) -> list[Violation]:
 
         fragment = _string_fragment(node)
         normalized = re.sub(r"[\s`\"']+", " ", fragment).lower()
-        if re.search(r"\binsert\s+into\s+(?:public\s*\.\s*)?pipeline_runs\b", normalized):
+        if relative not in PIPELINE_RUN_CREATION_OWNERS and re.search(
+            r"\binsert\s+into\s+(?:public\s*\.\s*)?pipeline_runs\b", normalized
+        ):
             violations.append(
                 Violation(relative, getattr(node, "lineno", 0), "pipeline_runs INSERT")
             )
@@ -849,7 +868,7 @@ def scan_python(relative: str, text: str) -> list[Violation]:
 def scan_text(relative: str, text: str) -> list[Violation]:
     normalized = re.sub(r"[\s`\"']+", " ", text).lower()
     violations: list[Violation] = []
-    if relative != START_OWNER and re.search(
+    if relative not in PIPELINE_RUN_CREATION_OWNERS and re.search(
         r"\binsert\s+into\s+(?:public\s*\.\s*)?pipeline_runs\b", normalized
     ):
         violations.append(Violation(relative, 1, "pipeline_runs INSERT outside owner"))
@@ -1166,7 +1185,7 @@ def scan_php(relative: str, text: str) -> list[Violation]:
                     )
                 )
 
-    if relative != START_OWNER:
+    if relative not in PIPELINE_RUN_CREATION_OWNERS:
         forbidden_mutators = (
             CREATION_MUTATORS if relative in PIPELINE_RUN_MUTATION_OWNERS else MUTATORS
         )
@@ -1420,7 +1439,7 @@ def scan_php(relative: str, text: str) -> list[Violation]:
                     tainted.add(destination)
                     changed = True
 
-    if relative != START_OWNER:
+    if relative not in PIPELINE_RUN_CREATION_OWNERS:
         static_allowed = (
             PIPELINE_RUN_STATIC_QUERY_ROOTS
             | PIPELINE_RUN_MODEL_RETRIEVALS
@@ -1523,7 +1542,7 @@ def scan_php(relative: str, text: str) -> list[Violation]:
     # newInstance(), newModelInstance(), newFromBuilder(), replicate(), and any
     # future factory cannot acquire mutation provenance merely because it is
     # absent from a denylist. Instance save/push remains forbidden in all cases.
-    if relative in PIPELINE_RUN_MUTATION_OWNERS - {START_OWNER}:
+    if relative in PIPELINE_RUN_MUTATION_OWNERS - PIPELINE_RUN_CREATION_OWNERS:
         # Lifecycle files have no instance-persistence exception. Existing
         # PipelineRuns must use update()/updateQuietly() or a query update, so a
         # save/push cannot become a hidden create after provenance laundering.
@@ -1818,7 +1837,7 @@ def scan_php(relative: str, text: str) -> list[Violation]:
     # Relationship create/save operations create or attach Pipeline Runs and
     # therefore belong exclusively to the sole Start owner, even inside files
     # allowed to mutate the lifecycle of an already-owned run.
-    if relative != START_OWNER:
+    if relative not in PIPELINE_RUN_CREATION_OWNERS:
         for match in re.finditer(
             rf"(?:->|::)\s*(?:{relationship_pattern})\s*\(\s*\)"
             rf"(?:\s*->\s*[A-Za-z_]\w*\s*\([^;]*?\))*"
@@ -1957,7 +1976,7 @@ def scan_php(relative: str, text: str) -> list[Violation]:
             )
 
     normalized = re.sub(r"[\s`\"']+", " ", code).lower()
-    if relative != START_OWNER and re.search(
+    if relative not in PIPELINE_RUN_CREATION_OWNERS and re.search(
         r"\binsert\s+into\s+(?:public\s*\.\s*)?pipeline_runs\b", normalized
     ):
         violations.append(Violation(relative, 1, "raw/formatted pipeline_runs INSERT"))

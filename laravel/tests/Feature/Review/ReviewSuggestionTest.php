@@ -8,6 +8,7 @@ use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineRun;
 use App\Models\ReviewSuggestion;
+use App\Models\TemporalOutboxIntent;
 use App\Models\User;
 use App\Services\Paperless\PaperlessDocumentPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -421,7 +422,11 @@ class ReviewSuggestionTest extends TestCase
             'pipeline_run_id' => $run->id,
             'event_type' => 'pipeline.document_actor_queued',
         ]);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->commandId === $run->id);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => $run->temporal_workflow_id,
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'pipeline_run.manual_reprocess_queued',
             'target_type' => 'pipeline_run',
@@ -470,7 +475,8 @@ class ReviewSuggestionTest extends TestCase
 
         $this->assertDatabaseCount('pipeline_runs', 2);
         $this->assertCount(2, PipelineRun::query()->where('paperless_document_id', 456)->pluck('pipeline_dedupe_key')->unique());
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('temporal_outbox_intents', 2);
     }
 
     public function test_non_admin_cannot_queue_manual_reprocess(): void

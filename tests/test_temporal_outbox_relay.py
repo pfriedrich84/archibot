@@ -124,3 +124,31 @@ def test_transient_outbox_failure_does_not_terminalize_command(monkeypatch):
 
     assert len(calls) == 1
     assert calls[0][1]["status"] == "pending"
+
+
+def test_exhausted_document_start_terminalizes_its_pipeline_run(monkeypatch):
+    calls = []
+    connection = Mock()
+    connection.execute.side_effect = lambda statement, params=None: (
+        calls.append((statement, params or {})) or SimpleNamespace(rowcount=1)
+    )
+    database = Mock()
+    database.begin.return_value = nullcontext(connection)
+    monkeypatch.setattr(outbox, "engine", lambda: database)
+    monkeypatch.setattr(outbox, "sql_text", lambda statement: statement)
+    value = intent(
+        workflow_id="archibot/document/261/version",
+        workflow_type="archibot.document",
+        payload={"pipeline_run_id": 12},
+        attempts=20,
+    )
+
+    outbox.mark_failed(value, "connection refused", max_attempts=20)
+
+    assert len(calls) == 2
+    assert "UPDATE pipeline_runs" in calls[1][0]
+    assert "orchestration_driver = 'temporal'" in calls[1][0]
+    assert calls[1][1] == {
+        "pipeline_run_id": 12,
+        "workflow_id": "archibot/document/261/version",
+    }

@@ -2,20 +2,33 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import ActivityError, WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from app.temporal.contracts import (
+        DocumentWorkflowRequest,
+        DocumentWorkflowResult,
         EmbeddingPreparationFailure,
         EmbeddingProgress,
         EmbeddingWorkflowRequest,
         EmbeddingWorkflowResult,
         EmbedDocumentRequest,
+        PollWorkflowRequest,
+        PollWorkflowResult,
+    )
+    from app.temporal.document_activities import (
+        check_document_readiness,
+        discover_inbox_documents,
+        fail_document_processing,
+        fail_poll_discovery,
+        finish_poll_discovery,
+        process_document_for_review,
     )
     from app.temporal.embedding_activities import (
         embed_document,
@@ -26,7 +39,9 @@ with workflow.unsafe.imports_passed_through():
     )
 
 from app.temporal.names import (
+    DOCUMENT_WORKFLOW,
     EMBEDDING_INDEX_WORKFLOW,
+    POLL_RECONCILIATION_WORKFLOW,
     RUNTIME_PROBE_WORKFLOW,
     WORKFLOW_PROTOCOL_VERSION,
 )
@@ -133,6 +148,110 @@ class EmbeddingIndexWorkflow:
                 done=embedded + failed,
                 embedded=embedded,
                 failed=failed,
+            ),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=RetryPolicy(maximum_attempts=0),
+        )
+
+
+@workflow.defn(name=DOCUMENT_WORKFLOW)
+class DocumentWorkflow:
+    """Own one Paperless document content version through its review decision."""
+
+    def __init__(self) -> None:
+        self._review_decision: dict[str, object] | None = None
+
+    @workflow.signal(name="review_decision")
+    def review_decision(self, decision: dict[str, object]) -> None:
+        self._review_decision = decision
+
+    @workflow.run
+    async def run(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult:
+        while True:
+            readiness = await workflow.execute_activity(
+                check_document_readiness,
+                request.pipeline_run_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=0),
+            )
+            if readiness.status == "complete":
+                suggestion_id = readiness.review_suggestion_id
+                break
+            if readiness.status == "cancelled":
+                return DocumentWorkflowResult(request.pipeline_run_id, None, "cancelled")
+            if readiness.status == "ready":
+                try:
+                    result = await workflow.execute_activity(
+                        process_document_for_review,
+                        request.pipeline_run_id,
+                        schedule_to_close_timeout=timedelta(hours=24),
+                        start_to_close_timeout=timedelta(hours=2),
+                        heartbeat_timeout=timedelta(minutes=2),
+                        retry_policy=RetryPolicy(maximum_attempts=5),
+                    )
+                except ActivityError:
+                    await workflow.execute_activity(
+                        fail_document_processing,
+                        request.pipeline_run_id,
+                        start_to_close_timeout=timedelta(minutes=1),
+                        retry_policy=RetryPolicy(maximum_attempts=0),
+                    )
+                    raise
+                suggestion_id = result.review_suggestion_id
+                break
+            await workflow.sleep(timedelta(seconds=30))
+
+        await workflow.wait_condition(lambda: self._review_decision is not None)
+        return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, "review_decided")
+
+
+@workflow.defn(name=POLL_RECONCILIATION_WORKFLOW)
+class PollReconciliationWorkflow:
+    """Discover inbox identities and detach their independent document workflows."""
+
+    @workflow.run
+    async def run(self, request: PollWorkflowRequest) -> PollWorkflowResult:
+        try:
+            discovery = await workflow.execute_activity(
+                discover_inbox_documents,
+                request,
+                schedule_to_close_timeout=timedelta(hours=6),
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=timedelta(minutes=2),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=5,
+                    non_retryable_error_types=["ValueError"],
+                ),
+            )
+        except ActivityError:
+            await workflow.execute_activity(
+                fail_poll_discovery,
+                request.command_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=0),
+            )
+            raise
+
+        started = 0
+        for child in discovery.workflow_starts:
+            with suppress(WorkflowAlreadyStartedError):
+                await workflow.start_child_workflow(
+                    DocumentWorkflow.run,
+                    DocumentWorkflowRequest(child.pipeline_run_id),
+                    id=child.workflow_id,
+                    parent_close_policy=workflow.ParentClosePolicy.ABANDON,
+                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                )
+            started += 1
+
+        return await workflow.execute_activity(
+            finish_poll_discovery,
+            PollWorkflowResult(
+                command_id=request.command_id,
+                documents_seen=discovery.documents_seen,
+                documents_started=started,
+                documents_skipped=discovery.documents_skipped,
+                status=discovery.status,
             ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(maximum_attempts=0),

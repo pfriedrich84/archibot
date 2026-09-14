@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document records the current event-driven ArchiBot job-control model and the rules that prevent drift back to retired worker-job and queue paths.
+This document records the current ArchiBot job-control model during the bounded migration to Temporal and the rules that prevent drift back to retired worker-job and queue paths.
 
-`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. The active event-driven slice uses durable Laravel `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs, Laravel database queues, and fixed Python actor commands.
+`worker_jobs` was a hardened temporary stabilization layer. Per [ADR-0016](../decisions/0016-clean-install-worker-jobs-retirement.md), it has been retired for clean installs rather than preserved as backend/data compatibility. Per [ADR-0022](../decisions/0022-use-temporal-for-durable-workflow-orchestration.md), Temporal now owns embedding generation, poll discovery and per-document review production. Laravel database queues remain only for flows whose explicit cutover phase has not yet landed.
 
 Productive SQLite processing and the former Python queue transport, decorators, workers, schema installer and dependencies are removed. ADR-0017 makes the Laravel/PostgreSQL model below the sole runtime path. Existing historical queue schema objects may remain inert on upgraded volumes solely for retention and rollback; they are never created on a clean install or used by current code.
 
@@ -12,12 +12,13 @@ Productive SQLite processing and the former Python queue transport, decorators, 
 
 ```text
 Maintenance UI / Dashboard / CLI / Paperless Webhook / Poll Scheduler
--> durable commands and/or pipeline_runs
--> pipeline_events / pipeline_items / actor_executions
--> Laravel database queue
--> fixed allowlisted Python actor command
+-> Laravel command/pipeline projection + transactional Temporal outbox
+-> stable Temporal workflow ID
+-> idempotent Python activities
 -> PostgreSQL / pgvector
 ```
+
+Temporal is authoritative for workflow execution, retries, timers, heartbeats and recovery. PostgreSQL remains authoritative for business data, authorization decisions, audit records and UI projections. A poll command owns discovery only: each discovered document version receives an independent workflow and cannot be retained by the poll lifecycle.
 
 Current operator surfaces:
 
@@ -33,15 +34,15 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 
 | Action | Durable owner | Transport/execution | Visibility |
 |---|---|---|---|
-| Poll reconciliation | `Command(type=poll_reconciliation)` | `RunPythonActorJob::pollReconciliation` -> `python -m app.actor_runner reconcile-poll --command-id ...` | Operations Log, command events |
+| Poll reconciliation | `Command(type=poll_reconciliation)` plus transactional Temporal outbox intent | `PollReconciliationWorkflow` discovers global observations and starts detached document workflows | Operations Log, command events |
 | Full reindex | `Command(type=reindex)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with idempotent per-document activities | Operations Log, embedding state/events |
 | OCR reindex | `Command(type=reindex_ocr)` with `force` in payload | `RunPythonActorJob::reindexOcr` -> fixed actor runner | Operations Log, actor execution/events |
 | Embedding build | `Command(type=embedding_index_build)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with Temporal retry and heartbeat | Operations Log, embedding pages/state |
-| Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` | `RunPythonActorJob::documentPipeline` -> fixed actor runner | Pipeline Runs, Operations Log |
-| Paperless document webhook | `WebhookDelivery` + `PipelineRun(type=document)` | same document actor transport | Webhook Deliveries, Pipeline Runs, Operations Log |
+| Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` plus transactional Temporal outbox intent | one stable `DocumentWorkflow` per requested version | Pipeline Runs, Operations Log |
+| Paperless process-document webhook | `WebhookDelivery` + `PipelineRun(type=document)` plus transactional Temporal outbox intent | same stable document workflow path | Webhook Deliveries, Pipeline Runs, Operations Log |
 | Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
 | Entity approval application | `Command(type=sync_entity_approval)` | queued Laravel `ApplyEntityApprovalCommand`; PostgreSQL decision/recovery service, no Python/SQLite actor | Entity approval status, Operations Log, audit logs |
-| Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check creates one durable poll command and dispatches its Laravel actor job | Operations Log, command events |
+| Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check atomically creates one command and Temporal start intent | Operations Log, command events |
 | Durable recovery scan | `php artisan archibot:recovery-scan` | recovers remaining legacy actor attempts, cancellations, and safe pending/stale commands/runs/webhooks; Temporal-owned commands are excluded | Pipeline/command/webhook/actor events |
 | Reset | `php artisan archibot:reset` or confirmed admin Maintenance action | Shared Laravel/PostgreSQL reset service | CLI/UI outcome and durable audit identity |
 
@@ -89,8 +90,8 @@ State meanings:
 |---|---|
 | `pending` | Request accepted and persisted; execution has not been enqueued yet. |
 | `blocked` | Durable precondition is not satisfied, such as the embedding index readiness gate. |
-| `queued` | Actor work has been enqueued or is ready to be enqueued. |
-| `running` | At least one actor execution is actively processing the run. |
+| `queued` | A Temporal start intent exists or remaining legacy actor work has been enqueued. |
+| `running` | A Temporal activity or remaining legacy actor execution is processing the run. |
 | `retrying` | Failed work is being prepared for a new attempt. |
 | `cancel_requested` | Admin cancellation has been requested and actors should stop cooperatively. |
 | `cancelled` | Cancellation completed and no more work should run. |
@@ -115,19 +116,25 @@ contract.
 
 ## Ownership rules
 
-### Laravel owns UI, control, audit and readiness
+### Laravel owns UI, authorization, intent and audit
 
 Laravel is the operations console. It owns:
 
 - admin authorization for job-control actions;
 - Maintenance action launchers;
-- command and pipeline-run creation;
+- command and user/webhook pipeline-run creation with an outbox intent in the same transaction;
 - audit logging;
 - readiness/health reporting;
-- retry, cancellation and durable recovery controls;
+- authorized review decisions and cancellation intents;
 - user-visible status, progress and logs read from PostgreSQL.
 
-### Python owns document processing and domain execution lifecycle
+Poll discovery is the one additional reviewed creation seam: `app/temporal/document_activities.py` atomically records a global document observation and creates or safely adopts a pending legacy document run. The ownership guard permits this exact file and rejects every other unreviewed `pipeline_runs` insert.
+
+### Temporal owns workflow execution
+
+Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A document workflow waits for embedding readiness without occupying a worker, produces one idempotent review, and then waits for the authorized review signal. Laravel stale-actor recovery explicitly excludes Temporal-owned commands and runs.
+
+### Python owns document processing activities
 
 Python owns:
 
@@ -135,15 +142,15 @@ Python owns:
 - OCR correction and embedding/classification logic;
 - review suggestion generation;
 - LLM/provider integration through the processing layer;
-- the single `app.execution_lifecycle` facade for durable actor attempts, idempotent resume, item-derived progress, bounded domain retry/backoff, terminal transitions and sanitized outcome metadata.
+- idempotent Temporal activities and, during the bounded migration, remaining fixed actor commands.
 
 Every fixed actor emits one final version-1 JSON record with protocol name `archibot.actor-outcome`. Its status is one of `succeeded`, `skipped`, `blocked`, `cancelled`, `retrying`, `failed-permanent` or `protocol-failure`, and its source contains only a durable `command`, `pipeline_run` or `webhook_delivery` id. Laravel validates that record and its source independently from process exit. A missing, malformed, mismatched-version or wrong-source record is a transport/protocol failure; it cannot rewrite Python-selected pending, blocked, retrying or terminal domain state.
 
 Laravel reaches Python through fixed, allowlisted actor commands. Operator-facing CLI commands that overlap GUI actions must not call the direct processing functions as an alternate backend; they must delegate to Laravel Maintenance.
 
-### PostgreSQL is the source of truth
+### PostgreSQL stores business state and projections
 
-PostgreSQL stores durable command, pipeline, event, item, actor, webhook and audit state. Laravel queues are transport only. Recovery selects due retries and stale sources only when no active source-linked actor execution exists, then redispatches using the durable id. It does not reconstruct domain state from queue payloads or process output.
+PostgreSQL stores commands, pipeline projections, global document observations, reviews, events, embeddings, webhook and audit state. Temporal stores workflow history and is authoritative for migrated execution state. Laravel recovery may recover only legacy-owned rows and never infers that a Temporal workflow is stale from projection timestamps.
 
 ## Retired temporary model
 
@@ -165,16 +172,17 @@ This model, including route helpers, models, migrations, queue job, dispatcher, 
 - Do not add `/worker-jobs`, `/legacy-worker-jobs`, or legacy detail routes under `/operations-log`.
 - Do not add GUI buttons that target retired worker-job routes, controllers or command names.
 - Do not add top-level CLI escape hatches for GUI-overlapping actions; use Laravel Maintenance.
-- New durable pipeline functionality should target `commands`, `pipeline_runs`, `pipeline_events`, `pipeline_items`, `actor_executions`, webhook deliveries, audit logs and fixed Python actors.
+- New durable pipeline functionality should use stable Temporal workflows and idempotent activities, with PostgreSQL projections and transactional Laravel outbox intents.
 - Keep Laravel as the UI/control/audit/readiness owner.
 - Keep Python as the document-processing owner.
-- Keep PostgreSQL as the source of truth for progress, retries and recovery.
-- Keep Laravel queues as execution transport, not the only state store.
+- Keep PostgreSQL as the source of truth for business state, progress projections and audit.
+- Keep Temporal as the only workflow retry, timer, heartbeat and recovery owner for migrated flows.
 
 ## References
 
 - [ADR-0016: Clean-install Retirement of Worker Jobs](../decisions/0016-clean-install-worker-jobs-retirement.md)
 - [ADR-0012: Worker Jobs as Temporary Laravel Control Plane](../decisions/0012-worker-jobs-as-temporary-control-plane.md)
+- [ADR-0022: Use Temporal for Durable Workflow Orchestration](../decisions/0022-use-temporal-for-durable-workflow-orchestration.md)
 - [Event-driven implementation plan](../implementation-plan-event-driven-archibot.md)
 - [Authorization for Job Control](authorization-job-control.md)
 - [Durable Progress Tracking](progress-tracking.md)

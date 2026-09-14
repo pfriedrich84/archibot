@@ -3,6 +3,7 @@
     "app/actors/document.py": "af4d1a29b0b31aa4e760e7ba1403b15daa6d674da5b233798f223147e7486627",
     "app/actors/document_batch.py": "66ead6e0b4b390cd700a745ad11063228e6499fce58ae9c735551a4ce99e76f9",
     "app/jobs/review_suggestions.py": "30ac6a6a2f88460c93e285ae84c560e983148235bae8d8c70b83fcbe0222e5ba",
+    "app/temporal/document_activities.py": "04591fa85ec1b78fd9aa9a1d133892048ec6bb06b44d152a1fe8a119a5c999a4",
     "laravel/app/Console/Commands/CommitReviewSuggestion.php": "8f8afb518f92b0165e000138b70395bc16d5cf0ddf0d97254b95cd0384bdcae8",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
     "laravel/app/Http/Controllers/ClassifyWithArchiBotController.php": "9cfb5a20ee2d5e3d8d073384974aefc745b5963d9b7024315d77aa2fb3baf14d",
@@ -16,8 +17,8 @@
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "4fe250771dd3c8aceb94453ac400ef63e2155125f510d9f3dbf4927591472343",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
-    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "4736ced70845eb8be950f858631958bdb170182eb6915d75f0a6dab7cb584bf8",
-    "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "839ce88db7f1d8d6bb771835d1fbfdde8b54041a9ace94e69f16faeb792efffa",
+    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "525d3fe578153b3e270f46cc574616b7a933af79804f40e178d0166ee85f10c0",
+    "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "7c86ef13eb46d3e161cdf7193426dcb1daef52d84df1d66e414d841666e08cf7",
     "scripts/check_containment_boundaries.py": "778aecd55d20ed9a9f288f4fedca21eb8ff576d66e3a490eccccd6907033bad6"
   },
   "cli_registration_files": {

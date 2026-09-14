@@ -148,3 +148,27 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
                 ),
                 {"command_id": command_id, "workflow_id": intent.workflow_id},
             )
+        pipeline_run_id = intent.payload.get("pipeline_run_id")
+        if (
+            exhausted
+            and updated.rowcount == 1
+            and intent.operation == "start_workflow"
+            and isinstance(pipeline_run_id, int)
+            and not isinstance(pipeline_run_id, bool)
+        ):
+            connection.execute(
+                sql_text(
+                    """
+                    UPDATE pipeline_runs
+                    SET status = 'failed_permanent', finished_at = CURRENT_TIMESTAMP,
+                        error_type = 'temporal_start_delivery_exhausted',
+                        error = 'Temporal workflow start delivery exhausted its retries.',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :pipeline_run_id
+                      AND status IN ('pending', 'queued', 'blocked')
+                      AND orchestration_driver = 'temporal'
+                      AND temporal_workflow_id = :workflow_id
+                    """
+                ),
+                {"pipeline_run_id": pipeline_run_id, "workflow_id": intent.workflow_id},
+            )

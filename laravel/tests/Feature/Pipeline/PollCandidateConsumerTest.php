@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Pipeline;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PollCandidate;
+use App\Models\TemporalOutboxIntent;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PollCandidateConsumer;
 use Illuminate\Database\QueryException;
@@ -36,7 +36,11 @@ class PollCandidateConsumerTest extends TestCase
         $this->assertSame('coalesced', $candidate->fresh()->starter_outcome);
         $this->assertSame($webhook->pipelineRun->id, $candidate->fresh()->pipeline_run_id);
         $this->assertDatabaseCount('pipeline_runs', 1);
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => $webhook->pipelineRun->temporal_workflow_id,
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
     }
 
     public function test_marker_skip_and_forced_poll_have_distinct_semantics(): void

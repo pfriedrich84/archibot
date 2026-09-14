@@ -2,12 +2,11 @@
 
 namespace App\Services\Pipeline;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Throwable;
 
 class DocumentPipelineStarter
 {
@@ -16,6 +15,7 @@ class DocumentPipelineStarter
     public function __construct(
         private readonly PipelineContentStateNormalizer $normalizer,
         private readonly PipelineStartGate $gate,
+        private readonly TemporalWorkflowDispatcher $temporal,
     ) {}
 
     public function start(
@@ -88,40 +88,12 @@ class DocumentPipelineStarter
 
                 if (! $created) {
                     $run = $this->coalesceExistingRun($run, $triggerSource, $reprocessRequested, $reprocessReason, $reprocessMode, $requestedByUserId, $webhookDeliveryId, $commandId);
+                } else {
+                    $run = $this->temporal->startDocumentProcessing($run);
                 }
 
                 return ['run' => $run, 'created' => $created, 'gate_open' => $gateOpen];
             });
-
-            if ($committed['created'] && $committed['gate_open'] && ! $deferDispatch) {
-                $run = $committed['run'];
-                try {
-                    // Run creation is committed before this fallible operation,
-                    // while the shared fence still orders dispatch against an
-                    // exclusive stale/build transition.
-                    dispatch(RunPythonActorJob::documentPipeline($run->id));
-                } catch (Throwable $exception) {
-                    $this->recordActorEnqueueFailedEvent($run, $exception);
-                    throw $exception;
-                }
-
-                // A fast worker may already have moved pending -> running (or a
-                // terminal state). Never overwrite that child-owned transition.
-                PipelineRun::query()
-                    ->whereKey($run->id)
-                    ->where('status', PipelineRun::STATUS_PENDING)
-                    ->update([
-                        'status' => PipelineRun::STATUS_QUEUED,
-                        'progress_current_phase' => 'document_actor',
-                        'progress_message' => 'Document actor queued through Laravel actor transport.',
-                        'progress_updated_at' => now(),
-                        'error_type' => null,
-                        'error' => null,
-                        'updated_at' => now(),
-                    ]);
-                $committed['run'] = $run->refresh();
-                $this->recordActorQueuedEvent($committed['run']);
-            }
 
             return $committed;
         });
@@ -133,6 +105,9 @@ class DocumentPipelineStarter
         $outcome = $this->outcome($created, $forceNewRun, $gateOpen);
         $blockedReason = $gateOpen ? null : self::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY;
         $run = $run->refresh();
+        if ($created) {
+            $this->recordTemporalQueuedEvent($run);
+        }
         $this->recordStartEvent($run, $outcome, $triggerSource, $dedupeKey, $paperlessModified, $contentHash, $forceNewRun, $blockedReason, $deferDispatch);
 
         return new PipelineStartResult($run->refresh(), $outcome, $dedupeKey, $blockedReason, $created);
@@ -255,21 +230,7 @@ class DocumentPipelineStarter
         return 'created';
     }
 
-    private function recordActorEnqueueFailedEvent(PipelineRun $run, Throwable $exception): void
-    {
-        PipelineEvent::query()->create([
-            'pipeline_run_id' => $run->id,
-            'webhook_delivery_id' => $run->webhook_delivery_id,
-            'command_id' => $run->command_id,
-            'event_type' => 'pipeline.document_actor_enqueue_failed',
-            'paperless_document_id' => $run->paperless_document_id,
-            'level' => 'warning',
-            'message' => 'Document actor enqueue failed; the pending run remains recoverable.',
-            'payload' => ['error_type' => $exception::class],
-        ]);
-    }
-
-    private function recordActorQueuedEvent(PipelineRun $run): void
+    private function recordTemporalQueuedEvent(PipelineRun $run): void
     {
         PipelineEvent::query()->create([
             'pipeline_run_id' => $run->id,
@@ -278,10 +239,10 @@ class DocumentPipelineStarter
             'event_type' => 'pipeline.document_actor_queued',
             'paperless_document_id' => $run->paperless_document_id,
             'level' => 'info',
-            'message' => 'Document actor queued through Laravel actor transport.',
+            'message' => 'Document workflow queued through the Temporal outbox.',
             'payload' => [
-                'actor_name' => 'handle_document_pipeline',
-                'transport' => 'laravel_database_queue',
+                'workflow_id' => $run->temporal_workflow_id,
+                'transport' => 'temporal_outbox',
             ],
         ]);
     }

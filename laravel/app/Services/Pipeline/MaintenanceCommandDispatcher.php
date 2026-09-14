@@ -11,7 +11,6 @@ use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 class MaintenanceCommandDispatcher
 {
@@ -30,33 +29,34 @@ class MaintenanceCommandDispatcher
 
     private function queuePollReconciliationUnlocked(Request $request, ?int $limit, array $metadata): DispatchCommand
     {
-        $limit = $this->normalizedLimit($limit);
-        $payload = array_filter([
-            'limit' => $limit,
-            ...$metadata,
-        ], fn ($value): bool => $value !== null);
+        return DB::transaction(function () use ($request, $limit, $metadata): DispatchCommand {
+            $limit = $this->normalizedLimit($limit);
+            $payload = array_filter([
+                'limit' => $limit,
+                ...$metadata,
+            ], fn ($value): bool => $value !== null);
 
-        $command = $this->createCommand($request, DispatchCommand::TYPE_POLL_RECONCILIATION, $payload);
+            $command = $this->createCommand($request, DispatchCommand::TYPE_POLL_RECONCILIATION, $payload);
+            $this->recordEvent($request, $command, 'job_control.poll_reconciliation_requested', 'info', 'Polling reconciliation requested by admin.', [
+                'action' => DispatchCommand::TYPE_POLL_RECONCILIATION,
+                'limit' => $limit,
+                ...$metadata,
+            ]);
+            $this->audit($request, 'maintenance.poll_reconciliation_requested', $command, [
+                'limit' => $limit,
+                ...$metadata,
+            ]);
 
-        $this->recordEvent($request, $command, 'job_control.poll_reconciliation_requested', 'info', 'Polling reconciliation requested by admin.', [
-            'action' => DispatchCommand::TYPE_POLL_RECONCILIATION,
-            'limit' => $limit,
-            ...$metadata,
-        ]);
-        $this->audit($request, 'maintenance.poll_reconciliation_requested', $command, [
-            'limit' => $limit,
-            ...$metadata,
-        ]);
+            $command = $this->temporal->startPollReconciliation($command);
+            $this->recordEvent($request, $command, 'job_control.poll_reconciliation_actor_queued', 'info', 'Polling discovery queued as a Temporal workflow.', [
+                'action' => DispatchCommand::TYPE_POLL_RECONCILIATION,
+                'actor_name' => 'reconcile_inbox_documents',
+                'limit' => $limit,
+                ...$metadata,
+            ]);
 
-        $this->enqueueCommand($command, RunPythonActorJob::pollReconciliation($command->id));
-        $this->recordEvent($request, $command, 'job_control.poll_reconciliation_actor_queued', 'info', 'Polling reconciliation queued through Laravel actor transport.', [
-            'action' => DispatchCommand::TYPE_POLL_RECONCILIATION,
-            'actor_name' => 'reconcile_inbox_documents',
-            'limit' => $limit,
-            ...$metadata,
-        ]);
-
-        return $command;
+            return $command;
+        });
     }
 
     public function queueScheduledPollReconciliation(): ?DispatchCommand
@@ -103,56 +103,39 @@ class MaintenanceCommandDispatcher
             return null;
         }
 
-        $command = DispatchCommand::query()->create([
-            'type' => DispatchCommand::TYPE_POLL_RECONCILIATION,
-            'queue' => $this->queueNameFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
-            'priority' => $this->priorityFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
-            'status' => DispatchCommand::STATUS_PENDING,
-            'payload' => [
-                'source' => 'scheduler',
-                'interval_seconds' => $interval,
-            ],
-            'created_by_user_id' => null,
-        ]);
-
-        $this->recordSystemEvent(
-            $command,
-            'scheduler.poll_reconciliation_requested',
-            'info',
-            'Automatic polling reconciliation requested by the Laravel scheduler.',
-            ['interval_seconds' => $interval],
-        );
-
-        try {
-            $this->enqueueCommand($command, RunPythonActorJob::pollReconciliation($command->id));
-        } catch (Throwable $exception) {
-            $command->forceFill([
+        return DB::transaction(function () use ($interval): DispatchCommand {
+            $command = DispatchCommand::query()->create([
+                'type' => DispatchCommand::TYPE_POLL_RECONCILIATION,
+                'queue' => $this->queueNameFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
+                'priority' => $this->priorityFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
                 'status' => DispatchCommand::STATUS_PENDING,
-                'error' => 'queue_dispatch_failed:'.$exception::class,
-            ])->save();
+                'payload' => [
+                    'source' => 'scheduler',
+                    'interval_seconds' => $interval,
+                ],
+                'created_by_user_id' => null,
+            ]);
             $this->recordSystemEvent(
                 $command,
-                'scheduler.poll_reconciliation_enqueue_failed',
-                'warning',
-                'Laravel scheduler could not enqueue polling reconciliation; durable recovery will retry.',
-                ['error_type' => $exception::class],
+                'scheduler.poll_reconciliation_requested',
+                'info',
+                'Automatic polling reconciliation requested by the Laravel scheduler.',
+                ['interval_seconds' => $interval],
+            );
+            $command = $this->temporal->startPollReconciliation($command);
+            $this->recordSystemEvent(
+                $command,
+                'scheduler.poll_reconciliation_actor_queued',
+                'info',
+                'Automatic polling discovery queued as a Temporal workflow.',
+                [
+                    'actor_name' => 'reconcile_inbox_documents',
+                    'interval_seconds' => $interval,
+                ],
             );
 
-            throw $exception;
-        }
-
-        $this->recordSystemEvent(
-            $command,
-            'scheduler.poll_reconciliation_actor_queued',
-            'info',
-            'Automatic polling reconciliation queued through Laravel actor transport.',
-            [
-                'actor_name' => 'reconcile_inbox_documents',
-                'interval_seconds' => $interval,
-            ],
-        );
-
-        return $command;
+            return $command;
+        });
     }
 
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand

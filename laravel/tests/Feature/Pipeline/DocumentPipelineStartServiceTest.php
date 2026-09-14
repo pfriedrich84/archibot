@@ -2,13 +2,13 @@
 
 namespace Tests\Feature\Pipeline;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\EmbeddingIndexState;
-use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
+use App\Models\TemporalOutboxIntent;
 use App\Services\Pipeline\DocumentPipelineStarter;
 use App\Services\Pipeline\PipelineStartGate;
-use Illuminate\Contracts\Queue\Queue as QueueContract;
+use App\Services\Temporal\TemporalOutbox;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Mockery\MockInterface;
@@ -19,7 +19,7 @@ class DocumentPipelineStartServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_gate_open_creates_queued_run_and_dispatches_actor_job(): void
+    public function test_gate_open_creates_queued_run_and_temporal_start_intent(): void
     {
         Queue::fake();
         EmbeddingIndexState::query()->create(['status' => 'complete']);
@@ -37,22 +37,20 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame(['webhook'], $result->pipelineRun->coalesced_sources);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.pending']);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.document_actor_queued']);
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $job): bool => $job->actorName === 'handle_document_pipeline'
-            && $job->commandId === $result->pipelineRun->id);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $result->pipelineRun->orchestration_driver);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => $result->pipelineRun->temporal_workflow_id,
+            'workflow_type' => TemporalWorkflowDispatcher::DOCUMENT_WORKFLOW,
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
+        Queue::assertNothingPushed();
     }
 
-    public function test_enqueue_failure_leaves_pending_run_for_recovery(): void
+    public function test_outbox_failure_rolls_back_document_run(): void
     {
         EmbeddingIndexState::query()->create(['status' => 'complete']);
-        $queue = $this->mock(QueueContract::class);
-        Queue::shouldReceive('connection')->once()->andReturn($queue);
-        $queue->shouldReceive('push')->once()->andReturnUsing(function (): never {
-            $this->assertDatabaseHas('pipeline_runs', [
-                'paperless_document_id' => 42,
-                'status' => PipelineRun::STATUS_PENDING,
-            ]);
-            throw new RuntimeException('queue unavailable');
-        });
+        $outbox = $this->mock(TemporalOutbox::class);
+        $outbox->shouldReceive('startWorkflow')->once()->andThrow(new RuntimeException('outbox unavailable'));
 
         try {
             app(DocumentPipelineStarter::class)->start(
@@ -60,32 +58,20 @@ class DocumentPipelineStartServiceTest extends TestCase
                 paperlessDocumentId: 42,
                 paperlessModified: '2026-05-08T12:00:00Z',
             );
-            $this->fail('Expected queue dispatch failure.');
+            $this->fail('Expected outbox failure.');
         } catch (RuntimeException $exception) {
-            $this->assertSame('queue unavailable', $exception->getMessage());
+            $this->assertSame('outbox unavailable', $exception->getMessage());
         }
 
-        $this->assertDatabaseHas('pipeline_runs', [
-            'paperless_document_id' => 42,
-            'status' => PipelineRun::STATUS_PENDING,
-        ]);
-        $this->assertDatabaseHas('pipeline_events', [
-            'event_type' => 'pipeline.document_actor_enqueue_failed',
-            'level' => 'warning',
-        ]);
+        $this->assertDatabaseCount('pipeline_runs', 0);
+        $this->assertDatabaseCount('pipeline_events', 0);
+        $this->assertDatabaseCount('temporal_outbox_intents', 0);
     }
 
-    public function test_post_dispatch_queued_transition_cannot_overwrite_fast_worker_running_state(): void
+    public function test_temporal_intent_is_committed_with_queued_projection(): void
     {
         EmbeddingIndexState::query()->create(['status' => EmbeddingIndexState::STATUS_COMPLETE]);
-        $queue = $this->mock(QueueContract::class);
-        Queue::shouldReceive('connection')->once()->andReturn($queue);
-        $queue->shouldReceive('push')->once()->andReturnUsing(function (RunPythonActorJob $job): void {
-            PipelineRun::query()->whereKey($job->commandId)->update([
-                'status' => PipelineRun::STATUS_RUNNING,
-                'started_at' => now(),
-            ]);
-        });
+        Queue::fake();
 
         $result = app(DocumentPipelineStarter::class)->start(
             triggerSource: 'webhook',
@@ -93,12 +79,14 @@ class DocumentPipelineStartServiceTest extends TestCase
             paperlessModified: '2026-05-08T12:00:00Z',
         );
 
-        $this->assertSame(PipelineRun::STATUS_RUNNING, $result->pipelineRun->status);
-        $this->assertNotNull($result->pipelineRun->started_at);
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $result->pipelineRun->status);
+        $this->assertNull($result->pipelineRun->started_at);
         $this->assertDatabaseHas('pipeline_events', [
             'pipeline_run_id' => $result->pipelineRun->id,
             'event_type' => 'pipeline.document_actor_queued',
         ]);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
+        Queue::assertNothingPushed();
     }
 
     public function test_gate_closed_creates_blocked_run(): void
@@ -119,7 +107,10 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('blocked', $run->progress_current_phase);
         $this->assertSame('Waiting for embedding index to complete.', $run->progress_message);
         $this->assertSame('embedding_index_not_ready', $run->error_type);
-        $this->assertSame('pipeline.blocked.embedding_index_not_ready', PipelineEvent::query()->firstOrFail()->event_type);
+        $this->assertDatabaseHas('pipeline_events', [
+            'pipeline_run_id' => $run->id,
+            'event_type' => 'pipeline.blocked.embedding_index_not_ready',
+        ]);
         Queue::assertNothingPushed();
     }
 
@@ -133,8 +124,8 @@ class DocumentPipelineStartServiceTest extends TestCase
                 $events[] = 'shared-acquired';
                 try {
                     $result = $callback();
-                    Queue::assertPushed(RunPythonActorJob::class, 1);
-                    $events[] = 'dispatch-observed-inside-fence';
+                    $this->assertDatabaseCount('temporal_outbox_intents', 1);
+                    $events[] = 'intent-observed-inside-fence';
 
                     return $result;
                 } finally {
@@ -159,10 +150,10 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame([
             'shared-acquired',
             'gate-revalidated',
-            'dispatch-observed-inside-fence',
+            'intent-observed-inside-fence',
             'shared-released',
         ], $events);
-        Queue::assertPushed(RunPythonActorJob::class, 1);
+        Queue::assertNothingPushed();
     }
 
     public function test_stale_transition_ordered_before_start_blocks_without_dispatch(): void
@@ -211,7 +202,8 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertNotSame($first->dedupeKey, $changed->dedupeKey);
         $this->assertDatabaseCount('pipeline_runs', 2);
         $this->assertDatabaseHas('pipeline_events', ['event_type' => 'pipeline.start.coalesced']);
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('temporal_outbox_intents', 2);
     }
 
     public function test_manual_force_always_creates_new_run_for_identical_content(): void
@@ -243,7 +235,8 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('force_created', $second->outcome);
         $this->assertNotSame($first->dedupeKey, $second->dedupeKey);
         $this->assertDatabaseCount('pipeline_runs', 2);
-        Queue::assertPushed(RunPythonActorJob::class, 2);
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('temporal_outbox_intents', 2);
     }
 
     public function test_laravel_dedupe_key_matches_canonical_known_vector(): void
