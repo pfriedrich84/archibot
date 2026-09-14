@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes ADR-0015 and the transport/orchestration parts of ADR-0017 and ADR-0021.
+Accepted. Supersedes ADR-0015 and the transport/orchestration parts of ADR-0017 and ADR-0021. [ADR-0023](0023-drain-document-work-in-temporal-model-phases.md) supersedes the document identity and independent scheduling details below while retaining Temporal as the sole orchestration owner.
 
 ## Context
 
@@ -57,22 +57,15 @@ state.
 
 ### Discovery and documents
 
-Scheduled polling and Paperless webhooks only discover document identities. They signal
-or start the document workflow atomically with a stable ID derived from Paperless document
-identity and effective content version. A poll command never owns a document and cannot
-prevent a later discovery from progressing.
+Scheduled polling and Paperless webhooks only discover document identities. A poll command
+never owns a document and cannot prevent a later discovery from progressing. Duplicate
+webhook, poll and normal manual triggers converge on one stable workflow per Paperless
+document ID; explicit force reprocessing creates a separate generation.
 
-Each document workflow waits durably for the embedding generation required by its start,
-then performs embedding, optional OCR, classification and optional judge activities. It
-publishes its Review Suggestion immediately after that document is ready. It does not wait
-for unrelated documents in a poll target set.
-
-Duplicate webhook, poll and manual triggers converge on the same workflow or create an
-explicit force generation. Workflow IDs and idempotent activity writes enforce this rule:
-
-```text
-one productive document workflow per Paperless document content version
-```
+Document workflows own their individual lifecycle but enter model-backed work only when the
+Temporal model-phase scheduler releases their current phase. The scheduler drains embedding,
+classification and judge work in that global order as specified by ADR-0023. Reviews become
+visible only after the corresponding cycle reaches its review-release barrier.
 
 ### Review and Paperless commit
 
@@ -118,7 +111,7 @@ Cutover is performed in reviewable slices:
 3. migrate polling/webhook discovery and per-document processing;
 4. migrate review waiting and Paperless commit;
 5. reconcile in-flight legacy rows, remove Laravel actor dispatch/recovery and remove the
-   global staged-batch owner;
+   legacy poll-owned staged-batch owner;
 6. restore image publication only after clean-stack, restart and failure-injection tests.
 
 During a slice, the old path remains productive only for flows not yet cut over. There is
@@ -130,7 +123,7 @@ no operator-selectable permanent backend mode.
 - A completed activity cannot be converted into a failed command by a missing subprocess
   protocol record.
 - Poll commands no longer retain ownership of documents.
-- Reviews become visible per document as soon as its workflow reaches review.
+- Reviews become visible after the globally ordered model phases for their cycle complete.
 - The deployed stack has additional Temporal server and persistence services and requires
   schema/version lifecycle management.
 - Temporal history compatibility and activity idempotency become mandatory release gates.
@@ -144,3 +137,4 @@ no operator-selectable permanent backend mode.
 - [ADR-0006: Require Complete Embedding Index Before Document Processing](0006-require-complete-embedding-index-before-document-processing.md)
 - [ADR-0018: Suspend Model-confidence Auto-commit](0018-suspend-model-confidence-auto-commit.md)
 - [ADR-0019: Separate Review Decisions from Admin Job Control](0019-separate-review-decisions-from-admin-job-control.md)
+- [ADR-0023: Drain Document Work in Temporal Model Phases](0023-drain-document-work-in-temporal-model-phases.md)
