@@ -4,7 +4,7 @@ Tool-neutral operating contract for coding agents working in this repository. Ke
 
 ## Purpose and scope
 
-ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. Its event-driven architecture uses Paperless webhooks, periodic polling reconciliation, Laravel database queues, PostgreSQL and pgvector.
+ArchiBot is a self-hosted, Docker-first assistant for Paperless-NGX. Its target event-driven architecture uses Paperless webhooks, periodic polling reconciliation, Temporal, PostgreSQL and pgvector.
 
 This file is the canonical starting point for agents. Within repository guidance, `AGENTS.md` takes precedence over all other repository instructions; accepted ADRs govern the architecture decisions in their scope unless explicitly superseded. Surface unresolved conflicts instead of choosing silently. This repository contract does not override system, developer, or explicit maintainer instructions.
 
@@ -47,12 +47,12 @@ When changing architecture, security, integrations, deployment, dependencies, qu
 ## Non-negotiable architecture summary
 
 - Paperless webhooks are primary; 600-second polling is reconciliation and uses the same start/dedupe/lock path. Only `/api/webhooks/paperless` and `/webhook` are supported, and enqueue failure after persistence returns non-2xx for retry.
-- Laravel database queues invoke fixed, allowlisted Python actor commands. PostgreSQL pipeline tables are the durable source of truth for pipeline, progress, retry, recovery, and audit state.
+- Temporal is the target sole owner of productive workflow execution, timers, retry, heartbeat and recovery under ADR-0022. Laravel owns authorization, HTTP/UI and workflow client calls; Python owns Temporal workflows/activities and document processing. ArchiBot PostgreSQL stores business data and UI projections, while Temporal uses dedicated persistence for execution history.
 - Processing waits for a complete embedding index. Only documents without the inbox tag are trusted classification context.
 - Preserve manual review and permissions. ADR-0018 model-confidence auto-commit containment is implemented: the effective threshold is fixed at zero, and model/judge output cannot accept, queue or write. Do not restore it without deterministic safety gates and explicit approval. Operational job control is admin-only; authorized review actions follow ADR-0019.
 - Reprocessing remains available through relevant webhooks and the admin UI; explicit force reprocess creates a new pipeline run. Extend the Laravel operations dashboard rather than creating another UI.
 - CLI and UI use the same backend, configuration, durable state, progress, storage, authorization assumptions, and side effects. `archibot reset` delegates to `php artisan archibot:reset`.
-- Do not extend the legacy broad subprocess/Python-CLI worker path, reintroduce retired `worker_jobs`, or add new behavior to the superseded Absurd transport. Target durable pipeline tables and Python actors reached through Laravel queued actor jobs.
+- Do not extend the legacy broad subprocess/Python-CLI worker path, Laravel actor queue transport, stale-row recovery, retired `worker_jobs`, or superseded Absurd transport. Migrate each productive flow atomically to Temporal and remove its previous owner.
 
 ## Canonical project docs
 

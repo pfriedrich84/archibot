@@ -4,7 +4,7 @@ Core rules for coding agents working on ArchiBot.
 
 ## Product safety
 
-- Keep ArchiBot single-container and Docker-first.
+- Keep ArchiBot Docker-first. The application image stays self-contained; the standard stack also runs the private Temporal and PostgreSQL services required by ADR-0022.
 - Do not overwrite existing Paperless storage paths.
 - Keep manual review as the target safety path. ADR-0018 model-confidence auto-commit containment is implemented: the effective threshold stays zero and model/judge output cannot accept, queue or write. Do not re-enable it until deterministic eligibility gates, adversarial tests and explicit product/security approval permit a separate safe-automation design.
 - Do not use inbox/unreviewed documents as trusted classification context. A document is trusted for classification context only when it does not have the configured inbox tag.
@@ -37,4 +37,4 @@ Core rules for coding agents working on ArchiBot.
 - Explicit user-selected force reprocess always creates a new pipeline run, even for identical content.
 - A Paperless storage path that already exists on a document is authoritative.
 - Review queues and whitelists are safety boundaries, not implementation details.
-- Python owns document processing, embeddings, AI-provider calls, and MCP runtime; Laravel/Svelte owns UI, setup, settings, review, and worker-job orchestration.
+- Python owns Temporal workflows/activities, document processing, embeddings, AI-provider calls, and MCP runtime. Laravel/Svelte owns UI, setup, settings, authorization, review decisions, and Temporal client calls. Temporal alone owns background execution, timers, retries, heartbeat and recovery.

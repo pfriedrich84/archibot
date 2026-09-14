@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes [ADR-0013: Use Absurd as the PostgreSQL-backed Python Queue](0013-use-absurd-postgresql-queue.md) for new implementation work.
+Superseded by [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md). Retained as historical context for the pre-Temporal implementation.
 
 ## Context
 

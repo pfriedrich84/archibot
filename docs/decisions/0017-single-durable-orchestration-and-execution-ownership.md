@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, amended 2026-07-17 to make the orchestration/execution fence explicit. Clarifies the final migration state selected by ADR-0004, ADR-0015 and ADR-0016; the amendment does not transfer orchestration ownership to Python.
+Superseded by [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md). Its single-owner invariant remains active, with Temporal replacing the split Laravel/Python execution ownership described here.
 
 ## Context
 

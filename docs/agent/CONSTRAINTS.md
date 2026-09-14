@@ -4,8 +4,8 @@ Evidence-based constraints for ArchiBot changes.
 
 ## Deployment and runtime
 
-- ArchiBot is Docker-first; the event-driven target includes PostgreSQL/pgvector and Laravel database queues for local/deployed stacks.
-- Runtime state must be durable. The target source of truth is PostgreSQL; do not create hidden in-memory or log-only job state.
+- ArchiBot is Docker-first; the event-driven target includes PostgreSQL/pgvector plus a private Temporal Service and its dedicated persistence.
+- Runtime state must be durable. Temporal history is authoritative for workflow execution; ArchiBot PostgreSQL is authoritative for business data and UI projections. Do not create hidden in-memory or log-only job state.
 - Paperless-NGX and Ollama-compatible/OpenAI-compatible providers are external services configured by environment variables or the setup UI.
 - Default timezone is `Europe/Vienna`; date and timezone behavior must remain configurable and consistent between Python and Laravel/Svelte.
 
@@ -29,8 +29,8 @@ Evidence-based constraints for ArchiBot changes.
 - Python runtime targets Python 3.12.
 - Laravel CI uses PHP 8.4 and Node.js 22; `composer.json` requires PHP `^8.4`.
 - The migration target standardizes state and vector search on PostgreSQL/pgvector.
-- Do not extend the legacy Laravel-subprocess/Python-CLI worker path for new pipeline behavior.
+- Do not extend the legacy Laravel-subprocess/Python-CLI or Laravel database queue actor paths for new pipeline behavior.
 - CLI commands must not diverge from Laravel UI behavior. If a UI action uses PostgreSQL/pgvector, Laravel-managed settings, Laravel queue-backed actor dispatch, or durable pipeline state, the matching CLI command must use that same path or delegate to it; do not keep a separate SQLite/legacy implementation.
 - `archibot reset` remains supported for operators, but reset state is PostgreSQL/Laravel-owned and the Python CLI must delegate to Laravel rather than recreating legacy SQLite state.
 - Do not introduce a permanent alternate queue backend compatibility mode.
-- Keep Laravel and Python aligned on the shared PostgreSQL pipeline state model.
+- Keep Laravel/Python projections aligned with Temporal workflow identity and history; projection lag must never trigger duplicate workflow execution.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md). Temporal document workflows publish reviews independently; a poll target set no longer owns their lifecycle.
 
 ## Context
 

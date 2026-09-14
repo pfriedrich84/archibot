@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Retry ownership is clarified by [ADR-0017: Use One Durable Orchestration and Execution Ownership Model](0017-single-durable-orchestration-and-execution-ownership.md): Laravel retries transport/protocol failures, while Python/PostgreSQL owns domain retries.
+Accepted as a failure-classification and idempotency policy. [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md) supersedes its Laravel queue and stale-row recovery mechanism: Temporal owns workflow/activity retry, heartbeat and recovery.
 
 ## Context
 

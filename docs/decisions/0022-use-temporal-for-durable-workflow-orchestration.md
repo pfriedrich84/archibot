@@ -1,0 +1,142 @@
+# ADR-0022: Use Temporal for Durable Workflow Orchestration
+
+## Status
+
+Accepted. Supersedes ADR-0015 and the transport/orchestration parts of ADR-0017 and ADR-0021.
+
+## Context
+
+ArchiBot currently splits one logical operation across Laravel database queue jobs,
+short-lived Python processes, PostgreSQL lifecycle rows and a periodic Laravel recovery
+scan. A process can complete its domain work while the parent queue job still reports a
+protocol failure. Long AI calls can also remain healthy while the recovery scan declares
+their actor execution stale. The result is duplicate dispatch, exhausted attempts,
+commands stuck at 100 percent, and documents retained by an old poll command.
+
+These are coordination failures. Adding more status repair and timeout exceptions would
+keep the same split ownership.
+
+## Decision
+
+Temporal is the sole productive workflow execution, timer, retry, heartbeat and recovery
+owner for ArchiBot background work.
+
+- Laravel remains the authorization, HTTP, UI and review-decision boundary. It uses the
+  official Temporal PHP SDK as a client to start, signal, cancel and inspect workflows.
+- Python uses the official Temporal Python SDK for deterministic workflows and activities.
+  Activities own Paperless, AI-provider and ArchiBot PostgreSQL I/O.
+- Temporal persists execution history in dedicated Temporal PostgreSQL databases. The
+  ArchiBot PostgreSQL/pgvector database remains the business-data, audit, review,
+  embedding and UI-projection store.
+- Laravel database queues and `RunPythonActorJob` are removed from productive workflow
+  execution as each flow cuts over. The periodic stale-actor recovery loop is removed
+  after the final cutover.
+- A productive flow has exactly one owner. Shadow validation may read and compare output,
+  but it may not write Paperless or create review decisions.
+
+Temporal workflow state is authoritative for whether work is scheduled, waiting,
+retrying or complete. PostgreSQL projections are authoritative for product data and are
+updated idempotently by activities. UI status must identify the Temporal workflow ID and
+reflect its latest durable projection; a projection lag must be shown as such and must not
+cause redispatch.
+
+## Workflow model
+
+### Embedding index
+
+One `embedding-index/{generation}` workflow owns a build generation. It completes
+successfully with `0/0` when the trusted corpus is empty. It changes the durable readiness
+projection to complete only after every required embedding activity has reached a terminal
+state. Activity heartbeats carry item progress, and retries resume from persisted item
+state.
+
+### Discovery and documents
+
+Scheduled polling and Paperless webhooks only discover document identities. They signal
+or start the document workflow atomically with a stable ID derived from Paperless document
+identity and effective content version. A poll command never owns a document and cannot
+prevent a later discovery from progressing.
+
+Each document workflow waits durably for the embedding generation required by its start,
+then performs embedding, optional OCR, classification and optional judge activities. It
+publishes its Review Suggestion immediately after that document is ready. It does not wait
+for unrelated documents in a poll target set.
+
+Duplicate webhook, poll and manual triggers converge on the same workflow or create an
+explicit force generation. Workflow IDs and idempotent activity writes enforce this rule:
+
+```text
+one productive document workflow per Paperless document content version
+```
+
+### Review and Paperless commit
+
+A document workflow waits without occupying a worker until Laravel sends an authorized
+accept or reject signal. Acceptance contains the immutable review decision identity and
+authorized principal references. A Paperless commit activity rechecks the reviewed target,
+uses an idempotency key and preserves every existing Paperless storage path. Repeated
+signals or activity retries cannot duplicate the write.
+
+## Retry and heartbeat policy
+
+- Workflow code performs no network, filesystem, random-time or database I/O.
+- External I/O runs only in activities with explicit start-to-close and schedule-to-close
+  timeouts.
+- Long embedding, OCR and LLM activities heartbeat while work is active. Cancellation and
+  worker loss use Temporal heartbeat semantics rather than wall-clock inspection of an
+  application row.
+- Known validation failures are non-retryable application failures. Transient network,
+  provider and Paperless failures use bounded exponential activity retries.
+- Paperless mutations and PostgreSQL projections are idempotent because an activity may
+  execute more than once.
+- Workflow implementation changes must pass replay tests for retained histories.
+
+## Deployment and security boundary
+
+The standard Docker stack gains a private Temporal Service and a dedicated Temporal
+PostgreSQL volume. The Temporal frontend port is internal by default. Temporal UI is an
+optional operator profile and must not be publicly exposed without authentication and TLS.
+Image versions are pinned. Schema setup runs through the matching pinned Temporal admin
+tools image before the server starts.
+
+Temporal receives workflow IDs, internal row identifiers, status, retry metadata and
+activity inputs needed to resume execution. Secrets and full document content must not be
+stored in workflow arguments, search attributes, memo or logs. Activities load credentials
+and document content only when needed from their existing protected sources.
+
+## Migration
+
+Cutover is performed in reviewable slices:
+
+1. add the Temporal service, clients, worker, health checks and replay-test harness;
+2. migrate embedding build and readiness, including empty installations;
+3. migrate polling/webhook discovery and per-document processing;
+4. migrate review waiting and Paperless commit;
+5. reconcile in-flight legacy rows, remove Laravel actor dispatch/recovery and remove the
+   global staged-batch owner;
+6. restore image publication only after clean-stack, restart and failure-injection tests.
+
+During a slice, the old path remains productive only for flows not yet cut over. There is
+no operator-selectable permanent backend mode.
+
+## Consequences
+
+- Container and worker restarts no longer require status-age guesses to recover work.
+- A completed activity cannot be converted into a failed command by a missing subprocess
+  protocol record.
+- Poll commands no longer retain ownership of documents.
+- Reviews become visible per document as soon as its workflow reaches review.
+- The deployed stack has additional Temporal server and persistence services and requires
+  schema/version lifecycle management.
+- Temporal history compatibility and activity idempotency become mandatory release gates.
+
+## References
+
+- [Temporal self-hosted deployment guide](https://docs.temporal.io/self-hosted-guide/deployment)
+- [Temporal Python SDK](https://python.temporal.io/)
+- [Temporal PHP SDK](https://github.com/temporalio/sdk-php)
+- [ADR-0004: Do Not Add a Long-term Legacy Compatibility Mode](0004-no-legacy-compatibility-mode.md)
+- [ADR-0006: Require Complete Embedding Index Before Document Processing](0006-require-complete-embedding-index-before-document-processing.md)
+- [ADR-0018: Suspend Model-confidence Auto-commit](0018-suspend-model-confidence-auto-commit.md)
+- [ADR-0019: Separate Review Decisions from Admin Job Control](0019-separate-review-decisions-from-admin-job-control.md)
+

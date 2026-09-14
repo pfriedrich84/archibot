@@ -13,9 +13,9 @@ Suggested metadata includes title, date, correspondent, document type, storage p
 - **Paperless webhooks** are the primary low-latency trigger for new or changed documents.
 - **Periodic polling** remains automatic every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic as webhooks.
 - **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, dashboard/operations UI, command API, webhook ingestion and admin-only job controls.
-- **Python queue-backed actors** own document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
-- **PostgreSQL + pgvector** are the durable source of truth for state, progress, retries, events, audit data and embedding similarity search.
-- **Laravel database queues** provide the event-driven transport; there is no separate broker service in the target path. Laravel queued jobs invoke fixed Python actor commands while PostgreSQL pipeline tables remain the durable source of truth.
+- **Temporal Python workflows and activities** own durable document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
+- **Temporal** is the sole target owner of workflow execution, timers, retries, heartbeat and recovery. Laravel uses the official PHP SDK as a client after authorization.
+- **PostgreSQL + pgvector** store ArchiBot business state, UI projections, events, audit data and embedding similarity search. Temporal execution history uses separate Temporal persistence.
 - **Ollama-compatible and OpenAI-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings and judge passes. Chat/RAG is disabled; Issue #221 is the only redesign and possible re-enable track.
 
 ## Classification model
