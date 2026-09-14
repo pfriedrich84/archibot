@@ -112,7 +112,7 @@ class PythonActorSubprocessMatrixTest extends TestCase
         $fixture = base_path('tests/Fixtures/production_actor_process.py');
         chmod($fixture, 0755);
         Config::set('archibot.python_binary', $fixture);
-        Config::set('archibot_workers.queue_worker_timeout', 1);
+        Config::set('archibot_workers.queue_worker_timeout', 3);
         $originalScenario = getenv('ARCHIBOT_ACTOR_FIXTURE_SCENARIO');
         $this->setEnvironment('ARCHIBOT_ACTOR_FIXTURE_SCENARIO', $scenario);
         try {

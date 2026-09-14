@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\McpToken;
 use App\Models\OcrReview;
 use App\Models\PaperlessMasterDataCase;
@@ -187,6 +188,7 @@ $dispatch = static function (
     if (($headers['X-Inertia'] ?? false) === true) {
         $server['HTTP_X_INERTIA'] = 'true';
         $server['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
+        $server['HTTP_X_INERTIA_VERSION'] = $headers['X-Inertia-Version'] ?? '';
     }
     $request = Request::create($uri, $method, $parameters, [], [], $server);
     $response = $httpKernel->handle($request);
@@ -221,7 +223,12 @@ $dispatch = static function (
     return $result;
 };
 
-$inertia = ['X-Inertia' => true];
+$inertiaVersion = app(HandleInertiaRequests::class)
+    ->version(Request::create($base === '' ? '/' : $base));
+$inertia = [
+    'X-Inertia' => true,
+    'X-Inertia-Version' => $inertiaVersion,
+];
 $json = ['Accept' => 'application/json'];
 $flows = [
     'settings_get' => $dispatch('GET', $base.'/admin/settings/ai-provider', [], $inertia),
