@@ -12,6 +12,39 @@ Das ArchiBot-App-Image wird automatisch ueber GitHub Container Registry bereitge
 ghcr.io/pfriedrich84/archibot:latest
 ```
 
+### llama.cpp als Embedding-Provider
+
+Wenn der OpenAI-kompatible Provider durch `llama-server` bereitgestellt wird,
+muss Qwen3-Embedding mit Last-Token-Pooling gestartet werden. Beispiel:
+
+```bash
+llama-server \
+  --model /models/Qwen3-Embedding-4B-Q4_K_M.gguf \
+  --embedding \
+  --pooling last \
+  --ctx-size 8192 \
+  --host 0.0.0.0 \
+  --port 8080
+```
+
+`--pooling mean` sollte fuer Qwen3-Embedding nicht verwendet werden. Es kann
+zu einer formal erfolgreichen, aber semantisch inkompatiblen Vektorerzeugung
+fuehren. Der ArchiBot-Provider wird dabei ueber den OpenAI-kompatiblen
+Pfad konfiguriert, zum Beispiel mit `LLM_PROVIDER=openai_compatible` und
+`OPENAI_BASE_URL=http://<provider-host>:8080/v1`.
+
+Nach einer Aenderung von Pooling, GGUF-Datei oder Embedding-Modell muss der
+gesamte Embedding-Index neu gebaut werden:
+
+```bash
+docker exec archibot archibot reindex-embed
+```
+
+Bei einem Reindex mit vielen unterschiedlichen Dokumenten kann
+`--cache-ram 0` am `llama-server` den Speicherverbrauch begrenzen. Das ist
+eine Provider-Option und wird nicht von `docker-compose.yml` des ArchiBot-
+Stacks gesetzt.
+
 ### Verfuegbare Tags
 
 | Tag | Beschreibung |
