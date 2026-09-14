@@ -10,6 +10,7 @@ from app.jobs.review_commit import ReviewCommitRecord, build_paperless_patch
 from scripts.check_containment_boundaries import (
     CENTRAL_PAPERLESS_CLIENTS,
     EXPOSURE_FILES,
+    _iter_sources,
     inventory,
     load_baseline,
     scan_python,
@@ -18,6 +19,14 @@ from scripts.check_containment_boundaries import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_generated_frontend_build_is_not_part_of_security_inventory(tmp_path: Path) -> None:
+    generated = tmp_path / "laravel/public/build/assets/app-generated.js"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("const href = '/assistant';", encoding="utf-8")
+
+    assert list(_iter_sources(tmp_path)) == []
 
 
 def test_exact_exposure_and_paperless_mutation_inventories_are_frozen() -> None:

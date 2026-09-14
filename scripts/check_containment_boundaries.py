@@ -51,6 +51,9 @@ EXCLUDED_SOURCE_PARTS = {
     "vendor",
     "tests",
 }
+EXCLUDED_SOURCE_PREFIXES = {
+    ("laravel", "public", "build"),
+}
 CLI_REGISTRATION_METHODS = {
     # Typer/Click command decorators and programmatic registration.
     "command",
@@ -487,6 +490,8 @@ def _iter_sources(root: Path) -> Iterable[Path]:
             continue
         relative_parts = path.relative_to(root).parts
         if any(part in EXCLUDED_SOURCE_PARTS for part in relative_parts):
+            continue
+        if any(relative_parts[: len(prefix)] == prefix for prefix in EXCLUDED_SOURCE_PREFIXES):
             continue
         yield path
 
