@@ -11,6 +11,7 @@ use App\Models\PipelineEvent;
 use App\Models\PipelineRun;
 use App\Models\WebhookDelivery;
 use App\Services\Actors\PythonActorRunner;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -89,15 +90,19 @@ class PipelineRecoveryDispatcher
                         return false;
                     }
 
-                    $command->forceFill([
-                        'status' => Command::STATUS_SUCCEEDED,
-                        'active_actor_token' => null,
-                        'finished_at' => $command->finished_at ?? now(),
-                        'next_retry_at' => null,
-                        'error' => null,
-                    ])->save();
+                    Command::query()
+                        ->whereKey($commandId)
+                        ->where('status', Command::STATUS_FAILED_PERMANENT)
+                        ->update([
+                            'status' => Command::STATUS_SUCCEEDED,
+                            'active_actor_token' => null,
+                            'finished_at' => $command->finished_at ?? now(),
+                            'next_retry_at' => null,
+                            'error' => null,
+                            'updated_at' => now(),
+                        ]);
 
-                    PipelineEvent::query()->create([
+                    PipelineLifecycleRecorder::event([
                         'command_id' => $commandId,
                         'event_type' => 'recovery.poll_reconciliation_completed',
                         'level' => 'warning',
@@ -153,7 +158,7 @@ class PipelineRecoveryDispatcher
         ActorExecution::query()
             ->where('status', ActorExecution::STATUS_RETRYING)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', $this->databaseTimestampNow());
             })
             ->oldest('next_retry_at')
             ->oldest('id')
@@ -510,7 +515,7 @@ class PipelineRecoveryDispatcher
         Command::query()
             ->where('status', Command::STATUS_PENDING)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', $this->databaseTimestampNow());
             })
             ->whereIn('type', $this->recoverableCommandTypes())
             ->oldest('updated_at')
@@ -746,7 +751,7 @@ class PipelineRecoveryDispatcher
         WebhookDelivery::query()
             ->where('status', WebhookDelivery::STATUS_FAILED)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', $this->databaseTimestampNow());
             })
             ->whereIn('error', $this->retryableWebhookErrors())
             ->whereDoesntHave('events', function ($query): void {
@@ -1404,10 +1409,7 @@ class PipelineRecoveryDispatcher
 
     private function staleRunningCutoff(): string
     {
-        // PostgreSQL timestamps are persisted and compared in UTC. Keep the
-        // timezone on the Carbon value until binding so a local application
-        // timezone cannot turn a fresh actor into an immediately stale one.
-        return now('UTC')->subMinutes($this->staleRunningMinutes())->toDateTimeString();
+        return $this->databaseTimestampNow()->subMinutes($this->staleRunningMinutes())->toDateTimeString();
     }
 
     private function staleRunningMinutes(): int
@@ -1417,7 +1419,18 @@ class PipelineRecoveryDispatcher
 
     private function staleQueuedCutoff(): string
     {
-        return now('UTC')->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
+        return $this->databaseTimestampNow()->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
+    }
+
+    private function databaseTimestampNow(): CarbonInterface
+    {
+        // Productive timestamps are written by PostgreSQL CURRENT_TIMESTAMP
+        // and therefore use UTC. Framework tests use Eloquent fixture times
+        // in the configured application timezone.
+        $connection = (string) config('database.default');
+        $driver = (string) config("database.connections.{$connection}.driver");
+
+        return now($driver === 'pgsql' ? 'UTC' : config('app.timezone'));
     }
 
     private function staleQueuedMinutes(): int

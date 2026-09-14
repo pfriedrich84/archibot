@@ -76,7 +76,7 @@
     "laravel/resources/js/pages/processing/Embeddings.svelte": "63b77561d0b65175b21024fb5af3a67a865e3e5afe663103755feee05105348d",
     "laravel/resources/js/pages/review/ClassifyWithArchiBot.svelte": "0c268a9955773311762666e1d0803ecf75c77f6bfd8280d4ebc77a3a3d976afb",
     "laravel/resources/js/pages/review/Index.svelte": "bb888d7278260cd32ef21492076d04cea1a70fd71617574d92a5ac2895c493dc",
-    "laravel/resources/js/pages/review/Show.svelte": "93c9d252dacf68aaa67e673927e4a34d07b1c6e0c22667a23e9aac6ca4e9ce33",
+    "laravel/resources/js/pages/review/Show.svelte": "2e38952c287712f7cdd404e5cd95f2c7eeab41582d24dcf9c9fa0b6f0db7bca4",
     "laravel/resources/js/pages/settings/Appearance.svelte": "91a1249679c49d162fd1ae0b5f25627a788657274e801c50dfe60b9e21db349c",
     "laravel/resources/js/pages/settings/McpTokens.svelte": "da6712d3b8a42077d64eacc46d930861322cb81e22563a84e7cf81b9ace1454b",
     "laravel/resources/js/pages/stats/Index.svelte": "1814801c129bb4d6b052c680a09927b98ee6005def671c5d9629bf5668af22e7",
