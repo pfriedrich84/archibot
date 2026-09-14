@@ -34,6 +34,7 @@ class PipelineRecoveryDispatcher
 
         try {
             $actors = $this->recoverActorExecutions($limit);
+            $this->reconcileCompletedPollCommands($limit);
             $pollCandidates = $this->pollCandidates->replayPending($limit);
             $this->stagedBatches->dispatchReadyPollBatches($limit);
             $cancelled = $this->finalizeCancelRequestedRuns($limit);
@@ -56,6 +57,67 @@ class PipelineRecoveryDispatcher
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * A poll seals its candidate set before the actor transport reports back
+     * to Laravel. If the transport loses the final fenced write afterwards,
+     * the durable completion event still proves that the candidate set is
+     * complete. Restore that command before replaying ready candidates.
+     */
+    private function reconcileCompletedPollCommands(int $limit): int
+    {
+        $reconciled = 0;
+
+        PipelineEvent::query()
+            ->where('event_type', 'poll.reconciliation.completed')
+            ->whereNotNull('command_id')
+            ->latest('id')
+            ->limit($limit)
+            ->pluck('command_id')
+            ->unique()
+            ->each(function (int $commandId) use (&$reconciled): void {
+                $changed = DB::transaction(function () use ($commandId): bool {
+                    $command = Command::query()->lockForUpdate()->find($commandId);
+                    if ($command === null
+                        || $command->type !== Command::TYPE_POLL_RECONCILIATION
+                        || ! in_array($command->status, [
+                            Command::STATUS_PENDING,
+                            Command::STATUS_RUNNING,
+                            Command::STATUS_FAILED_PERMANENT,
+                        ], true)
+                        || ! PipelineEvent::query()
+                            ->where('command_id', $commandId)
+                            ->where('event_type', 'poll.reconciliation.completed')
+                            ->exists()) {
+                        return false;
+                    }
+
+                    $command->forceFill([
+                        'status' => Command::STATUS_SUCCEEDED,
+                        'active_actor_token' => null,
+                        'finished_at' => $command->finished_at ?? now(),
+                        'next_retry_at' => null,
+                        'error' => null,
+                    ])->save();
+
+                    PipelineEvent::query()->create([
+                        'command_id' => $commandId,
+                        'event_type' => 'recovery.poll_reconciliation_completed',
+                        'level' => 'warning',
+                        'message' => 'Poll command restored from its durable completion event by recovery.',
+                        'payload' => ['transport' => 'laravel_database_queue'],
+                    ]);
+
+                    return true;
+                });
+
+                if ($changed) {
+                    $reconciled++;
+                }
+            });
+
+        return $reconciled;
     }
 
     /**
