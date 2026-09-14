@@ -81,11 +81,7 @@ class PipelineRecoveryDispatcher
                     $command = Command::query()->lockForUpdate()->find($commandId);
                     if ($command === null
                         || $command->type !== Command::TYPE_POLL_RECONCILIATION
-                        || ! in_array($command->status, [
-                            Command::STATUS_PENDING,
-                            Command::STATUS_RUNNING,
-                            Command::STATUS_FAILED_PERMANENT,
-                        ], true)
+                        || $command->status !== Command::STATUS_FAILED_PERMANENT
                         || ! PipelineEvent::query()
                             ->where('command_id', $commandId)
                             ->where('event_type', 'poll.reconciliation.completed')
