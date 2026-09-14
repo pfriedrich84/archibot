@@ -87,14 +87,17 @@ def document_embedding_exists(
         """
     )
     with engine().begin() as connection:
-        return connection.execute(
-            statement,
-            {
-                "paperless_document_id": paperless_document_id,
-                "content_hash": content_hash,
-                "embedding_model": embedding_model,
-            },
-        ).first() is not None
+        return (
+            connection.execute(
+                statement,
+                {
+                    "paperless_document_id": paperless_document_id,
+                    "content_hash": content_hash,
+                    "embedding_model": embedding_model,
+                },
+            ).first()
+            is not None
+        )
 
 
 def pgvector_literal(embedding: list[float]) -> str:
