@@ -65,7 +65,7 @@
             (selectedStoragePathId ===
             numericId(suggestion.proposed.storage_path_id)
                 ? String(suggestion.proposed.storage_path_name ?? '')
-                : ''),
+                : String(suggestion.original.storage_path_name ?? '')),
     );
 
     const textValue = (value: unknown): string => {
@@ -167,8 +167,10 @@
                 entityOptions.storagePaths,
             ),
             proposed: entityValue(
-                suggestion.proposed.storage_path_id,
-                suggestion.proposed.storage_path_name,
+                suggestion.proposed.storage_path_id ??
+                    suggestion.original.storage_path_id,
+                suggestion.proposed.storage_path_name ??
+                    suggestion.original.storage_path_name,
                 entityOptions.storagePaths,
             ),
         },
