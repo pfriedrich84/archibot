@@ -72,6 +72,31 @@ def content_hash_for_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def document_embedding_exists(
+    *, paperless_document_id: int, content_hash: str, embedding_model: str
+) -> bool:
+    """Return whether this document already has the current model/content embedding."""
+    statement = sql_text(
+        """
+        SELECT 1
+        FROM document_embeddings
+        WHERE paperless_document_id = :paperless_document_id
+          AND content_hash = :content_hash
+          AND embedding_model = :embedding_model
+        LIMIT 1
+        """
+    )
+    with engine().begin() as connection:
+        return connection.execute(
+            statement,
+            {
+                "paperless_document_id": paperless_document_id,
+                "content_hash": content_hash,
+                "embedding_model": embedding_model,
+            },
+        ).first() is not None
+
+
 def pgvector_literal(embedding: list[float]) -> str:
     """Return a pgvector-compatible vector literal without logging values."""
     return "[" + ",".join(str(float(value)) for value in embedding) + "]"

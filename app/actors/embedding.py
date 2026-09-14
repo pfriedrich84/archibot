@@ -21,7 +21,9 @@ from app.execution_lifecycle import (
 )
 from app.jobs.document_embeddings import (
     DocumentEmbeddingInput,
+    content_hash_for_text,
     document_embedding_text,
+    document_embedding_exists,
     store_document_embedding,
 )
 from app.jobs.embedding_index import (
@@ -106,35 +108,42 @@ async def _build_pgvector_embeddings(
         )
         for index, (document, text) in enumerate(documents_with_text, 1):
             try:
-                embedding = await ollama.embed(text)
-                store_document_embedding(
-                    DocumentEmbeddingInput(
-                        paperless_document_id=document.id,
-                        title=document.title,
-                        content=document.content,
-                        embedding_model=ollama.embed_model,
-                        embedding=embedding,
-                        document_date=document_date_for(document),
-                        metadata={
-                            "correspondent": document.correspondent,
-                            "document_type": document.document_type,
-                            "storage_path": document.storage_path,
-                            "tags": document.tags,
-                            "modified": document.modified,
-                        },
-                        correspondent_id=document.correspondent,
-                        document_type_id=document.document_type,
-                        storage_path_id=document.storage_path,
-                        tags=document.tags,
-                        paperless_modified=str(document.modified)
-                        if document.modified is not None
-                        else None,
-                        paperless_version_id=document_version_id_for(document),
-                        paperless_version_checksum=document_version_checksum_for(document),
-                        trusted_for_context=True,
+                if document_embedding_exists(
+                    paperless_document_id=document.id,
+                    content_hash=content_hash_for_text(text),
+                    embedding_model=ollama.embed_model,
+                ):
+                    embedded_count += 1
+                else:
+                    embedding = await ollama.embed(text)
+                    store_document_embedding(
+                        DocumentEmbeddingInput(
+                            paperless_document_id=document.id,
+                            title=document.title,
+                            content=document.content,
+                            embedding_model=ollama.embed_model,
+                            embedding=embedding,
+                            document_date=document_date_for(document),
+                            metadata={
+                                "correspondent": document.correspondent,
+                                "document_type": document.document_type,
+                                "storage_path": document.storage_path,
+                                "modified": document.modified,
+                                "tags": document.tags,
+                            },
+                            correspondent_id=document.correspondent,
+                            document_type_id=document.document_type,
+                            storage_path_id=document.storage_path,
+                            tags=document.tags,
+                            paperless_modified=str(document.modified)
+                            if document.modified is not None
+                            else None,
+                            paperless_version_id=document_version_id_for(document),
+                            paperless_version_checksum=document_version_checksum_for(document),
+                            trusted_for_context=True,
+                        )
                     )
-                )
-                embedded_count += 1
+                    embedded_count += 1
             except Exception as exc:
                 failed_count += 1
                 log.warning(
@@ -184,6 +193,7 @@ def _build_initial_embedding_index_impl(
         queue_name=LARAVEL_DATABASE_QUEUE,
     )
     build = start_embedding_index_build(
+        command_id=command_id,
         embedding_model=settings.ollama_embed_model,
         dimensions=None,
         content_scope="trusted_documents_without_inbox_tag",

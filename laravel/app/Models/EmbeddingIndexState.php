@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable([
-    'status', 'embedding_model', 'dimensions', 'content_scope', 'scope', 'release_threshold',
+    'command_id', 'status', 'embedding_model', 'dimensions', 'content_scope', 'scope', 'release_threshold',
     'release_target_population', 'released_at', 'release_status', 'started_at', 'completed_at',
     'document_count', 'embedded_count', 'failed_count', 'error',
 ])]

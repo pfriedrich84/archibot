@@ -94,6 +94,19 @@ Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
 
 Bei `LLM_PROVIDER=openai_compatible` sendet ArchiBot Embeddings an `/v1/embeddings` mit OpenAI-kompatiblem Payload und setzt explizit `encoding_format: "float"`. `encoding_format: null` darf nicht gesendet werden. Der Modellname bleibt ein konfigurierbarer Provider-Alias, z.B. `qwen3-embedding-4b-local`; fuer Qwen3-Embedding 4B erkennt ArchiBot automatisch die Dimension `2560`, wenn `OLLAMA_EMBED_DIM=0` gesetzt ist.
 
+Bei einem `llama-server`-Endpoint muss Qwen3-Embedding mit Last-Token-Pooling
+laufen. Verwende dafuer `--pooling last` oder lasse den Pooling-Parameter weg,
+damit der im GGUF hinterlegte Modellwert verwendet wird. Ein Start mit
+`--pooling mean` erzeugt zwar weiterhin Vektoren, verwendet aber eine andere
+Pooling-Semantik und macht den resultierenden Index fuer Qwen3-Embedding
+inkonsistent. Nach einer Pooling- oder Modelländerung ist ein vollständiger
+Embedding-Reindex erforderlich.
+
+Der Prompt-Cache ist fuer einen einmaligen oder seltenen Dokument-Reindex
+meist nicht nuetzlich, weil die Dokumenttexte jeweils unterschiedlich sind.
+Bei begrenztem Speicher kann der externe `llama-server` deshalb mit
+`--cache-ram 0` gestartet werden.
+
 Beispiel fuer Embeddings hinter einem lokalen OpenAI-kompatiblen Endpoint:
 
 ```env
