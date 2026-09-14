@@ -32,8 +32,8 @@ archibot reindex
 
 **Was passiert:**
 1. Die CLI delegiert an `php artisan archibot:maintenance-command reindex`
-2. Laravel erzeugt einen durable `reindex` Command, markiert die Embedding-Gate-State als stale und queued `RunPythonActorJob::reindex`
-3. Der fixe Python-Actor laedt Optionen aus `commands.payload`, fuehrt OCR/Embedding-Reindex aus und schreibt Fortschritt in durable Pipeline-/Actor-Tabellen
+2. Laravel markiert das Embedding-Gate als stale und schreibt den durable `reindex` Command zusammen mit einem unveraenderlichen Temporal-Outbox-Intent in einer Transaktion
+3. Das `EmbeddingIndexWorkflow` laedt Optionen aus `commands.payload`, fuehrt die idempotenten Embedding-Aktivitaeten aus und schreibt den Fortschritt nach jedem abgeschlossenen Dokument nach PostgreSQL
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, bei beschaedigter Vektor-DB,
 oder beim ersten Setup.
@@ -81,8 +81,8 @@ archibot reindex-embed
 
 **Was passiert:**
 1. Die CLI delegiert an `php artisan archibot:maintenance-command reindex_embed`
-2. Laravel erzeugt einen durable `embedding_index_build` Command und queued `RunPythonActorJob::embeddingIndexBuild`
-3. Der fixe Python-Actor startet den PostgreSQL/pgvector-Build und speichert Embeddings in `document_embeddings`
+2. Laravel markiert das Embedding-Gate als stale und schreibt den durable `embedding_index_build` Command zusammen mit einem unveraenderlichen Temporal-Outbox-Intent in einer Transaktion
+3. Das `EmbeddingIndexWorkflow` startet den PostgreSQL/pgvector-Build und speichert Embeddings idempotent in `document_embeddings`; lange Modellaufrufe senden Heartbeats und eine leere Zielmenge endet als `0/0 complete`
 
 **Wann nutzen:** Nach Wechsel des Embedding-Modells, wenn OCR-Cache
 bereits aktuell ist.

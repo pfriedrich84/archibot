@@ -6,6 +6,7 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog as AuditEntry;
 use App\Models\Command as DispatchCommand;
 use App\Models\PipelineEvent as EventEntry;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use App\Support\OperatorPrincipal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +17,7 @@ class MaintenanceCommandDispatcher
 {
     public function __construct(
         private readonly PipelineStartGate $pipelineStartGate,
+        private readonly TemporalWorkflowDispatcher $temporal,
     ) {}
 
     public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
@@ -155,37 +157,41 @@ class MaintenanceCommandDispatcher
 
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
     {
-        $limit = $this->normalizedLimit($limit);
-        $embeddingState = $this->pipelineStartGate->markStale('Reindex requested by admin.');
+        return $this->pipelineStartGate->embeddingMutation(function () use ($request, $limit, $metadata): DispatchCommand {
+            return DB::transaction(function () use ($request, $limit, $metadata): DispatchCommand {
+                $limit = $this->normalizedLimit($limit);
+                $embeddingState = $this->pipelineStartGate->markStaleInsideMutation('Reindex requested by admin.');
 
-        $payload = array_filter([
-            'limit' => $limit,
-            ...$metadata,
-        ], fn ($value): bool => $value !== null);
-        $command = $this->createCommand($request, DispatchCommand::TYPE_REINDEX, $payload);
+                $payload = array_filter([
+                    'limit' => $limit,
+                    ...$metadata,
+                ], fn ($value): bool => $value !== null);
+                $command = $this->createCommand($request, DispatchCommand::TYPE_REINDEX, $payload);
 
-        $this->recordEvent($request, $command, 'job_control.reindex_requested', 'warning', 'Reindex requested by admin; embedding gate marked stale.', [
-            'action' => DispatchCommand::TYPE_REINDEX,
-            'embedding_index_state_id' => $embeddingState->id,
-            'limit' => $limit,
-            ...$metadata,
-        ]);
-        $this->audit($request, 'maintenance.reindex_requested', $command, [
-            'embedding_index_state_id' => $embeddingState->id,
-            'limit' => $limit,
-            ...$metadata,
-        ]);
+                $this->recordEvent($request, $command, 'job_control.reindex_requested', 'warning', 'Reindex requested by admin; embedding gate marked stale.', [
+                    'action' => DispatchCommand::TYPE_REINDEX,
+                    'embedding_index_state_id' => $embeddingState->id,
+                    'limit' => $limit,
+                    ...$metadata,
+                ]);
+                $this->audit($request, 'maintenance.reindex_requested', $command, [
+                    'embedding_index_state_id' => $embeddingState->id,
+                    'limit' => $limit,
+                    ...$metadata,
+                ]);
 
-        $this->enqueueCommand($command, RunPythonActorJob::reindex($command->id));
-        $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Reindex queued through Laravel actor transport.', [
-            'action' => DispatchCommand::TYPE_REINDEX,
-            'actor_name' => 'reindex',
-            'embedding_index_state_id' => $embeddingState->id,
-            'limit' => $limit,
-            ...$metadata,
-        ]);
+                $command = $this->temporal->startEmbeddingGeneration($command);
+                $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Reindex queued as a Temporal embedding workflow.', [
+                    'action' => DispatchCommand::TYPE_REINDEX,
+                    'actor_name' => 'reindex',
+                    'embedding_index_state_id' => $embeddingState->id,
+                    'limit' => $limit,
+                    ...$metadata,
+                ]);
 
-        return $command;
+                return $command;
+            });
+        });
     }
 
     public function queueOcrReindex(Request $request, ?int $limit = null, bool $force = false, array $metadata = []): DispatchCommand
@@ -224,40 +230,48 @@ class MaintenanceCommandDispatcher
 
     public function queueEmbeddingIndexBuild(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
     {
-        $limit = $this->normalizedLimit($limit);
-        $payload = array_filter([
-            'limit' => $limit,
-            ...$metadata,
-        ], fn ($value): bool => $value !== null);
-        $command = $this->createCommand($request, DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD, $payload);
+        return $this->pipelineStartGate->embeddingMutation(function () use ($request, $limit, $metadata): DispatchCommand {
+            return DB::transaction(function () use ($request, $limit, $metadata): DispatchCommand {
+                $limit = $this->normalizedLimit($limit);
+                $embeddingState = $this->pipelineStartGate->markStaleInsideMutation('Embedding index build requested by admin.');
+                $payload = array_filter([
+                    'limit' => $limit,
+                    ...$metadata,
+                ], fn ($value): bool => $value !== null);
+                $command = $this->createCommand($request, DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD, $payload);
 
-        $this->recordEvent($request, $command, 'job_control.embedding_build_requested', 'info', 'Embedding index build requested by admin.', [
-            'action' => DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD,
-            'limit' => $limit,
-            ...$metadata,
-        ]);
-        $this->audit($request, 'embedding_index.build_requested', $command, [
-            'limit' => $limit,
-            ...$metadata,
-        ], 'embedding_index');
+                $this->recordEvent($request, $command, 'job_control.embedding_build_requested', 'info', 'Embedding index build requested by admin; embedding gate marked stale.', [
+                    'action' => DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD,
+                    'embedding_index_state_id' => $embeddingState->id,
+                    'limit' => $limit,
+                    ...$metadata,
+                ]);
+                $this->audit($request, 'embedding_index.build_requested', $command, [
+                    'embedding_index_state_id' => $embeddingState->id,
+                    'limit' => $limit,
+                    ...$metadata,
+                ], 'embedding_index');
 
-        $this->enqueueCommand($command, RunPythonActorJob::embeddingIndexBuild($command->id));
+                $command = $this->temporal->startEmbeddingGeneration($command);
 
-        $this->recordEvent(
-            $request,
-            $command,
-            'job_control.embedding_build_actor_queued',
-            'info',
-            'Embedding build queued through Laravel actor transport.',
-            [
-                'action' => DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD,
-                'actor_name' => 'build_embedding_index',
-                'limit' => $limit,
-                ...$metadata,
-            ],
-        );
+                $this->recordEvent(
+                    $request,
+                    $command,
+                    'job_control.embedding_build_actor_queued',
+                    'info',
+                    'Embedding build queued as a Temporal workflow.',
+                    [
+                        'action' => DispatchCommand::TYPE_EMBEDDING_INDEX_BUILD,
+                        'actor_name' => 'build_embedding_index',
+                        'embedding_index_state_id' => $embeddingState->id,
+                        'limit' => $limit,
+                        ...$metadata,
+                    ],
+                );
 
-        return $command;
+                return $command;
+            });
+        });
     }
 
     /** @param array<string, mixed> $payload */

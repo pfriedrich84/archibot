@@ -2,12 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\PipelineEvent;
+use App\Models\TemporalOutboxIntent;
 use App\Models\User;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -29,10 +30,15 @@ class EmbeddingIndexControlTest extends TestCase
         $this->assertSame('embedding_index_build', $command->type);
         $this->assertSame('queued', $command->status);
         $this->assertSame(10, $command->payload['limit']);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
         $this->assertSame($admin->id, $command->created_by_user_id);
 
-        Queue::assertPushed(RunPythonActorJob::class, fn (RunPythonActorJob $queued): bool => $queued->actorName === 'build_embedding_index'
-            && $queued->commandId === $command->id);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'operation' => TemporalOutboxIntent::OPERATION_START,
+            'workflow_id' => "archibot/embedding-index/{$command->id}",
+            'workflow_type' => TemporalWorkflowDispatcher::EMBEDDING_WORKFLOW,
+        ]);
+        Queue::assertNothingPushed();
 
         $this->assertDatabaseHas('pipeline_events', [
             'command_id' => $command->id,

@@ -116,7 +116,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
         """
     )
     with engine().begin() as connection:
-        connection.execute(
+        updated = connection.execute(
             statement,
             {
                 "intent_id": intent.id,
@@ -125,3 +125,26 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
                 "error": error[:1000],
             },
         )
+        command_id = intent.payload.get("command_id")
+        if (
+            exhausted
+            and updated.rowcount == 1
+            and intent.operation == "start_workflow"
+            and isinstance(command_id, int)
+            and not isinstance(command_id, bool)
+        ):
+            connection.execute(
+                sql_text(
+                    """
+                    UPDATE commands
+                    SET status = 'failed_permanent', finished_at = CURRENT_TIMESTAMP,
+                        error = 'Temporal workflow start delivery exhausted its retries.',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = :command_id
+                      AND status IN ('pending', 'queued')
+                      AND payload->>'orchestration_driver' = 'temporal'
+                      AND payload->>'temporal_workflow_id' = :workflow_id
+                    """
+                ),
+                {"command_id": command_id, "workflow_id": intent.workflow_id},
+            )

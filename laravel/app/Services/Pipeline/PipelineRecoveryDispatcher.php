@@ -514,6 +514,9 @@ class PipelineRecoveryDispatcher
 
         Command::query()
             ->where('status', Command::STATUS_PENDING)
+            ->where(fn ($query) => $query
+                ->whereNull('payload->orchestration_driver')
+                ->orWhere('payload->orchestration_driver', '!=', 'temporal'))
             ->where(function ($query): void {
                 $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', $this->databaseTimestampNow());
             })
@@ -542,6 +545,9 @@ class PipelineRecoveryDispatcher
 
         Command::query()
             ->where('status', Command::STATUS_QUEUED)
+            ->where(fn ($query) => $query
+                ->whereNull('payload->orchestration_driver')
+                ->orWhere('payload->orchestration_driver', '!=', 'temporal'))
             ->whereIn('type', $this->recoverableCommandTypes())
             ->where('updated_at', '<=', $this->staleQueuedCutoff())
             ->oldest('updated_at')
@@ -569,6 +575,9 @@ class PipelineRecoveryDispatcher
 
         Command::query()
             ->where('status', Command::STATUS_RUNNING)
+            ->where(fn ($query) => $query
+                ->whereNull('payload->orchestration_driver')
+                ->orWhere('payload->orchestration_driver', '!=', 'temporal'))
             ->whereIn('type', $this->recoverableCommandTypes())
             ->where('updated_at', '<=', $this->staleRunningCutoff())
             ->oldest('updated_at')

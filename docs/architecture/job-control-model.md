@@ -34,15 +34,15 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Action | Durable owner | Transport/execution | Visibility |
 |---|---|---|---|
 | Poll reconciliation | `Command(type=poll_reconciliation)` | `RunPythonActorJob::pollReconciliation` -> `python -m app.actor_runner reconcile-poll --command-id ...` | Operations Log, command events |
-| Full reindex | `Command(type=reindex)`; marks embedding gate stale | `RunPythonActorJob::reindex` -> fixed actor runner | Operations Log, embedding state/events |
+| Full reindex | `Command(type=reindex)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with idempotent per-document activities | Operations Log, embedding state/events |
 | OCR reindex | `Command(type=reindex_ocr)` with `force` in payload | `RunPythonActorJob::reindexOcr` -> fixed actor runner | Operations Log, actor execution/events |
-| Embedding build | `Command(type=embedding_index_build)` | `RunPythonActorJob::embeddingIndexBuild` -> fixed actor runner | Operations Log, embedding pages/state |
+| Embedding build | `Command(type=embedding_index_build)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with Temporal retry and heartbeat | Operations Log, embedding pages/state |
 | Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` | `RunPythonActorJob::documentPipeline` -> fixed actor runner | Pipeline Runs, Operations Log |
 | Paperless document webhook | `WebhookDelivery` + `PipelineRun(type=document)` | same document actor transport | Webhook Deliveries, Pipeline Runs, Operations Log |
 | Review commit | `Command(type=review_commit)` | review commit actor | Review page, Operations Log, audit logs |
 | Entity approval application | `Command(type=sync_entity_approval)` | queued Laravel `ApplyEntityApprovalCommand`; PostgreSQL decision/recovery service, no Python/SQLite actor | Entity approval status, Operations Log, audit logs |
 | Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check creates one durable poll command and dispatches its Laravel actor job | Operations Log, command events |
-| Durable recovery scan | `php artisan archibot:recovery-scan` | recovers source-linked actor attempts, cancellations, and safe pending/stale commands/runs/webhooks through Laravel actor jobs | Pipeline/command/webhook/actor events |
+| Durable recovery scan | `php artisan archibot:recovery-scan` | recovers remaining legacy actor attempts, cancellations, and safe pending/stale commands/runs/webhooks; Temporal-owned commands are excluded | Pipeline/command/webhook/actor events |
 | Reset | `php artisan archibot:reset` or confirmed admin Maintenance action | Shared Laravel/PostgreSQL reset service | CLI/UI outcome and durable audit identity |
 
 ## State machines

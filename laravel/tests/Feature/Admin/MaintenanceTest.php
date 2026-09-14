@@ -7,7 +7,9 @@ use App\Models\ActorExecution;
 use App\Models\AuditLog;
 use App\Models\Command;
 use App\Models\PipelineRun;
+use App\Models\TemporalOutboxIntent;
 use App\Models\User;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -135,7 +137,11 @@ class MaintenanceTest extends TestCase
         $ocrCommand = Command::query()->where('type', Command::TYPE_REINDEX_OCR)->firstOrFail();
         $this->assertTrue($ocrCommand->payload['force']);
 
-        Queue::assertPushed(RunPythonActorJob::class, 4);
+        Queue::assertPushed(RunPythonActorJob::class, 2);
+        $this->assertSame(2, TemporalOutboxIntent::query()->count());
+        $this->assertSame(2, Command::query()
+            ->where('payload->orchestration_driver', TemporalWorkflowDispatcher::DRIVER)
+            ->count());
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
     }
 
@@ -169,7 +175,8 @@ class MaintenanceTest extends TestCase
         }
 
         $this->assertSame(1, AuditLog::query()->where('event', 'maintenance.ocr_reindex_requested')->count());
-        Queue::assertPushed(RunPythonActorJob::class, count($cases));
+        Queue::assertPushed(RunPythonActorJob::class, 3);
+        $this->assertSame(2, TemporalOutboxIntent::query()->count());
     }
 
     public function test_cli_maintenance_command_starts_manual_document_pipeline(): void

@@ -9,7 +9,14 @@ from temporalio.worker import Worker
 
 from app.config import settings
 from app.temporal.client import connect_temporal
-from app.temporal.workflows import RuntimeProbeWorkflow
+from app.temporal.embedding_activities import (
+    embed_document,
+    fail_embedding_preparation,
+    finish_embedding_generation,
+    prepare_embedding_generation,
+    project_embedding_progress,
+)
+from app.temporal.workflows import EmbeddingIndexWorkflow, RuntimeProbeWorkflow
 
 
 async def run_worker() -> None:
@@ -18,7 +25,14 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[RuntimeProbeWorkflow],
+        workflows=[RuntimeProbeWorkflow, EmbeddingIndexWorkflow],
+        activities=[
+            prepare_embedding_generation,
+            embed_document,
+            fail_embedding_preparation,
+            project_embedding_progress,
+            finish_embedding_generation,
+        ],
     )
     logging.getLogger(__name__).info(
         "Temporal worker connected namespace=%s task_queue=%s",

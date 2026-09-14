@@ -63,22 +63,28 @@ class PipelineStartGate
     public function markStale(string $reason): EmbeddingIndexState
     {
         return $this->withSessionLock(false, function () use ($reason): EmbeddingIndexState {
-            return DB::transaction(function () use ($reason): EmbeddingIndexState {
-                $state = EmbeddingIndexState::query()->latest()->lockForUpdate()->first();
-                if ($state === null) {
-                    return EmbeddingIndexState::query()->create([
-                        'status' => EmbeddingIndexState::STATUS_STALE,
-                        'error' => $reason,
-                    ]);
-                }
+            return $this->markStaleInsideMutation($reason);
+        });
+    }
 
-                $state->forceFill([
+    /** Caller must hold the exclusive embedding-mutation session lock. */
+    public function markStaleInsideMutation(string $reason): EmbeddingIndexState
+    {
+        return DB::transaction(function () use ($reason): EmbeddingIndexState {
+            $state = EmbeddingIndexState::query()->latest()->lockForUpdate()->first();
+            if ($state === null) {
+                return EmbeddingIndexState::query()->create([
                     'status' => EmbeddingIndexState::STATUS_STALE,
                     'error' => $reason,
-                ])->save();
+                ]);
+            }
 
-                return $state;
-            });
+            $state->forceFill([
+                'status' => EmbeddingIndexState::STATUS_STALE,
+                'error' => $reason,
+            ])->save();
+
+            return $state;
         });
     }
 

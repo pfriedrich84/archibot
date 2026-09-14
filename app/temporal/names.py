@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 RUNTIME_PROBE_WORKFLOW = "archibot.runtime_probe"
+EMBEDDING_INDEX_WORKFLOW = "archibot.embedding_index"
 WORKFLOW_PROTOCOL_VERSION = 1
 
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Command;
 use App\Models\EmbeddingIndexState;
 use App\Models\User;
+use App\Services\Temporal\TemporalWorkflowDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -84,7 +85,9 @@ class MaintenanceCommandTest extends TestCase
         $command = Command::query()->firstOrFail();
         $this->assertSame('reindex', $command->type);
         $this->assertSame('queued', $command->status);
-        $this->assertSame(['limit' => 50], $command->payload);
+        $this->assertSame(50, $command->payload['limit']);
+        $this->assertSame(TemporalWorkflowDispatcher::DRIVER, $command->payload['orchestration_driver']);
+        $this->assertSame("archibot/embedding-index/{$command->id}", $command->payload['temporal_workflow_id']);
         $this->assertSame('maintenance', $command->queue);
         $this->assertSame(40, $command->priority);
         $this->assertSame($admin->id, $command->created_by_user_id);

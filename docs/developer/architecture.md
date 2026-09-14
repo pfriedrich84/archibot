@@ -93,7 +93,7 @@ Es gibt **vier Wege**, wie ein Dokument in die Pipeline gelangt:
 |---|---|---|---|
 | **Worker-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` → festes Python-Discovery-Kommando → versionierte `poll_candidates` → Laravel `PollCandidateConsumer` → `DocumentPipelineStarter` → ein idempotentes `staged_document_batch` fuer alle neu erstellten Runs | Ja, Marker-Disposition und Batch-Zuordnung werden dauerhaft protokolliert |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware erzwingt vor Controller/Persistenz Roh-Body-Limit, gemeinsames per-Client Rate-Limit fuer beide Aliase und ein nicht leeres effektives Secret (verschluesselte globale Einstellung vor Deployment-Konfiguration) mit `hash_equals`; danach speichert Laravel redigierte `webhook_deliveries`. Create/Process-Events starten `pipeline_runs` und queuen `RunPythonActorJob::documentPipeline(<pipeline-run-id>)`, Refresh/Delete-Events queuen `RunPythonActorJob::webhookDelivery(<webhook-delivery-id>)`. | Ja, Delivery bleibt durable/Run wird blockiert |
-| **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Laravel `commands` oder `pipeline_runs` → feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
+| **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Embedding/Reindex: Laravel `commands` + transaktionaler Temporal-Outbox-Intent → `EmbeddingIndexWorkflow`; noch nicht migrierte Aktionen verwenden voruebergehend feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Gate/Run-Status |
 | **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge (Actors nutzen `app.actor_runner`) |
 
 ## Inbox-Seite (`/inbox`)
@@ -157,16 +157,16 @@ Eine autorisierte manuelle Annahme bleibt unveraendert: Sie erzeugt einen dauerh
 
 ## Reindex
 
-Embedding-Build, Reindex, Poll-Reconciliation, Review-Commit, Dokumentverarbeitung und nicht-prozessierende Webhook-Aktionen laufen ueber Laravel queued actor jobs mit festen Python-Actor-Kommandos. Der feste Python-Runner startet Embedding-Builds ueber `python -m app.actor_runner build-embedding-index --command-id <commands.id>` und laedt Optionen wie `limit` ausschliesslich aus `commands.payload`. Webhook-Refresh/Delete nutzt `python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>`; Python laedt die von Laravel normalisierte Aktion aus der Delivery.
+Embedding-Build und Reindex werden von Temporal ausgefuehrt. Poll-Reconciliation, Review-Commit, Dokumentverarbeitung und nicht-prozessierende Webhook-Aktionen verwenden bis zu ihrer jeweiligen Cutover-Phase weiterhin Laravel queued actor jobs mit festen Python-Actor-Kommandos. Webhook-Refresh/Delete nutzt `python -m app.actor_runner handle-webhook --delivery-id <webhook_deliveries.id>`; Python laedt die von Laravel normalisierte Aktion aus der Delivery.
 
 1. Laravel legt einen `commands`-Eintrag vom Typ `embedding_index_build` oder `reindex` an
-2. Laravel queued `RunPythonActorJob::embeddingIndexBuild(<command-id>)` oder `RunPythonActorJob::reindex(<command-id>)` ueber die Laravel Database Queue
-3. Der Laravel Queue Worker ruft das allowlistete Python-Kommando `python -m app.actor_runner build-embedding-index --command-id <commands.id>` auf
-4. Python startet einen PostgreSQL/pgvector-Embedding-Build und setzt die Embedding-Gate-State auf `building`
+2. Laravel setzt das Gate unter einem exklusiven PostgreSQL-Fence auf `stale` und schreibt Command sowie unveraenderlichen Temporal-Outbox-Intent atomar
+3. Der Python-Outbox-Relay startet das stabile `EmbeddingIndexWorkflow` genau einmal; der Laravel-Recovery-Scan ignoriert Temporal-eigene Commands. Erschoepft der Relay seine Zustellversuche, setzt derselbe PostgreSQL-Commit den betroffenen Command sichtbar auf `failed_permanent`
+4. Eine idempotente Temporal-Aktivitaet startet oder uebernimmt die commandgebundene PostgreSQL/pgvector-Generation und setzt ihren Zustand auf `building`
 5. Alle Paperless-Dokumente ohne konfigurierten Inbox-/Posteingang-Tag werden geladen
 6. Fuer jedes vertrauenswuerdige Dokument wird ein neues Embedding mit Metadaten in PostgreSQL gespeichert
-7. **Fortschritt:** Python schreibt Reindex-/Phase-Fortschritt in dauerhafte Pipeline-/Command-State-Tabellen; Laravel zeigt Status und Ergebnis aus PostgreSQL an
-8. **Inbox-Blockade:** Waehrend des Reindex werden Poll/Webhook-Pfade blockiert, um Raceconditions mit teilweise aufgebauten Embeddings zu vermeiden
+7. **Fortschritt:** Temporal schreibt nach jedem terminalen Dokument exakte Zaehler nach PostgreSQL; die Abschlussaktivitaet setzt Generation und Command gemeinsam auf terminal. Eine leere Instanz endet ohne Provider-Aufruf als `0/0 complete`
+8. **Inbox-Blockade:** Das Gate ist bereits vor Commit des Start-Intents geschlossen und wird erst durch eine erfolgreiche Generation wieder geoeffnet. Lange Provider-Aufrufe senden Temporal-Heartbeats
 
 ## Diagnose- und Operations-Grenze
 
