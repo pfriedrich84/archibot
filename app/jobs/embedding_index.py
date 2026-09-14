@@ -110,7 +110,9 @@ def start_embedding_index_build(
             same_command = command_id is not None and running.get("command_id") == command_id
             if same_command:
                 return EmbeddingIndexBuild(id=int(running["id"]), status=str(running["status"]))
-            return EmbeddingIndexBuild(id=int(running["id"]), status=str(running["status"]), already_running=True)
+            return EmbeddingIndexBuild(
+                id=int(running["id"]), status=str(running["status"]), already_running=True
+            )
         row = (
             connection.execute(
                 insert_statement,
