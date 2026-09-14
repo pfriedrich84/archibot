@@ -157,7 +157,7 @@ class PipelineRecoveryDispatcher
         ActorExecution::query()
             ->where('status', ActorExecution::STATUS_RETRYING)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
             })
             ->oldest('next_retry_at')
             ->oldest('id')
@@ -514,7 +514,7 @@ class PipelineRecoveryDispatcher
         Command::query()
             ->where('status', Command::STATUS_PENDING)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
             })
             ->whereIn('type', $this->recoverableCommandTypes())
             ->oldest('updated_at')
@@ -750,7 +750,7 @@ class PipelineRecoveryDispatcher
         WebhookDelivery::query()
             ->where('status', WebhookDelivery::STATUS_FAILED)
             ->where(function ($query): void {
-                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now());
+                $query->whereNull('next_retry_at')->orWhere('next_retry_at', '<=', now('UTC'));
             })
             ->whereIn('error', $this->retryableWebhookErrors())
             ->whereDoesntHave('events', function ($query): void {
@@ -1408,7 +1408,10 @@ class PipelineRecoveryDispatcher
 
     private function staleRunningCutoff(): string
     {
-        return now()->subMinutes($this->staleRunningMinutes())->toDateTimeString();
+        // PostgreSQL timestamps are persisted and compared in UTC. Keep the
+        // timezone on the Carbon value until binding so a local application
+        // timezone cannot turn a fresh actor into an immediately stale one.
+        return now('UTC')->subMinutes($this->staleRunningMinutes())->toDateTimeString();
     }
 
     private function staleRunningMinutes(): int
@@ -1418,7 +1421,7 @@ class PipelineRecoveryDispatcher
 
     private function staleQueuedCutoff(): string
     {
-        return now()->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
+        return now('UTC')->subMinutes($this->staleQueuedMinutes())->toDateTimeString();
     }
 
     private function staleQueuedMinutes(): int

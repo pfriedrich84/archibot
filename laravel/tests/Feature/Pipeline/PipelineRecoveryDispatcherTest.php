@@ -736,6 +736,37 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(Command::STATUS_RUNNING, $command->fresh()->status);
     }
 
+    public function test_recovery_cutoff_remains_correct_when_application_timezone_is_non_utc(): void
+    {
+        Queue::fake();
+        $previousTimezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Vienna');
+
+        try {
+            $command = $this->command([
+                'type' => Command::TYPE_REINDEX,
+                'status' => Command::STATUS_RUNNING,
+            ]);
+            $execution = ActorExecution::query()->create([
+                'command_id' => $command->id,
+                'actor_name' => PythonActorRunner::ACTOR_REINDEX,
+                'status' => ActorExecution::STATUS_RUNNING,
+                'attempt' => 1,
+                'max_attempts' => 5,
+                'started_at' => now()->subMinute(),
+                'progress_updated_at' => now()->subMinute(),
+            ]);
+
+            $result = app(PipelineRecoveryDispatcher::class)->recoverActorExecutions(limit: 10);
+
+            $this->assertSame(['stale' => 0, 'redispatched' => 0, 'failed_permanent' => 0], $result);
+            Queue::assertNothingPushed();
+            $this->assertSame(ActorExecution::STATUS_RUNNING, $execution->fresh()->status);
+        } finally {
+            date_default_timezone_set($previousTimezone);
+        }
+    }
+
     public function test_recovery_reconciles_stale_actor_to_terminal_source_without_replay(): void
     {
         Queue::fake();
