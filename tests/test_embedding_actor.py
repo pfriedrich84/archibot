@@ -200,6 +200,7 @@ async def test_build_pgvector_embeddings_embeds_and_stores_documents(monkeypatch
 
     monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
     monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
+    monkeypatch.setattr(embedding, "document_embedding_exists", lambda **kwargs: False)
     monkeypatch.setattr(
         embedding,
         "update_embedding_index_progress",
@@ -296,6 +297,7 @@ async def test_build_pgvector_embeddings_does_not_abort_on_document_text_type_er
 
     monkeypatch.setattr(embedding, "PaperlessClient", FakePaperless)
     monkeypatch.setattr(embedding, "create_ai_provider", FakeOllama)
+    monkeypatch.setattr(embedding, "document_embedding_exists", lambda **kwargs: False)
     monkeypatch.setattr(embedding, "document_embedding_text", fake_document_embedding_text)
     monkeypatch.setattr(
         embedding,
