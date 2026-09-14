@@ -12,7 +12,7 @@
   <img src="app/static/logo-full.png" alt="ArchiBot Logo" width="256">
 </p>
 
-KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot-App und PostgreSQL/pgvector. Der event-driven Queue-Pfad nutzt Laravel Database Queues mit festen Python-Actor-Kommandos; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
+KI-basierter Klassifikator für [Paperless-NGX](https://docs.paperless-ngx.com/), der neu eingescannte Dokumente (Tag `Posteingang`) automatisch verprobt und Vorschläge für **Titel, Datum, Korrespondent, Dokumenttyp und Speicherpfad** erzeugt. Läuft als Docker-Compose-Stack mit ArchiBot, PostgreSQL/pgvector und privatem Temporal-Workflowdienst; KI-Anbindung erfolgt über Ollama-kompatible oder OpenAI-kompatible Provider.
 
 Alle Vorschläge landen in einer Review-Queue und werden erst nach ausdruecklicher manueller Freigabe in Paperless geschrieben. Neue Attribute (Tags, Korrespondenten und Dokumenttypen), die das LLM vorschlägt, werden nur angelegt, wenn du sie in der Tag-Whitelist freigibst. Ein bereits gesetzter Paperless-Speicherpfad wird dabei nie überschrieben; ArchiBot setzt den Speicherpfad nur, wenn er am Dokument noch leer ist.
 
@@ -38,7 +38,7 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 - 🏷️ Entity-Freigaben: Tags, Korrespondenten und Dokumenttypen in Laravel verwalten (`/tags`, `/correspondents`, `/doctypes`)
 - 🔔 Webhook-Support: Sofortige Verarbeitung + Embedding-Update via Paperless-Workflow-Webhooks
 - ⚙️ Settings UI: Konfiguration im Browser ändern, ohne Container-Neustart (`/admin/settings`, `/settings/appearance`, `/settings/mcp-tokens`)
-- 🐳 Compose-/Dockhand-ready Stack mit fertigem App-Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot), PostgreSQL/pgvector und Laravel Database Queues als event-driven Transport
+- 🐳 Compose-/Dockhand-ready Stack mit App-Image via [GitHub Container Registry](https://ghcr.io/pfriedrich84/archibot), PostgreSQL/pgvector und Temporal-Persistenz
 
 ## Architektur
 
@@ -63,9 +63,9 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
         │                                  │
         │                                  ▼
         │                       ┌──────────────────────┐
-        │                       │ Laravel Queue        │
-        │                       │   - database driver  │
-        │                       │   - retry/recovery   │
+        │                       │ Temporal             │
+        │                       │   - durable history  │
+        │                       │   - retry/heartbeat  │
         │                       └──────────┬───────────┘
         │                                  ▼
         │                       ┌──────────────────────┐      ┌──────────────┐
@@ -79,14 +79,15 @@ Grundsätzlich wird versucht bereits vorhandene Attribute auszuwählen, hierfür
 ## Quickstart
 
 ```bash
-# 1. docker-compose.yml und .env herunterladen
-curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
-curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
+# 1. Deployment-Dateien auschecken
+git clone https://github.com/pfriedrich84/archibot.git
+cd archibot
 cp .env.example .env
 # → PAPERLESS_URL zwingend auf den vertrauten Paperless-Origin setzen;
 #   der Setup-Wizard zeigt dieses Ziel read-only und verifiziert einen Superuser
 # → für OpenAI-kompatible Provider: LLM_PROVIDER=openai_compatible,
 #   OPENAI_BASE_URL/OLLAMA_URL inklusive /v1 setzen und Modell-Aliasse eintragen
+# → TEMPORAL_POSTGRES_PASSWORD auf einen eigenen Wert setzen
 
 # 2. Modelle bereitstellen
 # Ollama-compatible endpoint:

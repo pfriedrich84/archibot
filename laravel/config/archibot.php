@@ -16,4 +16,5 @@ return [
     'paperless_webhook_rate_limit_per_minute' => (int) env('PAPERLESS_WEBHOOK_RATE_LIMIT_PER_MINUTE', 60),
     'paperless_webhook_development_bypass' => env('PAPERLESS_WEBHOOK_DEVELOPMENT_BYPASS', false),
     'poll_interval_seconds' => env('POLL_INTERVAL_SECONDS', 600),
+    'temporal_task_queue' => env('TEMPORAL_TASK_QUEUE', 'archibot-orchestration'),
 ];

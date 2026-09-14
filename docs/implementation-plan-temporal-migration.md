@@ -18,13 +18,14 @@ without running two productive owners for the same flow.
 
 - Add pinned Temporal server, admin-tools and optional UI services with dedicated
   persistence.
-- Add the Temporal Python SDK and PHP client SDK.
+- Add the Temporal Python SDK, transactional outbox and idempotent relay.
 - Add private connection, namespace and task-queue configuration.
 - Start a supervised Python Temporal worker and expose Temporal readiness in `/healthz`.
 - Add a no-side-effect connectivity workflow and deterministic replay test.
 
-Exit criteria: a clean stack initializes the namespace, the worker polls, Laravel starts a
-workflow through the PHP client, and a restart resumes it without Laravel queue recovery.
+Exit criteria: a clean stack initializes the namespace, the worker polls, Laravel writes a
+transactional intent, the relay starts the workflow, and a restart resumes it without
+Laravel queue recovery.
 
 ## Phase 2: Embedding ownership
 
@@ -72,4 +73,3 @@ accepted metadata is written once and its result is visible in ArchiBot.
 
 Exit criteria: Temporal is the only productive workflow owner, there are no legacy queue
 redispatches, all release checks pass, and the published image is tied to the tested commit.
-

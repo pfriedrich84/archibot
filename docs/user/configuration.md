@@ -143,6 +143,23 @@ Strukturierte Provider-Antworten sind auf 2048 Tokens fuer Klassifikation und Ju
 | `ARCHIBOT_STALE_QUEUED_MINUTES` | `5` | Ab wann queued Arbeit ohne aktiven Actor sicher erneut dispatcht werden darf. |
 | `ARCHIBOT_STALE_RUNNING_MINUTES` | `10` | Ab wann ein Actor ohne aktuellen Fortschritt als stale gilt und ueber seine durable Quelle recovered wird. |
 
+## Temporal
+
+Diese Werte sind deployment-eigen. Temporal laeuft im Standard-Compose-Netzwerk ohne
+oeffentlichen gRPC-Port und verwendet ein eigenes PostgreSQL-Volume.
+
+| Variable | Default | Beschreibung |
+|---|---|---|
+| `TEMPORAL_ADDRESS` | `temporal:7233` | Interne Temporal-Frontend-Adresse fuer Python-Worker und Outbox-Relay. |
+| `TEMPORAL_NAMESPACE` | `archibot` | Beim Stack-Start idempotent angelegter Namespace. |
+| `TEMPORAL_TASK_QUEUE` | `archibot-orchestration` | Gemeinsame Task Queue fuer versionierte ArchiBot-Workflows und Activities. |
+| `TEMPORAL_POSTGRES_USER` | `temporal` | Benutzer der getrennten Temporal-Persistenz. |
+| `TEMPORAL_POSTGRES_PASSWORD` | `temporal` | Passwort der Temporal-Persistenz; fuer reale Installationen zwingend ersetzen. |
+| `TEMPORAL_UI_PORT` | `8233` | Nur mit dem Profil `temporal-ui` an `127.0.0.1` gebundener Operator-Port. |
+| `TEMPORAL_OUTBOX_POLL_SECONDS` | `1` | Wartezeit des Relays, wenn keine Laravel-Intents vorliegen. |
+| `TEMPORAL_OUTBOX_LEASE_SECONDS` | `60` | Zeit bis ein nach Prozessverlust liegen gebliebener Zustell-Claim erneut uebernommen wird. |
+| `TEMPORAL_OUTBOX_MAX_ATTEMPTS` | `20` | Zustellversuche bis zur sichtbaren Dead-Letter-Markierung. Workflow-Retries selbst gehoeren Temporal. |
+
 ## Laravel/Svelte GUI
 
 | Variable | Default | Beschreibung |

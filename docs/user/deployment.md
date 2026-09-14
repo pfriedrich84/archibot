@@ -4,9 +4,9 @@ Anleitungen fuer verschiedene Deployment-Szenarien.
 
 ## Docker Compose (Standard)
 
-Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet den ArchiBot-App-Container zusammen mit PostgreSQL/pgvector. Der event-driven Queue-Pfad nutzt Laravel Database Queues mit festen Python-Actor-Kommandos und benoetigt keinen separaten Broker-Service. Paperless-NGX und der AI-Provider (Ollama-kompatibel oder OpenAI-kompatibler `/v1`-Endpoint) laufen weiterhin extern oder in verbundenen Compose-Netzwerken.
+Siehe [Installation](./installation.md) fuer die grundlegende Einrichtung. Der Standard-Stack startet ArchiBot, PostgreSQL/pgvector sowie einen privaten Temporal-Server mit separater PostgreSQL-Persistenz. Temporal uebernimmt die langlebigen Ablaufe schrittweise; noch nicht migrierte Ablaufe verwenden waehrend der begrenzten Umstellung weiterhin Laravel Database Queues. Paperless-NGX und der AI-Provider laufen extern oder in verbundenen Compose-Netzwerken.
 
-Das ArchiBot-App-Image wird automatisch ueber GitHub Container Registry bereitgestellt:
+Freigegebene ArchiBot-App-Images werden nach bestandenem manuellem Release-Gate ueber GitHub Container Registry bereitgestellt:
 
 ```
 ghcr.io/pfriedrich84/archibot:latest
@@ -90,6 +90,7 @@ Datei- und Konfigurationsdaten liegen in `DATA_DIR` (Default: `/data`) im Compos
 volumes:
   archibot_data:
   archibot_postgres:
+  archibot_temporal_postgres:
 ```
 
 ### Persistente Daten
@@ -97,6 +98,7 @@ volumes:
 | Ort | Beschreibung |
 |---|---|
 | PostgreSQL-Volume `archibot_postgres` | App-Datenbank (Sessions, Settings, Review Queue, Pipeline Runs/Events, Audit, MCP-Tokens, Embeddings) |
+| PostgreSQL-Volume `archibot_temporal_postgres` | Temporal-Workflow-Historie, Timer, Activity- und Retry-Zustand |
 | App-Volume `archibot_data` / `DATA_DIR` | App-Key, Logs, Custom Prompts und importierte Legacy-Konfiguration |
 | `DATA_DIR/laravel/app_key` | Persistenter Laravel-App-Key fuer verschluesselte Secrets |
 | `DATA_DIR/config.env` | Legacy-Settings, die beim ersten Laravel-Setup einmalig importiert werden |
@@ -104,7 +106,7 @@ volumes:
 
 ### Backup
 
-Fuer ein vollstaendiges Backup muessen `archibot_data` und `archibot_postgres` gesichert werden. PostgreSQL sollte per Dump oder mit gestopptem Stack auf Volume-Ebene gesichert werden:
+Fuer ein vollstaendiges Backup muessen `archibot_data`, `archibot_postgres` und `archibot_temporal_postgres` konsistent gesichert werden. Beide PostgreSQL-Dienste sollten per Dump oder bei gestopptem Stack auf Volume-Ebene gesichert werden:
 
 ```bash
 # App-Daten (/data)
@@ -113,6 +115,9 @@ docker run --rm -v archibot_data:/data -v $(pwd):/backup \
 
 # PostgreSQL-Dump
 docker exec archibot-postgres pg_dump -U archibot archibot > archibot-postgres.sql
+
+# Temporal-Persistenz (beide Datenbanken)
+docker exec archibot-temporal-postgres pg_dumpall -U temporal > archibot-temporal-postgres.sql
 
 ```
 
@@ -135,5 +140,7 @@ docker exec archibot archibot reset --yes --include-config
 | ArchiBot App → Paperless | HTTP | API-Zugriff (Dokumente, Metadaten) |
 | ArchiBot App → AI-Provider | HTTP | Strukturierte LLM-Klassifikation/OCR/Judge und Embeddings via Ollama oder OpenAI-kompatiblem Endpoint; Chat/RAG ist deaktiviert ([Issue #221](https://github.com/pfriedrich84/archibot/issues/221)) |
 | ArchiBot App → PostgreSQL | TCP 5432 | App-State, pgvector Embeddings, Pipeline-/Audit-Tabellen |
+| ArchiBot App → Temporal | gRPC 7233, intern | Workflow-Starts aus der Outbox sowie Workflow-/Activity-Tasks |
+| Temporal → Temporal PostgreSQL | TCP 5432, intern | Workflow-Historie, Timer und Retry-Zustand |
 | Browser → ArchiBot App | HTTP | Web-GUI (Port 8088) |
 | Paperless → ArchiBot App | HTTP | Webhook (optional, Port 8088) |

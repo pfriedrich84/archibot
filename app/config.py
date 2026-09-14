@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://archibot:archibot@postgres:5432/archibot"
     paperless_webhook_secret: str = ""
 
+    # --- Temporal workflow runtime ---
+    temporal_address: str = "temporal:7233"
+    temporal_namespace: str = "archibot"
+    temporal_task_queue: str = "archibot-orchestration"
+    temporal_outbox_poll_seconds: float = 1.0
+    temporal_outbox_lease_seconds: int = 60
+    temporal_outbox_max_attempts: int = 20
+
     # --- Worker ---
     poll_interval_seconds: int = 600
     context_max_docs: int = 5

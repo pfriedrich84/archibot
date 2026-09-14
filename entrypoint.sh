@@ -49,6 +49,9 @@ fi
 if [ "$DB_CONNECTION" = "pgsql" ]; then
     wait_for_tcp "PostgreSQL" "${DB_HOST:-postgres}" "${DB_PORT:-5432}" "${POSTGRES_WAIT_TIMEOUT_SECONDS:-90}"
 fi
+TEMPORAL_HOST="${TEMPORAL_ADDRESS%%:*}"
+TEMPORAL_PORT="${TEMPORAL_ADDRESS##*:}"
+wait_for_tcp "Temporal" "${TEMPORAL_HOST:-temporal}" "${TEMPORAL_PORT:-7233}" "${TEMPORAL_WAIT_TIMEOUT_SECONDS:-120}"
 
 cd /app/laravel
 
@@ -58,8 +61,8 @@ php artisan storage:link >/dev/null 2>&1 || true
 
 # Hand long-running processes to supervisord instead of backgrounding them with
 # bare ``&``. This keeps the single-container deployment model while making the
-# Laravel queue worker, Laravel scheduler, Laravel recovery loop, optional MCP
-# server, and web server independently restartable
+# Laravel queue worker, Laravel scheduler, legacy recovery loop, Temporal worker,
+# Temporal outbox relay, optional MCP server, and web server independently restartable
 # and visible in container logs.
 echo "Starting supervised ArchiBot processes"
 exec /usr/local/bin/supervisord -c /app/docker/supervisord.conf

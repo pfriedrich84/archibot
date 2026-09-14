@@ -20,13 +20,14 @@ oder selbst gebaut.
 ## Option A: Fertiges Image von GHCR (empfohlen)
 
 ```bash
-# 1. docker-compose.yml und .env herunterladen
-curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/docker-compose.yml
-curl -LO https://raw.githubusercontent.com/pfriedrich84/archibot/main/.env.example
+# 1. Deployment-Dateien auschecken (Compose bind-mountet die gepinnten
+#    Temporal-Schema- und Namespace-Skripte read-only)
+git clone https://github.com/pfriedrich84/archibot.git
+cd archibot
 cp .env.example .env
-# → PAPERLESS_URL auf den vertrauten Paperless-Origin setzen; weitere Provider-Werte optional
+# → PAPERLESS_URL sowie ein eigenes TEMPORAL_POSTGRES_PASSWORD setzen
 
-# 2. Starten (zieht automatisch ghcr.io/pfriedrich84/archibot:latest)
+# 2. Starten (zieht ghcr.io/pfriedrich84/archibot:latest)
 docker compose up -d
 
 # 3. GUI oeffnen
@@ -67,7 +68,19 @@ Er fuehrt durch:
 4. **AI-Anbindung** — nach erfolgreichem Claim wird direkt `/admin/settings/ai-provider` geoeffnet. Dort wird genau ein installationsweiter Provider-Endpunkt konfiguriert. Fuer Klassifikation, Embedding, OCR Text, OCR Vision und Judge koennen unterschiedliche Modelle geladen, frei eingetragen und validiert werden; der Paperless-Origin bleibt read-only
 5. **Admin-Diagnostik und Maintenance** — Nur ArchiBot-Admins koennen Operations Log, Pipeline Runs, Actor Executions, Webhook Deliveries, Statistiken, Fehler, Embedding-Diagnostik, Maintenance und Audit-Logs direkt aufrufen. Die Seiten zeigen Status, IDs, Zaehler, strukturierte Metadaten, Badges und Ereignis-Timelines; der Operations Log zeigt fuer fehlgeschlagene Commands den sicheren Fehlertyp und verknuepft Actor Executions mit ihrer Command-ID. Rohe JSON-Payloads/Headers sowie freie Fehler-, Dokument-, OCR- und Prompt-Inhalte werden nicht ausgegeben. Konfigurierbare Provider- und Modell-IDs erscheinen nur als stabile, nicht rueckrechenbare Referenzen. Poll/Reindex/Einzeldokument-Verarbeitung bleibt ueber die admin-geschuetzte Laravel-Maintenance verfuegbar.
 
-Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung und MCP aktiv.
+Danach ist die Laravel/Svelte-Oberflaeche die primaere App. Python bleibt fuer Klassifikation, Embeddings, Paperless-Ausfuehrung, Temporal-Workflows und MCP aktiv.
+
+Der Standard-Stack initialisiert Temporal mit einer eigenen PostgreSQL-Persistenz und dem
+Namespace `archibot`. Ein sicherer Rundlauf laesst sich ohne Produktwirkung pruefen:
+
+```bash
+docker exec archibot php /app/laravel/artisan archibot:temporal-probe
+docker exec archibot archibot-temporal-probe
+```
+
+Der erste Befehl prueft Laravel-Transaktion, Outbox und Relay. Der zweite prueft den
+direkten Worker-Rundlauf. Der optionale lokale Temporal-Operator kann mit
+`docker compose --profile temporal-ui up -d` auf `127.0.0.1:8233` gestartet werden.
 
 ## Lokale Entwicklung (ohne Docker)
 

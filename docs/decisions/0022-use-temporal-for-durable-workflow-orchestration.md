@@ -21,10 +21,15 @@ keep the same split ownership.
 Temporal is the sole productive workflow execution, timer, retry, heartbeat and recovery
 owner for ArchiBot background work.
 
-- Laravel remains the authorization, HTTP, UI and review-decision boundary. It uses the
-  official Temporal PHP SDK as a client to start, signal, cancel and inspect workflows.
-- Python uses the official Temporal Python SDK for deterministic workflows and activities.
-  Activities own Paperless, AI-provider and ArchiBot PostgreSQL I/O.
+- Laravel remains the authorization, HTTP, UI and review-decision boundary. It writes an
+  immutable Temporal start/signal/cancel intent to a transactional PostgreSQL outbox in
+  the same transaction as the corresponding business command or review decision.
+- A supervised Python relay uses the official Temporal Python SDK to deliver outbox
+  intents idempotently. A crash between Temporal acceptance and outbox acknowledgement is
+  safe because the workflow ID and intent ID are stable. The relay makes no workflow
+  scheduling decisions of its own.
+- Python uses the same official SDK for deterministic workflows and activities. Activities
+  own Paperless, AI-provider and ArchiBot PostgreSQL I/O.
 - Temporal persists execution history in dedicated Temporal PostgreSQL databases. The
   ArchiBot PostgreSQL/pgvector database remains the business-data, audit, review,
   embedding and UI-projection store.
@@ -134,9 +139,8 @@ no operator-selectable permanent backend mode.
 
 - [Temporal self-hosted deployment guide](https://docs.temporal.io/self-hosted-guide/deployment)
 - [Temporal Python SDK](https://python.temporal.io/)
-- [Temporal PHP SDK](https://github.com/temporalio/sdk-php)
+- [Temporal Docker Compose PostgreSQL sample](https://github.com/temporalio/samples-server/blob/main/compose/docker-compose-postgres.yml)
 - [ADR-0004: Do Not Add a Long-term Legacy Compatibility Mode](0004-no-legacy-compatibility-mode.md)
 - [ADR-0006: Require Complete Embedding Index Before Document Processing](0006-require-complete-embedding-index-before-document-processing.md)
 - [ADR-0018: Suspend Model-confidence Auto-commit](0018-suspend-model-confidence-auto-commit.md)
 - [ADR-0019: Separate Review Decisions from Admin Job Control](0019-separate-review-decisions-from-admin-job-control.md)
-

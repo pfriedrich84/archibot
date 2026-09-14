@@ -14,7 +14,7 @@ Suggested metadata includes title, date, correspondent, document type, storage p
 - **Periodic polling** remains automatic every 600 seconds as reconciliation/fallback and must use the same pipeline-start/dedupe/lock logic as webhooks.
 - **Laravel + Inertia/Svelte** owns setup, login, settings, review UI, dashboard/operations UI, command API, webhook ingestion and admin-only job controls.
 - **Temporal Python workflows and activities** own durable document processing, Paperless/AI-provider calls, embeddings, OCR correction, classification, committing and maintenance execution.
-- **Temporal** is the sole target owner of workflow execution, timers, retries, heartbeat and recovery. Laravel uses the official PHP SDK as a client after authorization.
+- **Temporal** is the sole target owner of workflow execution, timers, retries, heartbeat and recovery. Laravel persists authorized workflow intents transactionally; a Python SDK relay delivers them idempotently.
 - **PostgreSQL + pgvector** store ArchiBot business state, UI projections, events, audit data and embedding similarity search. Temporal execution history uses separate Temporal persistence.
 - **Ollama-compatible and OpenAI-compatible providers** provide local or configured LLM classification, optional OCR correction, embeddings and judge passes. Chat/RAG is disabled; Issue #221 is the only redesign and possible re-enable track.
 

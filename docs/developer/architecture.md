@@ -187,8 +187,8 @@ Die Browser-Datenvertraege enthalten nur explizit erlaubte skalare Metadaten mit
 
 ## Docker-Deployment
 
-- **Compose-Stack:** ein ArchiBot-App-Container plus PostgreSQL/pgvector; Laravel Database Queues laufen ohne separaten Broker-Service
-- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional)
-- **Volumes:** `archibot_postgres` fuer App-Datenbank, Embeddings, Pipeline-State und Laravel Queue-State; `archibot_data` fuer App-Key, Logs und Custom Prompts. Ein vorhandenes Legacy-`classifier.db` bleibt bei Upgrades inert und wird nicht als Produktzustand gelesen.
-- **Start:** `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel und startet Web-App, Laravel Queue Worker, `schedule:work`, Laravel-native Recovery sowie optional den Python MCP-Server. Supervisor startet keinen Python Queue-/Recovery-Worker; der fruehere Queue-SDK, Bootstrap und Clean-Install-Schema sind entfernt.
-- **Netzwerk:** App-Container muss Paperless, PostgreSQL und den konfigurierten AI-Provider (Ollama oder OpenAI-kompatibler Endpoint) erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`
+- **Compose-Stack:** ArchiBot, PostgreSQL/pgvector, privater Temporal-Server und getrennte Temporal-PostgreSQL-Persistenz. Noch nicht migrierte Ablaufe verwenden waehrend des zeitlich begrenzten Cutovers weiterhin Laravel Database Queues.
+- **Ports:** 8088 (Laravel GUI/API), 3001 (MCP, optional), 8233 nur lokal und nur mit dem optionalen `temporal-ui`-Profil. Temporal gRPC wird nicht am Host veroeffentlicht.
+- **Volumes:** `archibot_postgres` fuer App-Datenbank und Produktprojektionen, `archibot_temporal_postgres` fuer Workflow-Historie und `archibot_data` fuer App-Key, Logs und Custom Prompts. Ein vorhandenes Legacy-`classifier.db` bleibt bei Upgrades inert.
+- **Start:** Compose migriert zuerst die gepinnten Temporal-Schemata und legt den Namespace idempotent an. `entrypoint.sh` erzeugt/persistiert `APP_KEY`, migriert Laravel und startet Web-App, Temporal-Worker, Outbox-Relay sowie die noch benoetigten Legacy-Prozesse unter Supervisor.
+- **Netzwerk:** App-Container muss Paperless, App-PostgreSQL, den privaten Temporal-Frontenddienst und den konfigurierten AI-Provider erreichen koennen. Bei separaten Paperless/Ollama-Stacks: externe Netzwerke einkommentieren in `docker-compose.yml`.

@@ -37,4 +37,4 @@ Core rules for coding agents working on ArchiBot.
 - Explicit user-selected force reprocess always creates a new pipeline run, even for identical content.
 - A Paperless storage path that already exists on a document is authoritative.
 - Review queues and whitelists are safety boundaries, not implementation details.
-- Python owns Temporal workflows/activities, document processing, embeddings, AI-provider calls, and MCP runtime. Laravel/Svelte owns UI, setup, settings, authorization, review decisions, and Temporal client calls. Temporal alone owns background execution, timers, retries, heartbeat and recovery.
+- Python owns the idempotent Temporal outbox relay, workflows/activities, document processing, embeddings, AI-provider calls, and MCP runtime. Laravel/Svelte owns UI, setup, settings, authorization, review decisions, and transactional workflow intents. Temporal alone owns background execution, timers, retries, heartbeat and recovery.

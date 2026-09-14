@@ -78,7 +78,8 @@ RUN pip install --upgrade pip setuptools wheel \
         "structlog>=24.4.0,<=25.5.0" \
         "supervisor>=4.3.0,<=4.3.0" \
         "mcp[cli]>=1.20.0,<=1.28.1" \
-        "pymupdf>=1.24.0,<=1.28.0"
+        "pymupdf>=1.24.0,<=1.28.2" \
+        "temporalio>=1.32.0,<2.0.0"
 
 COPY app ./app
 COPY prompts ./prompts

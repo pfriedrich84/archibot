@@ -44,7 +44,7 @@ RETIRED_TRANSPORT_PATTERNS = {
 # file, or unrelated content in the same file remains denied.
 RETIRED_TRANSPORT_LINE_EXCEPTIONS = {
     "AGENTS.md": {
-        "88e72a9da9b68475fa0581136b118bcdec005705267e1ea88590e85c4864de1c": 1,
+        "0e3e05cad338b0596ceee7eff4b22a9b58fe84af6c8280600dfd264dc7d13361": 1,
     },
 }
 

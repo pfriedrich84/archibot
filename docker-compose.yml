@@ -43,6 +43,14 @@ services:
       ARCHIBOT_QUEUE_EMBEDDINGS: ${ARCHIBOT_QUEUE_EMBEDDINGS:-embeddings}
       ARCHIBOT_QUEUE_INTERACTIVE: ${ARCHIBOT_QUEUE_INTERACTIVE:-interactive}
 
+      # --- Temporal durable workflow runtime ---
+      TEMPORAL_ADDRESS: ${TEMPORAL_ADDRESS:-temporal:7233}
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-archibot}
+      TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-archibot-orchestration}
+      TEMPORAL_OUTBOX_POLL_SECONDS: ${TEMPORAL_OUTBOX_POLL_SECONDS:-1}
+      TEMPORAL_OUTBOX_LEASE_SECONDS: ${TEMPORAL_OUTBOX_LEASE_SECONDS:-60}
+      TEMPORAL_OUTBOX_MAX_ATTEMPTS: ${TEMPORAL_OUTBOX_MAX_ATTEMPTS:-20}
+
       # --- AI provider / Python workers ---
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       OLLAMA_URL: ${OLLAMA_URL:-${OPENAI_BASE_URL:-http://ollama:11434}}
@@ -112,6 +120,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      temporal-create-namespace:
+        condition: service_completed_successfully
     # Falls Paperless/Ollama in anderen Compose-Stacks laufen,
     # entsprechendes externes Netzwerk einkommentieren:
     # networks:
@@ -134,10 +144,100 @@ services:
       timeout: 5s
       retries: 5
 
+  temporal-postgres:
+    image: postgres:16.10-bookworm
+    container_name: archibot-temporal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+    volumes:
+      - archibot_temporal_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  temporal-schema:
+    image: temporalio/admin-tools:1.31.0
+    container_name: archibot-temporal-schema
+    restart: "no"
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_SEEDS: temporal-postgres
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
+      POSTGRES_PWD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      SQL_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      PGPASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+    volumes:
+      - ./docker/temporal/setup-postgres.sh:/scripts/setup-postgres.sh:ro
+    entrypoint: ["/bin/sh"]
+    command: ["/scripts/setup-postgres.sh"]
+
+  temporal:
+    image: temporalio/server:1.31.0
+    container_name: archibot-temporal
+    restart: unless-stopped
+    depends_on:
+      temporal-schema:
+        condition: service_completed_successfully
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_SEEDS: temporal-postgres
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
+      POSTGRES_PWD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      BIND_ON_IP: 0.0.0.0
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/archibot.yaml
+    volumes:
+      - ./docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+
+  temporal-create-namespace:
+    image: temporalio/admin-tools:1.31.0
+    container_name: archibot-temporal-namespace
+    restart: "no"
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-archibot}
+    volumes:
+      - ./docker/temporal/create-namespace.sh:/scripts/create-namespace.sh:ro
+    entrypoint: ["/bin/sh"]
+    command: ["/scripts/create-namespace.sh"]
+
+  temporal-ui:
+    image: temporalio/ui:2.49.1
+    container_name: archibot-temporal-ui
+    profiles: ["temporal-ui"]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8233}:8080"
+
 volumes:
   archibot_data:
     driver: local
   archibot_postgres:
+    driver: local
+  archibot_temporal_postgres:
     driver: local
 
 # networks:
