@@ -23,6 +23,7 @@ from app.temporal.document_phase_activities import (
     process_document_judge_phase,
     process_document_ocr_phase,
     publish_document_review,
+    select_document_ocr_phase,
 )
 from app.temporal.embedding_activities import (
     embed_document,
@@ -116,7 +117,11 @@ async def run_worker() -> None:
         Worker(
             client,
             task_queue=PAPERLESS_TASK_QUEUE,
-            activities=[publish_document_review, commit_review_suggestion],
+            activities=[
+                publish_document_review,
+                select_document_ocr_phase,
+                commit_review_suggestion,
+            ],
         ),
     ]
     logging.getLogger(__name__).info(

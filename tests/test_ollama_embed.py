@@ -99,6 +99,67 @@ async def test_openai_compatible_chat_json_parses_choice_content(client: OllamaC
     assert payload["messages"][0] == {"role": "system", "content": "system"}
 
 
+async def test_openai_compatible_chat_json_sends_bounded_response_schema(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps({"title": "Invoice"})}}]},
+            request=httpx.Request("POST", "http://test/v1/chat/completions"),
+        )
+    )
+    schema = {
+        "type": "object",
+        "properties": {"title": {"type": "string", "maxLength": 300}},
+        "required": ["title"],
+        "additionalProperties": False,
+    }
+
+    await client.chat_json(system="system", user="user", response_schema=schema)
+
+    payload = client._client.post.await_args.kwargs["json"]
+    assert payload["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "archibot_classification",
+            "strict": True,
+            "schema": schema,
+        },
+    }
+
+
+async def test_openai_schema_rejection_falls_back_to_json_object(client: OllamaClient):
+    client.provider = "openai_compatible"
+    client._client.post = AsyncMock(
+        side_effect=[
+            httpx.Response(
+                400,
+                json={"error": "json_schema unsupported"},
+                request=httpx.Request("POST", "http://test/v1/chat/completions"),
+            ),
+            httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": json.dumps({"ok": True})}}]},
+                request=httpx.Request("POST", "http://test/v1/chat/completions"),
+            ),
+        ]
+    )
+
+    with patch("app.ai_provider.client.settings") as mock_settings:
+        mock_settings.ollama_chat_retries = 2
+        mock_settings.ollama_chat_retry_base_delay = 0.01
+        result = await client.chat_json(
+            system="system",
+            user="user",
+            response_schema={"type": "object"},
+        )
+
+    assert result == {"ok": True}
+    assert client._client.post.call_args_list[1].kwargs["json"]["response_format"] == {
+        "type": "json_object"
+    }
+
+
 async def test_embed_succeeds_without_retry(client: OllamaClient):
     """Successful embed on first attempt — no retries needed."""
     embedding = [0.1] * EMBED_DIM
@@ -413,6 +474,19 @@ async def test_chat_json_passes_num_ctx(client: OllamaClient):
     sent_payload = client._client.post.call_args[1]["json"]
     assert sent_payload["options"]["num_ctx"] == 8192
     assert sent_payload["options"]["num_predict"] == 2048
+
+
+async def test_native_chat_json_uses_response_schema_as_format(client: OllamaClient):
+    payload = {"title": "Invoice"}
+    schema = {"type": "object", "properties": {"title": {"type": "string"}}}
+    client._client.post = AsyncMock(return_value=_make_chat_response(json.dumps(payload)))
+
+    with patch("app.ai_provider.client.settings") as mock_settings:
+        mock_settings.ollama_num_ctx = 4096
+        result = await client.chat_json(system="sys", user="usr", response_schema=schema)
+
+    assert result == payload
+    assert client._client.post.await_args.kwargs["json"]["format"] == schema
 
 
 async def test_openai_compatible_ocr_uses_larger_bounded_completion(client: OllamaClient):

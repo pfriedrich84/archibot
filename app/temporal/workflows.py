@@ -33,6 +33,7 @@ with workflow.unsafe.imports_passed_through():
         ModelPhaseGrant,
         ModelPhaseProjection,
         ModelPhaseSchedulerRequest,
+        OcrPhaseSelectionRequest,
         PollWorkflowRequest,
         PollWorkflowResult,
         ReviewCommitRequest,
@@ -53,6 +54,7 @@ with workflow.unsafe.imports_passed_through():
         process_document_judge_phase,
         process_document_ocr_phase,
         publish_document_review,
+        select_document_ocr_phase,
     )
     from app.temporal.embedding_activities import (
         embed_document,
@@ -382,8 +384,28 @@ class ModelPhaseSchedulerWorkflow:
             for workflow_id, registration in self._active_documents.items()
             if workflow_id not in excluded
         ]
+        if phase == "ocr":
+            if configuration.ocr_mode == "off":
+                registrations = []
+            elif configuration.ocr_requested_tag_id > 0:
+                registrations = await workflow.execute_activity(
+                    select_document_ocr_phase,
+                    OcrPhaseSelectionRequest(
+                        registrations=registrations,
+                        requested_tag_id=configuration.ocr_requested_tag_id,
+                    ),
+                    task_queue=PAPERLESS_TASK_QUEUE,
+                    schedule_to_close_timeout=timedelta(hours=1),
+                    start_to_close_timeout=timedelta(minutes=10),
+                    heartbeat_timeout=timedelta(minutes=2),
+                    retry_policy=RetryPolicy(maximum_attempts=5),
+                )
         await self._project(configuration, "running", len(registrations), 0, 0)
-        failures = await self._execute_document_phase(phase, configuration, registrations)
+        failures = (
+            await self._execute_document_phase(phase, configuration, registrations)
+            if registrations
+            else set()
+        )
         await self._project(
             configuration,
             "completed",

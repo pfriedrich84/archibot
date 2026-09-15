@@ -164,6 +164,7 @@ class ModelPhaseConfiguration:
     embedding_num_ctx: int
     classification_num_ctx: int
     ocr_num_ctx: int
+    ocr_requested_tag_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,12 @@ class DocumentPhaseRegistration:
     intent_id: str
     workflow_id: str
     pipeline_run_id: int
+
+
+@dataclass(frozen=True)
+class OcrPhaseSelectionRequest:
+    registrations: list[DocumentPhaseRegistration]
+    requested_tag_id: int
 
 
 @dataclass(frozen=True)

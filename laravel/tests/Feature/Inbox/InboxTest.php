@@ -114,6 +114,37 @@ class InboxTest extends TestCase
         Http::assertSentCount(5);
     }
 
+    public function test_inbox_pagination_rebases_internal_paperless_origin(): void
+    {
+        AppSetting::put('paperless.inbox_tag_id', '7');
+        Http::fake(function ($request) {
+            if (! str_contains($request->url(), '/api/documents/')) {
+                return Http::response(['results' => []]);
+            }
+
+            return str_contains($request->url(), 'page=2')
+                ? Http::response(['count' => 2, 'next' => null, 'results' => [['id' => 2, 'title' => 'Second']]])
+                : Http::response([
+                    'count' => 2,
+                    'next' => 'http://paperless:8000/api/documents/?page=2&tags__id__all=7&page_size=25',
+                    'results' => [['id' => 1, 'title' => 'First']],
+                ]);
+        });
+
+        $user = User::factory()->create(['paperless_token' => 'user-token']);
+
+        $this->actingAs($user)
+            ->get(route('inbox.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('error', null)
+                ->has('documents', 2)
+                ->where('documents.1.id', 2)
+            );
+
+        Http::assertSent(fn ($request) => $request->url() === 'https://paperless.example/api/documents/?page=2&tags__id__all=7&page_size=25');
+    }
+
     public function test_paperless_document_pagination_rejects_repeated_pages(): void
     {
         Http::fake([

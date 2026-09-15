@@ -7,6 +7,7 @@ import pytest
 from app.models import ClassificationResult, PaperlessDocument, PaperlessEntity
 from app.pipeline.classifier import (
     _clamp_confidence,
+    _classification_response_schema,
     _estimate_tokens,
     _format_context_block,
     _format_document_block,
@@ -258,6 +259,22 @@ class TestBuildUserPrompt:
 # Token budget — build_user_prompt respects num_ctx
 # ---------------------------------------------------------------------------
 class TestNormalizationHelpers:
+    def test_classification_response_schema_bounds_freeform_output(self, monkeypatch):
+        monkeypatch.setattr("app.pipeline.classifier.settings.classification_max_tags", 3)
+
+        schema = _classification_response_schema()
+        properties = schema["properties"]
+
+        assert schema["additionalProperties"] is False
+        assert properties["tags"]["maxItems"] == 3
+        assert properties["reasoning"]["maxLength"] == 500
+        assert properties["confidence"] == {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+        }
+        assert set(schema["required"]) == set(properties)
+
     def test_normalize_date_accepts_iso(self):
         assert _normalize_date("2026-04-17") == "2026-04-17"
 

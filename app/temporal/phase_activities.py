@@ -33,6 +33,7 @@ def _configuration_payload() -> dict[str, object]:
         "ocr_vision_model": settings.ocr_vision_model,
         "judge_model": settings.ollama_judge_model or settings.ollama_model,
         "ocr_mode": settings.ocr_mode,
+        "ocr_requested_tag_id": settings.ocr_requested_tag_id,
         "judge_enabled": settings.enable_judge_verification,
         "judge_confidence_threshold": settings.judge_confidence_threshold,
         "embedding_num_ctx": settings.ollama_embed_num_ctx,
@@ -87,6 +88,7 @@ def _load_model_phase_configuration(phase: str) -> ModelPhaseConfiguration:
         embedding_num_ctx=int(payload["embedding_num_ctx"]),
         classification_num_ctx=int(payload["classification_num_ctx"]),
         ocr_num_ctx=int(payload["ocr_num_ctx"]),
+        ocr_requested_tag_id=int(payload["ocr_requested_tag_id"]),
     )
 
 

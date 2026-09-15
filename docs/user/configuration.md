@@ -75,7 +75,7 @@ Die Admin-Settings laden die Modellliste einmal von diesem Endpunkt. Klassifikat
 
 OCR-Korrekturen und lokale Freigaben bleiben ausschließlich in ArchiBot. Es gibt keine Auto-write-, Write-back-, Restore- oder Retry-Einstellung für Paperless-Dokumentinhalt. Ein eventuell noch gespeicherter PostgreSQL-Wert `ocr.auto_write_back` wird nicht im Settings-Katalog angeboten, nicht exportiert und nicht ausgeführt; ein veralteter `OCR_AUTO_WRITE_BACK`-Eintrag wird beim nächsten verwalteten Runtime-Export entfernt.
 
-Wenn `OCR_REQUESTED_TAG_ID` gesetzt ist, laeuft bzw. wiederholt sich OCR nur fuer Dokumente, die diesen Tag aktuell tragen. Die restliche Pipeline (Embedding/Klassifikation) laeuft bei nicht passenden Dokumenten weiter.
+Wenn `OCR_REQUESTED_TAG_ID` gesetzt ist, prueft der Temporal-Scheduler die aktuellen Paperless-Tags vor der OCR-Phase und sendet nur passende Dokumente an den OCR-Worker. Ohne Tag-Filter sind bei aktivem OCR-Modus alle Dokumente zugelassen; bei `OCR_MODE=off` wird kein OCR-Task eingeplant. Die restliche Pipeline (Embedding/Klassifikation) laeuft bei nicht passenden Dokumenten weiter.
 
 **Graceful Degradation:** `vision_full` → `vision_light` → `text` → `off`.
 Jede Stufe faengt Fehler ab und faellt auf die naechst niedrigere zurueck.
@@ -132,7 +132,7 @@ OLLAMA_EMBED_MODEL=qwen3-embedding-4b-local
 | `JUDGE_CONFIDENCE_THRESHOLD` | `101` | Judge-Pass wird uebersprungen, wenn die Initial-Confidence bereits >= diesem Wert (0–100) ist. `101` bedeutet: jede Klassifikation pruefen, auch ohne Kontext-Dokumente. |
 | `JUDGE_MODEL` / `OLLAMA_JUDGE_MODEL` | — | Optionales Modell fuer den Judge-Pass. Leer = `CLASSIFICATION_MODEL`/`OLLAMA_MODEL` wiederverwenden (kein zusaetzlicher GPU-Swap). Wenn ein anderes Modell gesetzt ist, werden nur Dokumente, die wirklich Judge brauchen, bis zur Batch-Judge-Phase zurueckgestellt. |
 
-Strukturierte Provider-Antworten sind auf 2048 Tokens fuer Klassifikation und Judge sowie 8192 Tokens fuer OCR begrenzt. ArchiBot sendet dafuer `max_tokens` an OpenAI-kompatible Provider und `num_predict` an Ollama-kompatible Provider. Dadurch enden fehlerhafte Modellantworten auch dann begrenzt, wenn das Modell kein gueltiges Ende-Token erzeugt.
+Strukturierte Provider-Antworten sind auf 2048 Tokens fuer Klassifikation und Judge sowie 8192 Tokens fuer OCR begrenzt. ArchiBot sendet dafuer `max_tokens` an OpenAI-kompatible Provider und `num_predict` an Ollama-kompatible Provider. Klassifikation nutzt zusaetzlich ein begrenztes JSON-Schema; OpenAI-kompatible Server ohne Schema-Unterstuetzung fallen kontrolliert auf den JSON-Objekt-Modus zurueck. Dadurch enden fehlerhafte Modellantworten auch dann begrenzt, wenn das Modell kein gueltiges Ende-Token erzeugt.
 
 ## Worker
 

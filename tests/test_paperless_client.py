@@ -14,6 +14,38 @@ def test_paperless_client_rejects_empty_token():
         PaperlessClient("http://paperless", "")
 
 
+@pytest.mark.parametrize(
+    ("next_url", "expected"),
+    [
+        ("http://paperless:8000/api/documents/?page=2", "/documents/?page=2"),
+        ("https://public.example/api/tags/?page=3", "/tags/?page=3"),
+        ("/api/document_types/?page=4", "/document_types/?page=4"),
+        ("/storage_paths/?page=5", "/storage_paths/?page=5"),
+    ],
+)
+def test_pagination_urls_are_rebased_to_configured_api_origin(next_url: str, expected: str):
+    paperless = PaperlessClient("http://paperless", "token")
+
+    assert paperless._relative(next_url) == expected
+
+
+@pytest.mark.parametrize(
+    "next_url",
+    [
+        "//attacker.test/api/documents/?page=2",
+        "file:///api/documents/?page=2",
+        "https://user:pass@attacker.test/api/documents/?page=2",
+        "https://attacker.test/outside/?page=2",
+        "documents/?page=2",
+    ],
+)
+def test_invalid_pagination_urls_are_rejected(next_url: str):
+    paperless = PaperlessClient("http://paperless", "token")
+
+    with pytest.raises(ValueError, match="Paperless pagination"):
+        paperless._relative(next_url)
+
+
 @pytest.mark.asyncio
 async def test_inbox_request_failure_logs_safe_transport_diagnostics():
     async def handler(request: httpx.Request) -> httpx.Response:

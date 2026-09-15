@@ -46,6 +46,7 @@ class AiProviderGateway(Protocol):
         model: str | None = None,
         num_ctx: int | None = None,
         role: str = "classification",
+        response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     async def chat_vision_json(

@@ -410,26 +410,33 @@ class FirstRunSetupTest extends TestCase
         app(PaperlessClient::class)->documentPreview('token', 123);
     }
 
-    public function test_cross_origin_pagination_is_rejected_and_not_fetched(): void
+    public function test_cross_origin_pagination_is_rebased_to_configured_origin(): void
     {
+        $page = 0;
         Http::fake([
             'https://paperless.test/api/token/' => Http::response(['token' => 'paperless-token']),
             'https://paperless.test/api/ui_settings/' => Http::response([
                 'user' => ['id' => 7, 'username' => 'admin', 'is_superuser' => true],
             ]),
-            'https://paperless.test/api/tags/*' => Http::response([
-                'results' => [['id' => 1, 'name' => 'Inbox']],
-                'next' => 'https://attacker.test/api/tags/?page=2',
-            ]),
+            'https://paperless.test/api/tags/*' => function () use (&$page) {
+                $page++;
+
+                return Http::response([
+                    'results' => [['id' => $page, 'name' => "Tag {$page}"]],
+                    'next' => $page === 1 ? 'http://paperless:8000/api/tags/?page=2' : null,
+                ]);
+            },
             'https://attacker.test/*' => Http::response(['results' => []]),
         ]);
 
         $this->postJson('/setup/paperless-tags', [
             'username' => 'admin',
             'password' => 'secret',
-        ])->assertUnprocessable();
+        ])->assertOk()
+            ->assertJsonPath('items.1.id', 2);
 
         Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://attacker.test/'));
+        Http::assertSent(fn ($request) => $request->url() === 'https://paperless.test/api/tags/?page=2');
     }
 
     public function test_public_setup_rejects_oversized_credentials_and_inputs_before_network_access(): void

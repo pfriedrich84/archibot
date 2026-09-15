@@ -357,7 +357,14 @@ class AiProviderClient:
                     delay = 0.0
                     if response_format_rejected:
                         current_payload = dict(current_payload)
-                        current_payload.pop("response_format", None)
+                        response_format = current_payload.get("response_format")
+                        if (
+                            isinstance(response_format, dict)
+                            and response_format.get("type") == "json_schema"
+                        ):
+                            current_payload["response_format"] = {"type": "json_object"}
+                        else:
+                            current_payload.pop("response_format", None)
                     elif isinstance(exc, ValueError):
                         current_payload = self._make_strict_openai_json_retry_payload(
                             current_payload
@@ -403,16 +410,29 @@ class AiProviderClient:
         temperature: float = 0.1,
         num_ctx: int | None = None,
         role: str = "classification",
+        response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Call the configured LLM provider and parse a JSON response."""
         provider = self._provider_config()
         if self._provider_type(provider) == "openai_compatible":
+            response_format = (
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": f"archibot_{role}",
+                        "strict": True,
+                        "schema": response_schema,
+                    },
+                }
+                if response_schema is not None
+                else {"type": "json_object"}
+            )
             payload = {
                 "model": model or self.model,
                 "stream": False,
                 "temperature": temperature,
                 "max_tokens": _structured_output_token_limit(role),
-                "response_format": {"type": "json_object"},
+                "response_format": response_format,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -422,7 +442,7 @@ class AiProviderClient:
 
         payload = {
             "model": model or self.model,
-            "format": "json",
+            "format": response_schema if response_schema is not None else "json",
             "stream": False,
             "options": {
                 "temperature": temperature,

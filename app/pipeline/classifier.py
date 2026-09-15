@@ -145,6 +145,52 @@ def _classification_max_tags() -> int:
         return 4
 
 
+def _classification_response_schema() -> dict[str, object]:
+    """Return a bounded schema for provider-side constrained decoding."""
+    nullable_name = {"anyOf": [{"type": "string", "maxLength": 150}, {"type": "null"}]}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "title": {"type": "string", "maxLength": 300},
+            "date": {
+                "anyOf": [
+                    {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+                    {"type": "null"},
+                ]
+            },
+            "correspondent": nullable_name,
+            "document_type": nullable_name,
+            "storage_path": nullable_name,
+            "tags": {
+                "type": "array",
+                "maxItems": _classification_max_tags(),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "name": {"type": "string", "maxLength": 150},
+                        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+                    },
+                    "required": ["name", "confidence"],
+                },
+            },
+            "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+            "reasoning": {"type": "string", "maxLength": 500},
+        },
+        "required": [
+            "title",
+            "date",
+            "correspondent",
+            "document_type",
+            "storage_path",
+            "tags",
+            "confidence",
+            "reasoning",
+        ],
+    }
+
+
 def _normalize_date(value: str | None) -> str | None:
     if value is None:
         return None
@@ -353,7 +399,12 @@ async def classify(
         context_window_tokens=resolved_num_ctx,
     )
 
-    raw = await ollama.chat_json(system=system, user=user, num_ctx=resolved_num_ctx)
+    raw = await ollama.chat_json(
+        system=system,
+        user=user,
+        num_ctx=resolved_num_ctx,
+        response_schema=_classification_response_schema(),
+    )
     raw_str = json.dumps(raw, ensure_ascii=False)
 
     try:

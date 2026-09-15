@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 from temporalio import workflow
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
 
-from app.temporal import phase_activities, workflows
+from app.temporal import document_phase_activities, phase_activities, workflows
 from app.temporal.contracts import (
     DocumentPhaseRegistration,
     DocumentWorkflowStart,
@@ -19,6 +20,7 @@ from app.temporal.contracts import (
     ModelPhaseConfiguration,
     ModelPhaseGrant,
     ModelPhaseSchedulerRequest,
+    OcrPhaseSelectionRequest,
     PollDiscoveryResult,
     PollWorkflowRequest,
     PollWorkflowResult,
@@ -219,6 +221,133 @@ async def test_embedding_phase_drains_registration_received_during_readiness_che
     assert failures == set()
     assert processed_batches == [[first.workflow_id], [late.workflow_id]]
     assert readiness_checks == 2
+
+
+@pytest.mark.asyncio
+async def test_ocr_phase_dispatches_no_tasks_when_mode_is_off(monkeypatch):
+    scheduler = workflows.ModelPhaseSchedulerWorkflow()
+    registration = DocumentPhaseRegistration("first", "archibot/document/1", 11)
+    scheduler._cycle = 1
+    scheduler._cycle_configuration = _configuration("embedding")
+    scheduler._active_documents = {registration.workflow_id: registration}
+    projections = []
+
+    async def project(_configuration, status, total, done, failed):
+        projections.append((status, total, done, failed))
+
+    async def execute_phase(*_args):
+        pytest.fail("OCR activity must not be dispatched while OCR_MODE is off")
+
+    monkeypatch.setattr(scheduler, "_project", project)
+    monkeypatch.setattr(scheduler, "_execute_document_phase", execute_phase)
+
+    _, failures = await scheduler._run_fixed_phase("ocr", set())
+
+    assert failures == set()
+    assert projections == [("running", 0, 0, 0), ("completed", 0, 0, 0)]
+
+
+@pytest.mark.asyncio
+async def test_ocr_phase_dispatches_all_documents_without_tag_filter(monkeypatch):
+    scheduler = workflows.ModelPhaseSchedulerWorkflow()
+    registration = DocumentPhaseRegistration("first", "archibot/document/1", 11)
+    scheduler._cycle = 1
+    scheduler._cycle_configuration = replace(
+        _configuration("embedding"), ocr_mode="text", ocr_requested_tag_id=0
+    )
+    scheduler._active_documents = {registration.workflow_id: registration}
+    dispatched = []
+
+    async def project(*_args):
+        return None
+
+    async def execute_phase(_phase, _configuration, registrations):
+        dispatched.extend(registrations)
+        return set()
+
+    async def execute_activity(*_args, **_kwargs):
+        pytest.fail("Paperless tag selection must not run without an OCR tag filter")
+
+    monkeypatch.setattr(scheduler, "_project", project)
+    monkeypatch.setattr(scheduler, "_execute_document_phase", execute_phase)
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+
+    await scheduler._run_fixed_phase("ocr", set())
+
+    assert dispatched == [registration]
+
+
+@pytest.mark.asyncio
+async def test_ocr_phase_dispatches_only_current_tag_matches(monkeypatch):
+    scheduler = workflows.ModelPhaseSchedulerWorkflow()
+    first = DocumentPhaseRegistration("first", "archibot/document/1", 11)
+    tagged = DocumentPhaseRegistration("tagged", "archibot/document/2", 12)
+    scheduler._cycle = 1
+    scheduler._cycle_configuration = replace(
+        _configuration("embedding"), ocr_mode="text", ocr_requested_tag_id=124
+    )
+    scheduler._active_documents = {first.workflow_id: first, tagged.workflow_id: tagged}
+    dispatched = []
+    selection_requests = []
+
+    async def project(*_args):
+        return None
+
+    async def execute_phase(_phase, _configuration, registrations):
+        dispatched.extend(registrations)
+        return set()
+
+    async def execute_activity(activity_fn, argument, **kwargs):
+        assert activity_fn is workflows.select_document_ocr_phase
+        assert kwargs["task_queue"] == workflows.PAPERLESS_TASK_QUEUE
+        selection_requests.append(argument)
+        return [tagged]
+
+    monkeypatch.setattr(scheduler, "_project", project)
+    monkeypatch.setattr(scheduler, "_execute_document_phase", execute_phase)
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+
+    await scheduler._run_fixed_phase("ocr", set())
+
+    assert selection_requests == [OcrPhaseSelectionRequest([first, tagged], 124)]
+    assert dispatched == [tagged]
+
+
+@pytest.mark.asyncio
+async def test_ocr_selection_reads_current_paperless_tags(monkeypatch):
+    registrations = [
+        DocumentPhaseRegistration("first", "archibot/document/1", 11),
+        DocumentPhaseRegistration("second", "archibot/document/2", 12),
+    ]
+    documents = {
+        101: SimpleNamespace(id=101, tags=[7]),
+        102: SimpleNamespace(id=102, tags=[7, 124]),
+    }
+
+    class Paperless:
+        closed = False
+
+        async def get_document(self, document_id):
+            return documents[document_id]
+
+        async def aclose(self):
+            self.closed = True
+
+    paperless = Paperless()
+    monkeypatch.setattr(
+        document_phase_activities,
+        "_load_run",
+        lambda pipeline_run_id: {"paperless_document_id": pipeline_run_id + 90},
+    )
+    monkeypatch.setattr(document_phase_activities, "PaperlessClient", lambda: paperless)
+    monkeypatch.setattr(document_phase_activities.activity, "heartbeat", lambda _details: None)
+
+    selected = await document_phase_activities.select_document_ocr_phase(
+        OcrPhaseSelectionRequest(registrations, 124)
+    )
+
+    assert selected == [registrations[1]]
+    assert paperless.closed is True
 
 
 async def _async_configuration() -> ModelPhaseConfiguration:

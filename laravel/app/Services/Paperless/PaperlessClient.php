@@ -568,18 +568,22 @@ class PaperlessClient
             throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
         }
 
-        if (! str_starts_with($next, '/') && ! $this->canonicalOrigin->isSameOriginUrl($next)) {
-            throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
-        }
-
         $parts = parse_url($next);
         if (! is_array($parts)) {
             throw new RuntimeException('Paperless pagination response was not a valid URL.');
         }
 
+        if (isset($parts['scheme']) && ! in_array(mb_strtolower((string) $parts['scheme']), ['http', 'https'], true)) {
+            throw new RuntimeException('Paperless pagination response was not a valid URL.');
+        }
+
+        if (isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+            throw new RuntimeException('Paperless pagination response was not a valid URL.');
+        }
+
         $path = (string) ($parts['path'] ?? '/');
-        if ($path === '') {
-            $path = '/';
+        if ($path !== '/api' && ! str_starts_with($path, '/api/')) {
+            throw new RuntimeException('Paperless pagination response left the API path.');
         }
 
         $query = [];

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import structlog
@@ -337,9 +338,23 @@ class PaperlessClient:
     # Internal
     # ---------------------------------------------------------------
     def _relative(self, absolute_url: str) -> str:
-        """Convert an absolute next-page URL to a relative path."""
-        marker = "/api"
-        idx = absolute_url.find(marker)
-        if idx == -1:
-            return absolute_url
-        return absolute_url[idx + len(marker) :]
+        """Rebase a Paperless next-page URL onto the configured API origin."""
+        if absolute_url.startswith("//"):
+            raise ValueError("Paperless pagination response used a network-path URL")
+
+        parts = urlsplit(absolute_url)
+        if parts.scheme and parts.scheme.lower() not in {"http", "https"}:
+            raise ValueError("Paperless pagination response used an invalid URL scheme")
+        if parts.username is not None or parts.password is not None or parts.fragment:
+            raise ValueError("Paperless pagination response was not a valid API URL")
+
+        path = parts.path
+        if path == "/api":
+            path = "/"
+        elif path.startswith("/api/"):
+            path = path[len("/api") :]
+        elif parts.scheme or parts.netloc or not path.startswith("/"):
+            raise ValueError("Paperless pagination response left the API path")
+
+        query = f"?{parts.query}" if parts.query else ""
+        return f"{path}{query}"
