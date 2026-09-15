@@ -1,7 +1,7 @@
 # Temporal Migration Plan
 
 This plan implements [ADR-0022](decisions/0022-use-temporal-for-durable-workflow-orchestration.md)
-and [ADR-0023](decisions/0023-drain-document-work-in-temporal-model-phases.md) without running
+and [ADR-0024](decisions/0024-own-the-complete-document-lifecycle-in-one-temporal-workflow.md) without running
 two productive owners for the same flow.
 
 ## Invariants retained throughout migration
@@ -15,9 +15,9 @@ two productive owners for the same flow.
 - Every Paperless and PostgreSQL activity is idempotent and safe after worker loss.
 - Normal discovery converges on one workflow per Paperless document ID; only explicit force
   reprocessing creates another generation.
-- Temporal drains all eligible embedding work before classification and all eligible
-  classification work before judge. An inactive model phase cannot call its provider role.
-- Docker image publication remains manual until the release gate in Phase 5 passes.
+- Every newly started document workflow owns its ordered OCR, embedding, classification,
+  judge, review and commit lifecycle. Dedicated task queues retain provider-role isolation.
+- Docker image publication follows the tested-commit release gate in Phase 5.
 
 ## Phase 1: Runtime foundation
 
@@ -47,10 +47,10 @@ Temporal, PostgreSQL and the dashboard.
 
 Current implementation state: poll commands and new webhook/manual document runs use the
 transactional Temporal outbox. Poll discovery writes global document observations and starts
-document workflows without retaining ownership. The current document workflow still runs its
-model activities independently and uses content-version workflow IDs; this scheduling is an
-intermediate implementation superseded by ADR-0023. The legacy batch and recovery code remains
-only for pre-cutover rows and explicitly excludes `orchestration_driver=temporal`.
+document workflows without retaining ownership. Each current document workflow owns its model
+activities and uses a stable normal identity or an explicit force-reprocess generation. The
+legacy batch and recovery code remains only for pre-cutover rows and explicitly excludes
+`orchestration_driver=temporal`.
 
 - Implement scheduled poll discovery and webhook signal-with-start.
 - Replace poll-owned candidates with global document observations.
@@ -62,24 +62,21 @@ Exit criteria: duplicate poll/webhook events coalesce on document identity, expl
 creates a distinct generation, restarts create no duplicate review, and no old poll can retain
 a document.
 
-## Phase 3A: Model-phase scheduler
+## Phase 3A: Per-document lifecycle ownership
 
-- Implement one singleton Temporal model-phase scheduler and durable, idempotent phase signals.
-- Make document workflows register requirements and wait for grants instead of dispatching
-  model activities independently.
-- Drain dynamic embedding work, optional OCR roles, classification and judge in global order.
-- Freeze model configuration for every activated phase and route activities through dedicated
-  model-affinity task queues.
-- Include index builds and target-document embeddings in the embedding phase; close an empty
-  phase as `0/0`.
-- Release Review Suggestions only after every judge item in the cycle is terminal.
-- Project active phase, model, queued, running, completed, skipped and failed totals without
-  making PostgreSQL a scheduling authority.
+- Make each document workflow execute optional OCR, target embedding, classification and judge
+  in order through dedicated model task queues.
+- Freeze model, context-window and OCR-tag configuration before productive model work begins.
+- Persist one Review Suggestion and keep the workflow active while it waits for review.
+- Complete acceptance only after the workflow commits approved metadata to Paperless.
+- End the old waiting workflow as superseded when an administrator starts a force-reprocess
+  generation.
+- Keep the former singleton model-phase scheduler registered only for replay of histories made
+  before ADR-0024.
 
-Exit criteria: mixed discoveries cause one contiguous provider run per active model role; new
-documents never force a backward model switch; worker and Temporal restarts preserve the exact
-phase boundary; no command remains running after all phase items are terminal; and each normal
-Paperless document is processed once.
+Exit criteria: Temporal shows one complete history per document generation; worker and Temporal
+restarts resume at the exact activity or review wait; no pending review leaves an unowned
+workflow; and each normal Paperless document is processed once.
 
 ## Phase 4: Review and commit
 

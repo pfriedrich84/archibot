@@ -47,22 +47,23 @@ Blocked:
 
 The only exception is the initial embedding/indexing pipeline itself.
 
-## Staged Target-Set Order
+## Per-document Order
 
-After the global readiness gate opens, a poll target set follows ADR-0021:
+After the global readiness gate opens, each document generation follows ADR-0024:
 
 ```text
-target embeddings for all documents
-  -> configured OCR for all eligible documents
-  -> classification for all documents
-  -> configured judge verification for all documents
+configured OCR when eligible
+  -> target-document embedding
+  -> classification
+  -> configured judge verification
   -> publish Review Suggestions
+  -> wait for review
+  -> commit accepted metadata to Paperless
 ```
 
-The target-embedding phase does not weaken the trust boundary. Inbox Document
-embeddings remain `trusted_for_context = false`. Batch-linked document Pipeline
-Runs are dispatched only through their staged-batch command so recovery cannot
-accidentally bypass the phase barrier with singleton document actors.
+The target embedding does not weaken the trust boundary. Inbox Document embeddings remain
+`trusted_for_context = false`. Temporal owns this sequence and recovery for each document;
+polling only discovers identities.
 
 ## Required State Model
 

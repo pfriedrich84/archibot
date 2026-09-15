@@ -1,4 +1,4 @@
-"""Idempotent per-document activities executed behind global model-phase barriers."""
+"""Idempotent activities for one Temporal-owned document lifecycle."""
 
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ from app.temporal.contracts import (
     DocumentPhaseRequest,
     DocumentPhaseResult,
     DocumentProcessResult,
+    DocumentReviewCompletion,
     OcrPhaseSelectionRequest,
 )
 
@@ -298,10 +299,12 @@ async def process_document_embedding_phase(
     )
     if _phase_already_done(state, request.configuration.configuration_revision):
         return DocumentPhaseResult(request.pipeline_run_id, "embedding", str(state["status"]))
+    ocr_state = await asyncio.to_thread(_load_state, request.pipeline_run_id, request.cycle, "ocr")
     _, paperless, document = await _document_for(request)
     provider = _provider(request)
     try:
-        text = document_embedding_text(document.title, document.content)
+        effective_document = await asyncio.to_thread(_with_cached_ocr, document, ocr_state)
+        text = document_embedding_text(effective_document.title, effective_document.content)
         status = "skipped"
         if text:
             content_hash = content_hash_for_text(text)
@@ -327,8 +330,8 @@ async def process_document_embedding_phase(
                     store_document_embedding,
                     DocumentEmbeddingInput(
                         paperless_document_id=document.id,
-                        title=document.title,
-                        content=document.content,
+                        title=effective_document.title,
+                        content=effective_document.content,
                         embedding_model=request.configuration.embedding_model,
                         embedding=embedding,
                         document_date=document_date_for(document),
@@ -367,20 +370,18 @@ async def process_document_ocr_phase(request: DocumentPhaseRequest) -> DocumentP
     state = await asyncio.to_thread(_load_state, request.pipeline_run_id, request.cycle, "ocr")
     if _phase_already_done(state, request.configuration.configuration_revision):
         return DocumentPhaseResult(request.pipeline_run_id, "ocr", str(state["status"]))
-    embedding_state = await asyncio.to_thread(
-        _load_state, request.pipeline_run_id, request.cycle, "embedding"
-    )
-    if embedding_state is None:
-        raise RuntimeError("Embedding phase state is missing")
     _, paperless, document = await _document_for(request)
     provider = _provider(request)
     try:
-        _assert_same_document_version(document, embedding_state)
         mode = request.configuration.ocr_mode
         status = "skipped"
         if mode != "off":
             tags = await paperless.list_tags()
-            eligible, _ = should_run_ocr_for_document(document, available_tags=tags)
+            eligible, _ = should_run_ocr_for_document(
+                document,
+                available_tags=tags,
+                requested_tag_id=request.configuration.ocr_requested_tag_id,
+            )
             if eligible:
                 activity.heartbeat({"pipeline_run_id": request.pipeline_run_id, "phase": "ocr"})
                 corrected, corrections = await _await_with_heartbeats(
@@ -391,6 +392,7 @@ async def process_document_ocr_phase(request: DocumentPhaseRequest) -> DocumentP
                         mode=mode,
                         vision_model=request.configuration.ocr_vision_model,
                         num_ctx=request.configuration.ocr_num_ctx,
+                        requested_tag_id=request.configuration.ocr_requested_tag_id,
                     ),
                     {"pipeline_run_id": request.pipeline_run_id, "phase": "ocr"},
                 )
@@ -578,22 +580,40 @@ async def process_document_judge_phase(request: DocumentPhaseRequest) -> Documen
 
 def _finish_document_projection(pipeline_run_id: int, suggestion_id: int) -> None:
     with engine().begin() as connection:
-        connection.execute(
+        updated = connection.execute(
             sql_text(
                 """
                 UPDATE pipeline_runs
-                SET status = 'succeeded', finished_at = CURRENT_TIMESTAMP,
-                    progress_current_phase = 'review_suggestion',
+                SET status = 'running', finished_at = NULL,
+                    progress_current_phase = 'awaiting_review',
                     progress_total = 1, progress_done = 1,
                     progress_phase_total = 1, progress_phase_done = 1,
-                    progress_message = 'Review suggestion persisted after Temporal phase release.',
+                    progress_message = 'Temporal document workflow is waiting for review.',
                     progress_updated_at = CURRENT_TIMESTAMP,
                     error_type = NULL, error = NULL, updated_at = CURRENT_TIMESTAMP
                 WHERE id = :pipeline_run_id AND orchestration_driver = 'temporal'
+                  AND (
+                      progress_current_phase IS NULL
+                      OR progress_current_phase <> 'awaiting_review'
+                  )
                 """
             ),
             {"pipeline_run_id": pipeline_run_id},
         )
+        if updated.rowcount == 0:
+            current = connection.execute(
+                sql_text(
+                    """
+                    SELECT progress_current_phase
+                    FROM pipeline_runs
+                    WHERE id = :pipeline_run_id AND orchestration_driver = 'temporal'
+                    """
+                ),
+                {"pipeline_run_id": pipeline_run_id},
+            ).scalar_one_or_none()
+            if str(current) == "awaiting_review":
+                return
+            raise RuntimeError("Temporal document pipeline run is not waiting for review")
         connection.execute(
             sql_text(
                 """
@@ -601,7 +621,7 @@ def _finish_document_projection(pipeline_run_id: int, suggestion_id: int) -> Non
                     pipeline_run_id, event_type, level, message, payload, created_at
                 ) VALUES (
                     :pipeline_run_id, 'document.review_suggestion.stored', 'info',
-                    'Review suggestion persisted after all model phases completed.',
+                    'Review suggestion persisted by the Temporal document workflow.',
                     CAST(:payload AS jsonb), CURRENT_TIMESTAMP
                 )
                 """
@@ -661,6 +681,99 @@ async def publish_document_review(request: DocumentPhaseRequest) -> DocumentProc
             ),
         )
         await asyncio.to_thread(_finish_document_projection, pipeline_run_id, suggestion.id)
-        return DocumentProcessResult(pipeline_run_id, suggestion.id, "succeeded")
+        return DocumentProcessResult(pipeline_run_id, suggestion.id, "awaiting_review")
     finally:
         await paperless.aclose()
+
+
+def _finish_document_review_projection(completion: DocumentReviewCompletion) -> None:
+    outcomes = {
+        "committed": (
+            "succeeded",
+            "done",
+            "Accepted review committed to Paperless; document workflow completed.",
+        ),
+        "rejected": (
+            "succeeded",
+            "done",
+            "Review rejected; document workflow completed without a Paperless update.",
+        ),
+        "superseded": (
+            "cancelled",
+            "superseded",
+            "Review superseded by an explicit force reprocess generation.",
+        ),
+    }
+    if completion.outcome not in outcomes:
+        raise ValueError("Document review completion outcome is invalid")
+    status, phase, message = outcomes[completion.outcome]
+    with engine().begin() as connection:
+        updated = connection.execute(
+            sql_text(
+                """
+                UPDATE pipeline_runs
+                SET status = :status, finished_at = CURRENT_TIMESTAMP,
+                    progress_current_phase = :phase, progress_message = :message,
+                    progress_updated_at = CURRENT_TIMESTAMP,
+                    error_type = NULL, error = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :pipeline_run_id
+                  AND orchestration_driver = 'temporal'
+                  AND status NOT IN ('failed_permanent', 'cancelled')
+                  AND progress_current_phase IN ('awaiting_review', 'review_suggestion')
+                """
+            ),
+            {
+                "pipeline_run_id": completion.pipeline_run_id,
+                "status": status,
+                "phase": phase,
+                "message": message,
+            },
+        )
+        if updated.rowcount == 0:
+            current = (
+                connection.execute(
+                    sql_text(
+                        """
+                    SELECT status, progress_current_phase
+                    FROM pipeline_runs
+                    WHERE id = :pipeline_run_id AND orchestration_driver = 'temporal'
+                    """
+                    ),
+                    {"pipeline_run_id": completion.pipeline_run_id},
+                )
+                .mappings()
+                .first()
+            )
+            if current is None:
+                raise ValueError("Temporal document pipeline run is missing")
+            if str(current["status"]) != status or str(current["progress_current_phase"]) != phase:
+                raise RuntimeError("Temporal document pipeline run is already terminal")
+            return
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO pipeline_events (
+                    pipeline_run_id, event_type, level, message, payload, created_at
+                ) VALUES (
+                    :pipeline_run_id, 'document.workflow.completed', 'info',
+                    :message, CAST(:payload AS jsonb), CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "pipeline_run_id": completion.pipeline_run_id,
+                "message": message,
+                "payload": _json(
+                    {
+                        "review_suggestion_id": completion.review_suggestion_id,
+                        "outcome": completion.outcome,
+                    }
+                ),
+            },
+        )
+
+
+@activity.defn(name="archibot.finish_document_review")
+async def finish_document_review(completion: DocumentReviewCompletion) -> None:
+    """Project the terminal state after review, commit, or force reprocess."""
+    await asyncio.to_thread(_finish_document_review_projection, completion)

@@ -73,9 +73,9 @@ def ocr_requested_tag_id() -> int:
         return 0
 
 
-def configured_ocr_tag_exists(tags: list[object]) -> bool:
+def configured_ocr_tag_exists(tags: list[object], requested_tag_id: int | None = None) -> bool:
     """Return True when the configured OCR tag is disabled or exists in *tags*."""
-    requested = ocr_requested_tag_id()
+    requested = ocr_requested_tag_id() if requested_tag_id is None else max(0, requested_tag_id)
     if requested == 0:
         return True
     return any(getattr(tag, "id", None) == requested for tag in tags)
@@ -86,6 +86,7 @@ def should_run_ocr_for_document(
     *,
     available_tags: list[object] | None = None,
     require_tag_info: bool = False,
+    requested_tag_id: int | None = None,
 ) -> tuple[bool, str]:
     """Return ``(eligible, reason)`` for the configured OCR tag filter.
 
@@ -93,10 +94,10 @@ def should_run_ocr_for_document(
     Paperless.  ``require_tag_info`` is useful for webhook payload paths where
     missing document tag IDs must not trigger an extra lookup just for OCR.
     """
-    requested = ocr_requested_tag_id()
+    requested = ocr_requested_tag_id() if requested_tag_id is None else max(0, requested_tag_id)
     if requested == 0:
         return True, "no_filter"
-    if available_tags is not None and not configured_ocr_tag_exists(available_tags):
+    if available_tags is not None and not configured_ocr_tag_exists(available_tags, requested):
         return False, "configured_tag_missing"
     if require_tag_info and not doc.tags:
         return False, "document_tags_missing"
@@ -120,6 +121,7 @@ async def maybe_correct_ocr(
     mode: str | None = None,
     vision_model: str | None = None,
     num_ctx: int | None = None,
+    requested_tag_id: int | None = None,
 ) -> tuple[str, int]:
     """Optionally correct OCR errors in *doc.content*.
 
@@ -135,7 +137,7 @@ async def maybe_correct_ocr(
     if mode == "off":
         return text, 0
 
-    eligible, reason = should_run_ocr_for_document(doc)
+    eligible, reason = should_run_ocr_for_document(doc, requested_tag_id=requested_tag_id)
     if not eligible:
         log.debug("ocr skipped by requested tag filter", doc_id=doc.id, reason=reason)
         return text, 0

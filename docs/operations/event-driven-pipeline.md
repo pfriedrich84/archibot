@@ -158,11 +158,11 @@ the Temporal `DocumentWorkflow`. Recovery releases them after the matching model
 becomes complete. An empty index build reaches `0/0 complete` immediately and opens the
 same gate without calling the provider.
 
-After release, the singleton Temporal model-phase scheduler drains the current work set
-in this order: embedding, configured OCR, classification, judge, review release. Work
-arriving after the embedding boundary waits for the next cycle. Fixed model-specific
-task queues allow concurrency within a phase while preventing requests for another role
-from causing a model swap.
+After release, each Temporal document workflow runs and records its own optional OCR,
+target embedding, classification and judge activities before it persists a review and
+waits for the authorized decision. Fixed model-specific task queues keep the provider
+roles explicit. The retired singleton scheduler remains registered only so workflows
+started by an older release can replay and finish safely.
 
 ## Admin dashboard operations
 

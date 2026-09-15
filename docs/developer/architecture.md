@@ -51,12 +51,10 @@ Paperless: Dokument hochgeladen → Tag "Posteingang" gesetzt
 │  DocumentWorkflow je Dokument-ID/Generation  │
 │                                              │
 │  1. Start/Attach mit stabilem Workflow-ID    │
-│  2. Beim globalen Modellphasen-Scheduler      │
-│     registrieren und durable warten           │
-│  3. Embedding → OCR → Klassifikation → Judge │
-│     nur nach globaler Phasenfreigabe          │
-│  4. Review nach Judge-Barriere speichern      │
-│  5. Auf autorisierte Review-Entscheidung warten│
+│  2. OCR nach Modus und eingefrorenem Tag      │
+│  3. Embedding → Klassifikation → Judge        │
+│  4. Review speichern und durable warten       │
+│  5. Accept/Reject/Force-Reprocess verarbeiten │
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
@@ -118,16 +116,17 @@ Embedding-Index fuer das aktuell konfigurierte Embedding-Modell noch nicht volls
 bleibt die Identitaet reserviert, ohne einen DocumentWorkflow zu starten. Recovery gibt
 den Start frei, sobald genau dieses Modell einen vollstaendigen Index besitzt.
 
-Ein singleton `ModelPhaseSchedulerWorkflow` buendelt alle freigegebenen Dokumente eines
-Zyklus. Er leert nacheinander Embedding, konfigurierte OCR-Phase, Klassifikation und
-Judge; erst danach signalisiert er die Review-Freigabe. Neue Dokumente duerfen nur
-waehrend der offenen Embedding-Grenze in den aktuellen Zyklus eintreten, spaetere warten
-auf den naechsten Zyklus. Provider, alle Rollenmodelle und Kontextfenster werden einmal
-pro Zyklus eingefroren. Die festen Activity-Queues `archibot-model-embedding`,
+Jeder neue `DocumentWorkflow` fuehrt seine eigene Sequenz aus: OCR wird entsprechend
+Modus und konfiguriertem Tag ausgefuehrt oder sichtbar uebersprungen, danach folgen
+Zieldokument-Embedding, Klassifikation, Judge und der dauerhafte Review-Wartezustand.
+Provider, Rollenmodelle, OCR-Tag und Kontextfenster werden einmal pro Dokumentlauf
+eingefroren. Die festen Activity-Queues `archibot-model-embedding`,
 `archibot-model-ocr-text`, `archibot-model-ocr-vision`,
 `archibot-model-classification`, `archibot-model-judge` und `archibot-paperless`
-verhindern Modellwechsel innerhalb einer Phase. Eine leere Index-Generation endet ohne
-Provider-Aufruf terminal als `0/0 complete`.
+halten Modellrollen und Paperless-Zugriffe getrennt. Der fruehere singleton
+`ModelPhaseSchedulerWorkflow` bleibt nur fuer Replay und Abschluss bereits existierender
+Temporal-Histories registriert. Eine leere Index-Generation endet ohne Provider-Aufruf
+terminal als `0/0 complete`.
 
 ### 2. OCR-Korrektur (optional)
 
@@ -169,7 +168,7 @@ Der Judge bekommt Zieldokument + Kontext + den Erst-Vorschlag und gibt einen `Ju
 
 ADR-0018 ist als Containment umgesetzt: `AUTO_COMMIT_CONFIDENCE` wird im Laravel-Runtime-Export und beim Python-Config-Load auf `0` gezwungen. Der Document Actor speichert auch bei adversarialem Inhalt, Modell-Confidence `100` oder Judge-Zustimmung nur einen pending Review-Vorschlag. Sie akzeptieren ihn nicht, erzeugen keinen `review_commit` Command und rufen keinen Paperless-PATCH aus Confidence auf.
 
-Eine autorisierte manuelle Entscheidung schreibt Review-Status und Temporal-Outbox-Intent atomar. Bei einem aktuellen Dokument-Workflow sendet der Relay ein stabiles `review_decision`-Signal; angenommene Vorschlaege ohne wartenden Dokument-Workflow starten `ReviewCommitWorkflow` mit stabiler ID. Ablehnung beendet den Dokument-Workflow ohne Paperless-Write. Die Commit-Aktivitaet laedt die `review_suggestion_id` aus PostgreSQL und fuehrt den Paperless-PATCH idempotent aus. Ein Worker-Ausfall nach erfolgreichem PATCH erkennt beim Retry bereits passende Metadaten und schliesst die Projektion ohne zweiten Write. Der zentrale Client erlaubt nur die geprueften Metadatenfelder. Die Review-Seite laedt `storage_path` live aus Paperless und zeigt den aufgeloesten Namen; ein vorhandener Wert ist gesperrt und bleibt unveraenderlich. Nur ein live gemeldetes `null` darf ueber die Review-Naht zu einer positiven ID werden. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
+Eine autorisierte manuelle Entscheidung schreibt Review-Status und Temporal-Outbox-Intent atomar. Bei einem aktuellen Dokument-Workflow sendet der Relay ein stabiles `review_decision`-Signal; angenommene Vorschlaege ohne wartenden Dokument-Workflow starten `ReviewCommitWorkflow` mit stabiler ID. Ablehnung beendet den Dokument-Workflow ohne Paperless-Write. Force-Reprocess markiert einen noch offenen Vorschlag als stale, signalisiert dem bisherigen Workflow `force_reprocess` und startet eine getrennte immutable Workflow-Generation. Die Commit-Aktivitaet laedt die `review_suggestion_id` aus PostgreSQL und fuehrt den Paperless-PATCH idempotent aus. Ein Worker-Ausfall nach erfolgreichem PATCH erkennt beim Retry bereits passende Metadaten und schliesst die Projektion ohne zweiten Write. Der zentrale Client erlaubt nur die geprueften Metadatenfelder. Die Review-Seite laedt `storage_path` live aus Paperless und zeigt den aufgeloesten Namen; ein vorhandener Wert ist gesperrt und bleibt unveraenderlich. Nur ein live gemeldetes `null` darf ueber die Review-Naht zu einer positiven ID werden. OCR-/Content-/Datei-/Versionsfelder bleiben vor HTTP-Dispatch verboten.
 
 ## Reindex
 

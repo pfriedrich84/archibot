@@ -381,7 +381,11 @@ async def test_empty_embedding_generation_finishes_and_releases_phase(monkeypatc
         return None
 
     monkeypatch.setattr(workflows, "_ensure_scheduler", scheduler_ready)
-    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch_id: True)
+    monkeypatch.setattr(
+        workflows.workflow,
+        "patched",
+        lambda patch_id: patch_id != "independent-embedding-index-v2",
+    )
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
     monkeypatch.setattr(workflows.workflow, "wait_condition", wait_condition)
     monkeypatch.setattr(workflows.workflow, "get_external_workflow_handle", lambda _id: Handle())
@@ -402,6 +406,39 @@ async def test_empty_embedding_generation_finishes_and_releases_phase(monkeypatc
             "archibot/embedding-index/9",
             9,
             "complete",
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_new_embedding_generation_runs_without_global_scheduler(monkeypatch):
+    calls = []
+
+    async def execute(activity_fn, argument, **_kwargs):
+        calls.append((activity_fn, argument))
+        if activity_fn is workflows.load_model_phase_configuration:
+            return _configuration("embedding")
+        if activity_fn is workflows.prepare_embedding_generation:
+            return PreparedEmbeddingBuild(9, 44, [])
+        if activity_fn is workflows.finish_embedding_generation:
+            return EmbeddingWorkflowResult(9, 44, 0, 0, 0, "complete")
+        raise AssertionError(activity_fn)
+
+    async def scheduler_must_not_start():
+        raise AssertionError("new embedding generations must not start the retired scheduler")
+
+    monkeypatch.setattr(workflows, "_ensure_scheduler", scheduler_must_not_start)
+    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch_id: True)
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+
+    result = await workflows.EmbeddingIndexWorkflow().run(EmbeddingWorkflowRequest(9))
+
+    assert result.status == "complete"
+    assert calls[0] == (workflows.load_model_phase_configuration, "embedding")
+    assert calls[1] == (
+        workflows.prepare_embedding_generation,
+        EmbeddingWorkflowRequest(
+            9, workflows._configuration_for_phase(_configuration("embedding"), "embedding")
         ),
     )
 

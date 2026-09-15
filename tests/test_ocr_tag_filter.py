@@ -53,3 +53,16 @@ def test_webhook_without_tag_info_skips_ocr(monkeypatch):
 
     assert eligible is False
     assert reason == "document_tags_missing"
+
+
+def test_frozen_workflow_tag_filter_overrides_changed_runtime_setting(monkeypatch):
+    monkeypatch.setattr("app.pipeline.ocr_correction.settings.ocr_requested_tag_id", 999)
+    doc = PaperlessDocument(id=1, title="Doc", tags=[124])
+    available_tags = [PaperlessEntity(id=124, name="OCR")]
+
+    eligible, reason = should_run_ocr_for_document(
+        doc, available_tags=available_tags, requested_tag_id=124
+    )
+
+    assert eligible is True
+    assert reason == "tag_present"

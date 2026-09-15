@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. Supersedes the document identity and independent scheduling details in
+Superseded by [ADR-0024](0024-own-the-complete-document-lifecycle-in-one-temporal-workflow.md).
+This decision previously superseded the document identity and independent scheduling details in
 [ADR-0022](0022-use-temporal-for-durable-workflow-orchestration.md). The Temporal ownership,
 outbox, persistence, retry and security decisions in ADR-0022 remain active.
 

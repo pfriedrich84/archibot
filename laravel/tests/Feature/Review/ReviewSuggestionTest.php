@@ -482,13 +482,27 @@ class ReviewSuggestionTest extends TestCase
         Queue::fake();
         $admin = User::factory()->create(['is_admin' => true]);
         EmbeddingIndexState::query()->create(['status' => 'complete']);
-        $suggestion = ReviewSuggestion::factory()->create(['paperless_document_id' => 456]);
+        $source = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'scope' => 'single_document',
+            'trigger_source' => 'poll',
+            'paperless_document_id' => 456,
+            'pipeline_dedupe_key' => 'original-review-run',
+            'orchestration_driver' => TemporalWorkflowDispatcher::DRIVER,
+            'temporal_workflow_id' => 'archibot/document/456',
+            'progress_current_phase' => 'awaiting_review',
+        ]);
+        $suggestion = ReviewSuggestion::factory()->create([
+            'paperless_document_id' => 456,
+            'pipeline_run_id' => $source->id,
+        ]);
 
         $this->actingAs($admin)
             ->post(route('review.reprocess', $suggestion), ['reason' => 'try again'])
             ->assertRedirect(route('review.show', $suggestion));
 
-        $run = PipelineRun::query()->firstOrFail();
+        $run = PipelineRun::query()->where('reprocess_requested', true)->firstOrFail();
         $this->assertSame(PipelineRun::STATUS_QUEUED, $run->status);
         $this->assertSame('manual', $run->trigger_source);
         $this->assertSame(456, $run->paperless_document_id);
@@ -506,8 +520,17 @@ class ReviewSuggestionTest extends TestCase
         Queue::assertNothingPushed();
         $this->assertDatabaseHas('temporal_outbox_intents', [
             'workflow_id' => $run->temporal_workflow_id,
+            'operation' => TemporalOutboxIntent::OPERATION_START,
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => 'archibot/document/456',
+            'operation' => TemporalOutboxIntent::OPERATION_SIGNAL,
+            'signal_name' => 'force_reprocess',
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
+        $this->assertSame(ReviewSuggestion::STATUS_STALE, $suggestion->fresh()->status);
+        $this->assertSame('force_reprocess', $suggestion->fresh()->staleness_reason);
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'pipeline_run.manual_reprocess_queued',
             'target_type' => 'pipeline_run',

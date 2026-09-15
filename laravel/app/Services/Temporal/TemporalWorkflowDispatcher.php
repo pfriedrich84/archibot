@@ -211,6 +211,49 @@ class TemporalWorkflowDispatcher
         ];
     }
 
+    /**
+     * End the document workflow waiting on this review when an administrator
+     * explicitly starts a replacement generation.
+     *
+     * @param  array{actor_principal: string, actor_user_id: int|null, actor_is_admin: bool}  $actor
+     * @return array{operation: string, temporal_workflow_id: string}|null
+     */
+    public function dispatchForceReprocess(
+        ReviewSuggestion $suggestion,
+        PipelineRun $replacement,
+        array $actor,
+    ): ?array {
+        $source = $suggestion->pipeline_run_id === null
+            ? null
+            : PipelineRun::query()->find($suggestion->pipeline_run_id);
+        if (
+            $suggestion->status !== ReviewSuggestion::STATUS_PENDING
+            || $source?->orchestration_driver !== self::DRIVER
+            || blank($source->temporal_workflow_id)
+            || ! in_array($source->progress_current_phase, ['awaiting_review', 'review_suggestion'], true)
+        ) {
+            return null;
+        }
+
+        $workflowId = (string) $source->temporal_workflow_id;
+        $this->outbox->signalWorkflow(
+            intentKey: $this->intentKey("force-reprocess:{$suggestion->id}:{$replacement->id}"),
+            workflowId: $workflowId,
+            signalName: 'force_reprocess',
+            payload: [
+                'review_suggestion_id' => $suggestion->id,
+                'replacement_pipeline_run_id' => $replacement->id,
+                'replacement_temporal_workflow_id' => $replacement->temporal_workflow_id,
+                ...$actor,
+            ],
+        );
+
+        return [
+            'operation' => 'signal_workflow',
+            'temporal_workflow_id' => $workflowId,
+        ];
+    }
+
     private function intentKey(string $identity): string
     {
         return Uuid::uuid5(Uuid::NAMESPACE_URL, "archibot:{$identity}")->toString();

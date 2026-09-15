@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Supersedes ADR-0015 and the transport/orchestration parts of ADR-0017 and ADR-0021. [ADR-0023](0023-drain-document-work-in-temporal-model-phases.md) supersedes the document identity and independent scheduling details below while retaining Temporal as the sole orchestration owner.
+Accepted. Supersedes ADR-0015 and the transport/orchestration parts of ADR-0017 and ADR-0021. [ADR-0024](0024-own-the-complete-document-lifecycle-in-one-temporal-workflow.md) supersedes the document scheduling details below while retaining Temporal as the sole orchestration owner.
 
 ## Context
 
@@ -62,10 +62,9 @@ never owns a document and cannot prevent a later discovery from progressing. Dup
 webhook, poll and normal manual triggers converge on one stable workflow per Paperless
 document ID; explicit force reprocessing creates a separate generation.
 
-Document workflows own their individual lifecycle but enter model-backed work only when the
-Temporal model-phase scheduler releases their current phase. The scheduler drains embedding,
-classification and judge work in that global order as specified by ADR-0023. Reviews become
-visible only after the corresponding cycle reaches its review-release barrier.
+Each new document workflow owns and schedules its OCR, target embedding, classification,
+judge, review wait and accepted Paperless commit in sequence as specified by ADR-0024.
+The retired model-phase scheduler remains registered only for replaying existing histories.
 
 ### Review and Paperless commit
 
@@ -123,7 +122,7 @@ no operator-selectable permanent backend mode.
 - A completed activity cannot be converted into a failed command by a missing subprocess
   protocol record.
 - Poll commands no longer retain ownership of documents.
-- Reviews become visible after the globally ordered model phases for their cycle complete.
+- Each review becomes visible when its owning document workflow completes model processing.
 - The deployed stack has additional Temporal server and persistence services and requires
   schema/version lifecycle management.
 - Temporal history compatibility and activity idempotency become mandatory release gates.
@@ -137,4 +136,4 @@ no operator-selectable permanent backend mode.
 - [ADR-0006: Require Complete Embedding Index Before Document Processing](0006-require-complete-embedding-index-before-document-processing.md)
 - [ADR-0018: Suspend Model-confidence Auto-commit](0018-suspend-model-confidence-auto-commit.md)
 - [ADR-0019: Separate Review Decisions from Admin Job Control](0019-separate-review-decisions-from-admin-job-control.md)
-- [ADR-0023: Drain Document Work in Temporal Model Phases](0023-drain-document-work-in-temporal-model-phases.md)
+- [ADR-0024: Own the Complete Document Lifecycle in One Temporal Workflow](0024-own-the-complete-document-lifecycle-in-one-temporal-workflow.md)

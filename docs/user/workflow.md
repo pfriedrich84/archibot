@@ -12,9 +12,9 @@ in Paperless-NGX.
          |
 2. Worker erkennt Dokument      Naechster Poll oder Webhook-Trigger
          |
-3. Embedding-Phase              Fuer alle aktuell wartenden Dokumente
+3. OCR-Phase (optional)         Nur fuer dieses Dokument, nach Modus und OCR-Tag
          |
-4. OCR-Phase (optional)         Danach fuer alle berechtigten Dokumente
+4. Dokument-Embedding           Fuer Kontextsuche dieses Dokuments
          |
 5. Kontext-Suche                KNN: aehnlichste bereits klassifizierte Dokumente finden
          |
@@ -28,15 +28,16 @@ in Paperless-NGX.
 8. Manuelles Review             Autorisierte Annahme in der GUI (/review)
          |
 9. PATCH nach Paperless         Erst ueber den geprueften Review-Commit-Pfad
+         |
+10. Workflow abgeschlossen      Accept/Reject oder durch Force-Reprocess ersetzt
 ```
 
 Beim Inbox-Poll entdeckt ArchiBot nur Dokument-IDs. Jede ID besitzt einen eigenen
-dauerhaften Temporal-Workflow, waehrend ein globaler Scheduler die Modellarbeit in
-Phasen buendelt: zuerst alle aktuell wartenden Embeddings, danach OCR, danach alle
-Klassifikationen und zuletzt alle Judges. Reviews dieses Zyklus werden erst nach der
-Judge-Phasengrenze sichtbar. Dokumente, die nach Ende der Embedding-Phase eintreffen,
-warten auf den naechsten Zyklus. Ein Paperless-Write erfolgt weiterhin erst nach
-manueller Annahme.
+dauerhaften Temporal-Workflow, der OCR, Dokument-Embedding, Klassifikation, Judge,
+Review-Wartezustand und den angenommenen Paperless-Write sichtbar selbst besitzt. Ein
+Dokument blockiert dadurch keine globale Review-Freigabe fuer andere Dokumente. Ein
+Paperless-Write erfolgt weiterhin erst nach manueller Annahme. Force-Reprocess beendet
+den wartenden Lauf als ersetzt und startet eine eigene neue Generation.
 
 ## Schritt fuer Schritt
 

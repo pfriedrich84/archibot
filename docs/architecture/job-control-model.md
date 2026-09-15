@@ -132,7 +132,7 @@ Poll discovery is the one additional reviewed creation seam: `app/temporal/docum
 
 ### Temporal owns workflow execution
 
-Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A document workflow waits for embedding readiness without occupying a worker, produces one idempotent review, and then waits for the authorized review signal. Acceptance executes the idempotent Paperless commit activity; rejection ends without a write. Suggestions that predate a waiting document workflow use a stable standalone review-commit workflow. Laravel stale-actor recovery and old queued jobs explicitly refuse Temporal-owned commands and runs.
+Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A new document workflow waits for embedding readiness without occupying a worker, owns optional tag-gated OCR, target embedding, classification and judge, produces one idempotent review, and then waits for the authorized review signal. Its pipeline projection remains active while waiting. Acceptance executes the idempotent Paperless commit activity; rejection ends without a write; force reprocess ends the old workflow as superseded and starts a separate generation. Suggestions that predate a waiting document workflow use a stable standalone review-commit workflow. Laravel stale-actor recovery and old queued jobs explicitly refuse Temporal-owned commands and runs.
 
 ### Python owns document processing activities
 

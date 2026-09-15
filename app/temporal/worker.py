@@ -18,6 +18,7 @@ from app.temporal.document_activities import (
     process_document_for_review,
 )
 from app.temporal.document_phase_activities import (
+    finish_document_review,
     process_document_classification_phase,
     process_document_embedding_phase,
     process_document_judge_phase,
@@ -80,6 +81,7 @@ async def run_worker() -> None:
             finish_poll_discovery,
             fail_poll_discovery,
             fail_document_processing,
+            finish_document_review,
             check_document_readiness,
             process_document_for_review,
             fail_review_commit,

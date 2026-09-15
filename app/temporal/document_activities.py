@@ -469,7 +469,7 @@ def _check_document_readiness(pipeline_run_id: int) -> DocumentReadiness:
             .mappings()
             .first()
         )
-        if status == "succeeded" and suggestion is not None:
+        if suggestion is not None and status in {"running", "succeeded"}:
             return DocumentReadiness(pipeline_run_id, "complete", int(suggestion["id"]))
         if status in {"cancel_requested", "cancelled"}:
             return DocumentReadiness(pipeline_run_id, "cancelled")
@@ -572,6 +572,7 @@ def _existing_document_result(pipeline_run_id: int) -> DocumentProcessResult | N
                 sql_text(
                     """
                     SELECT pipeline_runs.status,
+                           pipeline_runs.progress_current_phase,
                            pipeline_runs.paperless_document_id,
                            review_suggestions.id AS suggestion_id
                     FROM pipeline_runs
@@ -591,7 +592,7 @@ def _existing_document_result(pipeline_run_id: int) -> DocumentProcessResult | N
         raise ValueError(f"Temporal document pipeline run {pipeline_run_id} does not exist")
     if row["suggestion_id"] is not None:
         suggestion_id = int(row["suggestion_id"])
-        if str(row["status"]) != "succeeded":
+        if str(row.get("progress_current_phase")) != "awaiting_review":
             _mark_document_review_ready(
                 pipeline_run_id,
                 suggestion_id,
@@ -631,13 +632,16 @@ def _mark_document_review_ready(
             sql_text(
                 """
                 UPDATE pipeline_runs
-                SET status = 'succeeded', progress_total = 1, progress_done = 1,
-                    progress_current_phase = 'review_suggestion',
-                    progress_message = 'Review suggestion persisted for manual review.',
-                    progress_updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP,
+                SET status = 'running', progress_total = 1, progress_done = 1,
+                    progress_current_phase = 'awaiting_review',
+                    progress_message = 'Temporal document workflow is waiting for review.',
+                    progress_updated_at = CURRENT_TIMESTAMP, finished_at = NULL,
                     error_type = NULL, error = NULL, updated_at = CURRENT_TIMESTAMP
                 WHERE id = :pipeline_run_id AND orchestration_driver = 'temporal'
-                  AND status <> 'succeeded'
+                  AND (
+                      progress_current_phase IS NULL
+                      OR progress_current_phase <> 'awaiting_review'
+                  )
                 """
             ),
             {"pipeline_run_id": pipeline_run_id},
@@ -652,7 +656,7 @@ def _mark_document_review_ready(
                 ),
                 {"pipeline_run_id": pipeline_run_id},
             ).scalar_one_or_none()
-            if str(current) == "succeeded":
+            if str(current) == "running":
                 return
             raise RuntimeError(f"Temporal document pipeline run {pipeline_run_id} is missing")
         connection.execute(

@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
         DocumentPhaseRegistration,
         DocumentPhaseRequest,
         DocumentPhaseResult,
+        DocumentReviewCompletion,
         DocumentWorkflowRequest,
         DocumentWorkflowResult,
         EmbeddingIndexPhaseRegistration,
@@ -49,6 +50,7 @@ with workflow.unsafe.imports_passed_through():
         process_document_for_review,
     )
     from app.temporal.document_phase_activities import (
+        finish_document_review,
         process_document_classification_phase,
         process_document_embedding_phase,
         process_document_judge_phase,
@@ -118,6 +120,27 @@ class RuntimeProbeWorkflow:
         )
 
 
+def _configuration_for_phase(
+    snapshot: ModelPhaseConfiguration, phase: str
+) -> ModelPhaseConfiguration:
+    if phase == "embedding":
+        model_id = snapshot.embedding_model
+        task_queue = EMBEDDING_TASK_QUEUE
+    elif phase == "ocr":
+        vision = snapshot.ocr_mode in {"vision_light", "vision_full"}
+        model_id = snapshot.ocr_vision_model if vision else snapshot.ocr_text_model
+        task_queue = OCR_VISION_TASK_QUEUE if vision else OCR_TEXT_TASK_QUEUE
+    elif phase == "classification":
+        model_id = snapshot.classification_model
+        task_queue = CLASSIFICATION_TASK_QUEUE
+    elif phase == "judge":
+        model_id = snapshot.judge_model
+        task_queue = JUDGE_TASK_QUEUE
+    else:
+        raise ValueError(f"Unknown model phase: {phase}")
+    return replace(snapshot, phase=phase, model_id=model_id, task_queue=task_queue)
+
+
 @workflow.defn(name=MODEL_PHASE_SCHEDULER_WORKFLOW)
 class ModelPhaseSchedulerWorkflow:
     """Drain document work in model-affine phases without switching backwards."""
@@ -165,22 +188,7 @@ class ModelPhaseSchedulerWorkflow:
     def _configuration_for_phase(
         snapshot: ModelPhaseConfiguration, phase: str
     ) -> ModelPhaseConfiguration:
-        if phase == "embedding":
-            model_id = snapshot.embedding_model
-            task_queue = EMBEDDING_TASK_QUEUE
-        elif phase == "ocr":
-            vision = snapshot.ocr_mode in {"vision_light", "vision_full"}
-            model_id = snapshot.ocr_vision_model if vision else snapshot.ocr_text_model
-            task_queue = OCR_VISION_TASK_QUEUE if vision else OCR_TEXT_TASK_QUEUE
-        elif phase == "classification":
-            model_id = snapshot.classification_model
-            task_queue = CLASSIFICATION_TASK_QUEUE
-        elif phase == "judge":
-            model_id = snapshot.judge_model
-            task_queue = JUDGE_TASK_QUEUE
-        else:
-            raise ValueError(f"Unknown model phase: {phase}")
-        return replace(snapshot, phase=phase, model_id=model_id, task_queue=task_queue)
+        return _configuration_for_phase(snapshot, phase)
 
     async def _project(
         self,
@@ -493,7 +501,7 @@ async def _ensure_scheduler() -> None:
 
 @workflow.defn(name=EMBEDDING_INDEX_WORKFLOW)
 class EmbeddingIndexWorkflow:
-    """Build one embedding generation only while the embedding phase is active."""
+    """Build one embedding generation independently from document lifecycles."""
 
     def __init__(self) -> None:
         self._grant: ModelPhaseGrant | None = None
@@ -574,28 +582,15 @@ class EmbeddingIndexWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=0),
         )
 
-    @workflow.run
-    async def run(self, request: EmbeddingWorkflowRequest) -> EmbeddingWorkflowResult:
-        if not workflow.patched("model-phase-embedding-workflow-v1"):
-            return await self._run_legacy(request)
-        await _ensure_scheduler()
-        workflow_id = workflow.info().workflow_id
-        registration = EmbeddingIndexPhaseRegistration(
-            intent_id=f"{workflow_id}:embedding-index",
-            workflow_id=workflow_id,
-            command_id=request.command_id,
-        )
-        scheduler = workflow.get_external_workflow_handle(MODEL_PHASE_SCHEDULER_WORKFLOW_ID)
-        await scheduler.signal("register_embedding_index", registration)
-        await workflow.wait_condition(lambda: self._grant is not None)
-        grant = self._grant
-        if grant is None:
-            raise RuntimeError("Embedding phase grant is unavailable")
-        terminal_status = "failed"
+    async def _run_generation(
+        self,
+        request: EmbeddingWorkflowRequest,
+        configuration: ModelPhaseConfiguration,
+    ) -> EmbeddingWorkflowResult:
         try:
             prepared = await workflow.execute_activity(
                 prepare_embedding_generation,
-                EmbeddingWorkflowRequest(request.command_id, grant.configuration),
+                EmbeddingWorkflowRequest(request.command_id, configuration),
                 schedule_to_close_timeout=timedelta(hours=24),
                 start_to_close_timeout=timedelta(minutes=30),
                 heartbeat_timeout=timedelta(minutes=2),
@@ -612,7 +607,7 @@ class EmbeddingIndexWorkflow:
                 try:
                     result = await workflow.execute_activity(
                         embed_document,
-                        EmbedDocumentRequest(prepared.build_id, document_id, grant.configuration),
+                        EmbedDocumentRequest(prepared.build_id, document_id, configuration),
                         task_queue=EMBEDDING_TASK_QUEUE,
                         start_to_close_timeout=timedelta(minutes=30),
                         heartbeat_timeout=timedelta(minutes=2),
@@ -638,7 +633,7 @@ class EmbeddingIndexWorkflow:
                     start_to_close_timeout=timedelta(minutes=1),
                     retry_policy=RetryPolicy(maximum_attempts=5),
                 )
-            result = await workflow.execute_activity(
+            return await workflow.execute_activity(
                 finish_embedding_generation,
                 EmbeddingProgress(
                     prepared.command_id,
@@ -651,8 +646,6 @@ class EmbeddingIndexWorkflow:
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=RetryPolicy(maximum_attempts=5),
             )
-            terminal_status = "complete" if result.status == "complete" else "failed"
-            return result
         except ActivityError:
             await workflow.execute_activity(
                 fail_embedding_preparation,
@@ -664,6 +657,39 @@ class EmbeddingIndexWorkflow:
                 retry_policy=RetryPolicy(maximum_attempts=5),
             )
             raise
+
+    @workflow.run
+    async def run(self, request: EmbeddingWorkflowRequest) -> EmbeddingWorkflowResult:
+        if not workflow.patched("model-phase-embedding-workflow-v1"):
+            return await self._run_legacy(request)
+        if workflow.patched("independent-embedding-index-v2"):
+            snapshot = await workflow.execute_activity(
+                load_model_phase_configuration,
+                "embedding",
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+            return await self._run_generation(
+                request, _configuration_for_phase(snapshot, "embedding")
+            )
+        await _ensure_scheduler()
+        workflow_id = workflow.info().workflow_id
+        registration = EmbeddingIndexPhaseRegistration(
+            intent_id=f"{workflow_id}:embedding-index",
+            workflow_id=workflow_id,
+            command_id=request.command_id,
+        )
+        scheduler = workflow.get_external_workflow_handle(MODEL_PHASE_SCHEDULER_WORKFLOW_ID)
+        await scheduler.signal("register_embedding_index", registration)
+        await workflow.wait_condition(lambda: self._grant is not None)
+        grant = self._grant
+        if grant is None:
+            raise RuntimeError("Embedding phase grant is unavailable")
+        terminal_status = "failed"
+        try:
+            result = await self._run_generation(request, grant.configuration)
+            terminal_status = "complete" if result.status == "complete" else "failed"
+            return result
         finally:
             await scheduler.signal(
                 "embedding_index_completed",
@@ -684,6 +710,7 @@ class DocumentWorkflow:
         self._review_decision: dict[str, object] | None = None
         self._review_release: ReviewRelease | None = None
         self._phase_failure: DocumentPhaseResult | None = None
+        self._force_reprocess: dict[str, object] | None = None
 
     @workflow.signal(name="model_phase_result")
     def model_phase_result(self, notification: DocumentPhaseNotification) -> None:
@@ -700,10 +727,40 @@ class DocumentWorkflow:
         if self._review_decision is None:
             self._review_decision = decision
 
+    @workflow.signal(name="force_reprocess")
+    def force_reprocess(self, request: dict[str, object]) -> None:
+        if self._force_reprocess is None:
+            self._force_reprocess = request
+
+    async def _project_review_completion(
+        self,
+        request: DocumentWorkflowRequest,
+        suggestion_id: int,
+        outcome: str,
+    ) -> None:
+        if not workflow.patched("document-review-terminal-projection-v1"):
+            return
+        await workflow.execute_activity(
+            finish_document_review,
+            DocumentReviewCompletion(request.pipeline_run_id, suggestion_id, outcome),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=RetryPolicy(maximum_attempts=5),
+        )
+
     async def _finish_review(
         self, request: DocumentWorkflowRequest, suggestion_id: int
     ) -> DocumentWorkflowResult:
-        await workflow.wait_condition(lambda: self._review_decision is not None)
+        await workflow.wait_condition(
+            lambda: self._review_decision is not None or self._force_reprocess is not None
+        )
+        if self._force_reprocess is not None:
+            payload = self._force_reprocess.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("Force reprocess signal payload is invalid")
+            if payload.get("review_suggestion_id") != suggestion_id:
+                raise ValueError("Force reprocess targets another suggestion")
+            await self._project_review_completion(request, suggestion_id, "superseded")
+            return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, "superseded")
         envelope = self._review_decision or {}
         payload = envelope.get("payload")
         if not isinstance(payload, dict):
@@ -712,6 +769,7 @@ class DocumentWorkflow:
             raise ValueError("Review decision targets another suggestion")
         decision = payload.get("decision")
         if decision == "rejected":
+            await self._project_review_completion(request, suggestion_id, "rejected")
             return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, "rejected")
         if decision != "accepted":
             raise ValueError("Review decision is invalid")
@@ -730,7 +788,14 @@ class DocumentWorkflow:
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=RetryPolicy(maximum_attempts=5),
             )
+            await workflow.execute_activity(
+                fail_document_processing,
+                request.pipeline_run_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
             raise
+        await self._project_review_completion(request, suggestion_id, "committed")
         return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, commit_result.status)
 
     async def _run_legacy(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult:
@@ -771,10 +836,104 @@ class DocumentWorkflow:
             raise RuntimeError("Legacy document workflow has no review suggestion")
         return await self._finish_review(request, suggestion_id)
 
+    async def _readiness(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult | None:
+        while True:
+            readiness = await workflow.execute_activity(
+                check_document_readiness,
+                request.pipeline_run_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+            if readiness.status == "complete":
+                if readiness.review_suggestion_id is None:
+                    raise RuntimeError("Ready document workflow has no review suggestion")
+                return await self._finish_review(request, readiness.review_suggestion_id)
+            if readiness.status == "cancelled":
+                return DocumentWorkflowResult(request.pipeline_run_id, None, "cancelled")
+            if readiness.status == "ready":
+                return None
+            await workflow.sleep(timedelta(seconds=30))
+
+    async def _run_owned_lifecycle(
+        self, request: DocumentWorkflowRequest
+    ) -> DocumentWorkflowResult:
+        ready_result = await self._readiness(request)
+        if ready_result is not None:
+            return ready_result
+
+        snapshot = await workflow.execute_activity(
+            load_model_phase_configuration,
+            "embedding",
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=RetryPolicy(maximum_attempts=5),
+        )
+        phase_activities = {
+            "ocr": process_document_ocr_phase,
+            "embedding": process_document_embedding_phase,
+            "classification": process_document_classification_phase,
+            "judge": process_document_judge_phase,
+        }
+        cycle = request.pipeline_run_id
+        for phase in ("ocr", "embedding", "classification", "judge"):
+            configuration = _configuration_for_phase(snapshot, phase)
+            try:
+                result = await workflow.execute_activity(
+                    phase_activities[phase],
+                    DocumentPhaseRequest(request.pipeline_run_id, cycle, configuration),
+                    task_queue=configuration.task_queue,
+                    schedule_to_close_timeout=timedelta(hours=24),
+                    start_to_close_timeout=timedelta(hours=2),
+                    heartbeat_timeout=timedelta(minutes=2),
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=5,
+                        maximum_interval=timedelta(minutes=2),
+                        non_retryable_error_types=["ValueError"],
+                    ),
+                )
+            except ActivityError:
+                await workflow.execute_activity(
+                    fail_document_processing,
+                    request.pipeline_run_id,
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RetryPolicy(maximum_attempts=5),
+                )
+                raise
+            if result.status == "failed_permanent":
+                await workflow.execute_activity(
+                    fail_document_processing,
+                    request.pipeline_run_id,
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RetryPolicy(maximum_attempts=5),
+                )
+                raise RuntimeError(f"Temporal document {phase} phase failed permanently")
+
+        review_configuration = _configuration_for_phase(snapshot, "judge")
+        try:
+            result = await workflow.execute_activity(
+                publish_document_review,
+                DocumentPhaseRequest(request.pipeline_run_id, cycle, review_configuration),
+                task_queue=PAPERLESS_TASK_QUEUE,
+                schedule_to_close_timeout=timedelta(hours=24),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=timedelta(minutes=2),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+        except ActivityError:
+            await workflow.execute_activity(
+                fail_document_processing,
+                request.pipeline_run_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+            raise
+        return await self._finish_review(request, result.review_suggestion_id)
+
     @workflow.run
     async def run(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult:
         if not workflow.patched("model-phase-document-workflow-v1"):
             return await self._run_legacy(request)
+        if workflow.patched("document-owned-lifecycle-v2"):
+            return await self._run_owned_lifecycle(request)
         await _ensure_scheduler()
         workflow_id = request.workflow_id or workflow.info().workflow_id
         scheduler = workflow.get_external_workflow_handle(MODEL_PHASE_SCHEDULER_WORKFLOW_ID)

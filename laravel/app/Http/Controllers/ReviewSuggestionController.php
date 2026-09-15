@@ -164,30 +164,46 @@ class ReviewSuggestionController extends Controller
             $reason = 'manual_admin_reprocess';
         }
 
-        $result = app(DocumentPipelineStarter::class)->start(
-            triggerSource: 'manual',
-            paperlessDocumentId: $reviewSuggestion->paperless_document_id,
-            reprocessRequested: true,
-            reprocessReason: $reason,
-            reprocessMode: 'manual',
-            forceNewRun: true,
-            requestedByUserId: $request->user()->id,
-        );
-        $run = $result->pipelineRun;
+        DB::transaction(function () use ($request, $reviewSuggestion, $reason): void {
+            $reviewSuggestion = ReviewSuggestion::query()->lockForUpdate()->findOrFail($reviewSuggestion->id);
+            $result = app(DocumentPipelineStarter::class)->start(
+                triggerSource: 'manual',
+                paperlessDocumentId: $reviewSuggestion->paperless_document_id,
+                reprocessRequested: true,
+                reprocessReason: $reason,
+                reprocessMode: 'manual',
+                forceNewRun: true,
+                requestedByUserId: $request->user()->id,
+            );
+            $run = $result->pipelineRun;
+            $dispatch = $this->temporal->dispatchForceReprocess(
+                $reviewSuggestion,
+                $run,
+                [
+                    'actor_principal' => OperatorPrincipal::name($request),
+                    'actor_user_id' => $request->user()->id,
+                    'actor_is_admin' => true,
+                ],
+            );
+            if ($reviewSuggestion->status === ReviewSuggestion::STATUS_PENDING) {
+                $reviewSuggestion->markStale('force_reprocess');
+            }
 
-        AuditLog::query()->create([
-            'actor_user_id' => $request->user()->id,
-            'event' => 'pipeline_run.manual_reprocess_queued',
-            'target_type' => 'pipeline_run',
-            'target_id' => (string) $run->id,
-            'metadata' => [
-                'review_suggestion_id' => $reviewSuggestion->id,
-                'paperless_document_id' => $reviewSuggestion->paperless_document_id,
-                'reason' => $reason,
-            ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
+            AuditLog::query()->create([
+                'actor_user_id' => $request->user()->id,
+                'event' => 'pipeline_run.manual_reprocess_queued',
+                'target_type' => 'pipeline_run',
+                'target_id' => (string) $run->id,
+                'metadata' => [
+                    'review_suggestion_id' => $reviewSuggestion->id,
+                    'paperless_document_id' => $reviewSuggestion->paperless_document_id,
+                    'reason' => $reason,
+                    'superseded_temporal_workflow' => $dispatch['temporal_workflow_id'] ?? null,
+                ],
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        });
 
         return redirect()->route('review.show', $reviewSuggestion)->with('status', 'Manual reprocess queued.');
     }

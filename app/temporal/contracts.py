@@ -136,6 +136,13 @@ class DocumentWorkflowResult:
 
 
 @dataclass(frozen=True)
+class DocumentReviewCompletion:
+    pipeline_run_id: int
+    review_suggestion_id: int
+    outcome: str
+
+
+@dataclass(frozen=True)
 class ModelPhaseSchedulerRequest:
     scheduler_id: str
     initial_cycle: int = 0

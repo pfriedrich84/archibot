@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md) and [ADR-0023: Drain Document Work in Temporal Model Phases](0023-drain-document-work-in-temporal-model-phases.md). ADR-0023 retains global model-role barriers without restoring a poll-owned batch or Laravel orchestration owner.
+Superseded by [ADR-0022: Use Temporal for Durable Workflow Orchestration](0022-use-temporal-for-durable-workflow-orchestration.md), then by [ADR-0023: Drain Document Work in Temporal Model Phases](0023-drain-document-work-in-temporal-model-phases.md). [ADR-0024](0024-own-the-complete-document-lifecycle-in-one-temporal-workflow.md) replaces the remaining global barriers with one complete Temporal lifecycle per document generation.
 
 ## Context
 
