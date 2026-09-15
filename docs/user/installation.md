@@ -79,8 +79,12 @@ docker exec archibot archibot-temporal-probe
 ```
 
 Der erste Befehl prueft Laravel-Transaktion, Outbox und Relay. Der zweite prueft den
-direkten Worker-Rundlauf. Der optionale lokale Temporal-Operator kann mit
-`docker compose --profile temporal-ui up -d` auf `127.0.0.1:8233` gestartet werden.
+direkten Worker-Rundlauf. Die read-only Temporal UI startet mit dem Standard-Stack und ist
+lokal unter `http://localhost:8233` erreichbar. Sie oeffnet direkt den Namespace
+`archibot` und zeigt Workflows, Activities, Retries und Event-Historien. Fuer einen Zugriff
+von einem anderen Rechner muss `TEMPORAL_UI_BIND_ADDRESS=0.0.0.0` gesetzt und Port 8233
+durch einen authentifizierten TLS-Reverse-Proxy geschuetzt werden; in diesem Fall muss
+`TEMPORAL_UI_CORS_ORIGINS` dem externen Origin entsprechen.
 
 ## Lokale Entwicklung (ohne Docker)
 

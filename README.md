@@ -101,8 +101,9 @@ ollama pull qwen3-vl:4b           # Vision-OCR (optional)
 # 3. Starten
 docker compose up -d
 
-# 4. GUI öffnen → Setup-Wizard führt durch die Ersteinrichtung
+# 4. ArchiBot und die read-only Temporal-Übersicht öffnen
 open http://localhost:8088
+open http://localhost:8233
 ```
 
 Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.md](./docs/user/installation.md)**

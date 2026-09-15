@@ -155,7 +155,9 @@ oeffentlichen gRPC-Port und verwendet ein eigenes PostgreSQL-Volume.
 | `TEMPORAL_TASK_QUEUE` | `archibot-orchestration` | Gemeinsame Task Queue fuer versionierte ArchiBot-Workflows und Activities. |
 | `TEMPORAL_POSTGRES_USER` | `temporal` | Benutzer der getrennten Temporal-Persistenz. |
 | `TEMPORAL_POSTGRES_PASSWORD` | `temporal` | Passwort der Temporal-Persistenz; fuer reale Installationen zwingend ersetzen. |
-| `TEMPORAL_UI_PORT` | `8233` | Nur mit dem Profil `temporal-ui` an `127.0.0.1` gebundener Operator-Port. |
+| `TEMPORAL_UI_BIND_ADDRESS` | `127.0.0.1` | Host-Bindung der mit dem Standard-Stack gestarteten, read-only Temporal UI. Nur hinter einem authentifizierten TLS-Reverse-Proxy auf `0.0.0.0` setzen. |
+| `TEMPORAL_UI_PORT` | `8233` | Host-Port der read-only Temporal UI. Lokal erreichbar unter `http://localhost:8233`. |
+| `TEMPORAL_UI_CORS_ORIGINS` | `http://localhost:8233` | Erlaubter Browser-Origin der Temporal UI; bei einer externen Proxy-URL auf deren vollstaendigen Origin setzen. |
 | `TEMPORAL_OUTBOX_POLL_SECONDS` | `1` | Wartezeit des Relays, wenn keine Laravel-Intents vorliegen. |
 | `TEMPORAL_OUTBOX_LEASE_SECONDS` | `60` | Zeit bis ein nach Prozessverlust liegen gebliebener Zustell-Claim erneut uebernommen wird. |
 | `TEMPORAL_OUTBOX_MAX_ATTEMPTS` | `20` | Zustellversuche bis zur sichtbaren Dead-Letter-Markierung. Workflow-Retries selbst gehoeren Temporal. |

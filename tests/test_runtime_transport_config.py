@@ -72,3 +72,14 @@ def test_runtime_manifests_have_only_laravel_database_queue_transport():
     assert "QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}" in compose
     assert "pip uninstall -y pip setuptools wheel" in dockerfile
     assert "rm -rf /usr/local/lib/python*/ensurepip" in dockerfile
+
+
+def test_temporal_ui_starts_read_only_on_loopback_for_archibot_namespace():
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert 'profiles: ["temporal-ui"]' not in compose
+    assert "TEMPORAL_DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-archibot}" in compose
+    assert 'TEMPORAL_DISABLE_WRITE_ACTIONS: "true"' in compose
+    assert '"${TEMPORAL_UI_BIND_ADDRESS:-127.0.0.1}:${TEMPORAL_UI_PORT:-8233}:8080"' in compose
+    assert "TEMPORAL_UI_BIND_ADDRESS=127.0.0.1" in env_example

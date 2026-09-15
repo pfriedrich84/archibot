@@ -222,15 +222,19 @@ services:
   temporal-ui:
     image: temporalio/ui:2.49.1
     container_name: archibot-temporal-ui
-    profiles: ["temporal-ui"]
     restart: unless-stopped
     depends_on:
       temporal:
         condition: service_healthy
+      temporal-create-namespace:
+        condition: service_completed_successfully
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-archibot}
+      TEMPORAL_DISABLE_WRITE_ACTIONS: "true"
+      TEMPORAL_CORS_ORIGINS: ${TEMPORAL_UI_CORS_ORIGINS:-http://localhost:8233}
     ports:
-      - "127.0.0.1:${TEMPORAL_UI_PORT:-8233}:8080"
+      - "${TEMPORAL_UI_BIND_ADDRESS:-127.0.0.1}:${TEMPORAL_UI_PORT:-8233}:8080"
 
 volumes:
   archibot_data:
