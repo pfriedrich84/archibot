@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\PipelineEvent;
 use App\Models\TemporalOutboxIntent;
 use App\Services\Pipeline\MaintenanceCommandDispatcher;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -82,7 +84,7 @@ class ScheduledPollReconciliationTest extends TestCase
             'type' => Command::TYPE_POLL_RECONCILIATION,
             'status' => Command::STATUS_SUCCEEDED,
             'payload' => ['source' => 'scheduler'],
-            'finished_at' => now()->subMinutes(5),
+            'finished_at' => now('UTC')->subMinutes(5),
             'created_at' => now()->subMinutes(30),
             'updated_at' => now()->subMinutes(5),
         ]);
@@ -90,11 +92,59 @@ class ScheduledPollReconciliationTest extends TestCase
         $this->artisan('archibot:scheduled-poll')->assertSuccessful();
         Queue::assertNothingPushed();
 
-        $this->travel(6)->minutes();
+        Command::query()->firstOrFail()->update([
+            'finished_at' => now('UTC')->subMinutes(11),
+        ]);
         $this->artisan('archibot:scheduled-poll')->assertSuccessful();
         Queue::assertNothingPushed();
         $this->assertDatabaseCount('temporal_outbox_intents', 1);
         $this->assertDatabaseCount('commands', 2);
+    }
+
+    public function test_saved_poll_interval_overrides_boot_environment_value(): void
+    {
+        Queue::fake();
+        config(['archibot.poll_interval_seconds' => 60]);
+        AppSetting::put('worker.poll_interval_seconds', '600');
+        Command::query()->create([
+            'type' => Command::TYPE_POLL_RECONCILIATION,
+            'status' => Command::STATUS_SUCCEEDED,
+            'payload' => ['source' => 'scheduler'],
+            'finished_at' => now('UTC')->subMinutes(5),
+        ]);
+
+        $this->assertNull(app(MaintenanceCommandDispatcher::class)->queueScheduledPollReconciliation());
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('commands', 1);
+    }
+
+    public function test_database_utc_completion_is_recent_when_app_timezone_is_ahead(): void
+    {
+        Queue::fake();
+        config([
+            'app.timezone' => 'Europe/Vienna',
+            'archibot.poll_interval_seconds' => 600,
+        ]);
+        $previousTimezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Vienna');
+
+        try {
+            $utcNow = now('UTC');
+            DB::table('commands')->insert([
+                'type' => Command::TYPE_POLL_RECONCILIATION,
+                'status' => Command::STATUS_SUCCEEDED,
+                'payload' => json_encode(['source' => 'scheduler'], JSON_THROW_ON_ERROR),
+                'finished_at' => $utcNow->copy()->subMinute()->format('Y-m-d H:i:s'),
+                'created_at' => $utcNow->copy()->subMinutes(2)->format('Y-m-d H:i:s'),
+                'updated_at' => $utcNow->copy()->subMinute()->format('Y-m-d H:i:s'),
+            ]);
+
+            $this->assertNull(app(MaintenanceCommandDispatcher::class)->queueScheduledPollReconciliation());
+            Queue::assertNothingPushed();
+            $this->assertDatabaseCount('commands', 1);
+        } finally {
+            date_default_timezone_set($previousTimezone);
+        }
     }
 
     public function test_recent_failed_scheduled_completion_suppresses_an_immediate_new_poll(): void

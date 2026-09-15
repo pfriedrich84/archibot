@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActorExecution;
+use App\Models\AppSetting;
 use App\Models\Command;
 use App\Models\PipelineRun;
 use App\Models\User;
@@ -17,6 +18,7 @@ class DashboardTest extends TestCase
 
     public function test_dashboard_exposes_durable_operational_state_with_running_operations_only(): void
     {
+        AppSetting::put('worker.poll_interval_seconds', '777');
         $user = User::factory()->create(['is_admin' => true]);
 
         Command::query()->create([
@@ -49,6 +51,7 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Dashboard')
                 ->where('maintenance.pending_poll_commands', 1)
+                ->where('maintenance.poll_interval_seconds', 777)
                 ->where('maintenance.document_processing_active', true)
                 ->missing('lastSuccessfulRetiredJob')
                 ->missing('recentRetiredJobs')

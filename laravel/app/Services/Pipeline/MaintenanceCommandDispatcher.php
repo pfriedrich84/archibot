@@ -6,8 +6,11 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog as AuditEntry;
 use App\Models\Command as DispatchCommand;
 use App\Models\PipelineEvent as EventEntry;
+use App\Services\Settings\PollInterval;
 use App\Services\Temporal\TemporalWorkflowDispatcher;
 use App\Support\OperatorPrincipal;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +20,7 @@ class MaintenanceCommandDispatcher
     public function __construct(
         private readonly PipelineStartGate $pipelineStartGate,
         private readonly TemporalWorkflowDispatcher $temporal,
+        private readonly PollInterval $pollInterval,
     ) {}
 
     public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
@@ -75,7 +79,7 @@ class MaintenanceCommandDispatcher
 
     private function queueScheduledPollReconciliationUnlocked(): ?DispatchCommand
     {
-        $interval = max(0, (int) config('archibot.poll_interval_seconds', 600));
+        $interval = $this->pollInterval->seconds();
         if ($interval === 0) {
             return null;
         }
@@ -88,7 +92,7 @@ class MaintenanceCommandDispatcher
             return null;
         }
 
-        $recentScheduledExists = DispatchCommand::query()
+        $recentScheduledQuery = DispatchCommand::query()
             ->where('type', DispatchCommand::TYPE_POLL_RECONCILIATION)
             ->whereIn('status', [
                 DispatchCommand::STATUS_SUCCEEDED,
@@ -96,9 +100,9 @@ class MaintenanceCommandDispatcher
                 DispatchCommand::STATUS_FAILED_PERMANENT,
             ])
             ->where('payload->source', 'scheduler')
-            ->whereNotNull('finished_at')
-            ->where('finished_at', '>', now()->subSeconds($interval))
-            ->exists();
+            ->whereNotNull('finished_at');
+        $this->whereFinishedWithinDatabaseInterval($recentScheduledQuery, $interval);
+        $recentScheduledExists = $recentScheduledQuery->exists();
         if ($recentScheduledExists) {
             return null;
         }
@@ -136,6 +140,17 @@ class MaintenanceCommandDispatcher
 
             return $command;
         });
+    }
+
+    private function whereFinishedWithinDatabaseInterval(Builder $query, int $interval): void
+    {
+        $databaseClock = DB::selectOne('SELECT CURRENT_TIMESTAMP AS current_time');
+        $currentTime = $databaseClock?->current_time;
+        $cutoff = CarbonImmutable::parse((string) $currentTime, 'UTC')
+            ->subSeconds($interval)
+            ->format('Y-m-d H:i:s');
+
+        $query->where('finished_at', '>', $cutoff);
     }
 
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand

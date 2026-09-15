@@ -127,6 +127,47 @@ def test_find_similar_document_ids_uses_pgvector_trusted_filters(monkeypatch):
     assert params["dimensions"] == 2
 
 
+def test_load_document_embedding_vector_uses_typed_model_filter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        document_embeddings,
+        "engine",
+        lambda: FakeEngine(calls, [{"embedding": "[0.1,0.2]"}]),
+    )
+    monkeypatch.setattr(document_embeddings, "sql_text", lambda statement: statement)
+
+    result = document_embeddings.load_document_embedding_vector(
+        42,
+        embedding_model="embed-model",
+        trusted_only=False,
+    )
+
+    assert result == [0.1, 0.2]
+    statement, params = calls[0]
+    assert "embedding_model = :embedding_model" in statement
+    assert ":embedding_model IS NULL" not in statement
+    assert "trusted_for_context" not in statement
+    assert params == {"document_id": 42, "embedding_model": "embed-model"}
+
+
+def test_load_document_embedding_vector_omits_unset_model_parameter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        document_embeddings,
+        "engine",
+        lambda: FakeEngine(calls, [{"embedding": [0.3, 0.4]}]),
+    )
+    monkeypatch.setattr(document_embeddings, "sql_text", lambda statement: statement)
+
+    result = document_embeddings.load_document_embedding_vector(42)
+
+    assert result == [0.3, 0.4]
+    statement, params = calls[0]
+    assert "embedding_model = :embedding_model" not in statement
+    assert "trusted_for_context = TRUE" in statement
+    assert params == {"document_id": 42}
+
+
 def test_is_trusted_document_uses_absence_of_inbox_tag(monkeypatch):
     monkeypatch.setattr(document_embeddings.settings, "paperless_inbox_tag_id", 99)
 

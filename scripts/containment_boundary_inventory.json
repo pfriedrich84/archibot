@@ -17,7 +17,7 @@
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "02baf8e943965925a6d2c2fba6c4418ccfad5d163e04c6613bb2f7d31f38693b",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
-    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "d6e78f31fa5b834cf16962815ca8ca8c7ae4a94341c08c1edcdd7be766777378",
+    "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "fd9a9e2e7990cde48c07cbbeef687f6e91e15fee57602c0e0c23eadf01bbcee5",
     "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "7c86ef13eb46d3e161cdf7193426dcb1daef52d84df1d66e414d841666e08cf7",
     "scripts/check_containment_boundaries.py": "308252bab5ed83749a7c2b9fc2859278b69660f15aa5e648b00565e1f78e7e60"
   },
@@ -33,7 +33,7 @@
     "app/config_writer.py": "774666f0df4534be77d010d3d4b5389f0c5d51e3568e242aefe6ac88f82bde22",
     "app/mcp_server.py": "6386edad626ce25ed76cd9be21e711be99e3a7cc77409ce09a3828719dbc564a",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
-    "laravel/app/Http/Controllers/DashboardController.php": "04c6f9c96f7d5864df0b0e67b105d872b36ac9ab320bd198da25cffb6196499a",
+    "laravel/app/Http/Controllers/DashboardController.php": "3668d8b86edb7326d21438291eb17e2b771a6001f5390e49bf885b802fb88d0b",
     "laravel/app/Models/AppSetting.php": "9b331973d126283b0ecf16b0d42df1bcd3e79f1167d75d1152342c4bc8a540dc",
     "laravel/app/Models/PaperlessAiConfigState.php": "57f446f81566291ec2b12544d041c54e79703f184d4d0c748006dc823653fd44",
     "laravel/app/Providers/FortifyServiceProvider.php": "9b5be937ea82e3fe0569643eab3555f289ad54d96dee3e2f1b81f2a5a0f6409f",

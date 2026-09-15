@@ -420,13 +420,14 @@ def load_document_embedding_vector(
     This is primarily a compatibility helper for callers that search by id. If
     the installed driver returns pgvector as a string, parse the simple literal.
     """
+    model_filter = "AND embedding_model = :embedding_model" if embedding_model is not None else ""
     trust_filter = "AND trusted_for_context = TRUE" if trusted_only else ""
     statement = sql_text(
         f"""
         SELECT embedding
         FROM document_embeddings
         WHERE paperless_document_id = :document_id
-          AND (:embedding_model IS NULL OR embedding_model = :embedding_model)
+          {model_filter}
           {trust_filter}
         ORDER BY updated_at DESC, id DESC
         LIMIT 1
@@ -436,7 +437,10 @@ def load_document_embedding_vector(
         row = (
             connection.execute(
                 statement,
-                {"document_id": document_id, "embedding_model": embedding_model},
+                {
+                    "document_id": document_id,
+                    **({"embedding_model": embedding_model} if embedding_model is not None else {}),
+                },
             )
             .mappings()
             .first()

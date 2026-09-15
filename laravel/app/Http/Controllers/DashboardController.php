@@ -12,6 +12,7 @@ use App\Models\SetupState;
 use App\Models\WebhookDelivery;
 use App\Services\Paperless\CanonicalPaperlessOrigin;
 use App\Services\Paperless\PaperlessClient;
+use App\Services\Settings\PollInterval;
 use App\Support\ActiveOperationsSnapshot;
 use App\Support\DiagnosticPresenter;
 use App\Support\EmbeddingIndexSnapshot;
@@ -23,7 +24,7 @@ class DashboardController extends Controller
 {
     public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
 
-    public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots, ActiveOperationsSnapshot $activeOperations): Response
+    public function __invoke(Request $request, EmbeddingIndexSnapshot $embeddingSnapshots, ActiveOperationsSnapshot $activeOperations, PollInterval $pollInterval): Response
     {
         $paperlessUrl = app(CanonicalPaperlessOrigin::class)->url();
         $inboxTagId = (int) (AppSetting::getValue('paperless.inbox_tag_id', '0') ?? 0);
@@ -99,7 +100,7 @@ class DashboardController extends Controller
                     'reindex_url' => route('maintenance.reindex'),
                     'pending_poll_commands' => $pendingPollCommands,
                     'pending_reindex_commands' => $pendingReindexCommands,
-                    'poll_interval_seconds' => (int) config('archibot.poll_interval_seconds', 600),
+                    'poll_interval_seconds' => $pollInterval->seconds(),
                     'document_processing_active' => PipelineRun::query()
                         ->where('type', 'document')
                         ->whereIn('status', [PipelineRun::STATUS_PENDING, PipelineRun::STATUS_QUEUED, PipelineRun::STATUS_RUNNING, PipelineRun::STATUS_RETRYING])
