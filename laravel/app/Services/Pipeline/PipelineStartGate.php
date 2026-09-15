@@ -68,7 +68,7 @@ class PipelineStartGate
             $query->where('embedding_model', trim($configuredModel));
         }
 
-        return $query->latest()->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
+        return $query->latest('updated_at')->latest('id')->value('status') === EmbeddingIndexState::STATUS_COMPLETE;
     }
 
     public function markStale(string $reason): EmbeddingIndexState

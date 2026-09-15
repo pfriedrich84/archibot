@@ -115,7 +115,7 @@ def _embedding_ready(connection) -> bool:
                 """
                 SELECT status FROM embedding_index_state
                 WHERE embedding_model = :embedding_model
-                ORDER BY completed_at DESC NULLS LAST, updated_at DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT 1
                 """
             ),
@@ -203,6 +203,7 @@ def _persist_observation_and_run(
                     orchestration_driver, temporal_workflow_id, paperless_document_id,
                     paperless_modified, pipeline_dedupe_key, coalesced_sources,
                     progress_current_phase, progress_message, progress_updated_at,
+                    error_type, error,
                     reprocess_requested, reprocess_reason, reprocess_mode,
                     created_at, updated_at
                 ) VALUES (
@@ -210,6 +211,7 @@ def _persist_observation_and_run(
                     'temporal', :workflow_id, :paperless_document_id,
                     :modified, :dedupe_key, CAST('["poll"]' AS json),
                     :phase, :message, CURRENT_TIMESTAMP,
+                    :error_type, :error,
                     :force, :reprocess_reason, :reprocess_mode,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
@@ -224,6 +226,8 @@ def _persist_observation_and_run(
                 "dedupe_key": dedupe_key,
                 "phase": phase,
                 "message": message,
+                "error_type": None if gate_open else "embedding_index_not_ready",
+                "error": None if gate_open else "Waiting for embedding index to complete.",
                 "force": force,
                 "reprocess_reason": "forced_poll_reconciliation" if force else None,
                 "reprocess_mode": "poll_force" if force else None,
@@ -254,6 +258,7 @@ def _persist_observation_and_run(
                         orchestration_driver = 'temporal', temporal_workflow_id = :workflow_id,
                         status = :status, progress_current_phase = :phase,
                         progress_message = :message, progress_updated_at = CURRENT_TIMESTAMP,
+                        error_type = :error_type, error = :error,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = :pipeline_run_id
                       AND orchestration_driver IS NULL
@@ -266,6 +271,8 @@ def _persist_observation_and_run(
                     "status": status,
                     "phase": phase,
                     "message": message,
+                    "error_type": None if gate_open else "embedding_index_not_ready",
+                    "error": None if gate_open else "Waiting for embedding index to complete.",
                 },
             )
             if adopted.rowcount == 1:

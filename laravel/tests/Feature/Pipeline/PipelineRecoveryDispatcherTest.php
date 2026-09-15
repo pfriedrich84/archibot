@@ -371,6 +371,37 @@ class PipelineRecoveryDispatcherTest extends TestCase
         ]);
     }
 
+    public function test_migration_repairs_and_releases_temporal_poll_runs_missing_block_reason(): void
+    {
+        Queue::fake();
+        $this->markEmbeddingIndexComplete();
+
+        $temporal = $this->pipelineRun([
+            'status' => PipelineRun::STATUS_BLOCKED,
+            'paperless_document_id' => 63,
+            'orchestration_driver' => 'temporal',
+            'temporal_workflow_id' => 'archibot/document/63/reprocess/poll-5',
+            'error_type' => null,
+            'error' => null,
+            'progress_current_phase' => 'waiting_for_embedding',
+        ]);
+
+        $migration = require database_path('migrations/2026_09_15_000000_backfill_temporal_embedding_block_reason.php');
+        $migration->up();
+
+        $this->assertSame(
+            DocumentPipelineStarter::BLOCKED_REASON_EMBEDDING_INDEX_NOT_READY,
+            $temporal->fresh()->error_type,
+        );
+        $this->assertSame(1, app(PipelineRecoveryDispatcher::class)->recoverDocumentPipelineRuns(limit: 10));
+        $this->assertSame(PipelineRun::STATUS_QUEUED, $temporal->fresh()->status);
+        $this->assertDatabaseHas('temporal_outbox_intents', [
+            'workflow_id' => 'archibot/document/63/reprocess/poll-5',
+            'workflow_type' => 'archibot.document',
+            'status' => TemporalOutboxIntent::STATUS_PENDING,
+        ]);
+    }
+
     public function test_recovery_scan_redispatches_stale_queued_document_runs_without_active_actor(): void
     {
         Queue::fake();

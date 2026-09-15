@@ -73,6 +73,9 @@ class _QueryResult:
     def first(self):
         return self.row
 
+    def one(self):
+        return self.row
+
 
 class _ReadConnection:
     def __init__(self, row):
@@ -87,6 +90,35 @@ class _ReadEngine:
         self.connection = _ReadConnection(row)
 
     def connect(self):
+        return nullcontext(self.connection)
+
+
+class _WriteConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, statement, parameters=None):
+        parameters = parameters or {}
+        self.calls.append((statement, parameters))
+        if "SELECT status FROM embedding_index_state" in statement:
+            return _QueryResult({"status": "stale"})
+        if "SELECT id, status, orchestration_driver" in statement:
+            return _QueryResult(
+                {
+                    "id": 34,
+                    "status": "blocked",
+                    "orchestration_driver": "temporal",
+                    "temporal_workflow_id": "archibot/document/261/reprocess/poll-5",
+                }
+            )
+        return SimpleNamespace(rowcount=1)
+
+
+class _WriteEngine:
+    def __init__(self):
+        self.connection = _WriteConnection()
+
+    def begin(self):
         return nullcontext(self.connection)
 
 
@@ -138,6 +170,29 @@ async def test_empty_instance_without_inbox_tag_finishes_discovery_without_paper
     assert result.status == "skipped"
     assert result.documents_seen == 0
     assert result.workflow_starts == []
+
+
+def test_poll_persists_recoverable_embedding_block_reason(monkeypatch):
+    fake_engine = _WriteEngine()
+    monkeypatch.setattr(document_activities, "engine", lambda: fake_engine)
+    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
+
+    result = document_activities._persist_observation_and_run(
+        command_id=5,
+        paperless_document_id=261,
+        modified="2026-09-15T09:40:00.000000Z",
+        force=True,
+    )
+
+    assert result is None
+    insert = next(
+        parameters
+        for statement, parameters in fake_engine.connection.calls
+        if "INSERT INTO pipeline_runs" in statement
+    )
+    assert insert["status"] == "blocked"
+    assert insert["error_type"] == "embedding_index_not_ready"
+    assert insert["error"] == "Waiting for embedding index to complete."
 
 
 @pytest.mark.asyncio

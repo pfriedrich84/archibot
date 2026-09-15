@@ -23,7 +23,7 @@ def latest_embedding_index_status(embedding_model: str | None = None) -> str | N
         SELECT status
         FROM embedding_index_state
         WHERE embedding_model = :embedding_model
-        ORDER BY completed_at DESC NULLS LAST, updated_at DESC, id DESC
+        ORDER BY updated_at DESC, id DESC
         LIMIT 1
         """
     )

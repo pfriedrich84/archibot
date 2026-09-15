@@ -48,14 +48,14 @@ class EmbeddingsTest extends TestCase
             'embedding_model' => 'qwen3-embedding:4b',
             'dimensions' => 2560,
             'embedding' => [0.1, 0.2],
-        ]);
+        ])->forceFill(['trusted_for_context' => true])->save();
         DocumentEmbedding::query()->create([
             'paperless_document_id' => 11,
             'content_hash' => 'hash-11',
             'embedding_model' => 'qwen3-embedding:4b',
             'dimensions' => 2560,
             'embedding' => [0.3, 0.4],
-        ]);
+        ])->forceFill(['trusted_for_context' => true])->save();
 
         $user = User::factory()->create(['paperless_token' => 'user-token', 'is_admin' => true]);
 
@@ -84,11 +84,12 @@ class EmbeddingsTest extends TestCase
             );
     }
 
-    public function test_embeddings_page_uses_completed_state_counts_when_legacy_reindex_succeeded(): void
+    public function test_embeddings_page_uses_completed_state_counts_for_configured_model(): void
     {
         AppSetting::put('embedding.model', 'qwen3-embedding:4b');
         EmbeddingIndexState::query()->create([
             'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'qwen3-embedding:4b',
             'document_count' => 138,
             'embedded_count' => 138,
             'failed_count' => 0,
@@ -145,6 +146,45 @@ class EmbeddingsTest extends TestCase
                 ->where('latestEmbeddingBuildCommand.status', Command::STATUS_RUNNING)
                 ->where('latestEmbeddingBuildCommand.queue', 'maintenance')
                 ->where('latestEmbeddingBuildCommand.priority', 40)
+            );
+    }
+
+    public function test_embeddings_page_uses_latest_status_for_configured_model(): void
+    {
+        AppSetting::put('embedding.model', 'qwen3-embedding:4b');
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'qwen3-embedding:4b',
+            'document_count' => 139,
+            'embedded_count' => 139,
+            'completed_at' => now()->subHour(),
+            'updated_at' => now()->subHour(),
+        ]);
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_STALE,
+            'embedding_model' => 'qwen3-embedding:4b',
+            'document_count' => 139,
+            'embedded_count' => 139,
+            'updated_at' => now(),
+        ]);
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'other-model',
+            'document_count' => 200,
+            'embedded_count' => 200,
+            'updated_at' => now()->addMinute(),
+        ]);
+
+        $user = User::factory()->create(['paperless_token' => 'user-token', 'is_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('snapshot.status', EmbeddingIndexState::STATUS_STALE)
+                ->where('snapshot.ready', false)
+                ->where('snapshot.document_count', 139)
+                ->where('snapshot.embedded_count', 139)
             );
     }
 
@@ -229,7 +269,7 @@ class EmbeddingsTest extends TestCase
         }
     }
 
-    public function test_embeddings_page_infers_ready_from_pgvector_rows_when_state_is_missing(): void
+    public function test_embeddings_page_fails_closed_when_state_is_missing(): void
     {
         AppSetting::put('paperless.url', 'https://paperless.example');
         Http::fake([
@@ -242,7 +282,7 @@ class EmbeddingsTest extends TestCase
             'embedding_model' => 'qwen3-embedding:4b',
             'dimensions' => 2560,
             'embedding' => [0.1, 0.2],
-        ]);
+        ])->forceFill(['trusted_for_context' => true])->save();
 
         $user = User::factory()->create(['paperless_token' => 'user-token', 'is_admin' => true]);
 
@@ -251,11 +291,47 @@ class EmbeddingsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('processing/Embeddings')
-                ->where('snapshot.status', EmbeddingIndexState::STATUS_COMPLETE)
-                ->where('snapshot.ready', true)
+                ->where('snapshot.status', 'missing')
+                ->where('snapshot.ready', false)
                 ->where('snapshot.document_count', 1)
                 ->where('snapshot.embedded_count', 1)
                 ->where('snapshot.missing_count', 0)
+            );
+    }
+
+    public function test_embeddings_page_does_not_add_untrusted_inbox_embeddings_to_build_progress(): void
+    {
+        AppSetting::put('embedding.model', 'qwen3-embedding:4b');
+        EmbeddingIndexState::query()->create([
+            'status' => EmbeddingIndexState::STATUS_COMPLETE,
+            'embedding_model' => 'qwen3-embedding:4b',
+            'document_count' => 139,
+            'embedded_count' => 139,
+            'failed_count' => 0,
+        ]);
+
+        foreach (range(1, 34) as $documentId) {
+            DocumentEmbedding::query()->create([
+                'paperless_document_id' => $documentId,
+                'content_hash' => "inbox-{$documentId}",
+                'embedding_model' => 'qwen3-embedding:4b',
+                'dimensions' => 2,
+                'embedding' => [0.1, 0.2],
+                'trusted_for_context' => false,
+            ]);
+        }
+
+        $user = User::factory()->create(['paperless_token' => 'user-token', 'is_admin' => true]);
+
+        $this->actingAs($user)
+            ->get(route('embeddings.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('snapshot.status', EmbeddingIndexState::STATUS_COMPLETE)
+                ->where('snapshot.document_count', 139)
+                ->where('snapshot.embedded_count', 139)
+                ->where('snapshot.pgvector_embedded_count', 0)
+                ->where('snapshot.stored_embedding_rows', 34)
             );
     }
 }

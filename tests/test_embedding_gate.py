@@ -67,4 +67,6 @@ def test_embedding_gate_queries_only_the_configured_model(monkeypatch):
 
     assert embedding_gate.latest_embedding_index_status("new-embed") == "complete"
     assert "WHERE embedding_model = :embedding_model" in fake_engine.connection.statement
+    assert "ORDER BY updated_at DESC, id DESC" in fake_engine.connection.statement
+    assert "completed_at" not in fake_engine.connection.statement
     assert fake_engine.connection.parameters == {"embedding_model": "new-embed"}

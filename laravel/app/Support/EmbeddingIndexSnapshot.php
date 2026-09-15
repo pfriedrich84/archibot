@@ -16,13 +16,22 @@ class EmbeddingIndexSnapshot
      */
     public function forRequest(Request $request): array
     {
-        $state = EmbeddingIndexState::query()->latest()->first();
-        $pgvectorEmbeddedCount = DocumentEmbedding::query()
+        $configuredModel = trim((string) AppSetting::getValue('embedding.model', ''));
+        $stateQuery = EmbeddingIndexState::query();
+        if ($configuredModel !== '') {
+            $stateQuery->where('embedding_model', $configuredModel);
+        }
+        $state = $stateQuery->latest('updated_at')->latest('id')->first();
+
+        $embeddingQuery = DocumentEmbedding::query()->where('trusted_for_context', true);
+        if ($configuredModel !== '') {
+            $embeddingQuery->where('embedding_model', $configuredModel);
+        }
+        $pgvectorEmbeddedCount = $embeddingQuery
             ->distinct()
             ->count('paperless_document_id');
         $storedRows = DocumentEmbedding::query()->count();
-        $stateEmbeddedCount = $state?->embedded_count ?? 0;
-        $embeddedCount = max($pgvectorEmbeddedCount, $stateEmbeddedCount);
+        $embeddedCount = $state?->embedded_count ?? $pgvectorEmbeddedCount;
         $documentCount = $state?->document_count;
         $documentCountError = null;
 
@@ -43,14 +52,9 @@ class EmbeddingIndexSnapshot
         $releaseThreshold = max(0, (int) ($state?->release_threshold ?? 0));
         $releaseTargetPopulation = max(0, (int) ($state?->release_target_population ?? ($documentCount ?? 0)));
 
-        if (($status === null || $status === 'missing') && $embeddedCount > 0) {
-            $status = $missingCount === 0 && $failedCount === 0 ? EmbeddingIndexState::STATUS_COMPLETE : 'partial';
-        }
-
         $status ??= 'missing';
 
-        $ready = $status === EmbeddingIndexState::STATUS_COMPLETE
-            || ($embeddedCount > 0 && $missingCount === 0 && $failedCount === 0);
+        $ready = $status === EmbeddingIndexState::STATUS_COMPLETE;
 
         $released = $ready
             && $embeddedCount >= $releaseThreshold
@@ -61,7 +65,7 @@ class EmbeddingIndexSnapshot
         return [
             'id' => $state?->id,
             'status' => $ready ? EmbeddingIndexState::STATUS_COMPLETE : $status,
-            'embedding_model' => $state?->embedding_model ?: AppSetting::getValue('embedding.model'),
+            'embedding_model' => $state?->embedding_model ?: ($configuredModel !== '' ? $configuredModel : null),
             'dimensions' => $state?->dimensions,
             'document_count' => $documentCount ?? 0,
             'document_count_known' => $documentCount !== null,
