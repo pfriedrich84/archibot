@@ -126,7 +126,7 @@ class InboxTest extends TestCase
                 ? Http::response(['count' => 2, 'next' => null, 'results' => [['id' => 2, 'title' => 'Second']]])
                 : Http::response([
                     'count' => 2,
-                    'next' => 'http://paperless:8000/api/documents/?page=2&tags__id__all=7&page_size=25',
+                    'next' => '//paperless:8000/api/documents/?page=2&tags__id__all=7&page_size=25',
                     'results' => [['id' => 1, 'title' => 'First']],
                 ]);
         });

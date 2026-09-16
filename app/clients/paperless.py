@@ -339,9 +339,6 @@ class PaperlessClient:
     # ---------------------------------------------------------------
     def _relative(self, absolute_url: str) -> str:
         """Rebase a Paperless next-page URL onto the configured API origin."""
-        if absolute_url.startswith("//"):
-            raise ValueError("Paperless pagination response used a network-path URL")
-
         parts = urlsplit(absolute_url)
         if parts.scheme and parts.scheme.lower() not in {"http", "https"}:
             raise ValueError("Paperless pagination response used an invalid URL scheme")

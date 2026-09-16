@@ -564,10 +564,6 @@ class PaperlessClient
      */
     private function safePaginationTarget(string $next): array
     {
-        if (str_starts_with($next, '//')) {
-            throw new RuntimeException('Paperless pagination attempted to leave the configured origin.');
-        }
-
         $parts = parse_url($next);
         if (! is_array($parts)) {
             throw new RuntimeException('Paperless pagination response was not a valid URL.');

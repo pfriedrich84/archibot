@@ -15,7 +15,7 @@
     "laravel/app/Http/Controllers/ReviewSuggestionController.php": "594cf6606bfed9fb21a951d1b9f96cb13d3feaa9fbb084e414a4b78b1acf3c5a",
     "laravel/app/Jobs/RunPythonActorJob.php": "0604d8ccb7a183c3d06a38dc9e4114bcf13b8c88336f29a2ce266170cd480e74",
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
-    "laravel/app/Services/Paperless/PaperlessClient.php": "02baf8e943965925a6d2c2fba6c4418ccfad5d163e04c6613bb2f7d31f38693b",
+    "laravel/app/Services/Paperless/PaperlessClient.php": "beb2ee11e6cb1ee7f3531799857abf269f94a7e6babd11b604b000d60a0005ce",
     "laravel/app/Services/Paperless/PaperlessDocumentPermissions.php": "b3a0d94c6bac0d7108a5e08c85c4f10602bd88242d637ffd6d21cf031c5d4749",
     "laravel/app/Services/Pipeline/MaintenanceCommandDispatcher.php": "fd9a9e2e7990cde48c07cbbeef687f6e91e15fee57602c0e0c23eadf01bbcee5",
     "laravel/app/Services/Pipeline/StagedDocumentBatchDispatcher.php": "7c86ef13eb46d3e161cdf7193426dcb1daef52d84df1d66e414d841666e08cf7",
@@ -92,10 +92,10 @@
     "laravel/routes/web.php": "f4d447c2f609ba651e635707720e1513ce92fccbd77f4d7b41510c805ba4da22"
   },
   "paperless_mutation_files": {
-    "app/clients/paperless.py": "0b47b507aec7e94fce401204b0018624420084ce4142fdaafc8899c81e0855df",
+    "app/clients/paperless.py": "7fc6d7d0c2d76a9de41261f9a45a2ce930e63caeb0b3174a2a467590b6bfd38d",
     "app/jobs/review_commit.py": "f808356ebb3c1608291b466a52c16248623022f08563d074c55dfe7ecaa9f657",
     "app/pipeline/ports.py": "e9f8abbae88e132c18aec3e12e0b4b1c58f5623eecd23b49b1bbf6e8adb055e1",
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
-    "laravel/app/Services/Paperless/PaperlessClient.php": "02baf8e943965925a6d2c2fba6c4418ccfad5d163e04c6613bb2f7d31f38693b"
+    "laravel/app/Services/Paperless/PaperlessClient.php": "beb2ee11e6cb1ee7f3531799857abf269f94a7e6babd11b604b000d60a0005ce"
   }
 }

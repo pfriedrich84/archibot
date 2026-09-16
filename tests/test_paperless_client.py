@@ -19,6 +19,7 @@ def test_paperless_client_rejects_empty_token():
     [
         ("http://paperless:8000/api/documents/?page=2", "/documents/?page=2"),
         ("https://public.example/api/tags/?page=3", "/tags/?page=3"),
+        ("//paperless:8000/api/documents/?page=2", "/documents/?page=2"),
         ("/api/document_types/?page=4", "/document_types/?page=4"),
         ("/storage_paths/?page=5", "/storage_paths/?page=5"),
     ],
@@ -32,7 +33,7 @@ def test_pagination_urls_are_rebased_to_configured_api_origin(next_url: str, exp
 @pytest.mark.parametrize(
     "next_url",
     [
-        "//attacker.test/api/documents/?page=2",
+        "//attacker.test/outside/?page=2",
         "file:///api/documents/?page=2",
         "https://user:pass@attacker.test/api/documents/?page=2",
         "https://attacker.test/outside/?page=2",
