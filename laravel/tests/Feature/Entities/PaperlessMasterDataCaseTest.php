@@ -35,6 +35,7 @@ class PaperlessMasterDataCaseTest extends TestCase
                 ->component('entities/Index')
                 ->where('segment', 'tags')
                 ->where('title', 'Tags')
+                ->where('decisionSource', 'master_data_cases')
                 ->where('pending.0.id', $pending->id)
                 ->where('pending.0.name', 'Accounting')
                 ->has('pending', 1)

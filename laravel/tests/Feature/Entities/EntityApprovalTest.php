@@ -40,6 +40,7 @@ class EntityApprovalTest extends TestCase
                 ->component('entities/Index')
                 ->where('segment', 'tags')
                 ->where('title', 'Tags')
+                ->where('decisionSource', 'entity_approvals')
                 ->where('pending.0.id', $pending->id)
                 ->where('pending.0.name', 'Accounting')
                 ->has('pending', 1)

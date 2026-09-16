@@ -25,5 +25,7 @@ export const create = make('create');
 export const store = make('store');
 export const destroy = make('destroy');
 export const accept = make('accept');
+export const approve = make('approve');
 export const reject = make('reject');
+export const unblacklist = make('unblacklist');
 export const logout = make('logout');

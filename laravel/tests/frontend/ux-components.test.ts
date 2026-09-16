@@ -75,6 +75,7 @@ describe('executable mutation controls', () => {
             type: 'tag',
             title: 'Tags',
             isAdmin: true,
+            decisionSource: 'entity_approvals',
             pending: [{ ...base, id: 1, name: 'Invoices', status: 'pending' }],
             approved: [],
             rejected: [{ ...base, id: 2, name: 'Spam', status: 'rejected' }],
@@ -89,6 +90,66 @@ describe('executable mutation controls', () => {
             'Reject and block “Invoices”? It will not be applied to Paperless.',
             'Remove “Spam” from the blocklist? Future suggestions may propose it again.',
         ]);
+    });
+
+    it('routes entity decisions to the backend that supplied the rows', () => {
+        const base = {
+            type: 'tag',
+            paperless_id: null,
+            source_review_suggestion_id: null,
+            sync_status: null,
+            created_at: null,
+        };
+        const props = {
+            segment: 'tags',
+            type: 'tag',
+            title: 'Tags',
+            isAdmin: true,
+            pending: [{ ...base, id: 7, name: 'Invoices', status: 'pending' }],
+            approved: [],
+            rejected: [],
+        };
+
+        const approvals = render(Entities, {
+            ...props,
+            decisionSource: 'entity_approvals',
+        });
+        const approvalActions = Array.from(
+            approvals.container.querySelectorAll<HTMLFormElement>('form'),
+            (form) => decodeURIComponent(form.action),
+        );
+        expect(approvalActions).toHaveLength(2);
+        expect(
+            approvalActions.every((action) =>
+                action.includes('"entityApproval":7'),
+            ),
+        ).toBe(true);
+        expect(
+            approvalActions.every(
+                (action) => !action.includes('paperlessMasterDataCase'),
+            ),
+        ).toBe(true);
+        approvals.unmount();
+
+        const masterData = render(Entities, {
+            ...props,
+            decisionSource: 'master_data_cases',
+        });
+        const masterDataActions = Array.from(
+            masterData.container.querySelectorAll<HTMLFormElement>('form'),
+            (form) => decodeURIComponent(form.action),
+        );
+        expect(masterDataActions).toHaveLength(2);
+        expect(
+            masterDataActions.every((action) =>
+                action.includes('"paperlessMasterDataCase":7'),
+            ),
+        ).toBe(true);
+        expect(
+            masterDataActions.every(
+                (action) => !action.includes('entityApproval'),
+            ),
+        ).toBe(true);
     });
 
     it('cancels review bulk, OCR, MCP, pipeline, and webhook requests when confirmation is false', async () => {

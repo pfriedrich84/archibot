@@ -27,6 +27,7 @@ class PaperlessMasterDataCaseController extends Controller
             'type' => $type,
             'title' => $this->titleFor($type),
             'isAdmin' => (bool) $request->user()->is_admin,
+            'decisionSource' => 'master_data_cases',
             'pending' => $this->items($type, PaperlessMasterDataCase::STATUS_PENDING),
             'approved' => $this->items($type, PaperlessMasterDataCase::STATUS_APPROVED),
             'rejected' => $this->items($type, PaperlessMasterDataCase::STATUS_REJECTED),
