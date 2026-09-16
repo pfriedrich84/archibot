@@ -124,9 +124,8 @@ eingefroren. Die festen Activity-Queues `archibot-model-embedding`,
 `archibot-model-ocr-text`, `archibot-model-ocr-vision`,
 `archibot-model-classification`, `archibot-model-judge` und `archibot-paperless`
 halten Modellrollen und Paperless-Zugriffe getrennt. Der fruehere singleton
-`ModelPhaseSchedulerWorkflow` bleibt nur fuer Replay und Abschluss bereits existierender
-Temporal-Histories registriert. Eine leere Index-Generation endet ohne Provider-Aufruf
-terminal als `0/0 complete`.
+`ModelPhaseSchedulerWorkflow` wurde nach dem Reset seiner Historien entfernt. Eine leere
+Index-Generation endet ohne Provider-Aufruf terminal als `0/0 complete`.
 
 ### 2. OCR-Korrektur (optional)
 

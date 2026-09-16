@@ -9,8 +9,6 @@ EMBEDDING_INDEX_WORKFLOW = "archibot.embedding_index"
 POLL_RECONCILIATION_WORKFLOW = "archibot.poll_reconciliation"
 DOCUMENT_WORKFLOW = "archibot.document"
 REVIEW_COMMIT_WORKFLOW = "archibot.review_commit"
-MODEL_PHASE_SCHEDULER_WORKFLOW = "archibot.model_phase_scheduler"
-MODEL_PHASE_SCHEDULER_WORKFLOW_ID = "archibot/model-phase-scheduler"
 WORKFLOW_PROTOCOL_VERSION = 1
 
 EMBEDDING_TASK_QUEUE = "archibot-model-embedding"

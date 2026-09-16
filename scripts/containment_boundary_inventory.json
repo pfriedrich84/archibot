@@ -3,7 +3,7 @@
     "app/actors/document.py": "af4d1a29b0b31aa4e760e7ba1403b15daa6d674da5b233798f223147e7486627",
     "app/actors/document_batch.py": "66ead6e0b4b390cd700a745ad11063228e6499fce58ae9c735551a4ce99e76f9",
     "app/jobs/review_suggestions.py": "30ac6a6a2f88460c93e285ae84c560e983148235bae8d8c70b83fcbe0222e5ba",
-    "app/temporal/document_activities.py": "8f9ff57b0f9ca10e8c37f73e79f57387892f8261520a5dd410cb1560c6342a1b",
+    "app/temporal/document_activities.py": "ac55b3fbc59696e335267b88624f2b59edfbae2c8cbe02e9eb6b2552b71b876a",
     "laravel/app/Console/Commands/CommitReviewSuggestion.php": "267ca3080e5a444acb4392066a1670ea07341b2485e6068a4169d3efe8c8b3d0",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
     "laravel/app/Http/Controllers/ClassifyWithArchiBotController.php": "9cfb5a20ee2d5e3d8d073384974aefc745b5963d9b7024315d77aa2fb3baf14d",

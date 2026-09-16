@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import inspect
 from contextlib import nullcontext
@@ -22,7 +21,6 @@ def test_registered_document_activities_are_async_worker_safe():
         document_activities.finish_poll_discovery,
         document_activities.fail_poll_discovery,
         document_activities.check_document_readiness,
-        document_activities.process_document_for_review,
         document_activities.fail_document_processing,
     )
 
@@ -55,14 +53,6 @@ class _Paperless:
         self.closed = True
 
 
-class _Provider:
-    def __init__(self):
-        self.closed = False
-
-    async def aclose(self):
-        self.closed = True
-
-
 class _QueryResult:
     def __init__(self, row):
         self.row = row
@@ -75,22 +65,6 @@ class _QueryResult:
 
     def one(self):
         return self.row
-
-
-class _ReadConnection:
-    def __init__(self, row):
-        self.row = row
-
-    def execute(self, *_args, **_kwargs):
-        return _QueryResult(self.row)
-
-
-class _ReadEngine:
-    def __init__(self, row):
-        self.connection = _ReadConnection(row)
-
-    def connect(self):
-        return nullcontext(self.connection)
 
 
 class _WriteConnection:
@@ -193,81 +167,3 @@ def test_poll_persists_recoverable_embedding_block_reason(monkeypatch):
     assert insert["status"] == "blocked"
     assert insert["error_type"] == "embedding_index_not_ready"
     assert insert["error"] == "Waiting for embedding index to complete."
-
-
-@pytest.mark.asyncio
-async def test_document_activity_publishes_review_immediately_and_heartbeats(monkeypatch):
-    document = SimpleNamespace(id=261)
-    paperless = _Paperless([document])
-    provider = _Provider()
-    heartbeats = []
-    marked = []
-    outcome = SimpleNamespace(
-        document=document,
-        result=SimpleNamespace(),
-        raw_response="{}",
-        context_documents=[],
-        catalog=SimpleNamespace(correspondents=[], doctypes=[], storage_paths=[], tags=[]),
-        judge_verdict=None,
-        judge_reasoning=None,
-        original_proposed_json=None,
-    )
-
-    async def classify(*args, **kwargs):
-        await asyncio.sleep(0.005)
-        return outcome
-
-    monkeypatch.setattr(document_activities, "_existing_document_result", lambda _: None)
-    monkeypatch.setattr(document_activities, "_mark_document_running", marked.append)
-    monkeypatch.setattr(document_activities, "_paperless_document_id", lambda _: 261)
-    monkeypatch.setattr(document_activities, "PaperlessClient", lambda: paperless)
-    monkeypatch.setattr(document_activities, "create_ai_provider", lambda: provider)
-    monkeypatch.setattr(document_activities, "_classify_document", classify)
-    monkeypatch.setattr(
-        document_activities,
-        "store_review_suggestion",
-        lambda **_: SimpleNamespace(id=34, status="pending"),
-    )
-    monkeypatch.setattr(
-        document_activities,
-        "_mark_document_review_ready",
-        lambda *args: marked.append(args),
-    )
-    monkeypatch.setattr(document_activities.activity, "heartbeat", heartbeats.append)
-    monkeypatch.setattr(document_activities, "_HEARTBEAT_SECONDS", 0.001)
-
-    result = await document_activities.process_document_for_review(12)
-
-    assert result.review_suggestion_id == 34
-    assert result.status == "awaiting_review"
-    assert marked == [12, (12, 34, 261)]
-    assert heartbeats
-    assert paperless.closed is True
-    assert provider.closed is True
-
-
-def test_existing_review_repairs_interrupted_run_without_reclassification(monkeypatch):
-    repaired = []
-    monkeypatch.setattr(
-        document_activities,
-        "engine",
-        lambda: _ReadEngine(
-            {
-                "status": "running",
-                "paperless_document_id": 261,
-                "suggestion_id": 34,
-            }
-        ),
-    )
-    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
-    monkeypatch.setattr(
-        document_activities,
-        "_mark_document_review_ready",
-        lambda *args: repaired.append(args),
-    )
-
-    result = document_activities._existing_document_result(12)
-
-    assert result is not None
-    assert result.review_suggestion_id == 34
-    assert repaired == [(12, 34, 261)]

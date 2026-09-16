@@ -71,8 +71,8 @@ a document.
 - Complete acceptance only after the workflow commits approved metadata to Paperless.
 - End the old waiting workflow as superseded when an administrator starts a force-reprocess
   generation.
-- Keep the former singleton model-phase scheduler registered only for replay of histories made
-  before ADR-0024.
+- Remove the former singleton model-phase scheduler after its histories and application state
+  have been explicitly reset.
 
 Exit criteria: Temporal shows one complete history per document generation; worker and Temporal
 restarts resume at the exact activity or review wait; no pending review leaves an unowned

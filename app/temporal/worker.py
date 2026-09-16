@@ -15,7 +15,6 @@ from app.temporal.document_activities import (
     fail_document_processing,
     fail_poll_discovery,
     finish_poll_discovery,
-    process_document_for_review,
 )
 from app.temporal.document_phase_activities import (
     finish_document_review,
@@ -24,7 +23,6 @@ from app.temporal.document_phase_activities import (
     process_document_judge_phase,
     process_document_ocr_phase,
     publish_document_review,
-    select_document_ocr_phase,
 )
 from app.temporal.embedding_activities import (
     embed_document,
@@ -44,13 +42,11 @@ from app.temporal.names import (
 from app.temporal.phase_activities import (
     embedding_index_status,
     load_model_phase_configuration,
-    project_model_phase,
 )
 from app.temporal.review_activities import commit_review_suggestion, fail_review_commit
 from app.temporal.workflows import (
     DocumentWorkflow,
     EmbeddingIndexWorkflow,
-    ModelPhaseSchedulerWorkflow,
     PollReconciliationWorkflow,
     ReviewCommitWorkflow,
     RuntimeProbeWorkflow,
@@ -69,7 +65,6 @@ async def run_worker() -> None:
             PollReconciliationWorkflow,
             DocumentWorkflow,
             ReviewCommitWorkflow,
-            ModelPhaseSchedulerWorkflow,
         ],
         activities=[
             prepare_embedding_generation,
@@ -83,11 +78,9 @@ async def run_worker() -> None:
             fail_document_processing,
             finish_document_review,
             check_document_readiness,
-            process_document_for_review,
             fail_review_commit,
             load_model_phase_configuration,
             embedding_index_status,
-            project_model_phase,
         ],
     )
     activity_workers = [
@@ -121,7 +114,6 @@ async def run_worker() -> None:
             task_queue=PAPERLESS_TASK_QUEUE,
             activities=[
                 publish_document_review,
-                select_document_ocr_phase,
                 commit_review_suggestion,
             ],
         ),

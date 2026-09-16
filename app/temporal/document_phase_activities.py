@@ -42,12 +42,10 @@ from app.pipeline.ocr_correction import (
 )
 from app.pipeline.trusted_context import is_trusted_document
 from app.temporal.contracts import (
-    DocumentPhaseRegistration,
     DocumentPhaseRequest,
     DocumentPhaseResult,
     DocumentProcessResult,
     DocumentReviewCompletion,
-    OcrPhaseSelectionRequest,
 )
 
 
@@ -261,33 +259,6 @@ async def _document_for(
         await paperless.aclose()
         raise
     return run, paperless, document
-
-
-@activity.defn(name="archibot.select_document_ocr_phase")
-async def select_document_ocr_phase(
-    request: OcrPhaseSelectionRequest,
-) -> list[DocumentPhaseRegistration]:
-    """Select documents that currently carry the configured Paperless OCR tag."""
-    if request.requested_tag_id <= 0:
-        return request.registrations
-
-    paperless = PaperlessClient()
-    selected: list[DocumentPhaseRegistration] = []
-    try:
-        for registration in request.registrations:
-            run = await asyncio.to_thread(_load_run, registration.pipeline_run_id)
-            document = await paperless.get_document(int(run["paperless_document_id"]))
-            if request.requested_tag_id in document.tags:
-                selected.append(registration)
-            activity.heartbeat(
-                {
-                    "pipeline_run_id": registration.pipeline_run_id,
-                    "phase": "ocr_selection",
-                }
-            )
-        return selected
-    finally:
-        await paperless.aclose()
 
 
 @activity.defn(name="archibot.process_document_embedding_phase")

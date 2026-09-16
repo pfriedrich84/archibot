@@ -47,10 +47,10 @@ atomically records a `force_reprocess` signal for the workflow associated with t
 review. The old pending suggestion becomes stale immediately, so it cannot be accepted while
 the replacement is running.
 
-The singleton `ModelPhaseSchedulerWorkflow` and its signal handlers remain registered only
-to replay and finish histories created before this decision. New document workflows do not
-register with it. The embedding-index maintenance workflow remains independent from the
-per-document review lifecycle.
+The singleton `ModelPhaseSchedulerWorkflow`, its signal handlers, global projection and
+replay branches were removed after the affected Temporal histories and application state
+were explicitly reset. The embedding-index maintenance workflow remains independent from
+the per-document review lifecycle.
 
 ## Consequences
 
@@ -65,7 +65,8 @@ per-document review lifecycle.
   capacity.
 - A document pipeline run remains active while waiting for review and becomes terminal only
   after accept, reject, force reprocess, cancellation or permanent failure.
-- Existing scheduler histories remain replay-compatible through Temporal patch markers.
+- Temporal histories must be drained or reset before deploying this removal; the migration
+  deliberately provides no replay compatibility for retired scheduler histories.
 
 ## References
 

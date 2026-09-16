@@ -1,4 +1,4 @@
-"""Activities that project and configure the Temporal model-phase scheduler."""
+"""Activities that freeze model configuration and inspect embedding readiness."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from temporalio import activity
 from app.config import settings
 from app.jobs.commands import sql_text
 from app.jobs.database import engine
-from app.temporal.contracts import ModelPhaseConfiguration, ModelPhaseProjection
+from app.temporal.contracts import ModelPhaseConfiguration
 from app.temporal.names import (
     CLASSIFICATION_TASK_QUEUE,
     EMBEDDING_TASK_QUEUE,
@@ -123,44 +123,3 @@ def _embedding_index_status(embedding_model: str) -> str:
 async def embedding_index_status(embedding_model: str) -> str:
     """Return readiness for the embedding model pinned to this phase."""
     return await asyncio.to_thread(_embedding_index_status, embedding_model)
-
-
-def _project_model_phase(projection: ModelPhaseProjection) -> None:
-    finished = projection.status in {"completed", "failed"}
-    with engine().begin() as connection:
-        connection.execute(
-            sql_text(
-                """
-                INSERT INTO temporal_model_phase_states (
-                    scheduler_workflow_id, cycle, phase, status, model_id,
-                    configuration_revision, total, done, failed, started_at,
-                    finished_at, created_at, updated_at
-                ) VALUES (
-                    :scheduler_workflow_id, :cycle, :phase, :status, :model_id,
-                    :configuration_revision, :total, :done, :failed,
-                    CURRENT_TIMESTAMP,
-                    CASE WHEN :finished THEN CURRENT_TIMESTAMP ELSE NULL END,
-                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                )
-                ON CONFLICT (scheduler_workflow_id, cycle, phase)
-                DO UPDATE SET status = EXCLUDED.status,
-                              model_id = EXCLUDED.model_id,
-                              configuration_revision = EXCLUDED.configuration_revision,
-                              total = EXCLUDED.total,
-                              done = EXCLUDED.done,
-                              failed = EXCLUDED.failed,
-                              finished_at = EXCLUDED.finished_at,
-                              updated_at = CURRENT_TIMESTAMP
-                """
-            ),
-            {
-                **projection.__dict__,
-                "finished": finished,
-            },
-        )
-
-
-@activity.defn(name="archibot.project_model_phase")
-async def project_model_phase(projection: ModelPhaseProjection) -> None:
-    """Write an idempotent dashboard projection for an authoritative Temporal phase."""
-    await asyncio.to_thread(_project_model_phase, projection)

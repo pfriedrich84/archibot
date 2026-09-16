@@ -161,8 +161,8 @@ same gate without calling the provider.
 After release, each Temporal document workflow runs and records its own optional OCR,
 target embedding, classification and judge activities before it persists a review and
 waits for the authorized decision. Fixed model-specific task queues keep the provider
-roles explicit. The retired singleton scheduler remains registered only so workflows
-started by an older release can replay and finish safely.
+roles explicit. The retired singleton scheduler and its replay branches were removed
+after the associated state was reset.
 
 ## Admin dashboard operations
 
