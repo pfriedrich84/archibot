@@ -8,6 +8,11 @@ use App\Models\PipelineRun;
 
 class ActiveOperationsSnapshot
 {
+    private const PASSIVE_PIPELINE_PHASES = [
+        'awaiting_review',
+        'review_suggestion',
+    ];
+
     public function __construct(private readonly DiagnosticPresenter $diagnostics) {}
 
     /**
@@ -53,6 +58,10 @@ class ActiveOperationsSnapshot
 
         $pipelineItems = PipelineRun::query()
             ->whereIn('status', $pipelineStatuses)
+            ->where(function ($query): void {
+                $query->whereNull('progress_current_phase')
+                    ->orWhereNotIn('progress_current_phase', self::PASSIVE_PIPELINE_PHASES);
+            })
             ->latest('updated_at')
             ->limit($limit)
             ->get()

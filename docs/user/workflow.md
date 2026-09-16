@@ -41,6 +41,8 @@ den wartenden Lauf als ersetzt und startet eine eigene neue Generation.
 
 Die Dokument-Workflows bleiben waehrend des Reviews in Temporal absichtlich `Running`.
 Dieser dauerhafte Wartezustand belegt keinen Worker und hat keinen Workflow-Timeout.
+Das Dashboard fuehrt solche Wartezustaende deshalb nicht unter **Active worker operations**;
+sie bleiben in der Review Queue und im Operations Log sichtbar.
 OCR-, Embedding-, Klassifikations- und Judge-Aktivitaeten aller Dokumente und des
 Embedding-Builds teilen sich dagegen genau einen Modell-Ausfuehrungsplatz und laufen
 deshalb nacheinander.

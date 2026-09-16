@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ActorExecution;
 use App\Models\Command;
+use App\Models\PipelineRun;
 use App\Support\ActiveOperationsSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -49,5 +50,41 @@ class ActiveOperationsSnapshotTest extends TestCase
         $this->assertSame($redacted, $items->get("command-{$first->id}")['progress_message']);
         $this->assertSame(17, $items->get("command-{$second->id}")['progress_done']);
         $this->assertSame($redacted, $items->get("command-{$second->id}")['progress_message']);
+    }
+
+    public function test_document_workflow_waiting_for_review_is_not_worker_activity(): void
+    {
+        $processing = PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 41,
+            'progress_current_phase' => 'classification',
+        ]);
+        PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 42,
+            'progress_current_phase' => 'awaiting_review',
+        ]);
+        PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 43,
+            'progress_current_phase' => 'review_suggestion',
+        ]);
+
+        $snapshot = app(ActiveOperationsSnapshot::class)->make(
+            pipelineStatuses: [PipelineRun::STATUS_RUNNING],
+        );
+
+        $this->assertSame(1, $snapshot['summary']['total']);
+        $this->assertSame(1, $snapshot['summary']['running']);
+        $this->assertSame(
+            ["pipeline-run-{$processing->id}"],
+            collect($snapshot['items'])->pluck('key')->all(),
+        );
     }
 }

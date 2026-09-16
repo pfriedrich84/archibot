@@ -45,7 +45,7 @@
     "laravel/config/filesystems.php": "ba7060d7a23e490c3ce830656f6d24ad3ccf5b868e3293f2a12e411959dc5635",
     "laravel/config/fortify.php": "75e9af627245424817660908ccca9c21df797d00b5830ae51e38f13158d8f51d",
     "laravel/resources/js/actions/App/Http/Controllers/Admin/SettingsController.ts": "3695e2b16cc6d1ed237b6a699bc21b1308ab867b31428d75eef65997af631070",
-    "laravel/resources/js/components/ActiveOperationsPanel.svelte": "820cd6d3475293ec449d93a05a45de63c3c4dbb632c0692de3127bf4357b21d3",
+    "laravel/resources/js/components/ActiveOperationsPanel.svelte": "543d5a335aedf8114143bb85bca69655bd12ffb9994961fd7cd66be1dc38cd6e",
     "laravel/resources/js/components/AppHeader.svelte": "9c1a810a2fae8e3e1ac62a42556d98390985a36588bbae02644e11c0c26b8ae6",
     "laravel/resources/js/components/AppSidebar.svelte": "ee712116b98b9ec0a5e8b4a5b63c06e4c76ccaaf037021629f23f1a9232b7157",
     "laravel/resources/js/components/Breadcrumbs.svelte": "02db03fbb04f9150efd31940726f6725b0192444422e9b2a76c9b10c9e4bdb1c",

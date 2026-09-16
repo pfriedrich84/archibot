@@ -64,10 +64,10 @@
         class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
     >
         <div>
-            <h2 class="font-semibold">Active operations</h2>
+            <h2 class="font-semibold">Active worker operations</h2>
             <p class="text-sm text-muted-foreground">
                 {#if operations.summary.total === 0}
-                    Nothing running right now.
+                    No worker activity right now.
                 {:else}
                     {operations.summary.total} active · {operations.summary
                         .running} running · {operations.summary.queued} queued
@@ -89,8 +89,8 @@
         <div
             class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
         >
-            Running Maintenance commands, document pipelines, webhook retries,
-            and reindex operations will appear here.
+            Commands and document phases currently being processed will appear
+            here. Documents waiting for review remain in the review queue.
         </div>
     {:else}
         <div class="space-y-3">

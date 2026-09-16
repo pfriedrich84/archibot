@@ -30,6 +30,14 @@ class DashboardTest extends TestCase
             'status' => PipelineRun::STATUS_RUNNING,
             'trigger_source' => 'manual',
             'paperless_document_id' => 42,
+            'progress_current_phase' => 'classification',
+        ]);
+        PipelineRun::query()->create([
+            'type' => 'document',
+            'status' => PipelineRun::STATUS_RUNNING,
+            'trigger_source' => 'manual',
+            'paperless_document_id' => 43,
+            'progress_current_phase' => 'awaiting_review',
         ]);
         ActorExecution::query()->create([
             'actor_name' => 'handle_document_pipeline',
@@ -59,7 +67,7 @@ class DashboardTest extends TestCase
                 ->where('activeOperations.items.0.status', PipelineRun::STATUS_RUNNING)
                 ->where('activeOperations.summary.running', 1)
                 ->where('activeOperations.summary.queued', 0)
-                ->has('recentPipelineRuns', 1)
+                ->has('recentPipelineRuns', 2)
                 ->has('recentActorExecutions', 1)
                 ->where('recentActorExecutions.0.actor_name', 'handle_document_pipeline')
                 ->has('recentWebhookDeliveries', 1)
