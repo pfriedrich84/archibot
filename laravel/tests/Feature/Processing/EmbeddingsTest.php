@@ -9,6 +9,8 @@ use App\Models\EmbeddingIndexState;
 use App\Models\User;
 use App\Support\EmbeddingIndexSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -110,6 +112,28 @@ class EmbeddingsTest extends TestCase
                 ->where('snapshot.pgvector_embedded_count', 0)
                 ->where('snapshot.missing_count', 0)
             );
+    }
+
+    public function test_embedding_lifecycle_timestamps_are_serialized_as_utc_before_gui_conversion(): void
+    {
+        config(['app.timezone' => 'Europe/Vienna']);
+        AppSetting::put('embedding.model', 'qwen3-embedding:4b');
+        DB::table('embedding_index_state')->insert([
+            'status' => EmbeddingIndexState::STATUS_FAILED,
+            'embedding_model' => 'qwen3-embedding:4b',
+            'document_count' => 174,
+            'embedded_count' => 0,
+            'failed_count' => 0,
+            'started_at' => '2026-09-16 10:29:53',
+            'completed_at' => '2026-09-16 10:29:53',
+            'created_at' => '2026-09-16 10:29:53',
+            'updated_at' => '2026-09-16 10:29:53',
+        ]);
+
+        $snapshot = app(EmbeddingIndexSnapshot::class)->forRequest(Request::create('/embeddings'));
+
+        $this->assertSame('2026-09-16T10:29:53.000000Z', $snapshot['started_at']);
+        $this->assertSame('2026-09-16T10:29:53.000000Z', $snapshot['completed_at']);
     }
 
     public function test_embeddings_page_exposes_active_reindex_command_for_pgvector_progress(): void

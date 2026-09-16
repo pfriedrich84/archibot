@@ -6,6 +6,7 @@ use App\Models\AppSetting;
 use App\Models\DocumentEmbedding;
 use App\Models\EmbeddingIndexState;
 use App\Services\Paperless\PaperlessClient;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -74,8 +75,8 @@ class EmbeddingIndexSnapshot
             'pgvector_embedded_count' => $pgvectorEmbeddedCount,
             'missing_count' => $missingCount,
             'failed_count' => $failedCount,
-            'started_at' => $state?->started_at?->toISOString(),
-            'completed_at' => $state?->completed_at?->toISOString(),
+            'started_at' => $this->utcDatabaseTimestamp($state, 'started_at'),
+            'completed_at' => $this->utcDatabaseTimestamp($state, 'completed_at'),
             'error' => $state?->error,
             'document_count_error' => $documentCountError,
             'ready' => $ready,
@@ -83,9 +84,19 @@ class EmbeddingIndexSnapshot
             'release_threshold' => $releaseThreshold,
             'release_target_population' => $releaseTargetPopulation,
             'release_status' => $releaseStatus,
-            'released_at' => $state?->released_at?->toISOString(),
+            'released_at' => $this->utcDatabaseTimestamp($state, 'released_at'),
             'released' => $released,
         ];
+    }
+
+    private function utcDatabaseTimestamp(?EmbeddingIndexState $state, string $attribute): ?string
+    {
+        $raw = $state?->getRawOriginal($attribute);
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        return CarbonImmutable::parse($raw, 'UTC')->utc()->toISOString();
     }
 
     private function paperlessDocumentCount(Request $request): int
