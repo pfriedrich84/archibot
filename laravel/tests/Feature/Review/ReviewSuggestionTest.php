@@ -436,7 +436,7 @@ class ReviewSuggestionTest extends TestCase
         $command = $suggestion->commitCommand()->firstOrFail();
         $intent = TemporalOutboxIntent::query()->firstOrFail();
         $this->assertSame(TemporalOutboxIntent::OPERATION_SIGNAL, $intent->operation);
-        $this->assertSame('review_decision', $intent->signal_name);
+        $this->assertSame('review_decision_v2', $intent->signal_name);
         $this->assertSame($workflowId, $intent->workflow_id);
         $this->assertSame('accepted', $intent->payload['decision']);
         $this->assertSame($suggestion->id, $intent->payload['review_suggestion_id']);
@@ -526,7 +526,7 @@ class ReviewSuggestionTest extends TestCase
         $this->assertDatabaseHas('temporal_outbox_intents', [
             'workflow_id' => 'archibot/document/456',
             'operation' => TemporalOutboxIntent::OPERATION_SIGNAL,
-            'signal_name' => 'force_reprocess',
+            'signal_name' => 'force_reprocess_v2',
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);
         $this->assertSame(ReviewSuggestion::STATUS_STALE, $suggestion->fresh()->status);

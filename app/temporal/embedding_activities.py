@@ -491,7 +491,7 @@ def _release_blocked_document_workflows(connection, build_id: int) -> None:
                     created_at, updated_at
                 ) VALUES (
                     CAST(:intent_key AS uuid), 'signal_workflow', :workflow_id,
-                    NULL, NULL, 'embedding_ready', CAST(:payload AS jsonb),
+                    NULL, NULL, 'embedding_ready_v2', CAST(:payload AS jsonb),
                     'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 ) ON CONFLICT (intent_key) DO NOTHING
                 """

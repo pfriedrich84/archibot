@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import inspect
+from typing import Any
 
 import pytest
+from temporalio.converter import DataConverter
 
 from app.temporal import workflows
 from app.temporal.contracts import (
@@ -48,6 +50,44 @@ def test_document_workflow_keeps_the_first_review_decision_signal():
     instance.review_decision(rejected)
 
     assert instance._review_decision == accepted
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "signal_name,payload",
+    [
+        (
+            "review_decision_v2",
+            {
+                "decision": "accepted",
+                "review_suggestion_id": 34,
+                "command_id": 15,
+                "temporal_workflow_id": "archibot/document/261",
+                "actor_is_admin": True,
+                "actor_user_id": 1,
+            },
+        ),
+        ("force_reprocess_v2", {"review_suggestion_id": 34, "command_id": 16}),
+        ("embedding_ready_v2", {"build_id": 9}),
+    ],
+)
+async def test_document_signal_contract_decodes_outbox_envelopes(signal_name, payload):
+    envelope = {"intent_id": "decision-id", "payload": payload}
+    definition = workflows.DocumentWorkflow.__temporal_workflow_definition.signals[signal_name]
+
+    encoded = await DataConverter.default.encode([envelope])
+    decoded = await DataConverter.default.decode(encoded, definition.arg_types)
+
+    assert definition.arg_types == [dict[str, Any]]
+    assert decoded == [envelope]
+
+
+def test_legacy_document_signal_contracts_remain_replay_compatible():
+    signals = workflows.DocumentWorkflow.__temporal_workflow_definition.signals
+
+    assert signals["review_decision"].arg_types == [dict[str, object]]
+    assert signals["force_reprocess"].arg_types == [dict[str, object]]
+    assert signals["embedding_ready"].arg_types == [dict[str, object]]
 
 
 def test_new_temporal_activity_retry_policies_are_bounded():

@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy, SearchAttributeKey, WorkflowIDReusePolicy
@@ -251,22 +252,34 @@ class DocumentWorkflow:
     """Own one Paperless document identity through its review decision."""
 
     def __init__(self) -> None:
-        self._review_decision: dict[str, object] | None = None
-        self._force_reprocess: dict[str, object] | None = None
+        self._review_decision: dict[str, Any] | None = None
+        self._force_reprocess: dict[str, Any] | None = None
         self._embedding_ready = False
 
     @workflow.signal(name="review_decision")
-    def review_decision(self, decision: dict[str, object]) -> None:
+    def review_decision_legacy(self, _decision: dict[str, object]) -> None:
+        """Preserve replay behavior for signals dropped by the legacy decoder."""
+
+    @workflow.signal(name="review_decision_v2")
+    def review_decision(self, decision: dict[str, Any]) -> None:
         if self._review_decision is None:
             self._review_decision = decision
 
     @workflow.signal(name="force_reprocess")
-    def force_reprocess(self, request: dict[str, object]) -> None:
+    def force_reprocess_legacy(self, _request: dict[str, object]) -> None:
+        """Preserve replay behavior for signals dropped by the legacy decoder."""
+
+    @workflow.signal(name="force_reprocess_v2")
+    def force_reprocess(self, request: dict[str, Any]) -> None:
         if self._force_reprocess is None:
             self._force_reprocess = request
 
     @workflow.signal(name="embedding_ready")
-    def embedding_ready(self, _request: dict[str, object]) -> None:
+    def embedding_ready_legacy(self, _request: dict[str, object]) -> None:
+        """Preserve replay behavior for signals dropped by the legacy decoder."""
+
+    @workflow.signal(name="embedding_ready_v2")
+    def embedding_ready(self, _request: dict[str, Any]) -> None:
         self._embedding_ready = True
 
     async def _project_review_completion(

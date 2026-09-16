@@ -185,7 +185,7 @@ class TemporalWorkflowDispatcher
             $this->outbox->signalWorkflow(
                 intentKey: $this->intentKey("review-decision:{$suggestion->id}:{$decision}"),
                 workflowId: $workflowId,
-                signalName: 'review_decision',
+                signalName: 'review_decision_v2',
                 payload: $payload,
             );
 
@@ -240,7 +240,7 @@ class TemporalWorkflowDispatcher
         $this->outbox->signalWorkflow(
             intentKey: $this->intentKey("force-reprocess:{$suggestion->id}:{$replacement->id}"),
             workflowId: $workflowId,
-            signalName: 'force_reprocess',
+            signalName: 'force_reprocess_v2',
             payload: [
                 'review_suggestion_id' => $suggestion->id,
                 'replacement_pipeline_run_id' => $replacement->id,

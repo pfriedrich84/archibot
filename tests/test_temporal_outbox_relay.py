@@ -141,7 +141,7 @@ def test_exhausted_review_signal_terminalizes_command_and_suggestion(monkeypatch
         workflow_id="archibot/document/261/version",
         workflow_type=None,
         task_queue=None,
-        signal_name="review_decision",
+        signal_name="review_decision_v2",
         payload={"command_id": 15, "review_suggestion_id": 34},
         attempts=20,
     )

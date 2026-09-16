@@ -225,5 +225,5 @@ def test_complete_build_releases_blocked_document_workflows(monkeypatch):
     assert len(calls) == 4
     assert "UPDATE pipeline_runs" in calls[1][0]
     assert "'start_workflow'" in calls[2][0]
-    assert "'embedding_ready'" in calls[3][0]
+    assert "'embedding_ready_v2'" in calls[3][0]
     assert calls[2][1]["workflow_id"] == "archibot/document/261"
