@@ -7,10 +7,13 @@ import re
 RUNTIME_PROBE_WORKFLOW = "archibot.runtime_probe"
 EMBEDDING_INDEX_WORKFLOW = "archibot.embedding_index"
 POLL_RECONCILIATION_WORKFLOW = "archibot.poll_reconciliation"
+SCHEDULED_POLL_RECONCILIATION_WORKFLOW = "archibot.scheduled_poll_reconciliation"
 DOCUMENT_WORKFLOW = "archibot.document"
 REVIEW_COMMIT_WORKFLOW = "archibot.review_commit"
 WORKFLOW_PROTOCOL_VERSION = 1
 
+POLL_RECONCILIATION_SCHEDULE_ID = "archibot/poll-reconciliation"
+MODEL_TASK_QUEUE = "archibot-model"
 EMBEDDING_TASK_QUEUE = "archibot-model-embedding"
 OCR_TEXT_TASK_QUEUE = "archibot-model-ocr-text"
 OCR_VISION_TASK_QUEUE = "archibot-model-ocr-vision"

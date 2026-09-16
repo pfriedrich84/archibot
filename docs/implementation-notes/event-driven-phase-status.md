@@ -65,9 +65,9 @@ Laravel producers and recovery services dispatch small jobs containing one allow
 
 ## Confirmed Laravel runtime cutover
 
-- `laravel/routes/console.php` registers a one-minute due-check; `POLL_INTERVAL_SECONDS` still controls the actual reconciliation interval and `0` disables it.
+- The Python outbox relay reconciles a native Temporal Schedule with `POLL_INTERVAL_SECONDS`; `0` pauses it and overlap is skipped.
 - Supervisor starts `laravel-queue-worker`, `laravel-scheduler`, and `laravel-durable-recovery`; no Python queue or recovery worker exists.
-- Scheduled polls skip active or recently completed scheduled poll Commands and dispatch through `RunPythonActorJob::pollReconciliation`.
+- Each scheduled Temporal workflow creates one auditable poll Command and uses the same reconciliation workflow as manual polling.
 - Laravel Recovery handles source-linked stale/retryable Actor Executions with bounded attempts, safe cancellation finalization, stale running Commands, Entity Approval sync, and fresh webhook dispatch suppression.
 - Confidence-based Python auto-commit is removed under ADR-0018. Only an authorized manual acceptance creates and dispatches a durable `review_commit` Command through Laravel.
 

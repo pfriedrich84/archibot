@@ -138,7 +138,7 @@ Strukturierte Provider-Antworten sind auf 2048 Tokens fuer Klassifikation und Ju
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `POLL_INTERVAL_SECONDS` | `600` | Sekunden zwischen automatischen Inbox-Reconciliation-Laeufen; Webhooks bleiben der primaere Trigger (`0` deaktiviert die Reconciliation). Der Laravel Scheduler prueft jede Minute, ob der konfigurierte Abstand erreicht ist. Bereits klassifizierte Inbox-Dokumente werden anhand ihres dauerhaften Review-Vorschlags uebersprungen. |
+| `POLL_INTERVAL_SECONDS` | `600` | Sekunden zwischen automatischen Inbox-Reconciliation-Laeufen; Webhooks bleiben der primaere Trigger. Ein nativer Temporal Schedule verwendet diesen Abstand, ueberspringt ueberlappende Laeufe und wird bei `0` pausiert. Bereits klassifizierte Inbox-Dokumente werden anhand ihres dauerhaften Review-Vorschlags uebersprungen. |
 | `ARCHIBOT_RECOVERY_INTERVAL_SECONDS` | `30` | Sekunden zwischen Laravel-native Recovery-Scans fuer durable Commands, Runs, Webhooks und Actor Executions. |
 | `ARCHIBOT_STALE_QUEUED_MINUTES` | `5` | Ab wann queued Arbeit ohne aktiven Actor sicher erneut dispatcht werden darf. |
 | `ARCHIBOT_STALE_RUNNING_MINUTES` | `10` | Ab wann ein Actor ohne aktuellen Fortschritt als stale gilt und ueber seine durable Quelle recovered wird. |
@@ -152,7 +152,7 @@ oeffentlichen gRPC-Port und verwendet ein eigenes PostgreSQL-Volume.
 |---|---|---|
 | `TEMPORAL_ADDRESS` | `temporal:7233` | Interne Temporal-Frontend-Adresse fuer Python-Worker und Outbox-Relay. |
 | `TEMPORAL_NAMESPACE` | `archibot` | Beim Stack-Start idempotent angelegter Namespace. |
-| `TEMPORAL_TASK_QUEUE` | `archibot-orchestration` | Gemeinsame Task Queue fuer versionierte ArchiBot-Workflows und Activities. |
+| `TEMPORAL_TASK_QUEUE` | `archibot-orchestration` | Task Queue fuer versionierte ArchiBot-Workflows und steuernde Activities. Modell-Activities teilen sich intern eine eigene Queue mit genau einem Ausfuehrungsplatz. |
 | `TEMPORAL_POSTGRES_USER` | `temporal` | Benutzer der getrennten Temporal-Persistenz. |
 | `TEMPORAL_POSTGRES_PASSWORD` | `temporal` | Passwort der Temporal-Persistenz; fuer reale Installationen zwingend ersetzen. |
 | `TEMPORAL_UI_BIND_ADDRESS` | `127.0.0.1` | Host-Bindung der mit dem Standard-Stack gestarteten, read-only Temporal UI. Nur hinter einem authentifizierten TLS-Reverse-Proxy auf `0.0.0.0` setzen. |

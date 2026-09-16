@@ -184,11 +184,56 @@ async def test_new_document_workflow_owns_all_phases_and_waits_for_review(monkey
         workflows.finish_document_review,
     ]
     assert task_queues[2:6] == [
-        workflows.OCR_TEXT_TASK_QUEUE,
-        workflows.EMBEDDING_TASK_QUEUE,
-        workflows.CLASSIFICATION_TASK_QUEUE,
-        workflows.JUDGE_TASK_QUEUE,
+        workflows.MODEL_TASK_QUEUE,
+        workflows.MODEL_TASK_QUEUE,
+        workflows.MODEL_TASK_QUEUE,
+        workflows.MODEL_TASK_QUEUE,
     ]
+
+
+def test_document_phase_search_attributes_are_operator_visible(monkeypatch):
+    updates = []
+    monkeypatch.setattr(workflows.workflow, "in_workflow", lambda: True)
+    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch: True)
+    monkeypatch.setattr(workflows.workflow, "upsert_search_attributes", updates.append)
+
+    workflows._upsert_document_search_attributes(
+        "classification",
+        DocumentWorkflowRequest(12, "archibot/document/261", 261),
+    )
+
+    assert [(update.key.name, update.value) for update in updates[0]] == [
+        ("ArchiBotPhase", "classification"),
+        ("ArchiBotPipelineRunId", 12),
+        ("ArchiBotDocumentId", 261),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_embedding_gate_waits_for_signal_without_timer_polling(monkeypatch):
+    readiness = iter(
+        [
+            DocumentReadiness(12, "waiting"),
+            DocumentReadiness(12, "ready"),
+        ]
+    )
+    instance = workflows.DocumentWorkflow()
+
+    async def execute(activity_fn, _argument, **_kwargs):
+        assert activity_fn is workflows.check_document_readiness
+        return next(readiness)
+
+    async def wait_condition(predicate):
+        assert predicate() is False
+        instance.embedding_ready({"embedding_build_id": 44})
+        assert predicate() is True
+
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+    monkeypatch.setattr(workflows.workflow, "wait_condition", wait_condition)
+
+    result = await instance._readiness(DocumentWorkflowRequest(12, "archibot/document/261", 261))
+
+    assert result is None
 
 
 @pytest.mark.asyncio

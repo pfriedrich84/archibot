@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, Protocol
 
 from temporalio.client import Client
@@ -13,6 +14,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from app.config import settings
 from app.temporal.client import connect_temporal
 from app.temporal.outbox import OutboxIntent, claim_next_intent, mark_delivered, mark_failed
+from app.temporal.schedules import reconcile_poll_schedule
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +64,22 @@ async def deliver_intent(client: TemporalClient, intent: OutboxIntent) -> None:
 async def relay_forever(client: Client | None = None) -> None:
     """Poll and deliver intents until the supervised process is terminated."""
     temporal = client or await connect_temporal()
+    next_schedule_reconciliation = 0.0
     while True:
+        if time.monotonic() >= next_schedule_reconciliation:
+            try:
+                interval = await reconcile_poll_schedule(temporal)
+            except Exception as exc:
+                log.warning(
+                    "Temporal schedule reconciliation failed error_type=%s",
+                    type(exc).__name__,
+                )
+            else:
+                log.info(
+                    "Temporal poll schedule reconciled interval_seconds=%s",
+                    interval,
+                )
+            next_schedule_reconciliation = time.monotonic() + 30
         intent = await asyncio.to_thread(
             claim_next_intent,
             settings.temporal_outbox_lease_seconds,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -12,11 +13,13 @@ from app.temporal import document_activities
 from app.temporal.contracts import (
     DocumentWorkflowStart,
     PollWorkflowRequest,
+    ScheduledPollStart,
 )
 
 
 def test_registered_document_activities_are_async_worker_safe():
     activities = (
+        document_activities.create_scheduled_poll_command,
         document_activities.discover_inbox_documents,
         document_activities.finish_poll_discovery,
         document_activities.fail_poll_discovery,
@@ -113,7 +116,7 @@ async def test_poll_discovery_skips_existing_reviews_and_returns_global_workflow
 
     def persist(**kwargs):
         persisted.append(kwargs)
-        return DocumentWorkflowStart(11, "archibot/document/1/version")
+        return DocumentWorkflowStart(11, "archibot/document/1/version", 1)
 
     monkeypatch.setattr(document_activities, "_persist_observation_and_run", persist)
 
@@ -121,7 +124,7 @@ async def test_poll_discovery_skips_existing_reviews_and_returns_global_workflow
 
     assert result.documents_seen == 2
     assert result.documents_skipped == 1
-    assert result.workflow_starts == [DocumentWorkflowStart(11, "archibot/document/1/version")]
+    assert result.workflow_starts == [DocumentWorkflowStart(11, "archibot/document/1/version", 1)]
     assert persisted[0]["command_id"] == 5
     assert persisted[0]["paperless_document_id"] == 1
     assert paperless.closed is True
@@ -167,3 +170,84 @@ def test_poll_persists_recoverable_embedding_block_reason(monkeypatch):
     assert insert["status"] == "blocked"
     assert insert["error_type"] == "embedding_index_not_ready"
     assert insert["error"] == "Waiting for embedding index to complete."
+
+
+class _ScheduledResult:
+    def __init__(self, *, row=None, scalar=None):
+        self.row = row
+        self.scalar = scalar
+
+    def first(self):
+        return self.row
+
+    def scalar_one(self):
+        return self.scalar
+
+    def scalar_one_or_none(self):
+        return self.scalar
+
+
+class _ScheduledConnection:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, statement, parameters=None):
+        parameters = parameters or {}
+        self.calls.append((statement, parameters))
+        if "payload->>'temporal_run_id'" in statement:
+            return _ScheduledResult(scalar=None)
+        if "SELECT 1 FROM commands" in statement:
+            return _ScheduledResult(row=None)
+        if "INSERT INTO commands" in statement:
+            return _ScheduledResult(scalar=42)
+        return _ScheduledResult()
+
+
+def test_temporal_schedule_creates_auditable_poll_command(monkeypatch):
+    connection = _ScheduledConnection()
+    database = SimpleNamespace(begin=lambda: nullcontext(connection))
+    monkeypatch.setattr(document_activities, "engine", lambda: database)
+    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
+    monkeypatch.setattr(document_activities, "poll_interval_seconds", lambda: 600)
+
+    request = document_activities._create_scheduled_poll_command(
+        ScheduledPollStart("archibot/poll-reconciliation/run", "run-123")
+    )
+
+    assert request == PollWorkflowRequest(42)
+    command_payload = next(
+        json.loads(parameters["payload"])
+        for statement, parameters in connection.calls
+        if "INSERT INTO commands" in statement
+    )
+    assert command_payload == {
+        "source": "temporal_schedule",
+        "interval_seconds": 600,
+        "orchestration_driver": "temporal",
+        "temporal_workflow_id": "archibot/poll-reconciliation/run",
+        "temporal_run_id": "run-123",
+    }
+
+
+def test_temporal_schedule_activity_retry_reuses_its_command(monkeypatch):
+    connection = _ScheduledConnection()
+    original_execute = connection.execute
+
+    def execute(statement, parameters=None):
+        if "payload->>'temporal_run_id'" in statement:
+            connection.calls.append((statement, parameters or {}))
+            return _ScheduledResult(scalar=42)
+        return original_execute(statement, parameters)
+
+    connection.execute = execute
+    database = SimpleNamespace(begin=lambda: nullcontext(connection))
+    monkeypatch.setattr(document_activities, "engine", lambda: database)
+    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
+    monkeypatch.setattr(document_activities, "poll_interval_seconds", lambda: 600)
+
+    request = document_activities._create_scheduled_poll_command(
+        ScheduledPollStart("archibot/poll-reconciliation/run", "run-123")
+    )
+
+    assert request == PollWorkflowRequest(42)
+    assert not any("INSERT INTO commands" in statement for statement, _ in connection.calls)

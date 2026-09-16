@@ -6,11 +6,8 @@ use App\Jobs\RunPythonActorJob;
 use App\Models\AuditLog as AuditEntry;
 use App\Models\Command as DispatchCommand;
 use App\Models\PipelineEvent as EventEntry;
-use App\Services\Settings\PollInterval;
 use App\Services\Temporal\TemporalWorkflowDispatcher;
 use App\Support\OperatorPrincipal;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +17,6 @@ class MaintenanceCommandDispatcher
     public function __construct(
         private readonly PipelineStartGate $pipelineStartGate,
         private readonly TemporalWorkflowDispatcher $temporal,
-        private readonly PollInterval $pollInterval,
     ) {}
 
     public function queuePollReconciliation(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
@@ -34,6 +30,9 @@ class MaintenanceCommandDispatcher
     private function queuePollReconciliationUnlocked(Request $request, ?int $limit, array $metadata): DispatchCommand
     {
         return DB::transaction(function () use ($request, $limit, $metadata): DispatchCommand {
+            if (DB::getDriverName() === 'pgsql') {
+                DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['archibot:poll-command-dispatch']);
+            }
             $limit = $this->normalizedLimit($limit);
             $payload = array_filter([
                 'limit' => $limit,
@@ -61,96 +60,6 @@ class MaintenanceCommandDispatcher
 
             return $command;
         });
-    }
-
-    public function queueScheduledPollReconciliation(): ?DispatchCommand
-    {
-        $lock = Cache::lock('archibot:poll-command-dispatch', 120);
-        if (! $lock->get()) {
-            return null;
-        }
-
-        try {
-            return $this->queueScheduledPollReconciliationUnlocked();
-        } finally {
-            $lock->release();
-        }
-    }
-
-    private function queueScheduledPollReconciliationUnlocked(): ?DispatchCommand
-    {
-        $interval = $this->pollInterval->seconds();
-        if ($interval === 0) {
-            return null;
-        }
-
-        $activeExists = DispatchCommand::query()
-            ->where('type', DispatchCommand::TYPE_POLL_RECONCILIATION)
-            ->whereIn('status', DispatchCommand::activeStatuses())
-            ->exists();
-        if ($activeExists) {
-            return null;
-        }
-
-        $recentScheduledQuery = DispatchCommand::query()
-            ->where('type', DispatchCommand::TYPE_POLL_RECONCILIATION)
-            ->whereIn('status', [
-                DispatchCommand::STATUS_SUCCEEDED,
-                DispatchCommand::STATUS_FAILED,
-                DispatchCommand::STATUS_FAILED_PERMANENT,
-            ])
-            ->where('payload->source', 'scheduler')
-            ->whereNotNull('finished_at');
-        $this->whereFinishedWithinDatabaseInterval($recentScheduledQuery, $interval);
-        $recentScheduledExists = $recentScheduledQuery->exists();
-        if ($recentScheduledExists) {
-            return null;
-        }
-
-        return DB::transaction(function () use ($interval): DispatchCommand {
-            $command = DispatchCommand::query()->create([
-                'type' => DispatchCommand::TYPE_POLL_RECONCILIATION,
-                'queue' => $this->queueNameFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
-                'priority' => $this->priorityFor(DispatchCommand::TYPE_POLL_RECONCILIATION),
-                'status' => DispatchCommand::STATUS_PENDING,
-                'payload' => [
-                    'source' => 'scheduler',
-                    'interval_seconds' => $interval,
-                ],
-                'created_by_user_id' => null,
-            ]);
-            $this->recordSystemEvent(
-                $command,
-                'scheduler.poll_reconciliation_requested',
-                'info',
-                'Automatic polling reconciliation requested by the Laravel scheduler.',
-                ['interval_seconds' => $interval],
-            );
-            $command = $this->temporal->startPollReconciliation($command);
-            $this->recordSystemEvent(
-                $command,
-                'scheduler.poll_reconciliation_actor_queued',
-                'info',
-                'Automatic polling discovery queued as a Temporal workflow.',
-                [
-                    'actor_name' => 'reconcile_inbox_documents',
-                    'interval_seconds' => $interval,
-                ],
-            );
-
-            return $command;
-        });
-    }
-
-    private function whereFinishedWithinDatabaseInterval(Builder $query, int $interval): void
-    {
-        $databaseClock = DB::selectOne('SELECT CURRENT_TIMESTAMP AS current_time');
-        $currentTime = $databaseClock?->current_time;
-        $cutoff = CarbonImmutable::parse((string) $currentTime, 'UTC')
-            ->subSeconds($interval)
-            ->format('Y-m-d H:i:s');
-
-        $query->where('finished_at', '>', $cutoff);
     }
 
     public function queueReindex(Request $request, ?int $limit = null, array $metadata = []): DispatchCommand
@@ -306,23 +215,6 @@ class MaintenanceCommandDispatcher
             'payload' => [
                 ...OperatorPrincipal::metadata($request),
                 'actor_is_admin' => (bool) OperatorPrincipal::user($request)?->is_admin,
-                'command_id' => $command->id,
-                ...$payload,
-            ],
-        ]);
-    }
-
-    /** @param array<string, mixed> $payload */
-    private function recordSystemEvent(DispatchCommand $command, string $eventType, string $level, string $message, array $payload): void
-    {
-        EventEntry::query()->create([
-            'command_id' => $command->id,
-            'event_type' => $eventType,
-            'level' => $level,
-            'message' => $message,
-            'payload' => [
-                'actor_principal' => OperatorPrincipal::SYSTEM_SCHEDULER,
-                'actor_user_id' => null,
                 'command_id' => $command->id,
                 ...$payload,
             ],

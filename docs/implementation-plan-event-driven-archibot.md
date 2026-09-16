@@ -160,7 +160,7 @@ Verbleibende, separat zu planende Arbeit:
 | Risiko | Gegenmassnahme |
 | --- | --- |
 | Dual Dispatch erzeugt doppelte Verarbeitung | Ein Transport-Owner pro Flow, durable Dedupe Keys, fokussierte Dispatch-Tests |
-| Reconciliation regressiert beim Queue-Cleanup | Laravel Scheduler-/Due-/Dedupe-Tests und Docker-Smoke als Cleanup-Gate behalten |
+| Reconciliation regressiert beim Queue-Cleanup | Temporal-Schedule-/Overlap-/Dedupe-Tests und Docker-Smoke als Cleanup-Gate behalten |
 | Queue Payload wird zur zweiten State Source | Nur IDs transportieren; Optionen aus PostgreSQL laden |
 | Langer Python Actor blockiert Worker | Timeouts, Heartbeats, Cancel und Recovery gegen reale Laufzeiten pruefen |
 | Webhooks gehen bei Dispatch-Fehler verloren | Erst persistieren, Fehler durable markieren, non-2xx fuer Paperless Retry |

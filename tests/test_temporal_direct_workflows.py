@@ -75,6 +75,7 @@ async def test_all_product_workflows_prepare_in_temporal_sandbox():
         workflows.DocumentWorkflow,
         workflows.ReviewCommitWorkflow,
         workflows.PollReconciliationWorkflow,
+        workflows.ScheduledPollReconciliationWorkflow,
     ):
         runner.prepare_workflow(workflow._Definition.must_from_class(workflow_class))
 
@@ -103,7 +104,7 @@ async def test_embedding_generation_runs_directly(monkeypatch):
     assert calls[1] == (
         workflows.prepare_embedding_generation,
         EmbeddingWorkflowRequest(
-            9, workflows._configuration_for_phase(_configuration(), "embedding")
+            9, workflows._serialized_configuration_for_phase(_configuration(), "embedding")
         ),
     )
     assert not any(call[0] is workflows.embed_document for call in calls)

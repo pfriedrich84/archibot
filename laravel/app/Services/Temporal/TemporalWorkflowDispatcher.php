@@ -107,6 +107,7 @@ class TemporalWorkflowDispatcher
                 payload: [
                     'pipeline_run_id' => $run->id,
                     'workflow_id' => $workflowId,
+                    'paperless_document_id' => $run->paperless_document_id,
                 ],
             );
 

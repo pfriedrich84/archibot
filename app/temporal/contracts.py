@@ -63,15 +63,23 @@ class PollWorkflowRequest:
 
 
 @dataclass(frozen=True)
+class ScheduledPollStart:
+    workflow_id: str
+    run_id: str
+
+
+@dataclass(frozen=True)
 class DocumentWorkflowRequest:
     pipeline_run_id: int
     workflow_id: str = ""
+    paperless_document_id: int = 0
 
 
 @dataclass(frozen=True)
 class DocumentWorkflowStart:
     pipeline_run_id: int
     workflow_id: str
+    paperless_document_id: int = 0
 
 
 @dataclass(frozen=True)

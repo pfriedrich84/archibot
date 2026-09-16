@@ -52,6 +52,12 @@ replay branches were removed after the affected Temporal histories and applicati
 were explicitly reset. The embedding-index maintenance workflow remains independent from
 the per-document review lifecycle.
 
+All embedding, OCR, classification and judge activities use one common model task queue.
+The standard worker exposes one activity slot for that queue and a process-wide capacity
+guard, so an embedding build and document workflows cannot call the configured model
+provider concurrently. Compatibility pollers for histories created before the queue change
+share the same guard and are removed after those histories drain.
+
 ## Consequences
 
 - Temporal UI shows OCR, embedding, classification, judge, review wait and Paperless commit
@@ -60,9 +66,8 @@ the per-document review lifecycle.
   documents.
 - Exhausted productive activities leave the owning document workflow visibly failed in
   Temporal after the failure projection is persisted.
-- Local providers may switch models more frequently when several document workflows run at
-  once. Dedicated task queues and worker concurrency remain the control points for provider
-  capacity.
+- Local providers receive one model activity at a time. Documents remain independent
+  workflows, but their model phases queue behind the single provider-capacity slot.
 - A document pipeline run remains active while waiting for review and becomes terminal only
   after accept, reject, force reprocess, cancellation or permanent failure.
 - Temporal histories must be drained or reset before deploying this removal; the migration

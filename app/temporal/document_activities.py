@@ -22,6 +22,7 @@ from app.temporal.contracts import (
     PollDiscoveryResult,
     PollWorkflowRequest,
     PollWorkflowResult,
+    ScheduledPollStart,
 )
 
 _HEARTBEAT_SECONDS = 30
@@ -103,6 +104,110 @@ def _load_poll_command(command_id: int) -> tuple[int | None, bool]:
             {"command_id": command_id},
         )
     return limit, bool(payload.get("force", False))
+
+
+def poll_interval_seconds() -> int:
+    """Read the operator-configured reconciliation interval from product state."""
+    with engine().connect() as connection:
+        value = connection.execute(
+            sql_text("SELECT value FROM app_settings WHERE key = 'worker.poll_interval_seconds'")
+        ).scalar_one_or_none()
+    try:
+        return max(0, int(value if value is not None else settings.poll_interval_seconds))
+    except (TypeError, ValueError):
+        return max(0, settings.poll_interval_seconds)
+
+
+def _create_scheduled_poll_command(start: ScheduledPollStart) -> PollWorkflowRequest | None:
+    interval = poll_interval_seconds()
+    if interval == 0:
+        return None
+    with engine().begin() as connection:
+        connection.execute(
+            sql_text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"),
+            {
+                "lock_name": "archibot:poll-command-dispatch",
+            },
+        )
+        existing_command_id = connection.execute(
+            sql_text(
+                """
+                SELECT id FROM commands
+                WHERE type = 'poll_reconciliation'
+                  AND payload->>'source' = 'temporal_schedule'
+                  AND payload->>'temporal_run_id' = :temporal_run_id
+                LIMIT 1
+                """
+            ),
+            {"temporal_run_id": start.run_id},
+        ).scalar_one_or_none()
+        if existing_command_id is not None:
+            return PollWorkflowRequest(int(existing_command_id))
+        active = connection.execute(
+            sql_text(
+                """
+                SELECT 1 FROM commands
+                WHERE type = 'poll_reconciliation'
+                  AND status IN ('pending', 'queued', 'running')
+                LIMIT 1
+                """
+            )
+        ).first()
+        if active is not None:
+            return None
+        payload = json.dumps(
+            {
+                "source": "temporal_schedule",
+                "interval_seconds": interval,
+                "orchestration_driver": "temporal",
+                "temporal_workflow_id": start.workflow_id,
+                "temporal_run_id": start.run_id,
+            },
+            separators=(",", ":"),
+        )
+        command_id = connection.execute(
+            sql_text(
+                """
+                INSERT INTO commands (
+                    type, queue, priority, status, payload, created_by_user_id,
+                    created_at, updated_at
+                ) VALUES (
+                    'poll_reconciliation', 'maintenance', 40, 'queued',
+                    CAST(:payload AS jsonb), NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING id
+                """
+            ),
+            {"payload": payload},
+        ).scalar_one()
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO pipeline_events (
+                    command_id, event_type, level, message, payload, created_at
+                ) VALUES (
+                    :command_id, 'scheduler.poll_reconciliation_requested', 'info',
+                    'Automatic polling reconciliation started by a Temporal Schedule.',
+                    CAST(:event_payload AS jsonb), CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "command_id": int(command_id),
+                "event_payload": json.dumps(
+                    {"interval_seconds": interval, "temporal_run_id": start.run_id},
+                    separators=(",", ":"),
+                ),
+            },
+        )
+    return PollWorkflowRequest(int(command_id))
+
+
+@activity.defn(name="archibot.create_scheduled_poll_command")
+async def create_scheduled_poll_command(
+    start: ScheduledPollStart,
+) -> PollWorkflowRequest | None:
+    return await asyncio.to_thread(_create_scheduled_poll_command, start)
 
 
 def _embedding_ready(connection) -> bool:
@@ -312,6 +417,7 @@ def _persist_observation_and_run(
         return DocumentWorkflowStart(
             pipeline_run_id=pipeline_run_id,
             workflow_id=str(run["temporal_workflow_id"]),
+            paperless_document_id=paperless_document_id,
         )
 
 

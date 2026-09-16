@@ -39,11 +39,17 @@ Dokument blockiert dadurch keine globale Review-Freigabe fuer andere Dokumente. 
 Paperless-Write erfolgt weiterhin erst nach manueller Annahme. Force-Reprocess beendet
 den wartenden Lauf als ersetzt und startet eine eigene neue Generation.
 
+Die Dokument-Workflows bleiben waehrend des Reviews in Temporal absichtlich `Running`.
+Dieser dauerhafte Wartezustand belegt keinen Worker und hat keinen Workflow-Timeout.
+OCR-, Embedding-, Klassifikations- und Judge-Aktivitaeten aller Dokumente und des
+Embedding-Builds teilen sich dagegen genau einen Modell-Ausfuehrungsplatz und laufen
+deshalb nacheinander.
+
 ## Schritt fuer Schritt
 
 ### 1. Dokument wird erkannt
 
-Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist, reconciliert die Pipeline die Inbox automatisch; Default sind `600` Sekunden. Polling repariert verpasste Events, und manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
+Paperless [Webhooks](./webhooks.md) sind der primaere Trigger. Wenn `POLL_INTERVAL_SECONDS` groesser als `0` ist, reconciliert ein nativer Temporal Schedule die Inbox automatisch; Default sind `600` Sekunden. Polling repariert verpasste Events, und manuelle Verarbeitung startet in der Laravel Maintenance-Oberflaeche.
 Webhook-, Reconciliation- und UI-Starts erscheinen gemeinsam in `/operations-log` als durable Commands, Pipeline Runs, Events und Actor Executions mit Status, Fortschritt und Logs. Bei einem fehlgeschlagenen Poll zeigt die Timeline den sicheren Fehlertyp, die Phase, die Command-/Actor-Execution-IDs und — falls vorhanden — den HTTP-Status. Die Container-Logs enthalten zusaetzlich pro Paperless-Inbox-Seite Operation, Methode, festen Endpoint-Namen, Laufzeit, Ergebnisanzahl und Exception-Typ, aber weder Token noch Response-Body oder Dokumentinhalt. Fuer die zeitliche Korrelation kann ein Admin beispielsweise `docker compose logs --since=15m archibot` verwenden.
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) sind Poll-Kandidaten. Sobald ArchiBot nach erfolgreicher Klassifikation einen Review-Vorschlag gespeichert hat, dient dieser als dauerhafter Klassifikationsmarker. Weitere automatische Polls ueberspringen das Inbox-Dokument auch dann, wenn ein Review oder Commit den Paperless-`modified`-Zeitstempel geaendert hat und `KEEP_INBOX_TAG=true` ist. Ein abgelehnter Vorschlag bleibt ebenfalls markiert; fuer eine gewollte neue Klassifikation stehen der explizite Force-Poll und das manuelle Force-Reprocess zur Verfuegung. Parallel eintreffende Webhooks und Polls werden zusaetzlich ueber den gemeinsamen Pipeline-Dedupe-Key zusammengefuehrt.
@@ -107,22 +113,14 @@ Annahme noch einen Paperless-Write ausloesen. Eine spaetere sichere Automation b
 deterministische Eligibility-Gates sowie ausdrueckliche Produkt-/Security-Freigabe.
 
 Jeder Dokument-Workflow behaelt seine eigene ID, Snapshots, Ergebnisse, Retries und
-Review-Entscheidung. Provider-Arbeit darf er aber nur ausfuehren, wenn der globale
-Temporal-Scheduler seine aktuelle Phase freigibt:
-
-1. alle aktuell benoetigten Dokument- und Index-Embeddings abschliessen
-2. optionale OCR-Arbeit fuer die aktuelle Zielmenge abschliessen
-3. alle Klassifikationen der Zielmenge abschliessen
-4. alle erforderlichen Judges abschliessen oder deterministisch ueberspringen
-5. Reviews des Zyklus freigeben
-
-Feste Temporal-Task-Queues halten jede Aktivitaet bei ihrem Modell. Innerhalb einer
-Phase koennen mehrere Dokumente parallel laufen, der Scheduler springt aber nie zu
-einem frueheren Modell zurueck. Eine leere Instanz beendet einen angeforderten
+Review-Entscheidung. Er fuehrt OCR, Ziel-Embedding, Klassifikation und Judge in dieser
+Reihenfolge aus. Eine gemeinsame Temporal-Modell-Queue laesst installationsweit in der
+Standardbereitstellung nur eine dieser Aktivitaeten gleichzeitig laufen; auch der
+Embedding-Index verwendet diesen Platz. Eine leere Instanz beendet einen angeforderten
 Embedding-Index ohne Provider-Aufruf sofort als `0/0 complete`. Temporal speichert den
-Ablauf, wartet ohne belegten Worker und wiederholt fehlgeschlagene externe Aktivitaeten
-nach der festgelegten Retry-Policy. PostgreSQL zeigt die aktuelle Phase und ihren
-terminalen Fortschritt.
+Ablauf, wartet ohne belegten Worker auf Modellkapazitaet oder Review und wiederholt
+fehlgeschlagene externe Aktivitaeten nach der festgelegten Retry-Policy. PostgreSQL zeigt
+die aktuelle Phase und ihren terminalen Fortschritt.
 
 #### Judge-Verifikation (optional)
 

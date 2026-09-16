@@ -42,7 +42,7 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Paperless process-document webhook | `WebhookDelivery` + `PipelineRun(type=document)` plus transactional Temporal outbox intent | same stable document workflow path | Webhook Deliveries, Pipeline Runs, Operations Log |
 | Review decision and commit | accepted/rejected suggestion plus transactional Temporal outbox intent; acceptance also creates `Command(type=review_commit)` | signal the waiting `DocumentWorkflow`; upgraded or legacy suggestions start a stable `ReviewCommitWorkflow` | Review page, Operations Log, audit logs |
 | Entity approval application | `Command(type=sync_entity_approval)` | queued Laravel `ApplyEntityApprovalCommand`; PostgreSQL decision/recovery service, no Python/SQLite actor | Entity approval status, Operations Log, audit logs |
-| Automatic poll reconciliation | `php artisan schedule:work` -> `archibot:scheduled-poll` | due-check atomically creates one command and Temporal start intent | Operations Log, command events |
+| Automatic poll reconciliation | Temporal Schedule `archibot/poll-reconciliation` | scheduled workflow atomically creates one command, then discovers documents | Temporal UI, Operations Log, command events |
 | Durable recovery scan | `php artisan archibot:recovery-scan` | recovers remaining legacy actor attempts, cancellations, and safe pending/stale commands/runs/webhooks; Temporal-owned commands are excluded | Pipeline/command/webhook/actor events |
 | Reset | `php artisan archibot:reset` or confirmed admin Maintenance action | Shared Laravel/PostgreSQL reset service | CLI/UI outcome and durable audit identity |
 
@@ -133,6 +133,12 @@ Poll discovery is the one additional reviewed creation seam: `app/temporal/docum
 ### Temporal owns workflow execution
 
 Temporal owns workflow scheduling, durable waits, retries, heartbeat timeouts and worker-loss recovery for migrated flows. A new document workflow waits for embedding readiness without occupying a worker, owns optional tag-gated OCR, target embedding, classification and judge, produces one idempotent review, and then waits for the authorized review signal. Its pipeline projection remains active while waiting. Acceptance executes the idempotent Paperless commit activity; rejection ends without a write; force reprocess ends the old workflow as superseded and starts a separate generation. Suggestions that predate a waiting document workflow use a stable standalone review-commit workflow. Laravel stale-actor recovery and old queued jobs explicitly refuse Temporal-owned commands and runs.
+
+The polling interval is represented directly by a Temporal Schedule rather than a Laravel
+minute-level due check. Model activities across embedding builds and document workflows use
+one shared task queue with one process-wide execution slot. Document workflows may therefore
+remain durably `Running` while waiting for model capacity or review, but neither wait occupies
+a worker slot and no workflow execution timeout is used.
 
 ### Python owns document processing activities
 

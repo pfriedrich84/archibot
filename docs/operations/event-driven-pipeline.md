@@ -7,8 +7,8 @@ This guide covers the new Archibot event-driven processing path. It is the targe
 Required runtime services:
 
 - PostgreSQL with `pgvector` enabled.
-- Laravel database queue transport.
-- Laravel HTTP app, queue worker and scheduler.
+- Laravel database queue transport for the remaining migration-only actors.
+- Laravel HTTP app, queue worker and scheduler for the remaining Laravel-owned tasks.
 - Laravel-native pipeline recovery scan.
 - Paperless and the configured LLM/embedding provider.
 
@@ -104,7 +104,10 @@ python -m app.temporal.worker
 python -m app.temporal.relay
 ```
 
-Laravel's scheduler remains active for discovery timing, and its queue worker serves only migration flows that have not yet moved to Temporal. Laravel recovery excludes all Temporal-owned commands and runs.
+The outbox relay reconciles the native Temporal polling Schedule with the configured interval.
+Laravel's scheduler remains active only for Laravel-owned tasks, and its queue worker serves
+migration flows that have not yet moved to Temporal. Laravel recovery excludes all
+Temporal-owned commands and runs.
 
 Useful manual commands:
 
@@ -115,9 +118,6 @@ php artisan archibot:recovery-scan --limit=100
 
 # Run the Laravel scheduler locally; the container supervises this command.
 php artisan schedule:work
-
-# Trigger the due-check manually without bypassing durable command creation.
-php artisan archibot:scheduled-poll
 
 # Run one persisted non-process webhook delivery through the fixed actor-runner contract.
 python -m app.actor_runner handle-webhook --delivery-id=123
@@ -153,16 +153,17 @@ Admin dashboard controls:
 - **Mark embedding index stale** sets durable state to `stale`, closing the document-processing gate.
 - **Start reindex** also marks the embedding index stale and creates a durable `reindex` command.
 
-Gate-closed discoveries reserve the stable document workflow identity but do not start
-the Temporal `DocumentWorkflow`. Recovery releases them after the matching model index
-becomes complete. An empty index build reaches `0/0 complete` immediately and opens the
-same gate without calling the provider.
+Gate-closed discoveries reserve the stable document workflow identity. A successful
+embedding generation releases those reservations through idempotent outbox start and signal
+intents, without waiting for a periodic recovery scan. An empty index build reaches `0/0
+complete` immediately and opens the same gate without calling the provider.
 
 After release, each Temporal document workflow runs and records its own optional OCR,
 target embedding, classification and judge activities before it persists a review and
-waits for the authorized decision. Fixed model-specific task queues keep the provider
-roles explicit. The retired singleton scheduler and its replay branches were removed
-after the associated state was reset.
+waits for the authorized decision. All model activities share one task queue and one worker
+slot, so OCR, embedding, classification and judge calls run serially across embedding builds
+and documents. The retired singleton scheduler and its replay branches were removed after
+the associated state was reset.
 
 ## Admin dashboard operations
 

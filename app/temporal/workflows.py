@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
+from temporalio.common import RetryPolicy, SearchAttributeKey, WorkflowIDReusePolicy
 from temporalio.exceptions import ActivityError, WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
@@ -26,9 +26,11 @@ with workflow.unsafe.imports_passed_through():
         PollWorkflowResult,
         ReviewCommitRequest,
         ReviewCommitResult,
+        ScheduledPollStart,
     )
     from app.temporal.document_activities import (
         check_document_readiness,
+        create_scheduled_poll_command,
         discover_inbox_documents,
         fail_document_processing,
         fail_poll_discovery,
@@ -63,14 +65,35 @@ from app.temporal.names import (
     EMBEDDING_INDEX_WORKFLOW,
     EMBEDDING_TASK_QUEUE,
     JUDGE_TASK_QUEUE,
+    MODEL_TASK_QUEUE,
     OCR_TEXT_TASK_QUEUE,
     OCR_VISION_TASK_QUEUE,
     PAPERLESS_TASK_QUEUE,
     POLL_RECONCILIATION_WORKFLOW,
     REVIEW_COMMIT_WORKFLOW,
     RUNTIME_PROBE_WORKFLOW,
+    SCHEDULED_POLL_RECONCILIATION_WORKFLOW,
     WORKFLOW_PROTOCOL_VERSION,
 )
+
+ARCHIBOT_PHASE = SearchAttributeKey.for_keyword("ArchiBotPhase")
+ARCHIBOT_PIPELINE_RUN_ID = SearchAttributeKey.for_int("ArchiBotPipelineRunId")
+ARCHIBOT_DOCUMENT_ID = SearchAttributeKey.for_int("ArchiBotDocumentId")
+
+
+def _upsert_document_search_attributes(
+    phase: str,
+    request: DocumentWorkflowRequest,
+) -> None:
+    if not workflow.in_workflow() or not workflow.patched("document-search-attributes-v1"):
+        return
+    updates = [
+        ARCHIBOT_PHASE.value_set(phase),
+        ARCHIBOT_PIPELINE_RUN_ID.value_set(request.pipeline_run_id),
+    ]
+    if request.paperless_document_id > 0:
+        updates.append(ARCHIBOT_DOCUMENT_ID.value_set(request.paperless_document_id))
+    workflow.upsert_search_attributes(updates)
 
 
 @dataclass(frozen=True)
@@ -121,6 +144,15 @@ def _configuration_for_phase(
     return replace(snapshot, phase=phase, model_id=model_id, task_queue=task_queue)
 
 
+def _serialized_configuration_for_phase(
+    snapshot: ModelPhaseConfiguration, phase: str
+) -> ModelPhaseConfiguration:
+    configuration = _configuration_for_phase(snapshot, phase)
+    if not workflow.in_workflow() or workflow.patched("single-model-task-queue-v1"):
+        return replace(configuration, task_queue=MODEL_TASK_QUEUE)
+    return configuration
+
+
 @workflow.defn(name=EMBEDDING_INDEX_WORKFLOW)
 class EmbeddingIndexWorkflow:
     """Build one embedding generation independently from document lifecycles."""
@@ -151,7 +183,7 @@ class EmbeddingIndexWorkflow:
                     result = await workflow.execute_activity(
                         embed_document,
                         EmbedDocumentRequest(prepared.build_id, document_id, configuration),
-                        task_queue=EMBEDDING_TASK_QUEUE,
+                        task_queue=configuration.task_queue,
                         start_to_close_timeout=timedelta(minutes=30),
                         heartbeat_timeout=timedelta(minutes=2),
                         retry_policy=RetryPolicy(maximum_attempts=5),
@@ -209,7 +241,9 @@ class EmbeddingIndexWorkflow:
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(maximum_attempts=5),
         )
-        return await self._run_generation(request, _configuration_for_phase(snapshot, "embedding"))
+        return await self._run_generation(
+            request, _serialized_configuration_for_phase(snapshot, "embedding")
+        )
 
 
 @workflow.defn(name=DOCUMENT_WORKFLOW)
@@ -219,6 +253,7 @@ class DocumentWorkflow:
     def __init__(self) -> None:
         self._review_decision: dict[str, object] | None = None
         self._force_reprocess: dict[str, object] | None = None
+        self._embedding_ready = False
 
     @workflow.signal(name="review_decision")
     def review_decision(self, decision: dict[str, object]) -> None:
@@ -229,6 +264,10 @@ class DocumentWorkflow:
     def force_reprocess(self, request: dict[str, object]) -> None:
         if self._force_reprocess is None:
             self._force_reprocess = request
+
+    @workflow.signal(name="embedding_ready")
+    def embedding_ready(self, _request: dict[str, object]) -> None:
+        self._embedding_ready = True
 
     async def _project_review_completion(
         self,
@@ -246,10 +285,12 @@ class DocumentWorkflow:
     async def _finish_review(
         self, request: DocumentWorkflowRequest, suggestion_id: int
     ) -> DocumentWorkflowResult:
+        _upsert_document_search_attributes("awaiting_review", request)
         await workflow.wait_condition(
             lambda: self._review_decision is not None or self._force_reprocess is not None
         )
         if self._force_reprocess is not None:
+            _upsert_document_search_attributes("superseded", request)
             payload = self._force_reprocess.get("payload")
             if not isinstance(payload, dict):
                 raise ValueError("Force reprocess signal payload is invalid")
@@ -265,6 +306,7 @@ class DocumentWorkflow:
             raise ValueError("Review decision targets another suggestion")
         decision = payload.get("decision")
         if decision == "rejected":
+            _upsert_document_search_attributes("rejected", request)
             await self._project_review_completion(request, suggestion_id, "rejected")
             return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, "rejected")
         if decision != "accepted":
@@ -276,6 +318,7 @@ class DocumentWorkflow:
             workflow_id=str(payload["temporal_workflow_id"]),
         )
         try:
+            _upsert_document_search_attributes("paperless_commit", request)
             commit_result = await _execute_review_commit(commit_request)
         except ActivityError:
             await workflow.execute_activity(
@@ -292,6 +335,7 @@ class DocumentWorkflow:
             )
             raise
         await self._project_review_completion(request, suggestion_id, "committed")
+        _upsert_document_search_attributes("completed", request)
         return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, commit_result.status)
 
     async def _readiness(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult | None:
@@ -307,10 +351,13 @@ class DocumentWorkflow:
                     raise RuntimeError("Ready document workflow has no review suggestion")
                 return await self._finish_review(request, readiness.review_suggestion_id)
             if readiness.status == "cancelled":
+                _upsert_document_search_attributes("cancelled", request)
                 return DocumentWorkflowResult(request.pipeline_run_id, None, "cancelled")
             if readiness.status == "ready":
                 return None
-            await workflow.sleep(timedelta(seconds=30))
+            _upsert_document_search_attributes("waiting_for_embedding", request)
+            await workflow.wait_condition(lambda: self._embedding_ready)
+            self._embedding_ready = False
 
     async def _run_owned_lifecycle(
         self, request: DocumentWorkflowRequest
@@ -333,7 +380,8 @@ class DocumentWorkflow:
         }
         cycle = request.pipeline_run_id
         for phase in ("ocr", "embedding", "classification", "judge"):
-            configuration = _configuration_for_phase(snapshot, phase)
+            _upsert_document_search_attributes(phase, request)
+            configuration = _serialized_configuration_for_phase(snapshot, phase)
             try:
                 result = await workflow.execute_activity(
                     phase_activities[phase],
@@ -365,7 +413,8 @@ class DocumentWorkflow:
                 )
                 raise RuntimeError(f"Temporal document {phase} phase failed permanently")
 
-        review_configuration = _configuration_for_phase(snapshot, "judge")
+        _upsert_document_search_attributes("publishing_review", request)
+        review_configuration = _serialized_configuration_for_phase(snapshot, "judge")
         try:
             result = await workflow.execute_activity(
                 publish_document_review,
@@ -388,6 +437,7 @@ class DocumentWorkflow:
 
     @workflow.run
     async def run(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult:
+        _upsert_document_search_attributes("starting", request)
         return await self._run_owned_lifecycle(request)
 
 
@@ -430,48 +480,74 @@ class PollReconciliationWorkflow:
 
     @workflow.run
     async def run(self, request: PollWorkflowRequest) -> PollWorkflowResult:
-        try:
-            discovery = await workflow.execute_activity(
-                discover_inbox_documents,
-                request,
-                schedule_to_close_timeout=timedelta(hours=6),
-                start_to_close_timeout=timedelta(minutes=30),
-                heartbeat_timeout=timedelta(minutes=2),
-                retry_policy=RetryPolicy(
-                    maximum_attempts=5,
-                    non_retryable_error_types=["ValueError"],
-                ),
-            )
-        except ActivityError:
-            await workflow.execute_activity(
-                fail_poll_discovery,
-                request.command_id,
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=RetryPolicy(maximum_attempts=5),
-            )
-            raise
+        return await _run_poll_reconciliation(request)
 
-        started = 0
-        for child in discovery.workflow_starts:
-            with suppress(WorkflowAlreadyStartedError):
-                await workflow.start_child_workflow(
-                    DocumentWorkflow.run,
-                    DocumentWorkflowRequest(child.pipeline_run_id, child.workflow_id),
-                    id=child.workflow_id,
-                    parent_close_policy=workflow.ParentClosePolicy.ABANDON,
-                    id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
-                )
-            started += 1
 
-        return await workflow.execute_activity(
-            finish_poll_discovery,
-            PollWorkflowResult(
-                command_id=request.command_id,
-                documents_seen=discovery.documents_seen,
-                documents_started=started,
-                documents_skipped=discovery.documents_skipped,
-                status=discovery.status,
+async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflowResult:
+    try:
+        discovery = await workflow.execute_activity(
+            discover_inbox_documents,
+            request,
+            schedule_to_close_timeout=timedelta(hours=6),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(
+                maximum_attempts=5,
+                non_retryable_error_types=["ValueError"],
             ),
+        )
+    except ActivityError:
+        await workflow.execute_activity(
+            fail_poll_discovery,
+            request.command_id,
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(maximum_attempts=5),
         )
+        raise
+
+    started = 0
+    for child in discovery.workflow_starts:
+        with suppress(WorkflowAlreadyStartedError):
+            await workflow.start_child_workflow(
+                DocumentWorkflow.run,
+                DocumentWorkflowRequest(
+                    child.pipeline_run_id,
+                    child.workflow_id,
+                    child.paperless_document_id,
+                ),
+                id=child.workflow_id,
+                parent_close_policy=workflow.ParentClosePolicy.ABANDON,
+                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            )
+        started += 1
+
+    return await workflow.execute_activity(
+        finish_poll_discovery,
+        PollWorkflowResult(
+            command_id=request.command_id,
+            documents_seen=discovery.documents_seen,
+            documents_started=started,
+            documents_skipped=discovery.documents_skipped,
+            status=discovery.status,
+        ),
+        start_to_close_timeout=timedelta(minutes=1),
+        retry_policy=RetryPolicy(maximum_attempts=5),
+    )
+
+
+@workflow.defn(name=SCHEDULED_POLL_RECONCILIATION_WORKFLOW)
+class ScheduledPollReconciliationWorkflow:
+    """Create one auditable command and execute a scheduled reconciliation."""
+
+    @workflow.run
+    async def run(self) -> PollWorkflowResult | None:
+        info = workflow.info()
+        request = await workflow.execute_activity(
+            create_scheduled_poll_command,
+            ScheduledPollStart(info.workflow_id, info.run_id),
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=RetryPolicy(maximum_attempts=5),
+        )
+        if request is None:
+            return None
+        return await _run_poll_reconciliation(request)

@@ -11,6 +11,7 @@ from app.config import settings
 from app.temporal.client import connect_temporal
 from app.temporal.document_activities import (
     check_document_readiness,
+    create_scheduled_poll_command,
     discover_inbox_documents,
     fail_document_processing,
     fail_poll_discovery,
@@ -35,6 +36,7 @@ from app.temporal.names import (
     CLASSIFICATION_TASK_QUEUE,
     EMBEDDING_TASK_QUEUE,
     JUDGE_TASK_QUEUE,
+    MODEL_TASK_QUEUE,
     OCR_TEXT_TASK_QUEUE,
     OCR_VISION_TASK_QUEUE,
     PAPERLESS_TASK_QUEUE,
@@ -50,7 +52,10 @@ from app.temporal.workflows import (
     PollReconciliationWorkflow,
     ReviewCommitWorkflow,
     RuntimeProbeWorkflow,
+    ScheduledPollReconciliationWorkflow,
 )
+
+MODEL_ACTIVITY_CONCURRENCY = 1
 
 
 async def run_worker() -> None:
@@ -63,16 +68,17 @@ async def run_worker() -> None:
             RuntimeProbeWorkflow,
             EmbeddingIndexWorkflow,
             PollReconciliationWorkflow,
+            ScheduledPollReconciliationWorkflow,
             DocumentWorkflow,
             ReviewCommitWorkflow,
         ],
         activities=[
             prepare_embedding_generation,
-            embed_document,
             fail_embedding_preparation,
             project_embedding_progress,
             finish_embedding_generation,
             discover_inbox_documents,
+            create_scheduled_poll_command,
             finish_poll_discovery,
             fail_poll_discovery,
             fail_document_processing,
@@ -86,28 +92,48 @@ async def run_worker() -> None:
     activity_workers = [
         Worker(
             client,
+            task_queue=MODEL_TASK_QUEUE,
+            activities=[
+                embed_document,
+                process_document_embedding_phase,
+                process_document_ocr_phase,
+                process_document_classification_phase,
+                process_document_judge_phase,
+            ],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
+        ),
+        # Keep pre-migration workflow histories executable while they drain. The
+        # activity decorator shares one process-wide lock with the common queue,
+        # so these compatibility pollers cannot add model parallelism.
+        Worker(
+            client,
             task_queue=EMBEDDING_TASK_QUEUE,
             activities=[embed_document, process_document_embedding_phase],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
         ),
         Worker(
             client,
             task_queue=OCR_TEXT_TASK_QUEUE,
             activities=[process_document_ocr_phase],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
         ),
         Worker(
             client,
             task_queue=OCR_VISION_TASK_QUEUE,
             activities=[process_document_ocr_phase],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
         ),
         Worker(
             client,
             task_queue=CLASSIFICATION_TASK_QUEUE,
             activities=[process_document_classification_phase],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
         ),
         Worker(
             client,
             task_queue=JUDGE_TASK_QUEUE,
             activities=[process_document_judge_phase],
+            max_concurrent_activities=MODEL_ACTIVITY_CONCURRENCY,
         ),
         Worker(
             client,

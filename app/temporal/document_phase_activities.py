@@ -47,6 +47,7 @@ from app.temporal.contracts import (
     DocumentProcessResult,
     DocumentReviewCompletion,
 )
+from app.temporal.model_capacity import serialized_model_activity
 
 
 def _json(value: object) -> str:
@@ -262,6 +263,7 @@ async def _document_for(
 
 
 @activity.defn(name="archibot.process_document_embedding_phase")
+@serialized_model_activity
 async def process_document_embedding_phase(
     request: DocumentPhaseRequest,
 ) -> DocumentPhaseResult:
@@ -337,6 +339,7 @@ async def process_document_embedding_phase(
 
 
 @activity.defn(name="archibot.process_document_ocr_phase")
+@serialized_model_activity
 async def process_document_ocr_phase(request: DocumentPhaseRequest) -> DocumentPhaseResult:
     state = await asyncio.to_thread(_load_state, request.pipeline_run_id, request.cycle, "ocr")
     if _phase_already_done(state, request.configuration.configuration_revision):
@@ -409,6 +412,7 @@ def _with_cached_ocr(
 
 
 @activity.defn(name="archibot.process_document_classification_phase")
+@serialized_model_activity
 async def process_document_classification_phase(
     request: DocumentPhaseRequest,
 ) -> DocumentPhaseResult:
@@ -491,6 +495,7 @@ async def _load_context_documents(
 
 
 @activity.defn(name="archibot.process_document_judge_phase")
+@serialized_model_activity
 async def process_document_judge_phase(request: DocumentPhaseRequest) -> DocumentPhaseResult:
     state = await asyncio.to_thread(_load_state, request.pipeline_run_id, request.cycle, "judge")
     if _phase_already_done(state, request.configuration.configuration_revision):

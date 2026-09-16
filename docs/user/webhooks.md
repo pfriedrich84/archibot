@@ -4,7 +4,7 @@ Anleitung zur Einrichtung von Webhooks, damit Paperless-NGX ArchiBot sofort nach
 
 ## Ueberblick
 
-Bei `POLL_INTERVAL_SECONDS > 0` pollt der Worker die Inbox regelmaessig. Mit Webhooks wird die Verarbeitung sofort ausgeloest, ohne auf einen Poll zu warten.
+Bei `POLL_INTERVAL_SECONDS > 0` startet ein nativer Temporal Schedule die regelmaessige Inbox-Reconciliation. Mit Webhooks wird die Verarbeitung sofort ausgeloest, ohne auf einen Poll zu warten.
 
 **Empfohlener Webhook-Endpoint:**
 

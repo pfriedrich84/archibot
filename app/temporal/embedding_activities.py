@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from collections.abc import Awaitable
 from contextlib import suppress
 
@@ -35,9 +37,14 @@ from app.temporal.contracts import (
     EmbedDocumentResult,
     PreparedEmbeddingBuild,
 )
+from app.temporal.model_capacity import serialized_model_activity
 
 _EMBEDDING_FENCE_KEY = 4_701_142_607_001
 _EMBEDDING_HEARTBEAT_SECONDS = 30
+
+
+def _intent_key(value: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"archibot:{value}"))
 
 
 async def _await_with_heartbeats[T](awaitable: Awaitable[T], details: dict[str, int]) -> T:
@@ -228,6 +235,7 @@ async def prepare_embedding_generation(
 
 
 @activity.defn(name="archibot.embed_document")
+@serialized_model_activity
 async def embed_document(request: EmbedDocumentRequest) -> EmbedDocumentResult:
     activity.heartbeat({"paperless_document_id": request.paperless_document_id})
     paperless = PaperlessClient()
@@ -392,6 +400,8 @@ def _finish_embedding_generation(progress: EmbeddingProgress) -> EmbeddingWorkfl
         )
         if command_update.rowcount != 1:
             raise RuntimeError(f"Embedding command {progress.command_id} is missing")
+        if progress.failed == 0:
+            _release_blocked_document_workflows(connection, progress.build_id)
     return EmbeddingWorkflowResult(
         command_id=progress.command_id,
         build_id=progress.build_id,
@@ -400,6 +410,98 @@ def _finish_embedding_generation(progress: EmbeddingProgress) -> EmbeddingWorkfl
         failed=progress.failed,
         status=status,
     )
+
+
+def _release_blocked_document_workflows(connection, build_id: int) -> None:
+    rows = (
+        connection.execute(
+            sql_text(
+                """
+                SELECT id, temporal_workflow_id, paperless_document_id
+                FROM pipeline_runs
+                WHERE type = 'document'
+                  AND status = 'blocked'
+                  AND error_type = 'embedding_index_not_ready'
+                  AND orchestration_driver = 'temporal'
+                  AND temporal_workflow_id IS NOT NULL
+                ORDER BY id
+                FOR UPDATE
+                """
+            )
+        )
+        .mappings()
+        .all()
+    )
+    for row in rows:
+        pipeline_run_id = int(row["id"])
+        workflow_id = str(row["temporal_workflow_id"])
+        paperless_document_id = int(row["paperless_document_id"])
+        connection.execute(
+            sql_text(
+                """
+                UPDATE pipeline_runs
+                SET status = 'queued', progress_current_phase = 'document_workflow',
+                    progress_message = 'Embedding index ready; Temporal document workflow queued.',
+                    progress_updated_at = CURRENT_TIMESTAMP, error_type = NULL, error = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :pipeline_run_id AND status = 'blocked'
+                """
+            ),
+            {"pipeline_run_id": pipeline_run_id},
+        )
+        start_payload = json.dumps(
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "workflow_id": workflow_id,
+                "paperless_document_id": paperless_document_id,
+            },
+            separators=(",", ":"),
+        )
+        signal_payload = json.dumps(
+            {"pipeline_run_id": pipeline_run_id, "embedding_build_id": build_id},
+            separators=(",", ":"),
+        )
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO temporal_outbox_intents (
+                    intent_key, operation, workflow_id, workflow_type, task_queue,
+                    signal_name, payload, status, attempts, available_at,
+                    created_at, updated_at
+                ) VALUES (
+                    CAST(:intent_key AS uuid), 'start_workflow', :workflow_id,
+                    'archibot.document', :task_queue, NULL, CAST(:payload AS jsonb),
+                    'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                ) ON CONFLICT (intent_key) DO NOTHING
+                """
+            ),
+            {
+                "intent_key": _intent_key(f"document:{pipeline_run_id}"),
+                "workflow_id": workflow_id,
+                "task_queue": settings.temporal_task_queue,
+                "payload": start_payload,
+            },
+        )
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO temporal_outbox_intents (
+                    intent_key, operation, workflow_id, workflow_type, task_queue,
+                    signal_name, payload, status, attempts, available_at,
+                    created_at, updated_at
+                ) VALUES (
+                    CAST(:intent_key AS uuid), 'signal_workflow', :workflow_id,
+                    NULL, NULL, 'embedding_ready', CAST(:payload AS jsonb),
+                    'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                ) ON CONFLICT (intent_key) DO NOTHING
+                """
+            ),
+            {
+                "intent_key": _intent_key(f"document:{pipeline_run_id}:embedding-ready:{build_id}"),
+                "workflow_id": workflow_id,
+                "payload": signal_payload,
+            },
+        )
 
 
 @activity.defn(name="archibot.fail_embedding_preparation")

@@ -62,6 +62,11 @@ never owns a document and cannot prevent a later discovery from progressing. Dup
 webhook, poll and normal manual triggers converge on one stable workflow per Paperless
 document ID; explicit force reprocessing creates a separate generation.
 
+The recurring reconciliation timer is a singleton Temporal Schedule. Its overlap policy is
+`SKIP`, its interval follows `POLL_INTERVAL_SECONDS`, and setting the interval to zero pauses
+the schedule. Each scheduled execution creates its auditable PostgreSQL Command before it
+discovers documents. Laravel does not run a minute-level due check for this flow.
+
 Each document workflow owns and schedules its OCR, target embedding, classification,
 judge, review wait and accepted Paperless commit in sequence as specified by ADR-0024.
 The retired model-phase scheduler was removed after its histories were reset.

@@ -66,7 +66,10 @@ class _Connection:
 
     def execute(self, statement, params=None):
         self.calls.append((statement, params or {}))
-        return SimpleNamespace(rowcount=next(self.rowcounts, 1))
+        result = SimpleNamespace(rowcount=next(self.rowcounts, 1))
+        result.mappings = lambda: result
+        result.all = lambda: []
+        return result
 
 
 class _Engine:
@@ -193,3 +196,34 @@ def test_finish_fails_when_command_projection_is_missing(monkeypatch):
         embedding_activities._finish_embedding_generation(EmbeddingProgress(9, 44, 0, 0, 0, 0))
 
     assert len(calls) == 2
+
+
+def test_complete_build_releases_blocked_document_workflows(monkeypatch):
+    calls = []
+    row = {
+        "id": 12,
+        "temporal_workflow_id": "archibot/document/261",
+        "paperless_document_id": 261,
+    }
+
+    class Result:
+        rowcount = 1
+
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [row]
+
+    connection = SimpleNamespace(
+        execute=lambda statement, params=None: calls.append((statement, params or {})) or Result()
+    )
+    monkeypatch.setattr(embedding_activities, "sql_text", lambda statement: statement)
+
+    embedding_activities._release_blocked_document_workflows(connection, 44)
+
+    assert len(calls) == 4
+    assert "UPDATE pipeline_runs" in calls[1][0]
+    assert "'start_workflow'" in calls[2][0]
+    assert "'embedding_ready'" in calls[3][0]
+    assert calls[2][1]["workflow_id"] == "archibot/document/261"

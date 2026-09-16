@@ -87,7 +87,7 @@ Es gibt **vier Wege**, wie ein Dokument in die Pipeline gelangt:
 
 | Einstiegspunkt | Ausloeser | Code | Blockiert bei Reindex? |
 |---|---|---|---|
-| **Temporal-Poll** | Admin-/Scheduler-Poll-Reconciliation | Laravel `commands` + transaktionaler Outbox-Intent → `PollReconciliationWorkflow` → globale `document_observations` → ein stabiler `DocumentWorkflow` je Dokument-ID | Der Start wird bis zum vollstaendigen Index fuer das konfigurierte Embedding-Modell reserviert; der Poll selbst blockiert nicht |
+| **Temporal-Poll** | Nativer Temporal Schedule oder Admin-Reconciliation | Scheduled Workflow bzw. Laravel `commands` + transaktionaler Outbox-Intent → `PollReconciliationWorkflow` → globale `document_observations` → ein stabiler `DocumentWorkflow` je Dokument-ID | Der Start wird bis zum vollstaendigen Index fuer das konfigurierte Embedding-Modell reserviert; der Poll selbst blockiert nicht |
 | **Webhook** | POST von Paperless nach Consume | Laravel-Middleware prueft Secret, Groesse und Rate-Limit und speichert die redigierte Delivery. Create/Process-Events schreiben `pipeline_runs` und Temporal-Start-Intent atomar. Refresh/Delete bleiben bis zu ihrer Cutover-Phase auf dem festen Legacy-Actor. | Ja, der Temporal-Workflow wartet durable |
 | **Maintenance-GUI** | Admin-Aktionen in Maintenance/Dashboard | Embedding, Reindex, Poll und Dokument-Reprocess verwenden Laravel `commands`/`pipeline_runs` plus transaktionalen Temporal-Outbox-Intent; noch nicht migrierte Aktionen verwenden voruebergehend feste `RunPythonActorJob` Actor-Kommandos | Ja, ueber Temporal-Wait und Run-Projektion |
 | **CLI** | `archibot <cmd>` / `python -m app.cli <cmd>` | `app/cli.py` delegiert alle Operator-Aktionen an Laravel durable Commands/Pipeline/Review; Review-Entscheidungen schreiben denselben Temporal-Intent wie die GUI | Ja; keine SQLite-Initialisierung oder JSON-Worker-Bridge |
@@ -108,6 +108,12 @@ Die Laravel/Svelte-Inbox-Seite zeigt alle Dokumente, die in Paperless den Inbox-
 Die Temporal-Poll-Aktivitaet laedt vor dem Workflow-Start die dauerhaften Klassifikationsmarker aus PostgreSQL: Sobald fuer ein Paperless-Dokument ein `review_suggestions`-Eintrag existiert, ist die Klassifikation mindestens einmal erfolgreich abgeschlossen. Solche Inbox-Dokumente werden bei automatischen Polls uebersprungen. Das verhindert erneute LLM-Klassifikation nach Review/Commit, wenn `KEEP_INBOX_TAG=true` ist.
 
 Fuer noch nicht markierte Dokumente koordinieren Poll, Webhook und manuelle Starts ueber `pipeline_runs.pipeline_dedupe_key` und den stabilen Temporal-Workflow-ID. Poll-Beobachtungen sind global und nicht an die Lebensdauer des Poll-Kommandos gebunden. Explizite Force-Polls und manuelles Force-Reprocess erzeugen absichtlich eine neue Version. Ein vorhandener pending/blocked Legacy-Run darf atomar uebernommen werden; queued/running Legacy-Runs werden wegen moeglicher Parallelausfuehrung nie adoptiert.
+
+Der wiederkehrende Poll ist als Temporal Schedule mit `SKIP`-Overlap konfiguriert. Seine
+Laeufe erzeugen weiterhin einen PostgreSQL-Command fuer Audit und UI. Dokument-Workflows
+zeigen ihre aktuelle Phase ueber Temporal Search Attributes und bleiben waehrend des
+Reviews durable aktiv, ohne einen Worker zu belegen. Alle Modell-Aktivitaeten teilen eine
+Task Queue mit einem Ausfuehrungsplatz; Dokument- und Indexarbeit laufen dadurch seriell.
 
 Normale Starts verwenden `archibot/document/{paperless_document_id}` und werden nach
 erfolgreichem Abschluss nicht automatisch wiederholt. Ein autorisiertes Force-Reprocess

@@ -96,6 +96,9 @@ If a webhook arrives while a poll-triggered run is already active for the same d
 ## Polling Behavior
 
 Polling remains scheduled automatically every 600 seconds unless configured otherwise.
+Temporal owns this timer through the singleton `archibot/poll-reconciliation` Schedule.
+The Schedule skips overlap, creates an auditable Command for each execution, and is paused
+when `POLL_INTERVAL_SECONDS=0`. Laravel does not perform a separate minute-level due check.
 
 Polling should:
 

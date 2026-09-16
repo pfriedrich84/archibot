@@ -16,7 +16,7 @@ two productive owners for the same flow.
 - Normal discovery converges on one workflow per Paperless document ID; only explicit force
   reprocessing creates another generation.
 - Every newly started document workflow owns its ordered OCR, embedding, classification,
-  judge, review and commit lifecycle. Dedicated task queues retain provider-role isolation.
+  judge, review and commit lifecycle. One shared model queue serializes provider use.
 - Docker image publication follows the tested-commit release gate in Phase 5.
 
 ## Phase 1: Runtime foundation
@@ -52,7 +52,7 @@ activities and uses a stable normal identity or an explicit force-reprocess gene
 legacy batch and recovery code remains only for pre-cutover rows and explicitly excludes
 `orchestration_driver=temporal`.
 
-- Implement scheduled poll discovery and webhook signal-with-start.
+- Implement poll discovery through a native Temporal Schedule and webhook signal-with-start.
 - Replace poll-owned candidates with global document observations.
 - Converge normal discovery on one workflow per Paperless document ID.
 - Keep explicit force reprocessing as a separate immutable generation.
@@ -65,7 +65,7 @@ a document.
 ## Phase 3A: Per-document lifecycle ownership
 
 - Make each document workflow execute optional OCR, target embedding, classification and judge
-  in order through dedicated model task queues.
+  in order through one serial model task queue.
 - Freeze model, context-window and OCR-tag configuration before productive model work begins.
 - Persist one Review Suggestion and keep the workflow active while it waits for review.
 - Complete acceptance only after the workflow commits approved metadata to Paperless.
