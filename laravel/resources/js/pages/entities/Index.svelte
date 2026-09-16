@@ -1,10 +1,10 @@
 <script module lang="ts">
-    import { index as masterDataCasesIndex } from '@/routes/master-data-cases';
+    import { index as entitiesIndex } from '@/routes/entities';
     export const layout = {
         breadcrumbs: [
             {
                 title: 'Entity approvals',
-                href: masterDataCasesIndex({ segment: 'tags' }),
+                href: entitiesIndex({ segment: 'tags' }),
             },
         ],
     };
@@ -17,6 +17,16 @@
     import { Button } from '@/components/ui/button';
     import { csrfToken } from '@/lib/csrf';
     import { paperlessLabel } from '@/lib/paperless';
+    import {
+        approve as approveEntity,
+        reject as rejectEntity,
+        unblacklist as unblacklistEntity,
+    } from '@/routes/entities';
+    import {
+        approve as approveMasterDataCase,
+        reject as rejectMasterDataCase,
+        unblacklist as unblacklistMasterDataCase,
+    } from '@/routes/master-data-cases';
 
     type EntityApproval = {
         id: number;
@@ -33,6 +43,7 @@
         segment,
         title,
         isAdmin,
+        decisionSource,
         pending,
         approved,
         rejected,
@@ -41,13 +52,36 @@
         type: string;
         title: string;
         isAdmin: boolean;
+        decisionSource: 'entity_approvals' | 'master_data_cases';
         pending: EntityApproval[];
         approved: EntityApproval[];
         rejected: EntityApproval[];
     } = $props();
 
-    const actionUrl = (entity: EntityApproval, action: string) =>
-        `/${segment}/entity-approvals/${entity.id}/${action}`;
+    type ApprovalAction = 'approve' | 'reject' | 'unblacklist';
+
+    const actionUrl = (entity: EntityApproval, action: ApprovalAction) => {
+        if (decisionSource === 'master_data_cases') {
+            const routes = {
+                approve: approveMasterDataCase,
+                reject: rejectMasterDataCase,
+                unblacklist: unblacklistMasterDataCase,
+            };
+
+            return routes[action]({
+                segment,
+                paperlessMasterDataCase: entity.id,
+            }).url;
+        }
+
+        const routes = {
+            approve: approveEntity,
+            reject: rejectEntity,
+            unblacklist: unblacklistEntity,
+        };
+
+        return routes[action]({ segment, entityApproval: entity.id }).url;
+    };
 </script>
 
 <AppHead {title} />

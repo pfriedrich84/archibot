@@ -211,6 +211,7 @@ describe('all changed mutation surfaces', () => {
             type: 'tag',
             title: 'Tags',
             isAdmin: true,
+            decisionSource: 'entity_approvals',
             pending: [{ ...base, id: 1, name: 'Invoices', status: 'pending' }],
             approved: [
                 {

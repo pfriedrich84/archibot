@@ -29,6 +29,7 @@ class EntityApprovalController extends Controller
             'type' => $meta['type'],
             'title' => $meta['title'],
             'isAdmin' => (bool) $request->user()->is_admin,
+            'decisionSource' => 'entity_approvals',
             'pending' => $this->items($meta['type'], EntityApproval::STATUS_PENDING),
             'approved' => $this->items($meta['type'], EntityApproval::STATUS_APPROVED),
             'rejected' => $this->items($meta['type'], EntityApproval::STATUS_REJECTED),
