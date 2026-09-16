@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 import structlog
 
-from app.config import settings
+from app.config import refresh_runtime_settings, settings
 from app.jobs.retry import http_status_code
 from app.models import PaperlessDocument, PaperlessEntity
 
@@ -31,6 +31,8 @@ REVIEWED_STORAGE_PATH_FIELD = "storage_path"
 
 class PaperlessClient:
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
+        if base_url is None or token is None:
+            refresh_runtime_settings()
         self.base_url = (
             (base_url if base_url is not None else settings.paperless_url).strip().rstrip("/")
         )

@@ -7,11 +7,35 @@ import pytest
 from structlog.testing import capture_logs
 
 from app.clients.paperless import PaperlessClient
+from app.config import settings
 
 
 def test_paperless_client_rejects_empty_token():
     with pytest.raises(ValueError, match="Paperless API token is empty"):
         PaperlessClient("http://paperless", "")
+
+
+def test_paperless_client_loads_token_exported_after_worker_start(tmp_path):
+    original_data_dir = settings.data_dir
+    original_url = settings.paperless_url
+    original_token = settings.paperless_token
+    object.__setattr__(settings, "data_dir", str(tmp_path))
+    object.__setattr__(settings, "paperless_url", "")
+    object.__setattr__(settings, "paperless_token", "")
+    (tmp_path / "config.env").write_text(
+        "PAPERLESS_URL=http://paperless\nPAPERLESS_TOKEN=login-derived-token\n",
+        encoding="utf-8",
+    )
+
+    try:
+        paperless = PaperlessClient()
+    finally:
+        object.__setattr__(settings, "data_dir", original_data_dir)
+        object.__setattr__(settings, "paperless_url", original_url)
+        object.__setattr__(settings, "paperless_token", original_token)
+
+    assert paperless.base_url == "http://paperless"
+    assert paperless.token == "login-derived-token"
 
 
 @pytest.mark.parametrize(

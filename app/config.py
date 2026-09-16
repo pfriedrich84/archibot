@@ -308,7 +308,18 @@ def _apply_config_env_overrides() -> None:
         object.__setattr__(settings, field_name, coerced)
 
 
-_apply_config_env_overrides()
+def refresh_runtime_settings() -> None:
+    """Reload Laravel-managed runtime exports into the live worker settings.
+
+    Laravel writes ``/data/config.env`` atomically after setup and admin
+    settings changes. Long-running Temporal workers must refresh that bridge
+    before constructing clients instead of retaining their process-start
+    snapshot indefinitely.
+    """
+    _apply_config_env_overrides()
+
+
+refresh_runtime_settings()
 
 
 def assert_product_database_config() -> None:

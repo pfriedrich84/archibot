@@ -1,6 +1,6 @@
 # Konfiguration
 
-Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend.
+Einstellungen werden ueber Docker-Compose-Umgebungsvariablen und die Laravel Settings UI verwaltet. Beim ersten Setup importiert Laravel bestehende Werte aus `.env`/`/data/config.env` einmalig in PostgreSQL; danach sind Laravel-Settings fuehrend. Laufende Python-Worker uebernehmen den von Laravel exportierten, login-basierten Paperless-Zugriff beim naechsten Paperless-Auftrag ohne Container-Neustart.
 
 > **Chat/RAG deaktiviert:** Es gibt keine Chat-Seite, Route, Provider- oder Prompt-Einstellung und keinen globalen MCP-Retrieval-Pfad. Bestehende gespeicherte Chat-Daten und alte Konfigurationswerte bleiben erhalten, werden aber nicht exponiert oder ausgefuehrt. [Issue #221](https://github.com/pfriedrich84/archibot/issues/221) ist der einzige Redesign-/Re-enable-Track; der [RAG-Entwurf](../architecture/authorization-safe-rag-design.md) ist keine Freigabe.
 
