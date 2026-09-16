@@ -47,6 +47,7 @@ class DocumentPipelineStarter
                 if (! $forceNewRun) {
                     $existing = PipelineRun::query()
                         ->where('temporal_workflow_id', "archibot/document/{$paperlessDocumentId}")
+                        ->orderByDesc('id')
                         ->lockForUpdate()
                         ->first();
                     if ($existing instanceof PipelineRun) {

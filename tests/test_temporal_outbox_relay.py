@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from temporalio.common import WorkflowIDReusePolicy
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 
 from app.temporal import outbox
 from app.temporal.outbox import OutboxIntent
@@ -58,6 +58,45 @@ async def test_signal_intent_carries_idempotency_key_for_workflow_deduplication(
     handle.signal.assert_awaited_once_with(
         "review.accepted",
         {"intent_id": value.intent_key, "payload": value.payload},
+    )
+
+
+@pytest.mark.asyncio
+async def test_force_reprocess_atomically_signals_or_starts_stable_document_workflow():
+    client = Mock()
+    client.start_workflow = AsyncMock()
+    workflow_input = {
+        "pipeline_run_id": 13,
+        "workflow_id": "archibot/document/261",
+        "paperless_document_id": 261,
+    }
+    signal_payload = {
+        "replacement_pipeline_run_id": 13,
+        "replacement_temporal_workflow_id": "archibot/document/261",
+    }
+    value = intent(
+        operation="signal_with_start",
+        workflow_id="archibot/document/261",
+        workflow_type="archibot.document",
+        signal_name="force_reprocess_v2",
+        payload={
+            "workflow_input": workflow_input,
+            "signal_payload": signal_payload,
+            "pipeline_run_id": 13,
+        },
+    )
+
+    await deliver_intent(client, value)
+
+    client.start_workflow.assert_awaited_once_with(
+        "archibot.document",
+        workflow_input,
+        id="archibot/document/261",
+        task_queue=value.task_queue,
+        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+        start_signal="force_reprocess_v2",
+        start_signal_args=[{"intent_id": value.intent_key, "payload": signal_payload}],
     )
 
 

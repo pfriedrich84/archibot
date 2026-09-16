@@ -80,6 +80,7 @@ class DocumentWorkflowStart:
     pipeline_run_id: int
     workflow_id: str
     paperless_document_id: int = 0
+    force: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,12 @@ class DocumentReviewCompletion:
     pipeline_run_id: int
     review_suggestion_id: int
     outcome: str
+
+
+@dataclass(frozen=True)
+class DocumentSupersession:
+    pipeline_run_id: int
+    replacement_pipeline_run_id: int
 
 
 @dataclass(frozen=True)

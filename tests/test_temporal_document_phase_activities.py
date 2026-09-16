@@ -11,6 +11,7 @@ from app.temporal import document_phase_activities
 from app.temporal.contracts import (
     DocumentPhaseRequest,
     DocumentReviewCompletion,
+    DocumentSupersession,
     ModelPhaseConfiguration,
 )
 
@@ -132,3 +133,22 @@ def test_review_completion_projects_terminal_document_state_once(monkeypatch):
     assert "progress_current_phase IN ('awaiting_review', 'review_suggestion')" in update[0]
     assert "document.workflow.completed" in event[0]
     assert '"review_suggestion_id":34' in event[1]["payload"]
+
+
+def test_force_reprocess_supersedes_run_and_pending_review_before_continue_as_new(
+    monkeypatch,
+):
+    fake_engine = _ProjectionEngine()
+    monkeypatch.setattr(document_phase_activities, "engine", lambda: fake_engine)
+    monkeypatch.setattr(document_phase_activities, "sql_text", lambda statement: statement)
+
+    document_phase_activities._supersede_document_processing_projection(
+        DocumentSupersession(12, 13)
+    )
+
+    run_update, review_update, event = fake_engine.connection.calls
+    assert "progress_current_phase = 'superseded'" in run_update[0]
+    assert run_update[1]["pipeline_run_id"] == 12
+    assert "staleness_reason = 'force_reprocess'" in review_update[0]
+    assert "document.workflow.superseded" in event[0]
+    assert '"replacement_pipeline_run_id":13' in event[1]["payload"]

@@ -519,16 +519,16 @@ class ReviewSuggestionTest extends TestCase
         ]);
         Queue::assertNothingPushed();
         $this->assertDatabaseHas('temporal_outbox_intents', [
-            'workflow_id' => $run->temporal_workflow_id,
-            'operation' => TemporalOutboxIntent::OPERATION_START,
-            'status' => TemporalOutboxIntent::STATUS_PENDING,
-        ]);
-        $this->assertDatabaseHas('temporal_outbox_intents', [
             'workflow_id' => 'archibot/document/456',
-            'operation' => TemporalOutboxIntent::OPERATION_SIGNAL,
+            'operation' => TemporalOutboxIntent::OPERATION_SIGNAL_WITH_START,
             'signal_name' => 'force_reprocess_v2',
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);
+        $this->assertSame('archibot/document/456', $run->temporal_workflow_id);
+        $this->assertDatabaseCount('temporal_outbox_intents', 1);
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertSame($run->id, $intent->payload['workflow_input']['pipeline_run_id']);
+        $this->assertSame($run->id, $intent->payload['signal_payload']['replacement_pipeline_run_id']);
         $this->assertSame(ReviewSuggestion::STATUS_STALE, $suggestion->fresh()->status);
         $this->assertSame('force_reprocess', $suggestion->fresh()->staleness_reason);
         $this->assertDatabaseHas('audit_logs', [

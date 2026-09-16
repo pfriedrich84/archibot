@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from temporalio import workflow
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
 
 from app.temporal import phase_activities, workflows
@@ -137,3 +141,46 @@ async def test_poll_starts_direct_document_workflow_payload(monkeypatch):
 
     assert result == PollWorkflowResult(5, 1, 1, 0, "succeeded")
     assert child_calls[0][0] == DocumentWorkflowRequest(12, "archibot/document/261")
+
+
+@pytest.mark.asyncio
+async def test_force_poll_signals_running_stable_document_workflow(monkeypatch):
+    async def execute(activity_fn, argument, **_kwargs):
+        if activity_fn is workflows.discover_inbox_documents:
+            return PollDiscoveryResult(
+                command_id=5,
+                documents_seen=1,
+                documents_skipped=0,
+                workflow_starts=[DocumentWorkflowStart(13, "archibot/document/261", 261, True)],
+                status="succeeded",
+            )
+        if activity_fn is workflows.finish_poll_discovery:
+            return argument
+        raise AssertionError(activity_fn)
+
+    async def start_child(_workflow, payload, **kwargs):
+        assert payload == DocumentWorkflowRequest(13, "archibot/document/261", 261)
+        assert kwargs["id_reuse_policy"] is WorkflowIDReusePolicy.ALLOW_DUPLICATE
+        raise WorkflowAlreadyStartedError("archibot/document/261", "archibot.document")
+
+    handle = Mock()
+    handle.signal = AsyncMock()
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+    monkeypatch.setattr(workflows.workflow, "start_child_workflow", start_child)
+    monkeypatch.setattr(
+        workflows.workflow, "get_external_workflow_handle", lambda _workflow_id: handle
+    )
+
+    result = await workflows.PollReconciliationWorkflow().run(PollWorkflowRequest(5))
+
+    assert result == PollWorkflowResult(5, 1, 1, 0, "succeeded")
+    handle.signal.assert_awaited_once_with(
+        "force_reprocess_v2",
+        {
+            "intent_id": "poll-force:5:13",
+            "payload": {
+                "replacement_pipeline_run_id": 13,
+                "replacement_temporal_workflow_id": "archibot/document/261",
+            },
+        },
+    )

@@ -32,11 +32,15 @@ archibot/document/{paperless_document_id}
 
 Duplicate poll, webhook and normal manual discoveries signal or reuse this workflow and never
 start a parallel productive execution. A completed normal workflow is not automatically
-reprocessed. An explicitly authorized force action creates a separate immutable generation:
+reprocessed. This superseded decision gave an explicitly authorized force action a separate
+workflow ID:
 
 ```text
 archibot/document/{paperless_document_id}/reprocess/{generation}
 ```
+
+ADR-0024 replaces that identity rule: force reprocessing now keeps the stable document
+Workflow ID and advances to a new Run with Continue-As-New.
 
 The document workflow owns its snapshot, phase results, review wait and Paperless commit. It
 registers each model-backed requirement with the phase scheduler and waits durably for a

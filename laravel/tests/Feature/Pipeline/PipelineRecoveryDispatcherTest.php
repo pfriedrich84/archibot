@@ -360,8 +360,9 @@ class PipelineRecoveryDispatcherTest extends TestCase
         $this->assertSame(1, $count);
         Queue::assertNothingPushed();
         $this->assertSame(PipelineRun::STATUS_QUEUED, $temporal->fresh()->status);
+        $this->assertSame('archibot/document/62', $temporal->fresh()->temporal_workflow_id);
         $this->assertDatabaseHas('temporal_outbox_intents', [
-            'workflow_id' => 'archibot/document/62/version',
+            'workflow_id' => 'archibot/document/62',
             'workflow_type' => 'archibot.document',
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);
@@ -395,8 +396,9 @@ class PipelineRecoveryDispatcherTest extends TestCase
         );
         $this->assertSame(1, app(PipelineRecoveryDispatcher::class)->recoverDocumentPipelineRuns(limit: 10));
         $this->assertSame(PipelineRun::STATUS_QUEUED, $temporal->fresh()->status);
+        $this->assertSame('archibot/document/63', $temporal->fresh()->temporal_workflow_id);
         $this->assertDatabaseHas('temporal_outbox_intents', [
-            'workflow_id' => 'archibot/document/63/reprocess/poll-5',
+            'workflow_id' => 'archibot/document/63',
             'workflow_type' => 'archibot.document',
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);

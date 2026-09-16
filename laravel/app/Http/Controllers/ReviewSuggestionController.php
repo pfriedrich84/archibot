@@ -176,15 +176,6 @@ class ReviewSuggestionController extends Controller
                 requestedByUserId: $request->user()->id,
             );
             $run = $result->pipelineRun;
-            $dispatch = $this->temporal->dispatchForceReprocess(
-                $reviewSuggestion,
-                $run,
-                [
-                    'actor_principal' => OperatorPrincipal::name($request),
-                    'actor_user_id' => $request->user()->id,
-                    'actor_is_admin' => true,
-                ],
-            );
             if ($reviewSuggestion->status === ReviewSuggestion::STATUS_PENDING) {
                 $reviewSuggestion->markStale('force_reprocess');
             }
@@ -198,7 +189,7 @@ class ReviewSuggestionController extends Controller
                     'review_suggestion_id' => $reviewSuggestion->id,
                     'paperless_document_id' => $reviewSuggestion->paperless_document_id,
                     'reason' => $reason,
-                    'superseded_temporal_workflow' => $dispatch['temporal_workflow_id'] ?? null,
+                    'temporal_workflow_id' => $run->temporal_workflow_id,
                 ],
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),

@@ -485,6 +485,7 @@ LIFECYCLE_SAFE_LITERAL_METHODS = {
         "intentkey",
         "lockforupdate",
         "query",
+        "signalwithstart",
         "signalworkflow",
         "startworkflow",
         "tostring",

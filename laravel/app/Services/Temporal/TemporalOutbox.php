@@ -55,6 +55,36 @@ class TemporalOutbox
     }
 
     /**
+     * Atomically signal the current run or start the stable workflow identity.
+     *
+     * @param  array<string, mixed>  $startPayload
+     * @param  array<string, mixed>  $signalPayload
+     */
+    public function signalWithStart(
+        string $intentKey,
+        string $workflowId,
+        string $workflowType,
+        array $startPayload,
+        string $signalName,
+        array $signalPayload,
+        ?string $taskQueue = null,
+    ): TemporalOutboxIntent {
+        return $this->record([
+            'intent_key' => $intentKey,
+            'operation' => TemporalOutboxIntent::OPERATION_SIGNAL_WITH_START,
+            'workflow_id' => $workflowId,
+            'workflow_type' => $workflowType,
+            'task_queue' => $taskQueue ?: (string) config('archibot.temporal_task_queue'),
+            'signal_name' => $signalName,
+            'payload' => [
+                'workflow_input' => $startPayload,
+                'signal_payload' => $signalPayload,
+                'pipeline_run_id' => $startPayload['pipeline_run_id'] ?? null,
+            ],
+        ]);
+    }
+
+    /**
      * Persist one immutable workflow-cancellation intent in the caller's transaction.
      *
      * @param  array<string, mixed>  $payload

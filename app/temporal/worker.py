@@ -24,6 +24,7 @@ from app.temporal.document_phase_activities import (
     process_document_judge_phase,
     process_document_ocr_phase,
     publish_document_review,
+    supersede_document_processing,
 )
 from app.temporal.embedding_activities import (
     embed_document,
@@ -83,6 +84,7 @@ async def run_worker() -> None:
             fail_poll_discovery,
             fail_document_processing,
             finish_document_review,
+            supersede_document_processing,
             check_document_readiness,
             fail_review_commit,
             load_model_phase_configuration,

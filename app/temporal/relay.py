@@ -8,7 +8,7 @@ import time
 from typing import Any, Protocol
 
 from temporalio.client import Client
-from temporalio.common import WorkflowIDReusePolicy
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from app.config import settings
@@ -44,6 +44,27 @@ async def deliver_intent(client: TemporalClient, intent: OutboxIntent) -> None:
             # A relay may crash after Temporal accepted the start but before the
             # database acknowledgement. The immutable workflow ID makes replay safe.
             return
+        return
+
+    if intent.operation == "signal_with_start":
+        if not intent.workflow_type or not intent.task_queue or not intent.signal_name:
+            raise ValueError(
+                "signal_with_start intent requires workflow_type, task_queue, and signal_name"
+            )
+        workflow_input = intent.payload.get("workflow_input")
+        signal_payload = intent.payload.get("signal_payload")
+        if not isinstance(workflow_input, dict) or not isinstance(signal_payload, dict):
+            raise ValueError("signal_with_start intent requires workflow_input and signal_payload")
+        await client.start_workflow(
+            intent.workflow_type,
+            workflow_input,
+            id=intent.workflow_id,
+            task_queue=intent.task_queue,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            start_signal=intent.signal_name,
+            start_signal_args=[{"intent_id": intent.intent_key, "payload": signal_payload}],
+        )
         return
 
     handle = client.get_workflow_handle(intent.workflow_id)

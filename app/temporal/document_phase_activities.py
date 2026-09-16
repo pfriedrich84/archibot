@@ -46,6 +46,7 @@ from app.temporal.contracts import (
     DocumentPhaseResult,
     DocumentProcessResult,
     DocumentReviewCompletion,
+    DocumentSupersession,
 )
 from app.temporal.model_capacity import serialized_model_activity
 
@@ -753,3 +754,87 @@ def _finish_document_review_projection(completion: DocumentReviewCompletion) -> 
 async def finish_document_review(completion: DocumentReviewCompletion) -> None:
     """Project the terminal state after review, commit, or force reprocess."""
     await asyncio.to_thread(_finish_document_review_projection, completion)
+
+
+def _supersede_document_processing_projection(supersession: DocumentSupersession) -> None:
+    message = "Document workflow continued as a new force-reprocess generation."
+    with engine().begin() as connection:
+        updated = connection.execute(
+            sql_text(
+                """
+                UPDATE pipeline_runs
+                SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP,
+                    progress_current_phase = 'superseded', progress_message = :message,
+                    progress_updated_at = CURRENT_TIMESTAMP,
+                    error_type = NULL, error = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :pipeline_run_id
+                  AND orchestration_driver = 'temporal'
+                  AND status NOT IN ('succeeded', 'failed_permanent', 'cancelled')
+                """
+            ),
+            {
+                "pipeline_run_id": supersession.pipeline_run_id,
+                "message": message,
+            },
+        )
+        if updated.rowcount == 0:
+            current = (
+                connection.execute(
+                    sql_text(
+                        """
+                        SELECT status, progress_current_phase
+                        FROM pipeline_runs
+                        WHERE id = :pipeline_run_id
+                          AND orchestration_driver = 'temporal'
+                        """
+                    ),
+                    {"pipeline_run_id": supersession.pipeline_run_id},
+                )
+                .mappings()
+                .first()
+            )
+            if current is None:
+                raise ValueError("Temporal document pipeline run is missing")
+            if (
+                str(current["status"]) != "cancelled"
+                or str(current["progress_current_phase"]) != "superseded"
+            ):
+                raise RuntimeError("Temporal document pipeline run is already terminal")
+            return
+        connection.execute(
+            sql_text(
+                """
+                UPDATE review_suggestions
+                SET status = 'stale', staleness_reason = 'force_reprocess',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE pipeline_run_id = :pipeline_run_id
+                  AND status = 'pending'
+                """
+            ),
+            {"pipeline_run_id": supersession.pipeline_run_id},
+        )
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO pipeline_events (
+                    pipeline_run_id, event_type, level, message, payload, created_at
+                ) VALUES (
+                    :pipeline_run_id, 'document.workflow.superseded', 'info',
+                    :message, CAST(:payload AS jsonb), CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "pipeline_run_id": supersession.pipeline_run_id,
+                "message": message,
+                "payload": _json(
+                    {"replacement_pipeline_run_id": (supersession.replacement_pipeline_run_id)}
+                ),
+            },
+        )
+
+
+@activity.defn(name="archibot.supersede_document_processing")
+async def supersede_document_processing(supersession: DocumentSupersession) -> None:
+    """Project the old generation before Continue-As-New changes the Temporal run."""
+    await asyncio.to_thread(_supersede_document_processing_projection, supersession)

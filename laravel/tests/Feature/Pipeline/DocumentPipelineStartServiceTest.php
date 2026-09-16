@@ -266,9 +266,19 @@ class DocumentPipelineStartServiceTest extends TestCase
         $this->assertSame('force_created', $first->outcome);
         $this->assertSame('force_created', $second->outcome);
         $this->assertNotSame($first->dedupeKey, $second->dedupeKey);
+        $this->assertSame('archibot/document/42', $first->pipelineRun->temporal_workflow_id);
+        $this->assertSame('archibot/document/42', $second->pipelineRun->temporal_workflow_id);
         $this->assertDatabaseCount('pipeline_runs', 2);
         Queue::assertNothingPushed();
         $this->assertDatabaseCount('temporal_outbox_intents', 2);
+        $this->assertSame(
+            2,
+            TemporalOutboxIntent::query()
+                ->where('operation', TemporalOutboxIntent::OPERATION_SIGNAL_WITH_START)
+                ->where('workflow_id', 'archibot/document/42')
+                ->where('signal_name', 'force_reprocess_v2')
+                ->count(),
+        );
     }
 
     public function test_laravel_dedupe_key_matches_canonical_known_vector(): void

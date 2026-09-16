@@ -33,19 +33,23 @@ one pipeline run:
 6. persist one idempotent Review Suggestion;
 7. wait durably for an authorized accept, reject or force-reprocess signal;
 8. on acceptance, commit the allowlisted metadata to Paperless and finish; on rejection,
-   finish without a Paperless write; on force reprocess, finish as superseded while a new
-   immutable workflow generation owns the replacement run.
+   finish without a Paperless write; on force reprocess, project the current pipeline
+   generation as superseded and Continue-As-New under the same workflow ID so the next
+   Temporal Run owns the replacement pipeline generation.
 
 The workflow freezes provider, model, OCR tag and context-window configuration before model
 work begins. The OCR activity reads the current Paperless document tags but evaluates them
 against that frozen tag ID. OCR correction remains local. The target embedding uses the
 locally corrected OCR text when one was produced.
 
-Normal workflow identity remains `archibot/document/{paperless_document_id}`. An explicit
-force action starts `archibot/document/{paperless_document_id}/reprocess/{generation}` and
-atomically records a `force_reprocess` signal for the workflow associated with the old
-review. The old pending suggestion becomes stale immediately, so it cannot be accepted while
-the replacement is running.
+Workflow identity is always `archibot/document/{paperless_document_id}`. Pipeline runs remain
+immutable generations, while Temporal Run IDs distinguish execution generations under that
+stable Workflow ID. An explicit force action records one transactional Signal-With-Start
+intent. Temporal delivers `force_reprocess_v2` to the currently running workflow or starts
+the same stable Workflow ID when no run is active. A running workflow projects its current
+pipeline generation as superseded and calls Continue-As-New with the replacement
+`pipeline_run_id`; it never starts a second document Workflow ID. The old pending suggestion
+becomes stale immediately, so it cannot be accepted while the replacement is running.
 
 The singleton `ModelPhaseSchedulerWorkflow`, its signal handlers, global projection and
 replay branches were removed after the affected Temporal histories and application state
@@ -62,6 +66,8 @@ share the same guard and are removed after those histories drain.
 
 - Temporal UI shows OCR, embedding, classification, judge, review wait and Paperless commit
   under the document workflow that owns them.
+- One Paperless document has one stable Temporal Workflow ID. Force generations appear as
+  successive Run IDs in that execution chain instead of parallel `/reprocess/...` workflows.
 - One slow or failed document does not hold a global review-release barrier for other
   documents.
 - Exhausted productive activities leave the owning document workflow visibly failed in

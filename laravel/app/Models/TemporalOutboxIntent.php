@@ -26,6 +26,8 @@ class TemporalOutboxIntent extends Model
 
     public const OPERATION_SIGNAL = 'signal_workflow';
 
+    public const OPERATION_SIGNAL_WITH_START = 'signal_with_start';
+
     public const OPERATION_CANCEL = 'cancel_workflow';
 
     public const STATUS_PENDING = 'pending';

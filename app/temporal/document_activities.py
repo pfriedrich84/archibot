@@ -237,11 +237,7 @@ def _persist_observation_and_run(
         modified,
         force_command_id=command_id if force else None,
     )
-    workflow_id = (
-        f"archibot/document/{paperless_document_id}/reprocess/poll-{command_id}"
-        if force
-        else f"archibot/document/{paperless_document_id}"
-    )
+    workflow_id = f"archibot/document/{paperless_document_id}"
     with engine().begin() as connection:
         if not force:
             existing = (
@@ -251,6 +247,8 @@ def _persist_observation_and_run(
                         SELECT id
                         FROM pipeline_runs
                         WHERE temporal_workflow_id = :workflow_id
+                        ORDER BY id DESC
+                        LIMIT 1
                         FOR UPDATE
                         """
                     ),
@@ -418,6 +416,7 @@ def _persist_observation_and_run(
             pipeline_run_id=pipeline_run_id,
             workflow_id=str(run["temporal_workflow_id"]),
             paperless_document_id=paperless_document_id,
+            force=force,
         )
 
 
@@ -572,8 +571,14 @@ def _check_document_readiness(pipeline_run_id: int) -> DocumentReadiness:
             .mappings()
             .first()
         )
-        if suggestion is not None and status in {"running", "succeeded"}:
+        if suggestion is not None and status == "running":
             return DocumentReadiness(pipeline_run_id, "complete", int(suggestion["id"]))
+        if status == "succeeded":
+            return DocumentReadiness(
+                pipeline_run_id,
+                "finished",
+                None if suggestion is None else int(suggestion["id"]),
+            )
         if status in {"cancel_requested", "cancelled"}:
             return DocumentReadiness(pipeline_run_id, "cancelled")
         if _embedding_ready(connection):

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
@@ -15,6 +14,7 @@ with workflow.unsafe.imports_passed_through():
     from app.temporal.contracts import (
         DocumentPhaseRequest,
         DocumentReviewCompletion,
+        DocumentSupersession,
         DocumentWorkflowRequest,
         DocumentWorkflowResult,
         EmbeddingPreparationFailure,
@@ -44,6 +44,7 @@ with workflow.unsafe.imports_passed_through():
         process_document_judge_phase,
         process_document_ocr_phase,
         publish_document_review,
+        supersede_document_processing,
     )
     from app.temporal.embedding_activities import (
         embed_document,
@@ -271,8 +272,11 @@ class DocumentWorkflow:
 
     @workflow.signal(name="force_reprocess_v2")
     def force_reprocess(self, request: dict[str, Any]) -> None:
-        if self._force_reprocess is None:
-            self._force_reprocess = request
+        current_id = self._force_reprocess_pipeline_run_id(self._force_reprocess)
+        replacement_id = self._force_reprocess_pipeline_run_id(request)
+        if current_id is not None and replacement_id is not None and replacement_id <= current_id:
+            return
+        self._force_reprocess = request
 
     @workflow.signal(name="embedding_ready")
     def embedding_ready_legacy(self, _request: dict[str, object]) -> None:
@@ -295,22 +299,87 @@ class DocumentWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=5),
         )
 
+    @staticmethod
+    def _force_reprocess_pipeline_run_id(request: dict[str, Any] | None) -> int | None:
+        if request is None:
+            return None
+        payload = request.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        pipeline_run_id = payload.get("replacement_pipeline_run_id")
+        if not isinstance(pipeline_run_id, int) or isinstance(pipeline_run_id, bool):
+            return None
+        return pipeline_run_id
+
+    def _replacement_request(
+        self, request: DocumentWorkflowRequest
+    ) -> DocumentWorkflowRequest | None:
+        if self._force_reprocess is None:
+            return None
+        envelope = self._force_reprocess
+        payload = envelope.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("Force reprocess signal payload is invalid")
+        replacement_id = payload.get("replacement_pipeline_run_id")
+        if not isinstance(replacement_id, int) or isinstance(replacement_id, bool):
+            raise ValueError("Force reprocess replacement pipeline run is invalid")
+        replacement_workflow_id = payload.get("replacement_temporal_workflow_id")
+        if replacement_workflow_id != request.workflow_id:
+            raise ValueError("Force reprocess targets another workflow")
+        self._force_reprocess = None
+        if replacement_id <= request.pipeline_run_id:
+            return None
+        return DocumentWorkflowRequest(
+            replacement_id,
+            request.workflow_id,
+            request.paperless_document_id,
+        )
+
+    async def _continue_if_reprocessed(self, request: DocumentWorkflowRequest) -> None:
+        replacement = self._replacement_request(request)
+        if replacement is None:
+            return
+        superseded_pipeline_run_id = request.pipeline_run_id
+        while True:
+            _upsert_document_search_attributes("superseded", request)
+            await workflow.execute_activity(
+                supersede_document_processing,
+                DocumentSupersession(
+                    superseded_pipeline_run_id,
+                    replacement.pipeline_run_id,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+            newer = self._replacement_request(replacement)
+            if newer is None:
+                break
+            superseded_pipeline_run_id = replacement.pipeline_run_id
+            replacement = newer
+        workflow.continue_as_new(replacement)
+        raise RuntimeError("Temporal Continue-As-New returned unexpectedly")
+
     async def _finish_review(
         self, request: DocumentWorkflowRequest, suggestion_id: int
     ) -> DocumentWorkflowResult:
         _upsert_document_search_attributes("awaiting_review", request)
-        await workflow.wait_condition(
-            lambda: self._review_decision is not None or self._force_reprocess is not None
-        )
-        if self._force_reprocess is not None:
-            _upsert_document_search_attributes("superseded", request)
-            payload = self._force_reprocess.get("payload")
-            if not isinstance(payload, dict):
-                raise ValueError("Force reprocess signal payload is invalid")
-            if payload.get("review_suggestion_id") != suggestion_id:
-                raise ValueError("Force reprocess targets another suggestion")
-            await self._project_review_completion(request, suggestion_id, "superseded")
-            return DocumentWorkflowResult(request.pipeline_run_id, suggestion_id, "superseded")
+        while self._review_decision is None:
+            await workflow.wait_condition(
+                lambda: self._review_decision is not None or self._force_reprocess is not None
+            )
+            if self._force_reprocess is not None:
+                payload = self._force_reprocess.get("payload")
+                if not isinstance(payload, dict):
+                    raise ValueError("Force reprocess signal payload is invalid")
+                if payload.get("replacement_temporal_workflow_id") != request.workflow_id:
+                    if payload.get("review_suggestion_id") != suggestion_id:
+                        raise ValueError("Force reprocess targets another suggestion")
+                    _upsert_document_search_attributes("superseded", request)
+                    await self._project_review_completion(request, suggestion_id, "superseded")
+                    return DocumentWorkflowResult(
+                        request.pipeline_run_id, suggestion_id, "superseded"
+                    )
+                await self._continue_if_reprocessed(request)
         envelope = self._review_decision or {}
         payload = envelope.get("payload")
         if not isinstance(payload, dict):
@@ -353,23 +422,35 @@ class DocumentWorkflow:
 
     async def _readiness(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult | None:
         while True:
+            await self._continue_if_reprocessed(request)
             readiness = await workflow.execute_activity(
                 check_document_readiness,
                 request.pipeline_run_id,
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=RetryPolicy(maximum_attempts=5),
             )
+            await self._continue_if_reprocessed(request)
             if readiness.status == "complete":
                 if readiness.review_suggestion_id is None:
                     raise RuntimeError("Ready document workflow has no review suggestion")
                 return await self._finish_review(request, readiness.review_suggestion_id)
+            if readiness.status == "finished":
+                _upsert_document_search_attributes("completed", request)
+                return DocumentWorkflowResult(
+                    request.pipeline_run_id,
+                    readiness.review_suggestion_id,
+                    "completed",
+                )
             if readiness.status == "cancelled":
                 _upsert_document_search_attributes("cancelled", request)
                 return DocumentWorkflowResult(request.pipeline_run_id, None, "cancelled")
             if readiness.status == "ready":
                 return None
             _upsert_document_search_attributes("waiting_for_embedding", request)
-            await workflow.wait_condition(lambda: self._embedding_ready)
+            await workflow.wait_condition(
+                lambda: self._embedding_ready or self._force_reprocess is not None
+            )
+            await self._continue_if_reprocessed(request)
             self._embedding_ready = False
 
     async def _run_owned_lifecycle(
@@ -393,6 +474,7 @@ class DocumentWorkflow:
         }
         cycle = request.pipeline_run_id
         for phase in ("ocr", "embedding", "classification", "judge"):
+            await self._continue_if_reprocessed(request)
             _upsert_document_search_attributes(phase, request)
             configuration = _serialized_configuration_for_phase(snapshot, phase)
             try:
@@ -425,7 +507,9 @@ class DocumentWorkflow:
                     retry_policy=RetryPolicy(maximum_attempts=5),
                 )
                 raise RuntimeError(f"Temporal document {phase} phase failed permanently")
+            await self._continue_if_reprocessed(request)
 
+        await self._continue_if_reprocessed(request)
         _upsert_document_search_attributes("publishing_review", request)
         review_configuration = _serialized_configuration_for_phase(snapshot, "judge")
         try:
@@ -451,6 +535,7 @@ class DocumentWorkflow:
     @workflow.run
     async def run(self, request: DocumentWorkflowRequest) -> DocumentWorkflowResult:
         _upsert_document_search_attributes("starting", request)
+        await self._continue_if_reprocessed(request)
         return await self._run_owned_lifecycle(request)
 
 
@@ -520,18 +605,36 @@ async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflow
 
     started = 0
     for child in discovery.workflow_starts:
-        with suppress(WorkflowAlreadyStartedError):
+        child_request = DocumentWorkflowRequest(
+            child.pipeline_run_id,
+            child.workflow_id,
+            child.paperless_document_id,
+        )
+        try:
             await workflow.start_child_workflow(
                 DocumentWorkflow.run,
-                DocumentWorkflowRequest(
-                    child.pipeline_run_id,
-                    child.workflow_id,
-                    child.paperless_document_id,
-                ),
+                child_request,
                 id=child.workflow_id,
                 parent_close_policy=workflow.ParentClosePolicy.ABANDON,
-                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                id_reuse_policy=(
+                    WorkflowIDReusePolicy.ALLOW_DUPLICATE
+                    if child.force
+                    else WorkflowIDReusePolicy.REJECT_DUPLICATE
+                ),
             )
+        except WorkflowAlreadyStartedError:
+            if child.force:
+                handle = workflow.get_external_workflow_handle(child.workflow_id)
+                await handle.signal(
+                    "force_reprocess_v2",
+                    {
+                        "intent_id": (f"poll-force:{request.command_id}:{child.pipeline_run_id}"),
+                        "payload": {
+                            "replacement_pipeline_run_id": child.pipeline_run_id,
+                            "replacement_temporal_workflow_id": child.workflow_id,
+                        },
+                    },
+                )
         started += 1
 
     return await workflow.execute_activity(

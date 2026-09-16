@@ -12,6 +12,7 @@ from app.temporal.contracts import (
     DocumentProcessResult,
     DocumentReadiness,
     DocumentReviewCompletion,
+    DocumentSupersession,
     DocumentWorkflowRequest,
     ModelPhaseConfiguration,
     ReviewCommitRequest,
@@ -280,9 +281,131 @@ async def test_embedding_gate_waits_for_signal_without_timer_polling(monkeypatch
 async def test_force_reprocess_supersedes_waiting_document_workflow(monkeypatch):
     calls = []
 
+    class ContinuedAsNew(Exception):
+        pass
+
     async def execute(activity_fn, argument, **_kwargs):
         calls.append((activity_fn, argument))
         return None
+
+    async def wait_condition(predicate):
+        assert predicate()
+
+    def continue_as_new(request):
+        assert request == DocumentWorkflowRequest(13, "archibot/document/261", 261)
+        raise ContinuedAsNew
+
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+    monkeypatch.setattr(workflows.workflow, "wait_condition", wait_condition)
+    monkeypatch.setattr(workflows.workflow, "continue_as_new", continue_as_new)
+    instance = workflows.DocumentWorkflow()
+    instance.force_reprocess(
+        {
+            "intent_id": "force-id",
+            "payload": {
+                "review_suggestion_id": 34,
+                "replacement_pipeline_run_id": 13,
+                "replacement_temporal_workflow_id": "archibot/document/261",
+            },
+        }
+    )
+
+    with pytest.raises(ContinuedAsNew):
+        await instance._finish_review(DocumentWorkflowRequest(12, "archibot/document/261", 261), 34)
+
+    assert calls == [(workflows.supersede_document_processing, DocumentSupersession(12, 13))]
+
+
+def test_signal_with_start_for_current_generation_does_not_self_supersede():
+    instance = workflows.DocumentWorkflow()
+    instance.force_reprocess(
+        {
+            "intent_id": "force-id",
+            "payload": {
+                "replacement_pipeline_run_id": 13,
+                "replacement_temporal_workflow_id": "archibot/document/261",
+            },
+        }
+    )
+
+    assert (
+        instance._replacement_request(DocumentWorkflowRequest(13, "archibot/document/261", 261))
+        is None
+    )
+    assert instance._force_reprocess is None
+
+
+def test_force_reprocess_signal_keeps_the_newest_pipeline_generation():
+    instance = workflows.DocumentWorkflow()
+    for pipeline_run_id in (13, 14, 13):
+        instance.force_reprocess(
+            {
+                "intent_id": f"force-{pipeline_run_id}",
+                "payload": {
+                    "replacement_pipeline_run_id": pipeline_run_id,
+                    "replacement_temporal_workflow_id": "archibot/document/261",
+                },
+            }
+        )
+
+    assert instance._force_reprocess_pipeline_run_id(instance._force_reprocess) == 14
+
+
+@pytest.mark.asyncio
+async def test_force_reprocess_supersedes_generations_arriving_during_projection(monkeypatch):
+    calls = []
+
+    class ContinuedAsNew(Exception):
+        pass
+
+    instance = workflows.DocumentWorkflow()
+
+    async def execute(activity_fn, argument, **_kwargs):
+        calls.append((activity_fn, argument))
+        if len(calls) == 1:
+            instance.force_reprocess(
+                {
+                    "intent_id": "force-14",
+                    "payload": {
+                        "replacement_pipeline_run_id": 14,
+                        "replacement_temporal_workflow_id": "archibot/document/261",
+                    },
+                }
+            )
+
+    def continue_as_new(request):
+        assert request == DocumentWorkflowRequest(14, "archibot/document/261", 261)
+        raise ContinuedAsNew
+
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+    monkeypatch.setattr(workflows.workflow, "continue_as_new", continue_as_new)
+    instance.force_reprocess(
+        {
+            "intent_id": "force-13",
+            "payload": {
+                "replacement_pipeline_run_id": 13,
+                "replacement_temporal_workflow_id": "archibot/document/261",
+            },
+        }
+    )
+
+    with pytest.raises(ContinuedAsNew):
+        await instance._continue_if_reprocessed(
+            DocumentWorkflowRequest(12, "archibot/document/261", 261)
+        )
+
+    assert calls == [
+        (workflows.supersede_document_processing, DocumentSupersession(12, 13)),
+        (workflows.supersede_document_processing, DocumentSupersession(13, 14)),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_legacy_force_signal_replays_the_separate_generation_behavior(monkeypatch):
+    calls = []
+
+    async def execute(activity_fn, argument, **_kwargs):
+        calls.append((activity_fn, argument))
 
     async def wait_condition(predicate):
         assert predicate()
@@ -292,15 +415,18 @@ async def test_force_reprocess_supersedes_waiting_document_workflow(monkeypatch)
     instance = workflows.DocumentWorkflow()
     instance.force_reprocess(
         {
-            "intent_id": "force-id",
+            "intent_id": "legacy-force",
             "payload": {
                 "review_suggestion_id": 34,
+                "replacement_pipeline_run_id": 13,
                 "replacement_temporal_workflow_id": "archibot/document/261/reprocess/13",
             },
         }
     )
 
-    result = await instance._finish_review(DocumentWorkflowRequest(12, "archibot/document/261"), 34)
+    result = await instance._finish_review(
+        DocumentWorkflowRequest(12, "archibot/document/261", 261), 34
+    )
 
     assert result.status == "superseded"
     assert calls == [

@@ -83,9 +83,8 @@ class TemporalWorkflowDispatcher
     {
         return DB::transaction(function () use ($run, $forceNewRun): PipelineRun {
             $run = PipelineRun::query()->lockForUpdate()->findOrFail($run->id);
-            $workflowId = filled($run->temporal_workflow_id)
-                ? (string) $run->temporal_workflow_id
-                : $this->documentWorkflowId($run, $forceNewRun);
+            $workflowId = $this->documentWorkflowId($run);
+            $forceReprocess = $forceNewRun || (bool) $run->reprocess_requested;
             $attributes = [
                 'orchestration_driver' => self::DRIVER,
                 'temporal_workflow_id' => $workflowId,
@@ -100,16 +99,31 @@ class TemporalWorkflowDispatcher
                 ];
             }
             PipelineRun::query()->whereKey($run->id)->update($attributes);
-            $this->outbox->startWorkflow(
-                intentKey: $this->intentKey("document:{$run->id}"),
-                workflowId: $workflowId,
-                workflowType: self::DOCUMENT_WORKFLOW,
-                payload: [
-                    'pipeline_run_id' => $run->id,
-                    'workflow_id' => $workflowId,
-                    'paperless_document_id' => $run->paperless_document_id,
-                ],
-            );
+            $startPayload = [
+                'pipeline_run_id' => $run->id,
+                'workflow_id' => $workflowId,
+                'paperless_document_id' => $run->paperless_document_id,
+            ];
+            if ($forceReprocess) {
+                $this->outbox->signalWithStart(
+                    intentKey: $this->intentKey("document-force:{$run->id}"),
+                    workflowId: $workflowId,
+                    workflowType: self::DOCUMENT_WORKFLOW,
+                    startPayload: $startPayload,
+                    signalName: 'force_reprocess_v2',
+                    signalPayload: [
+                        'replacement_pipeline_run_id' => $run->id,
+                        'replacement_temporal_workflow_id' => $workflowId,
+                    ],
+                );
+            } else {
+                $this->outbox->startWorkflow(
+                    intentKey: $this->intentKey("document:{$run->id}"),
+                    workflowId: $workflowId,
+                    workflowType: self::DOCUMENT_WORKFLOW,
+                    payload: $startPayload,
+                );
+            }
 
             return PipelineRun::query()->findOrFail($run->id);
         });
@@ -117,7 +131,7 @@ class TemporalWorkflowDispatcher
 
     public function reserveDocumentProcessing(PipelineRun $run, bool $forceNewRun = false): PipelineRun
     {
-        $workflowId = $this->documentWorkflowId($run, $forceNewRun);
+        $workflowId = $this->documentWorkflowId($run);
         PipelineRun::query()->whereKey($run->id)->update([
             'orchestration_driver' => self::DRIVER,
             'temporal_workflow_id' => $workflowId,
@@ -212,58 +226,13 @@ class TemporalWorkflowDispatcher
         ];
     }
 
-    /**
-     * End the document workflow waiting on this review when an administrator
-     * explicitly starts a replacement generation.
-     *
-     * @param  array{actor_principal: string, actor_user_id: int|null, actor_is_admin: bool}  $actor
-     * @return array{operation: string, temporal_workflow_id: string}|null
-     */
-    public function dispatchForceReprocess(
-        ReviewSuggestion $suggestion,
-        PipelineRun $replacement,
-        array $actor,
-    ): ?array {
-        $source = $suggestion->pipeline_run_id === null
-            ? null
-            : PipelineRun::query()->find($suggestion->pipeline_run_id);
-        if (
-            $suggestion->status !== ReviewSuggestion::STATUS_PENDING
-            || $source?->orchestration_driver !== self::DRIVER
-            || blank($source->temporal_workflow_id)
-            || ! in_array($source->progress_current_phase, ['awaiting_review', 'review_suggestion'], true)
-        ) {
-            return null;
-        }
-
-        $workflowId = (string) $source->temporal_workflow_id;
-        $this->outbox->signalWorkflow(
-            intentKey: $this->intentKey("force-reprocess:{$suggestion->id}:{$replacement->id}"),
-            workflowId: $workflowId,
-            signalName: 'force_reprocess_v2',
-            payload: [
-                'review_suggestion_id' => $suggestion->id,
-                'replacement_pipeline_run_id' => $replacement->id,
-                'replacement_temporal_workflow_id' => $replacement->temporal_workflow_id,
-                ...$actor,
-            ],
-        );
-
-        return [
-            'operation' => 'signal_workflow',
-            'temporal_workflow_id' => $workflowId,
-        ];
-    }
-
     private function intentKey(string $identity): string
     {
         return Uuid::uuid5(Uuid::NAMESPACE_URL, "archibot:{$identity}")->toString();
     }
 
-    private function documentWorkflowId(PipelineRun $run, bool $forceNewRun): string
+    private function documentWorkflowId(PipelineRun $run): string
     {
-        return $forceNewRun
-            ? "archibot/document/{$run->paperless_document_id}/reprocess/{$run->id}"
-            : "archibot/document/{$run->paperless_document_id}";
+        return "archibot/document/{$run->paperless_document_id}";
     }
 }

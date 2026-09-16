@@ -85,7 +85,7 @@ class _WriteConnection:
                     "id": 34,
                     "status": "blocked",
                     "orchestration_driver": "temporal",
-                    "temporal_workflow_id": "archibot/document/261/reprocess/poll-5",
+                    "temporal_workflow_id": "archibot/document/261",
                 }
             )
         return SimpleNamespace(rowcount=1)
@@ -168,6 +168,7 @@ def test_poll_persists_recoverable_embedding_block_reason(monkeypatch):
         if "INSERT INTO pipeline_runs" in statement
     )
     assert insert["status"] == "blocked"
+    assert insert["workflow_id"] == "archibot/document/261"
     assert insert["error_type"] == "embedding_index_not_ready"
     assert insert["error"] == "Waiting for embedding index to complete."
 

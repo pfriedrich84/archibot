@@ -129,7 +129,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
         if (
             exhausted
             and updated.rowcount == 1
-            and intent.operation in {"start_workflow", "signal_workflow"}
+            and intent.operation in {"start_workflow", "signal_workflow", "signal_with_start"}
             and isinstance(command_id, int)
             and not isinstance(command_id, bool)
         ):
@@ -152,7 +152,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
         if (
             exhausted
             and updated.rowcount == 1
-            and intent.operation in {"start_workflow", "signal_workflow"}
+            and intent.operation in {"start_workflow", "signal_workflow", "signal_with_start"}
             and isinstance(review_suggestion_id, int)
             and not isinstance(review_suggestion_id, bool)
             and isinstance(command_id, int)
@@ -177,7 +177,7 @@ def mark_failed(intent: OutboxIntent, error: str, max_attempts: int) -> None:
         if (
             exhausted
             and updated.rowcount == 1
-            and intent.operation == "start_workflow"
+            and intent.operation in {"start_workflow", "signal_with_start"}
             and isinstance(pipeline_run_id, int)
             and not isinstance(pipeline_run_id, bool)
         ):
