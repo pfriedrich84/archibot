@@ -88,7 +88,7 @@ class MaintenanceCommandDispatcher
                 ]);
 
                 $command = $this->temporal->startEmbeddingGeneration($command);
-                $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Reindex queued as a Temporal embedding workflow.', [
+                $this->recordEvent($request, $command, 'job_control.reindex_actor_queued', 'info', 'Full reindex queued through Temporal; document rescan follows the embedding rebuild.', [
                     'action' => DispatchCommand::TYPE_REINDEX,
                     'actor_name' => 'reindex',
                     'embedding_index_state_id' => $embeddingState->id,

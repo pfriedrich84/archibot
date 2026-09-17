@@ -391,7 +391,14 @@ def _finish_embedding_generation(progress: EmbeddingProgress) -> EmbeddingWorkfl
             sql_text(
                 """
                 UPDATE commands
-                SET status = CAST(:status AS character varying), finished_at = CURRENT_TIMESTAMP,
+                SET status = CASE
+                        WHEN type = 'reindex' AND :status = 'succeeded' THEN 'running'
+                        ELSE CAST(:status AS character varying)
+                    END,
+                    finished_at = CASE
+                        WHEN type = 'reindex' AND :status = 'succeeded' THEN NULL
+                        ELSE CURRENT_TIMESTAMP
+                    END,
                     error = :error, active_actor_token = NULL, updated_at = CURRENT_TIMESTAMP
                 WHERE id = :command_id
                 """

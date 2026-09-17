@@ -21,10 +21,13 @@ docker exec -it archibot archibot <command> [flags]
 
 ## Befehle
 
-### `reindex` — Voller Reindex
+### `reindex` — Alle Dokumente neu einlesen
 
-Baut den PostgreSQL/pgvector-Embedding-Index neu auf.
-Fuehrt optional OCR-Korrektur durch (wenn `OCR_MODE != off`).
+Baut zuerst den PostgreSQL/pgvector-Embedding-Index neu auf und startet danach
+fuer jedes Paperless-Dokument einen erzwungenen Lauf der vollstaendigen
+Dokument-Pipeline. OCR bleibt dabei von `OCR_MODE` und `OCR_REQUESTED_TAG_ID`
+abhaengig. Jeder Lauf erzeugt hoechstens einen neuen pending Review-Vorschlag;
+Paperless-Metadaten werden nicht automatisch uebernommen.
 
 ```bash
 archibot reindex
@@ -33,10 +36,12 @@ archibot reindex
 **Was passiert:**
 1. Die CLI delegiert an `php artisan archibot:maintenance-command reindex`
 2. Laravel markiert das Embedding-Gate als stale und schreibt den durable `reindex` Command zusammen mit einem unveraenderlichen Temporal-Outbox-Intent in einer Transaktion
-3. Das `EmbeddingIndexWorkflow` laedt Optionen aus `commands.payload`, fuehrt die idempotenten Embedding-Aktivitaeten aus und schreibt den Fortschritt nach jedem abgeschlossenen Dokument nach PostgreSQL
+3. Das `EmbeddingIndexWorkflow` baut den vertrauenswuerdigen Kontextindex neu auf
+4. Nach erfolgreichem Build entdeckt derselbe Workflow alle Paperless-Dokumente und erstellt fuer jedes eine erzwungene Pipeline-Generation
+5. Die stabilen Dokument-Workflows fuehren OCR (wenn konfiguriert), Ziel-Embedding, Klassifikation, Judge und Review-Vorschlag aus; vorhandene wartende Generationen werden sicher ersetzt
 
-**Wann nutzen:** Nach Wechsel des Embedding-Modells, bei beschaedigter Vektor-DB,
-oder beim ersten Setup.
+**Wann nutzen:** Nach Aenderung von Klassifikations-Prompts oder Modellen, fuer
+einen vollstaendigen Neu-Scan oder nach einer beschaedigten Vektor-DB.
 
 ---
 

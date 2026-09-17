@@ -21,8 +21,11 @@ def test_registered_document_activities_are_async_worker_safe():
     activities = (
         document_activities.create_scheduled_poll_command,
         document_activities.discover_inbox_documents,
+        document_activities.discover_reindex_documents,
         document_activities.finish_poll_discovery,
+        document_activities.finish_reindex_discovery,
         document_activities.fail_poll_discovery,
+        document_activities.fail_reindex_discovery,
         document_activities.check_document_readiness,
         document_activities.fail_document_processing,
     )
@@ -47,6 +50,10 @@ class _Paperless:
 
     async def list_inbox_documents(self, tag_id):
         assert tag_id == 7
+        return self.documents
+
+    async def list_all_documents(self, *, limit=None):
+        assert limit is None
         return self.documents
 
     async def get_document(self, document_id):
@@ -131,6 +138,38 @@ async def test_poll_discovery_skips_existing_reviews_and_returns_global_workflow
 
 
 @pytest.mark.asyncio
+async def test_reindex_discovery_forces_full_pipeline_for_every_document(monkeypatch):
+    documents = [
+        SimpleNamespace(id=1, modified=datetime(2026, 5, 8, tzinfo=UTC)),
+        SimpleNamespace(id=2, modified=datetime(2026, 5, 9, tzinfo=UTC)),
+    ]
+    paperless = _Paperless(documents)
+    persisted = []
+    monkeypatch.setattr(document_activities, "_load_reindex_command", lambda _: None)
+    monkeypatch.setattr(document_activities, "PaperlessClient", lambda: paperless)
+
+    def persist(**kwargs):
+        persisted.append(kwargs)
+        return DocumentWorkflowStart(
+            kwargs["paperless_document_id"],
+            f"archibot/document/{kwargs['paperless_document_id']}",
+            kwargs["paperless_document_id"],
+            True,
+        )
+
+    monkeypatch.setattr(document_activities, "_persist_observation_and_run", persist)
+
+    result = await document_activities.discover_reindex_documents(PollWorkflowRequest(5))
+
+    assert result.documents_seen == 2
+    assert len(result.workflow_starts) == 2
+    assert all(item["force"] is True for item in persisted)
+    assert all(item["source"] == "reindex" for item in persisted)
+    assert all(item["reprocess_mode"] == "full_document_pipeline" for item in persisted)
+    assert paperless.closed is True
+
+
+@pytest.mark.asyncio
 async def test_empty_instance_without_inbox_tag_finishes_discovery_without_paperless(
     monkeypatch,
 ):
@@ -171,6 +210,55 @@ def test_poll_persists_recoverable_embedding_block_reason(monkeypatch):
     assert insert["workflow_id"] == "archibot/document/261"
     assert insert["error_type"] == "embedding_index_not_ready"
     assert insert["error"] == "Waiting for embedding index to complete."
+
+
+def test_full_reindex_persists_forced_document_generation_metadata(monkeypatch):
+    fake_engine = _WriteEngine()
+    monkeypatch.setattr(document_activities, "engine", lambda: fake_engine)
+    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
+
+    document_activities._persist_observation_and_run(
+        command_id=5,
+        paperless_document_id=261,
+        modified="2026-09-15T09:40:00.000000Z",
+        force=True,
+        source="reindex",
+        reprocess_reason="full_reindex",
+        reprocess_mode="full_document_pipeline",
+    )
+
+    insert = next(
+        parameters
+        for statement, parameters in fake_engine.connection.calls
+        if "INSERT INTO pipeline_runs" in statement
+    )
+    assert insert["source"] == "reindex"
+    assert json.loads(insert["coalesced_sources"]) == ["reindex"]
+    assert insert["reprocess_reason"] == "full_reindex"
+    assert insert["reprocess_mode"] == "full_document_pipeline"
+
+
+def test_full_reindex_finishes_after_all_document_workflows_are_queued(monkeypatch):
+    connection = _WriteConnection()
+    calls = connection.calls
+    monkeypatch.setattr(
+        document_activities,
+        "engine",
+        lambda: SimpleNamespace(begin=lambda: nullcontext(connection)),
+    )
+    monkeypatch.setattr(document_activities, "sql_text", lambda statement: statement)
+
+    document_activities._finish_reindex_discovery(
+        document_activities.PollWorkflowResult(5, 12, 12, 0, "succeeded")
+    )
+
+    assert "type = 'reindex'" in calls[0][0]
+    payload = json.loads(calls[1][1]["payload"])
+    assert payload == {
+        "documents_seen": 12,
+        "documents_started": 12,
+        "documents_skipped": 0,
+    }
 
 
 class _ScheduledResult:

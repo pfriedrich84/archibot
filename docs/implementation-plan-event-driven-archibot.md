@@ -143,7 +143,7 @@ Die revisionsgebundene Detailansicht steht in [`event-driven-phase-status.md`](i
 - Actor Executions sind mit Command, Pipeline Run oder Webhook Delivery verknuepft; Laravel Recovery behandelt stale/rertryable Attempts, Cancellation und Entity Sync ueber diese Quelle.
 - Supervisor startet ausschliesslich Laravel Queue, Scheduler und Recovery. Nur autorisierte manuelle Annahme erzeugt einen `review_commit` Command; Confidence-Auto-Commit ist gemaess ADR-0018 entfernt.
 - `worker_jobs`-Runtime, Routen und Kompatibilitaet sind fuer Clean Installs entfernt.
-- Der fruehere Python Queue-Transport, SDK, Konfiguration, Clean-Install-Schema und zugehoerige Tests sind entfernt. Bestehende historische Schemaobjekte bleiben fuer Retention/Rollback inert. Full-Reindex- und Runtime-Timeout-Luecken bleiben offen.
+- Der fruehere Python Queue-Transport, SDK, Konfiguration, Clean-Install-Schema und zugehoerige Tests sind entfernt. Bestehende historische Schemaobjekte bleiben fuer Retention/Rollback inert. Full Reindex baut den vertrauenswuerdigen Embedding-Kontext neu auf und startet danach erzwungene Dokument-Workflows fuer alle Paperless-Dokumente; die Runtime-Timeout-Luecke bleibt offen.
 
 ## Verbleibende Runtime- und Release-Follow-ups
 
@@ -152,7 +152,6 @@ Der produktive Queue-/State-Cutover ist abgeschlossen: Python Processing Actors 
 Verbleibende, separat zu planende Arbeit:
 
 - Endliche, begruendete Actor-/Process-Timeouts, Heartbeats und kooperative Cancellation definieren und testen; `timeout = 0` und unbeschraenkte Child Processes sind kein abgeschlossenes Runtime-Modell.
-- Full Reindex ueber den Namen hinaus funktional herstellen; der aktuelle Reindex Actor baut nur den Embedding Index neu.
 - PostgreSQL-Restart, Scheduler-Timing, Backup/Rollback und Paperless-Integration in einer repraesentativen Deployment-Umgebung als Release-Evidence pruefen.
 
 ## Risiken und Gegenmassnahmen

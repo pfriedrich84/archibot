@@ -23,6 +23,7 @@ with workflow.unsafe.imports_passed_through():
         EmbeddingWorkflowResult,
         EmbedDocumentRequest,
         ModelPhaseConfiguration,
+        PollDiscoveryResult,
         PollWorkflowRequest,
         PollWorkflowResult,
         ReviewCommitRequest,
@@ -33,9 +34,12 @@ with workflow.unsafe.imports_passed_through():
         check_document_readiness,
         create_scheduled_poll_command,
         discover_inbox_documents,
+        discover_reindex_documents,
         fail_document_processing,
         fail_poll_discovery,
+        fail_reindex_discovery,
         finish_poll_discovery,
+        finish_reindex_discovery,
     )
     from app.temporal.document_phase_activities import (
         finish_document_review,
@@ -243,9 +247,48 @@ class EmbeddingIndexWorkflow:
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(maximum_attempts=5),
         )
-        return await self._run_generation(
+        result = await self._run_generation(
             request, _serialized_configuration_for_phase(snapshot, "embedding")
         )
+        if result.status != "complete" or not request.rescan_all:
+            return result
+
+        try:
+            discovery = await workflow.execute_activity(
+                discover_reindex_documents,
+                PollWorkflowRequest(request.command_id),
+                schedule_to_close_timeout=timedelta(hours=6),
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=timedelta(minutes=2),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=5,
+                    non_retryable_error_types=["ValueError"],
+                ),
+            )
+            if discovery.status == "skipped":
+                return result
+            started = await _start_discovered_document_workflows(discovery, "reindex")
+            await workflow.execute_activity(
+                finish_reindex_discovery,
+                PollWorkflowResult(
+                    command_id=request.command_id,
+                    documents_seen=discovery.documents_seen,
+                    documents_started=started,
+                    documents_skipped=discovery.documents_skipped,
+                    status=discovery.status,
+                ),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+        except ActivityError:
+            await workflow.execute_activity(
+                fail_reindex_discovery,
+                request.command_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=5),
+            )
+            raise
+        return result
 
 
 @workflow.defn(name=DOCUMENT_WORKFLOW)
@@ -581,28 +624,10 @@ class PollReconciliationWorkflow:
         return await _run_poll_reconciliation(request)
 
 
-async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflowResult:
-    try:
-        discovery = await workflow.execute_activity(
-            discover_inbox_documents,
-            request,
-            schedule_to_close_timeout=timedelta(hours=6),
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=timedelta(minutes=2),
-            retry_policy=RetryPolicy(
-                maximum_attempts=5,
-                non_retryable_error_types=["ValueError"],
-            ),
-        )
-    except ActivityError:
-        await workflow.execute_activity(
-            fail_poll_discovery,
-            request.command_id,
-            start_to_close_timeout=timedelta(minutes=1),
-            retry_policy=RetryPolicy(maximum_attempts=5),
-        )
-        raise
-
+async def _start_discovered_document_workflows(
+    discovery: PollDiscoveryResult,
+    source: str,
+) -> int:
     started = 0
     for child in discovery.workflow_starts:
         child_request = DocumentWorkflowRequest(
@@ -628,7 +653,9 @@ async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflow
                 await handle.signal(
                     "force_reprocess_v2",
                     {
-                        "intent_id": (f"poll-force:{request.command_id}:{child.pipeline_run_id}"),
+                        "intent_id": (
+                            f"{source}-force:{discovery.command_id}:{child.pipeline_run_id}"
+                        ),
                         "payload": {
                             "replacement_pipeline_run_id": child.pipeline_run_id,
                             "replacement_temporal_workflow_id": child.workflow_id,
@@ -636,6 +663,32 @@ async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflow
                     },
                 )
         started += 1
+    return started
+
+
+async def _run_poll_reconciliation(request: PollWorkflowRequest) -> PollWorkflowResult:
+    try:
+        discovery = await workflow.execute_activity(
+            discover_inbox_documents,
+            request,
+            schedule_to_close_timeout=timedelta(hours=6),
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(
+                maximum_attempts=5,
+                non_retryable_error_types=["ValueError"],
+            ),
+        )
+    except ActivityError:
+        await workflow.execute_activity(
+            fail_poll_discovery,
+            request.command_id,
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=RetryPolicy(maximum_attempts=5),
+        )
+        raise
+
+    started = await _start_discovered_document_workflows(discovery, "poll")
 
     return await workflow.execute_activity(
         finish_poll_discovery,

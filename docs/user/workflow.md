@@ -56,6 +56,8 @@ Webhook-, Reconciliation- und UI-Starts erscheinen gemeinsam in `/operations-log
 
 Nur Dokumente mit dem Inbox-Tag (`PAPERLESS_INBOX_TAG_ID`) sind Poll-Kandidaten. Sobald ArchiBot nach erfolgreicher Klassifikation einen Review-Vorschlag gespeichert hat, dient dieser als dauerhafter Klassifikationsmarker. Weitere automatische Polls ueberspringen das Inbox-Dokument auch dann, wenn ein Review oder Commit den Paperless-`modified`-Zeitstempel geaendert hat und `KEEP_INBOX_TAG=true` ist. Ein abgelehnter Vorschlag bleibt ebenfalls markiert; fuer eine gewollte neue Klassifikation stehen der explizite Force-Poll und das manuelle Force-Reprocess zur Verfuegung. Parallel eintreffende Webhooks und Polls werden zusaetzlich ueber den gemeinsamen Pipeline-Dedupe-Key zusammengefuehrt.
 
+**Start full reindex** unter Admin Maintenance ist davon getrennt: Die Aktion baut zuerst den vertrauenswuerdigen Embedding-Kontext neu auf und startet danach fuer jedes Paperless-Dokument — nicht nur fuer Inbox-Dokumente — einen erzwungenen vollstaendigen Dokument-Workflow. Die entstehenden Vorschlaege bleiben im manuellen Review; der Reindex uebernimmt keine Metadaten automatisch.
+
 ### 2. Kontext-basierte Klassifikation
 
 Der Classifier sucht per Embedding-Similarity die aehnlichsten bereits
