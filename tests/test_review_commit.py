@@ -101,6 +101,28 @@ def test_build_paperless_patch_never_assigns_configured_ocr_tag(monkeypatch):
     assert fields == {"tags": [4, 10]}
 
 
+def test_build_paperless_patch_never_assigns_inbox_descendants():
+    record = review_commit.ReviewCommitRecord(
+        id=1,
+        paperless_document_id=42,
+        proposed_title=None,
+        proposed_date=None,
+        proposed_correspondent_id=None,
+        proposed_document_type_id=None,
+        proposed_storage_path_id=None,
+        proposed_tags=[{"id": 10}, {"id": 11}, {"id": 12}],
+    )
+
+    fields = review_commit.build_paperless_patch(
+        record,
+        current_tags=[4],
+        current_storage_path=None,
+        forbidden_tag_ids={9, 10, 11},
+    )
+
+    assert fields == {"tags": [4, 12]}
+
+
 def test_build_paperless_patch_sets_absent_storage_path_after_manual_review():
     record = review_commit.ReviewCommitRecord(
         id=1,
@@ -129,6 +151,9 @@ async def test_commit_review_suggestion_to_paperless_patches_fields():
             return SimpleNamespace(
                 tags=[4], storage_path=None, current_version_id=77, current_version_checksum="abc"
             )
+
+        async def list_tags(self):
+            return []
 
         async def patch_reviewed_document(self, document_id, fields):
             patched.append((document_id, fields))
@@ -167,6 +192,9 @@ async def test_commit_review_suggestion_to_paperless_fails_closed_on_version_mis
                 current_version_checksum="abc",
             )
 
+        async def list_tags(self):
+            return []
+
     record = review_commit.ReviewCommitRecord(
         id=1,
         paperless_document_id=42,
@@ -200,6 +228,9 @@ async def test_retry_after_successful_patch_is_recognized_as_committed():
                 current_version_id=78,
                 current_version_checksum="changed-by-patch",
             )
+
+        async def list_tags(self):
+            return []
 
         async def patch_reviewed_document(self, document_id, fields):
             patched.append((document_id, fields))

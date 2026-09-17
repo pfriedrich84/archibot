@@ -7,7 +7,7 @@ from typing import Any
 
 from app.clients.paperless import PaperlessClient
 from app.jobs.database import engine
-from app.pipeline.ocr_correction import ocr_requested_tag_id
+from app.pipeline.tag_policy import reserved_classification_tag_ids
 
 
 @dataclass(frozen=True)
@@ -104,18 +104,25 @@ def _optional_int(value: object) -> int | None:
     return None if value is None else int(value)
 
 
-def _assignable_tag_ids(proposed_tags: list[dict[str, Any]]) -> set[int]:
-    """Resolve proposed IDs while reserving the OCR tag for workflow control only."""
-    reserved_id = ocr_requested_tag_id()
+def _assignable_tag_ids(
+    proposed_tags: list[dict[str, Any]], forbidden_tag_ids: set[int] | None = None
+) -> set[int]:
+    """Resolve proposed IDs while reserving workflow-control tags."""
+    reserved_ids = reserved_classification_tag_ids([]) | (forbidden_tag_ids or set())
     return {
         int(tag["id"])
         for tag in proposed_tags
-        if isinstance(tag, dict) and tag.get("id") is not None and int(tag["id"]) != reserved_id
+        if isinstance(tag, dict)
+        and tag.get("id") is not None
+        and int(tag["id"]) not in reserved_ids
     }
 
 
 def build_paperless_patch(
-    record: ReviewCommitRecord, current_tags: list[int], current_storage_path: int | None
+    record: ReviewCommitRecord,
+    current_tags: list[int],
+    current_storage_path: int | None,
+    forbidden_tag_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     """Build safe Paperless PATCH fields from reviewed IDs only."""
     fields: dict[str, Any] = {}
@@ -132,14 +139,18 @@ def build_paperless_patch(
     if current_storage_path is None and record.proposed_storage_path_id is not None:
         fields["storage_path"] = record.proposed_storage_path_id
 
-    tag_ids = _assignable_tag_ids(record.proposed_tags)
+    tag_ids = _assignable_tag_ids(record.proposed_tags, forbidden_tag_ids)
     if tag_ids:
         fields["tags"] = sorted(set(current_tags) | tag_ids)
 
     return fields
 
 
-def paperless_document_matches_review(record: ReviewCommitRecord, document: Any) -> bool:
+def paperless_document_matches_review(
+    record: ReviewCommitRecord,
+    document: Any,
+    forbidden_tag_ids: set[int] | None = None,
+) -> bool:
     """Return whether Paperless already contains every reviewed writable value.
 
     This closes the activity retry gap after Paperless accepted a PATCH but the
@@ -162,7 +173,7 @@ def paperless_document_matches_review(record: ReviewCommitRecord, document: Any)
     if document.storage_path is None and record.proposed_storage_path_id is not None:
         return False
 
-    proposed_tag_ids = _assignable_tag_ids(record.proposed_tags)
+    proposed_tag_ids = _assignable_tag_ids(record.proposed_tags, forbidden_tag_ids)
     return proposed_tag_ids.issubset(set(document.tags))
 
 
@@ -171,6 +182,8 @@ async def commit_review_suggestion_to_paperless(
 ) -> dict[str, Any]:
     """Patch Paperless for one accepted review suggestion."""
     document = await paperless.get_document(record.paperless_document_id)
+    tags = await paperless.list_tags()
+    forbidden_tag_ids = reserved_classification_tag_ids(tags)
     version_changed = (
         record.paperless_version_id is not None
         and document.current_version_id != record.paperless_version_id
@@ -180,14 +193,16 @@ async def commit_review_suggestion_to_paperless(
         and document.current_version_checksum != record.paperless_version_checksum
     )
     if (version_changed or checksum_changed) and paperless_document_matches_review(
-        record, document
+        record, document, forbidden_tag_ids
     ):
         return {}
     if version_changed:
         raise ValueError("Paperless document version changed before commit")
     if checksum_changed:
         raise ValueError("Paperless document checksum changed before commit")
-    fields = build_paperless_patch(record, document.tags, document.storage_path)
+    fields = build_paperless_patch(
+        record, document.tags, document.storage_path, forbidden_tag_ids
+    )
     if fields:
         await paperless.patch_reviewed_document(record.paperless_document_id, fields)
     return fields

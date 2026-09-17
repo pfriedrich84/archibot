@@ -21,7 +21,7 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
 6. tags: Pruefe besonders defensiv; das dynamische Tag-Limit ist eine Obergrenze, kein Ziel.
    - Entferne jeden Tag ohne klare, konkrete Evidenz im Zieldokument. Ein einzelnes Kontext-Dokument, Dokumenttyp, Korrespondent oder allgemeines Thema allein reichen nicht.
    - Entferne generische, redundante, nur assoziierte und rein technische Workflow-Tags.
-   - Das konfigurierte OCR-Steuerungs-Tag darf niemals vorgeschlagen werden. Ist es im Erstvorschlag enthalten, antworte mit `corrected` und entferne es.
+   - Das konfigurierte OCR-Steuerungs-Tag sowie das konfigurierte Posteingang-Tag und alle seine Unter-Tags duerfen niemals vorgeschlagen werden. Ist eines davon im Erstvorschlag enthalten, antworte mit `corrected` und entferne es.
    - Behalte nur Tags mit mindestens 80 confidence. Weniger oder keine Tags sind ausdruecklich korrekt; `[]` ist besser als ein unsicherer Tag.
    - Neue Tags nur behalten, wenn sie im Zieldokument eindeutig als dauerhafte Kategorie belegt sind und kein bestehender Tag passt. Keine Duplikate.
 7. date: Ausgabe nur als YYYY-MM-DD oder null. Kein Freitext.

@@ -167,8 +167,14 @@ class PaperlessEntity(BaseModel):
     slug: str | None = None
     match: str | None = None
     matching_algorithm: int | None = None
+    parent: int | None = None
 
     model_config = ConfigDict(extra="ignore")
+
+    @field_validator("parent", mode="before")
+    @classmethod
+    def _coerce_parent_id(cls, value: Any) -> int | None:
+        return _coerce_optional_entity_id(value)
 
 
 # =============================================================================

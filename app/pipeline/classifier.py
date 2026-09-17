@@ -16,8 +16,11 @@ from app.models import (
     PaperlessEntity,
     document_date_for,
 )
-from app.pipeline.ocr_correction import ocr_requested_tag_id
 from app.pipeline.ports import AiProviderGateway
+from app.pipeline.tag_policy import (
+    reserved_classification_tag_ids,
+    reserved_classification_tag_names,
+)
 from app.prompt_store import load_prompt
 
 log = structlog.get_logger(__name__)
@@ -147,20 +150,13 @@ def _classification_max_tags() -> int:
 
 
 def _classification_tags(tags: list[PaperlessEntity]) -> list[PaperlessEntity]:
-    """Exclude the configured OCR control tag from classification metadata."""
-    reserved_id = ocr_requested_tag_id()
-    if reserved_id == 0:
-        return tags
-    return [tag for tag in tags if tag.id != reserved_id]
+    """Exclude workflow-control tags from classification metadata."""
+    reserved_ids = reserved_classification_tag_ids(tags)
+    return [tag for tag in tags if tag.id not in reserved_ids]
 
 
 def _reserved_tag_names(tags: list[PaperlessEntity]) -> set[str]:
-    reserved_id = ocr_requested_tag_id()
-    return {
-        tag.name.strip().casefold()
-        for tag in tags
-        if reserved_id and tag.id == reserved_id and tag.name.strip()
-    }
+    return reserved_classification_tag_names(tags)
 
 
 def _classification_response_schema() -> dict[str, object]:
@@ -306,7 +302,10 @@ def build_user_prompt(
         _format_entity_list("Tags", allowed_tags),
         "",
         "# Technische Tags (niemals als Klassifikation vorschlagen)",
-        _format_name_list("OCR-Steuerungs-Tag (niemals vorschlagen)", reserved_tag_names),
+        _format_name_list(
+            "OCR-/Posteingang-Steuerungs-Tags und deren Unter-Tags (niemals vorschlagen)",
+            reserved_tag_names,
+        ),
         "",
         "# Von ArchiBot abgelehnte Entitaeten (nicht vorschlagen)",
         _format_name_list("Abgelehnte Korrespondenten", blacklisted_correspondents),

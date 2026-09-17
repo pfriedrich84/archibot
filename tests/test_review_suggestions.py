@@ -6,6 +6,28 @@ from app.models import ClassificationResult, PaperlessEntity, ProposedTag
 _DEFAULT_ROW = {"id": 12, "status": "pending"}
 
 
+def test_proposed_tags_excludes_inbox_descendants(monkeypatch):
+    monkeypatch.setattr("app.pipeline.tag_policy.settings.paperless_inbox_tag_id", 9)
+    result = ClassificationResult(
+        title="Document",
+        tags=[
+            ProposedTag(name="Inbox child", confidence=99),
+            ProposedTag(name="Nested child", confidence=95),
+            ProposedTag(name="Finanzen", confidence=90),
+        ],
+    )
+    tags = [
+        PaperlessEntity(id=9, name="Inbox"),
+        PaperlessEntity(id=10, name="Inbox child", parent=9),
+        PaperlessEntity(id=11, name="Nested child", parent=10),
+        PaperlessEntity(id=12, name="Finanzen"),
+    ]
+
+    assert review_suggestions._proposed_tags(result, tags) == [
+        {"name": "Finanzen", "confidence": 90, "id": 12}
+    ]
+
+
 def test_proposed_tags_excludes_configured_ocr_tag(monkeypatch):
     monkeypatch.setattr("app.pipeline.ocr_correction.settings.ocr_requested_tag_id", 9)
     result = ClassificationResult(
