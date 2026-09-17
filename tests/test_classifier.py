@@ -224,7 +224,10 @@ class TestBuildUserPrompt:
 
         assert "Tags: Finanzen, Wohnung" in prompt
         assert "Tags: Finanzen, Strom" not in prompt
-        assert "OCR-Steuerungs-Tag (niemals vorschlagen): Strom" in prompt
+        assert (
+            "OCR-/Posteingang-Steuerungs-Tags und deren Unter-Tags "
+            "(niemals vorschlagen): Strom" in prompt
+        )
 
     def test_prompt_includes_blacklists_and_dynamic_tag_limit(
         self,
