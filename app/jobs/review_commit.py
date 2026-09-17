@@ -110,9 +110,7 @@ def _assignable_tag_ids(proposed_tags: list[dict[str, Any]]) -> set[int]:
     return {
         int(tag["id"])
         for tag in proposed_tags
-        if isinstance(tag, dict)
-        and tag.get("id") is not None
-        and int(tag["id"]) != reserved_id
+        if isinstance(tag, dict) and tag.get("id") is not None and int(tag["id"]) != reserved_id
     }
 
 

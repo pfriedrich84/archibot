@@ -94,7 +94,9 @@ def test_build_paperless_patch_never_assigns_configured_ocr_tag(monkeypatch):
         proposed_tags=[{"id": 9}, {"id": 10}],
     )
 
-    fields = review_commit.build_paperless_patch(record, current_tags=[4], current_storage_path=None)
+    fields = review_commit.build_paperless_patch(
+        record, current_tags=[4], current_storage_path=None
+    )
 
     assert fields == {"tags": [4, 10]}
 
