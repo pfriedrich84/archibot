@@ -200,9 +200,7 @@ async def commit_review_suggestion_to_paperless(
         raise ValueError("Paperless document version changed before commit")
     if checksum_changed:
         raise ValueError("Paperless document checksum changed before commit")
-    fields = build_paperless_patch(
-        record, document.tags, document.storage_path, forbidden_tag_ids
-    )
+    fields = build_paperless_patch(record, document.tags, document.storage_path, forbidden_tag_ids)
     if fields:
         await paperless.patch_reviewed_document(record.paperless_document_id, fields)
     return fields

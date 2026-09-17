@@ -39,7 +39,5 @@ def reserved_classification_tag_names(tags: list[PaperlessEntity]) -> set[str]:
     """Return normalized names for every reserved classification tag."""
     reserved_ids = reserved_classification_tag_ids(tags)
     return {
-        tag.name.strip().casefold()
-        for tag in tags
-        if tag.id in reserved_ids and tag.name.strip()
+        tag.name.strip().casefold() for tag in tags if tag.id in reserved_ids and tag.name.strip()
     }
