@@ -16,6 +16,7 @@ from app.models import (
     PaperlessEntity,
     document_date_for,
 )
+from app.pipeline.ocr_correction import ocr_requested_tag_id
 from app.pipeline.ports import AiProviderGateway
 from app.prompt_store import load_prompt
 
@@ -145,6 +146,23 @@ def _classification_max_tags() -> int:
         return 4
 
 
+def _classification_tags(tags: list[PaperlessEntity]) -> list[PaperlessEntity]:
+    """Exclude the configured OCR control tag from classification metadata."""
+    reserved_id = ocr_requested_tag_id()
+    if reserved_id == 0:
+        return tags
+    return [tag for tag in tags if tag.id != reserved_id]
+
+
+def _reserved_tag_names(tags: list[PaperlessEntity]) -> set[str]:
+    reserved_id = ocr_requested_tag_id()
+    return {
+        tag.name.strip().casefold()
+        for tag in tags
+        if reserved_id and tag.id == reserved_id and tag.name.strip()
+    }
+
+
 def _classification_response_schema() -> dict[str, object]:
     """Return a bounded schema for provider-side constrained decoding."""
     nullable_name = {"anyOf": [{"type": "string", "maxLength": 150}, {"type": "null"}]}
@@ -211,6 +229,7 @@ def _normalize_classification_result(
     result: ClassificationResult,
     *,
     target: PaperlessDocument,
+    forbidden_tag_names: set[str] | None = None,
 ) -> ClassificationResult:
     """Sanitize model output without altering classification intent."""
     title = result.title.strip()
@@ -224,6 +243,7 @@ def _normalize_classification_result(
     )
 
     seen: set[str] = set()
+    forbidden = {name.casefold() for name in (forbidden_tag_names or set())}
     max_tags = _classification_max_tags()
     norm_tags = []
     for tag in result.tags:
@@ -231,7 +251,7 @@ def _normalize_classification_result(
         if not name:
             continue
         key = name.casefold()
-        if key in seen:
+        if key in seen or key in forbidden:
             continue
         seen.add(key)
         norm_tags.append({"name": name, "confidence": _clamp_confidence(tag.confidence)})
@@ -268,6 +288,10 @@ def build_user_prompt(
 ) -> str:
     # --- Fixed sections (entity lists + task instructions) ---
     max_tags = _classification_max_tags()
+    allowed_tags = _classification_tags(tags)
+    reserved_tag_names = sorted(
+        tag.name for tag in tags if tag.name.strip().casefold() in _reserved_tag_names(tags)
+    )
     blacklisted_correspondents = _load_blacklist_names("correspondent")
     blacklisted_doctypes = _load_blacklist_names("document_type")
     blacklisted_tags = _load_blacklist_names("tag")
@@ -279,7 +303,10 @@ def build_user_prompt(
         _format_entity_list("Korrespondenten", correspondents),
         _format_entity_list("Dokumenttypen", doctypes),
         _format_entity_list("Speicherpfade", storage_paths),
-        _format_entity_list("Tags", tags),
+        _format_entity_list("Tags", allowed_tags),
+        "",
+        "# Technische Tags (niemals als Klassifikation vorschlagen)",
+        _format_name_list("OCR-Steuerungs-Tag (niemals vorschlagen)", reserved_tag_names),
         "",
         "# Von ArchiBot abgelehnte Entitaeten (nicht vorschlagen)",
         _format_name_list("Abgelehnte Korrespondenten", blacklisted_correspondents),
@@ -353,7 +380,12 @@ def build_user_prompt(
         for c in active_context:
             sections.append(
                 _format_context_block(
-                    c, context_bytes_per_doc, correspondents, doctypes, storage_paths, tags
+                    c,
+                    context_bytes_per_doc,
+                    correspondents,
+                    doctypes,
+                    storage_paths,
+                    allowed_tags,
                 )
             )
 
@@ -413,7 +445,11 @@ async def classify(
         log.error("failed to validate classification", error=str(exc), raw=raw_str[:500])
         raise
 
-    result = _normalize_classification_result(result, target=target)
+    result = _normalize_classification_result(
+        result,
+        target=target,
+        forbidden_tag_names=_reserved_tag_names(tags),
+    )
     return result, raw_str
 
 
@@ -466,7 +502,12 @@ def build_judge_user_prompt(
     return f"{base}\n# Bestehender Klassifikations-Vorschlag (vom ersten Pass)\n{proposal_json}\n"
 
 
-def _parse_judge_verdict(raw: dict, *, target: PaperlessDocument) -> JudgeVerdict:
+def _parse_judge_verdict(
+    raw: dict,
+    *,
+    target: PaperlessDocument,
+    forbidden_tag_names: set[str] | None = None,
+) -> JudgeVerdict:
     """Parse the raw judge JSON into a validated JudgeVerdict."""
     verdict_raw = str(raw.get("verdict", "")).strip().lower()
     reasoning = (str(raw.get("reasoning") or "")).strip()
@@ -489,7 +530,11 @@ def _parse_judge_verdict(raw: dict, *, target: PaperlessDocument) -> JudgeVerdic
         log.warning("judge returned invalid corrected payload", error=str(exc))
         return JudgeVerdict(verdict="error", reasoning=reasoning or "invalid corrected payload")
 
-    corrected = _normalize_classification_result(corrected, target=target)
+    corrected = _normalize_classification_result(
+        corrected,
+        target=target,
+        forbidden_tag_names=forbidden_tag_names,
+    )
     return JudgeVerdict(verdict="corrected", reasoning=reasoning, corrected=corrected)
 
 
@@ -549,4 +594,8 @@ async def verify(
         log.warning("judge call failed", doc_id=target.id, error=str(exc))
         return JudgeVerdict(verdict="error", reasoning=str(exc)[:300])
 
-    return _parse_judge_verdict(raw, target=target)
+    return _parse_judge_verdict(
+        raw,
+        target=target,
+        forbidden_tag_names=_reserved_tag_names(tags),
+    )

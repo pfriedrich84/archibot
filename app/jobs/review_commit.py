@@ -7,6 +7,7 @@ from typing import Any
 
 from app.clients.paperless import PaperlessClient
 from app.jobs.database import engine
+from app.pipeline.ocr_correction import ocr_requested_tag_id
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,18 @@ def _optional_int(value: object) -> int | None:
     return None if value is None else int(value)
 
 
+def _assignable_tag_ids(proposed_tags: list[dict[str, Any]]) -> set[int]:
+    """Resolve proposed IDs while reserving the OCR tag for workflow control only."""
+    reserved_id = ocr_requested_tag_id()
+    return {
+        int(tag["id"])
+        for tag in proposed_tags
+        if isinstance(tag, dict)
+        and tag.get("id") is not None
+        and int(tag["id"]) != reserved_id
+    }
+
+
 def build_paperless_patch(
     record: ReviewCommitRecord, current_tags: list[int], current_storage_path: int | None
 ) -> dict[str, Any]:
@@ -121,13 +134,9 @@ def build_paperless_patch(
     if current_storage_path is None and record.proposed_storage_path_id is not None:
         fields["storage_path"] = record.proposed_storage_path_id
 
-    tag_ids = [
-        int(tag["id"])
-        for tag in record.proposed_tags
-        if isinstance(tag, dict) and tag.get("id") is not None
-    ]
+    tag_ids = _assignable_tag_ids(record.proposed_tags)
     if tag_ids:
-        fields["tags"] = sorted(set(current_tags) | set(tag_ids))
+        fields["tags"] = sorted(set(current_tags) | tag_ids)
 
     return fields
 
@@ -155,11 +164,7 @@ def paperless_document_matches_review(record: ReviewCommitRecord, document: Any)
     if document.storage_path is None and record.proposed_storage_path_id is not None:
         return False
 
-    proposed_tag_ids = {
-        int(tag["id"])
-        for tag in record.proposed_tags
-        if isinstance(tag, dict) and tag.get("id") is not None
-    }
+    proposed_tag_ids = _assignable_tag_ids(record.proposed_tags)
     return proposed_tag_ids.issubset(set(document.tags))
 
 

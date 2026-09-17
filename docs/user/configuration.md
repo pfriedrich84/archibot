@@ -55,7 +55,7 @@ Die Admin-Settings laden die Modellliste einmal von diesem Endpunkt. Klassifikat
 | Variable | Default | Beschreibung |
 |---|---|---|
 | `OCR_MODE` | `off` | OCR-Stufe: `off`, `text`, `vision_light`, `vision_full` |
-| `OCR_REQUESTED_TAG_ID` | `0` | Optionaler Paperless-Tag-Filter fuer OCR. `0`, leer oder nicht gesetzt = OCR fuer alle Dokumente. In der Settings-UI kann eine leere Auswahl den Env-Wert deaktivieren. Wenn der Tag spaeter in Paperless geloescht wird, wird OCR uebersprungen und ein Fehler im Dashboard angezeigt. Webhooks ohne Tag-IDs loesen keinen Zusatz-Lookup fuer OCR aus und ueberspringen OCR. |
+| `OCR_REQUESTED_TAG_ID` | `0` | Optionaler Paperless-Tag-Filter fuer OCR. `0`, leer oder nicht gesetzt = OCR fuer alle Dokumente. In der Settings-UI kann eine leere Auswahl den Env-Wert deaktivieren. Wenn der Tag spaeter in Paperless geloescht wird, wird OCR uebersprungen und ein Fehler im Dashboard angezeigt. Webhooks ohne Tag-IDs loesen keinen Zusatz-Lookup fuer OCR aus und ueberspringen OCR. Das konfigurierte Tag ist fuer die Ablaufsteuerung reserviert: Es wird nicht als Klassifikations-Tag vorgeschlagen oder durch einen Review-Commit neu vergeben; ein bereits vorhandenes Tag bleibt erhalten. |
 | `OCR_TEXT_MODEL` / `OCR_MODEL` / `OLLAMA_OCR_MODEL` | `qwen3:4b` | Modell fuer Text-Only OCR-Korrektur. `OCR_TEXT_MODEL` ist der bevorzugte Name; `OCR_MODEL` und `OLLAMA_OCR_MODEL` bleiben Aliase. |
 | `OCR_VISION_MODEL` | `qwen3-vl:4b` | Vision-Modell fuer OCR (muss vision-faehig sein) |
 | `OCR_VISION_MAX_PAGES` | `3` | Max. Seiten fuer Vision-OCR |

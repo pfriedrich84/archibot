@@ -16,12 +16,23 @@ from app.pipeline.classifier import (
     _resolve_entity_name,
     build_user_prompt,
 )
+from app.prompt_store import load_default_prompt
 
 
 @pytest.fixture(autouse=True)
 def _postgres_blacklist_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep prompt unit tests isolated from the shared PostgreSQL service."""
     monkeypatch.setattr("app.pipeline.classifier.rejected_entity_names", lambda _kind: [])
+
+
+def test_default_classification_prompts_require_defensive_tags():
+    classify_prompt = load_default_prompt("classify")
+    judge_prompt = load_default_prompt("classify_judge")
+
+    for prompt in (classify_prompt, judge_prompt):
+        assert "OCR-Steuerungs-Tag darf niemals vorgeschlagen werden" in prompt
+        assert "mindestens 80 confidence" in prompt
+        assert "Obergrenze, kein Ziel" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +199,31 @@ class TestBuildUserPrompt:
         assert "Korrespondent:" not in target_section
         assert "Dokumenttyp:" not in target_section
 
+    def test_prompt_reserves_configured_ocr_tag_from_classification(
+        self,
+        sample_doc: PaperlessDocument,
+        sample_context_doc: PaperlessDocument,
+        sample_correspondents: list[PaperlessEntity],
+        sample_doctypes: list[PaperlessEntity],
+        sample_storage_paths: list[PaperlessEntity],
+        sample_tags: list[PaperlessEntity],
+        monkeypatch,
+    ):
+        monkeypatch.setattr("app.pipeline.classifier.settings.ocr_requested_tag_id", 22)
+
+        prompt = build_user_prompt(
+            target=sample_doc,
+            context_docs=[sample_context_doc],
+            correspondents=sample_correspondents,
+            doctypes=sample_doctypes,
+            storage_paths=sample_storage_paths,
+            tags=sample_tags,
+        )
+
+        assert "Tags: Finanzen, Wohnung" in prompt
+        assert "Tags: Finanzen, Strom" not in prompt
+        assert "OCR-Steuerungs-Tag (niemals vorschlagen): Strom" in prompt
+
     def test_prompt_includes_blacklists_and_dynamic_tag_limit(
         self,
         sample_doc: PaperlessDocument,
@@ -313,6 +349,25 @@ class TestNormalizationHelpers:
         assert norm.tags[0].confidence == 100
         assert norm.confidence == 0
         assert len(norm.reasoning) == 500
+
+    def test_normalize_drops_reserved_ocr_tag(self):
+        target = PaperlessDocument(id=1, title="Doc", content="x")
+        raw = ClassificationResult(
+            title="Doc",
+            tags=[
+                {"name": "OCR", "confidence": 99},
+                {"name": "Finanzen", "confidence": 90},
+            ],
+            confidence=80,
+        )
+
+        norm = _normalize_classification_result(
+            raw,
+            target=target,
+            forbidden_tag_names={"ocr"},
+        )
+
+        assert [tag.name for tag in norm.tags] == ["Finanzen"]
 
     def test_normalize_limits_tags_from_settings(self, monkeypatch):
         monkeypatch.setattr("app.pipeline.classifier.settings.classification_max_tags", 2)
