@@ -75,7 +75,7 @@ Das LLM liefert strukturiertes JSON mit:
 - **Korrespondent** — Absender/Aussteller
 - **Dokumenttyp** — Rechnung, Vertrag, Brief, etc.
 - **Speicherpfad** — Ordner in Paperless
-- **Tags** — passende Schlagworte
+- **Tags** — nur klar im Zieldokument belegte Schlagworte; das konfigurierte OCR-Steuerungs-Tag wird nie vorgeschlagen oder durch einen Review-Commit neu vergeben
 - **Confidence** — Vertrauenswert (0–100)
 - **Reasoning** — Begruendung der Entscheidung
 
@@ -157,7 +157,12 @@ Nach Freigabe werden die Metadaten via PATCH an Paperless geschrieben:
 ### Whitelist
 
 Neue Tags, die das LLM vorschlaegt und die noch nicht in Paperless existieren,
-landen in der Tag-Whitelist mit Status `pending`. Auf der Seite `/tags` kannst du:
+landen in der Tag-Whitelist mit Status `pending`. Das Tag-Limit ist nur eine
+Obergrenze: Bei unsicherer Evidenz ist eine leere oder kuerzere Tag-Liste vorgesehen.
+Das konfigurierte OCR-Steuerungs-Tag ist fuer die Ablaufsteuerung reserviert, wird aus
+Klassifikationskontext und Vorschlaegen entfernt und durch ArchiBot nie neu vergeben.
+Ein bereits am Dokument vorhandenes OCR-Steuerungs-Tag bleibt dabei unveraendert.
+Auf der Seite `/tags` kannst du:
 
 - **Freigeben** — Tag wird in Paperless angelegt, retroaktiv auf bereits committete
   Dokumente angewendet (PATCH), und in offenen Vorschlaegen voraufgeloest

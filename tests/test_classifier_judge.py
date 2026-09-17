@@ -64,6 +64,32 @@ class TestParseJudgeVerdict:
         assert v.corrected.correspondent == "EnBW"
         assert v.corrected.confidence == 88
 
+    def test_corrected_drops_reserved_ocr_tag(self):
+        doc = PaperlessDocument(id=1, title="t", content="c")
+        payload = {
+            "verdict": "corrected",
+            "title": "Better Title",
+            "date": None,
+            "correspondent": None,
+            "document_type": None,
+            "storage_path": None,
+            "tags": [
+                {"name": "OCR", "confidence": 99},
+                {"name": "Finanzen", "confidence": 90},
+            ],
+            "confidence": 80,
+            "reasoning": "removed control tag",
+        }
+
+        verdict = _parse_judge_verdict(
+            payload,
+            target=doc,
+            forbidden_tag_names={"ocr"},
+        )
+
+        assert verdict.corrected is not None
+        assert [tag.name for tag in verdict.corrected.tags] == ["Finanzen"]
+
     def test_unknown_verdict_becomes_error(self):
         doc = PaperlessDocument(id=1, title="t", content="c")
         v = _parse_judge_verdict({"verdict": "maybe"}, target=doc)

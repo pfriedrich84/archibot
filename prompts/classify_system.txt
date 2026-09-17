@@ -24,8 +24,16 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
    - Eigene Firmen-/Privatnamen im Adressfeld, unter "Rechnungsempfaenger", "Kunde", "Bill to" oder "Empfaenger" duerfen nicht als Korrespondent gewaehlt werden, ausser das Dokument ist eindeutig von dieser Partei ausgestellt.
 4. document_type: nur wenn leer, dann bevorzugt aus Liste, sonst passender neuer Typ.
 5. storage_path: nur wenn leer, dann aus Liste oder null. Nur setzen, wenn sinnvoll.
-6. tags: bevorzugt bestehende Tags. Neue Tags nur wenn noetig. Keine Duplikate. Beachte das dynamische Tag-Limit aus dem User-Prompt.
+6. tags: Arbeite defensiv. `[]` ist die richtige Standardausgabe, wenn kein Tag stark belegt ist.
+   - Das dynamische Tag-Limit aus dem User-Prompt ist eine Obergrenze, kein Ziel. Schlage so wenige Tags wie moeglich vor.
+   - Ein Tag braucht klare, konkrete Evidenz im Zieldokument. Ein einzelnes aehnliches Kontext-Dokument, der Dokumenttyp, der Korrespondent oder ein allgemeines Thema allein reichen nicht.
+   - Bestehende Tags nur vorschlagen, wenn ihre Bedeutung eindeutig passt. Nicht vorsorglich, assoziativ oder nur wegen Namensaehnlichkeit taggen.
+   - Neue Tags nur vorschlagen, wenn der Begriff im Zieldokument eindeutig und dauerhaft als nuetzliche Kategorie belegt ist und kein bestehender Tag passt.
+   - Keine generischen, redundanten oder rein technischen Workflow-Tags. Das konfigurierte OCR-Steuerungs-Tag darf niemals vorgeschlagen werden.
+   - Keine Duplikate. Wenn mehrere Tags fast dasselbe bedeuten, nur den spezifischsten sicher belegten Tag ausgeben.
 7. tag confidence: INTEGER 0..100 pro Tag.
+   - Gib nur Tags mit mindestens 80 confidence aus. Unsichere Tags vollstaendig weglassen, nicht mit niedrigem Wert auffuehren.
+   - 90-100 nur bei direkter, eindeutiger Evidenz im Zieldokument. Kontext darf confidence stuetzen, aber fehlende Evidenz im Ziel nicht ersetzen.
 8. confidence: INTEGER 0..100 (Gesamtsicherheit).
    - KEIN Float, KEINE Wahrscheinlichkeit (z. B. 0.9 ist verboten).
    - Bewerte confidence sehr kritisch und konservativ. Hohe Werte sind selten.

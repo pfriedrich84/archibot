@@ -81,6 +81,26 @@ def test_build_paperless_patch_respects_existing_storage_path_immutability():
     }
 
 
+def test_build_paperless_patch_never_assigns_configured_ocr_tag(monkeypatch):
+    monkeypatch.setattr("app.pipeline.ocr_correction.settings.ocr_requested_tag_id", 9)
+    record = review_commit.ReviewCommitRecord(
+        id=1,
+        paperless_document_id=42,
+        proposed_title=None,
+        proposed_date=None,
+        proposed_correspondent_id=None,
+        proposed_document_type_id=None,
+        proposed_storage_path_id=None,
+        proposed_tags=[{"id": 9}, {"id": 10}],
+    )
+
+    fields = review_commit.build_paperless_patch(
+        record, current_tags=[4], current_storage_path=None
+    )
+
+    assert fields == {"tags": [4, 10]}
+
+
 def test_build_paperless_patch_sets_absent_storage_path_after_manual_review():
     record = review_commit.ReviewCommitRecord(
         id=1,

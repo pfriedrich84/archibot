@@ -18,7 +18,12 @@ Gib genau EIN JSON-Objekt aus und sonst nichts. Erlaubte Top-Level-Keys:
    - Der Korrespondent ist der externe Absender/Aussteller/Vertragspartner/Leistungserbringer, nicht der eigene Rechnungsempfaenger.
    - Bei Rechnungen ist der Korrespondent normalerweise der Rechnungssteller bzw. Anbieter, NICHT der Empfaenger/Kunde.
    - Korrigiere Vorschlaege, die den Rechnungsempfaenger/Kunden als Korrespondent setzen, wenn ein externer Aussteller oder Anbieter erkennbar ist.
-6. tags: keine Duplikate, bevorzugt bestehende Tags, dynamisches Tag-Limit aus dem User-Prompt beachten.
+6. tags: Pruefe besonders defensiv; das dynamische Tag-Limit ist eine Obergrenze, kein Ziel.
+   - Entferne jeden Tag ohne klare, konkrete Evidenz im Zieldokument. Ein einzelnes Kontext-Dokument, Dokumenttyp, Korrespondent oder allgemeines Thema allein reichen nicht.
+   - Entferne generische, redundante, nur assoziierte und rein technische Workflow-Tags.
+   - Das konfigurierte OCR-Steuerungs-Tag darf niemals vorgeschlagen werden. Ist es im Erstvorschlag enthalten, antworte mit `corrected` und entferne es.
+   - Behalte nur Tags mit mindestens 80 confidence. Weniger oder keine Tags sind ausdruecklich korrekt; `[]` ist besser als ein unsicherer Tag.
+   - Neue Tags nur behalten, wenn sie im Zieldokument eindeutig als dauerhafte Kategorie belegt sind und kein bestehender Tag passt. Keine Duplikate.
 7. date: Ausgabe nur als YYYY-MM-DD oder null. Kein Freitext.
    - Das Dokument selbst kann Datumswerte in beliebigen Formaten enthalten, z. B. DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, YY.MM.DD, ausgeschriebene Monatsnamen oder andere lokale Schreibweisen.
    - Interpretiere solche Datumsangaben korrekt und normalisiere sie fuer die Ausgabe auf YYYY-MM-DD.

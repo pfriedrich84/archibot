@@ -6,6 +6,25 @@ from app.models import ClassificationResult, PaperlessEntity, ProposedTag
 _DEFAULT_ROW = {"id": 12, "status": "pending"}
 
 
+def test_proposed_tags_excludes_configured_ocr_tag(monkeypatch):
+    monkeypatch.setattr("app.pipeline.ocr_correction.settings.ocr_requested_tag_id", 9)
+    result = ClassificationResult(
+        title="Document",
+        tags=[
+            ProposedTag(name="OCR", confidence=99),
+            ProposedTag(name="Finanzen", confidence=90),
+        ],
+    )
+    tags = [
+        PaperlessEntity(id=9, name="OCR"),
+        PaperlessEntity(id=10, name="Finanzen"),
+    ]
+
+    assert review_suggestions._proposed_tags(result, tags) == [
+        {"name": "Finanzen", "confidence": 90, "id": 10}
+    ]
+
+
 class FakeResult:
     def __init__(self, row=_DEFAULT_ROW):
         self.row = row

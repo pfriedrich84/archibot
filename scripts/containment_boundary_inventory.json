@@ -2,7 +2,7 @@
   "authorization_command_files": {
     "app/actors/document.py": "af4d1a29b0b31aa4e760e7ba1403b15daa6d674da5b233798f223147e7486627",
     "app/actors/document_batch.py": "66ead6e0b4b390cd700a745ad11063228e6499fce58ae9c735551a4ce99e76f9",
-    "app/jobs/review_suggestions.py": "30ac6a6a2f88460c93e285ae84c560e983148235bae8d8c70b83fcbe0222e5ba",
+    "app/jobs/review_suggestions.py": "7dbd2b5ae8af0fc542a6505b04b5401b248e5f46d4f9a273327c0968d5639ebb",
     "app/temporal/document_activities.py": "0bde8a5aa43dde108821707bb8047c36f4b7aeb0f5c3a64a1c0fdc5343ce186b",
     "laravel/app/Console/Commands/CommitReviewSuggestion.php": "267ca3080e5a444acb4392066a1670ea07341b2485e6068a4169d3efe8c8b3d0",
     "laravel/app/Http/Controllers/Admin/SettingsController.php": "e2f51a18c2e4942f2424fafd7cc925d3db0d08614bcfc9078fb25de62767c0df",
@@ -93,7 +93,7 @@
   },
   "paperless_mutation_files": {
     "app/clients/paperless.py": "e9912a1adccad7f7bf918b2677b8d8fe132b15aceffd7da0faf12bc95633f8b5",
-    "app/jobs/review_commit.py": "f808356ebb3c1608291b466a52c16248623022f08563d074c55dfe7ecaa9f657",
+    "app/jobs/review_commit.py": "e7b454e332887ea0dc81b0c038d6fc813b30add19cbd7cbdfb5d840319a425c0",
     "app/pipeline/ports.py": "e9f8abbae88e132c18aec3e12e0b4b1c58f5623eecd23b49b1bbf6e8adb055e1",
     "laravel/app/Services/EntityApprovalDecisionService.php": "789399c647ce4f2f4b05b2429f633905875739c484c714c9d13bee7bd69464aa",
     "laravel/app/Services/Paperless/PaperlessClient.php": "beb2ee11e6cb1ee7f3531799857abf269f94a7e6babd11b604b000d60a0005ce"
