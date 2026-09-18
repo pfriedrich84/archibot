@@ -15,7 +15,7 @@ from app.models import (
     document_version_checksum_for,
     document_version_id_for,
 )
-from app.pipeline.ocr_correction import ocr_requested_tag_id
+from app.pipeline.tag_policy import reserved_classification_tag_ids
 
 
 @dataclass(frozen=True)
@@ -79,11 +79,11 @@ def _proposed_tags(
     result: ClassificationResult, tags: list[PaperlessEntity] | None
 ) -> list[dict[str, Any]]:
     proposed: list[dict[str, Any]] = []
-    reserved_id = ocr_requested_tag_id()
+    reserved_ids = reserved_classification_tag_ids(tags or [])
     for tag in result.tags:
         item = tag.model_dump()
         tag_id = _entity_id(tag.name, tags)
-        if tag_id == reserved_id and reserved_id != 0:
+        if tag_id in reserved_ids:
             continue
         if tag_id is not None:
             item["id"] = tag_id

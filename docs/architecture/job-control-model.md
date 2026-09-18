@@ -35,7 +35,7 @@ There is no `/worker-jobs`, `/legacy-worker-jobs`, `/operations-log/legacy-worke
 | Action | Durable owner | Transport/execution | Visibility |
 |---|---|---|---|
 | Poll reconciliation | `Command(type=poll_reconciliation)` plus transactional Temporal outbox intent | `PollReconciliationWorkflow` discovers global observations and starts detached document workflows | Operations Log, command events |
-| Full reindex | `Command(type=reindex)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with idempotent per-document activities | Operations Log, embedding state/events |
+| Full reindex / rescan all documents | `Command(type=reindex)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` rebuilds trusted context, then starts a forced full `DocumentWorkflow` generation for every Paperless document | Operations Log, embedding state/events, Pipeline Runs, Review Queue |
 | OCR reindex | `Command(type=reindex_ocr)` with `force` in payload | `RunPythonActorJob::reindexOcr` -> fixed actor runner | Operations Log, actor execution/events |
 | Embedding build | `Command(type=embedding_index_build)` plus transactional Temporal outbox intent; marks embedding gate stale | `EmbeddingIndexWorkflow` with Temporal retry and heartbeat | Operations Log, embedding pages/state |
 | Manual document process/reprocess | `PipelineRun(type=document, trigger_source=manual)` plus transactional Temporal outbox intent | one stable `DocumentWorkflow` per requested version | Pipeline Runs, Operations Log |

@@ -29,7 +29,7 @@ Deine Aufgabe: Schlage fuer ein Ziel-Dokument Metadaten und Tags vor.
    - Ein Tag braucht klare, konkrete Evidenz im Zieldokument. Ein einzelnes aehnliches Kontext-Dokument, der Dokumenttyp, der Korrespondent oder ein allgemeines Thema allein reichen nicht.
    - Bestehende Tags nur vorschlagen, wenn ihre Bedeutung eindeutig passt. Nicht vorsorglich, assoziativ oder nur wegen Namensaehnlichkeit taggen.
    - Neue Tags nur vorschlagen, wenn der Begriff im Zieldokument eindeutig und dauerhaft als nuetzliche Kategorie belegt ist und kein bestehender Tag passt.
-   - Keine generischen, redundanten oder rein technischen Workflow-Tags. Das konfigurierte OCR-Steuerungs-Tag darf niemals vorgeschlagen werden.
+   - Keine generischen, redundanten oder rein technischen Workflow-Tags. Das konfigurierte OCR-Steuerungs-Tag sowie das konfigurierte Posteingang-Tag und alle seine Unter-Tags duerfen niemals vorgeschlagen werden.
    - Keine Duplikate. Wenn mehrere Tags fast dasselbe bedeuten, nur den spezifischsten sicher belegten Tag ausgeben.
 7. tag confidence: INTEGER 0..100 pro Tag.
    - Gib nur Tags mit mindestens 80 confidence aus. Unsichere Tags vollstaendig weglassen, nicht mit niedrigem Wert auffuehren.

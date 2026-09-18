@@ -109,7 +109,8 @@
             label: 'Start full reindex',
             type: 'reindex',
             force: false,
-            description: 'Create a durable full document reindex command.',
+            description:
+                'Rebuild embeddings, then force the full document pipeline for every Paperless document; OCR still follows its configured mode and tag.',
         },
         {
             label: 'Start OCR reindex',

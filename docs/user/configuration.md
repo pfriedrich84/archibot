@@ -26,7 +26,7 @@ Ausnahme: `PAPERLESS_URL` ist ein Deployment-Trust-Anchor und hat immer Vorrang 
 | `PAPERLESS_HTTP_MAX_PREVIEW_BYTES` | `52428800` | Separates Limit fuer tatsaechlich gepufferte/dekodierte Dokumentvorschauen. Das groessere, weiterhin endliche Limit verhindert, dass regulaere PDF-Previews am kleineren JSON-Limit scheitern. |
 | `SETUP_RATE_LIMIT_PER_MINUTE` | `5` | Gemeinsames Limit pro Benutzername/IP fuer Setup-Abschluss und Tag-Verifikation; auch ungueltige Versuche zaehlen. |
 | `MODEL_DISCOVERY_RATE_LIMIT_PER_MINUTE` | `10` | Limit pro angemeldetem Admin fuer AI-Modell-Discovery. |
-| `PAPERLESS_INBOX_TAG_ID` | — | ID des Tags `Posteingang`; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
+| `PAPERLESS_INBOX_TAG_ID` | — | ID des Tags `Posteingang`; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar. Dieses Steuerungs-Tag und alle rekursiven Paperless-Unter-Tags werden weder als Klassifikations-Tags vorgeschlagen noch durch einen Review-Commit neu vergeben; bereits vorhandene Tags bleiben erhalten. |
 | `PAPERLESS_PROCESSED_TAG_ID` | — | Optional: Tag-ID, die nach Commit gesetzt wird; in der Settings-UI per Live-Dropdown aus Paperless auswaehlbar |
 | `KEEP_INBOX_TAG` | `true` | Posteingang-Tag nach Commit beibehalten |
 

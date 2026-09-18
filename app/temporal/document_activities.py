@@ -106,6 +106,44 @@ def _load_poll_command(command_id: int) -> tuple[int | None, bool]:
     return limit, bool(payload.get("force", False))
 
 
+def _load_reindex_command(command_id: int) -> int | None:
+    with engine().begin() as connection:
+        row = (
+            connection.execute(
+                sql_text(
+                    """
+                    SELECT payload
+                    FROM commands
+                    WHERE id = :command_id AND type = 'reindex'
+                    FOR UPDATE
+                    """
+                ),
+                {"command_id": command_id},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise ValueError(f"Reindex command {command_id} does not exist")
+        payload = row["payload"] if isinstance(row["payload"], dict) else {}
+        if payload.get("orchestration_driver") != "temporal":
+            raise ValueError(f"Reindex command {command_id} is not owned by Temporal")
+        raw_limit = payload.get("limit")
+        limit = int(raw_limit) if raw_limit not in (None, "") and int(raw_limit) > 0 else None
+        connection.execute(
+            sql_text(
+                """
+                UPDATE commands
+                SET status = 'running', finished_at = NULL, error = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :command_id
+                """
+            ),
+            {"command_id": command_id},
+        )
+    return limit
+
+
 def poll_interval_seconds() -> int:
     """Read the operator-configured reconciliation interval from product state."""
     with engine().connect() as connection:
@@ -230,7 +268,14 @@ def _embedding_ready(connection) -> bool:
 
 
 def _persist_observation_and_run(
-    *, command_id: int, paperless_document_id: int, modified: str | None, force: bool
+    *,
+    command_id: int,
+    paperless_document_id: int,
+    modified: str | None,
+    force: bool,
+    source: str = "poll",
+    reprocess_reason: str | None = None,
+    reprocess_mode: str | None = None,
 ) -> DocumentWorkflowStart | None:
     dedupe_key = _document_dedupe_key(
         paperless_document_id,
@@ -238,6 +283,11 @@ def _persist_observation_and_run(
         force_command_id=command_id if force else None,
     )
     workflow_id = f"archibot/document/{paperless_document_id}"
+    resolved_reprocess_reason = None
+    resolved_reprocess_mode = None
+    if force:
+        resolved_reprocess_reason = reprocess_reason or "forced_poll_reconciliation"
+        resolved_reprocess_mode = reprocess_mode or "poll_force"
     with engine().begin() as connection:
         if not force:
             existing = (
@@ -267,7 +317,7 @@ def _persist_observation_and_run(
                             observed_at, created_at, updated_at
                         ) VALUES (
                             :paperless_document_id, :modified, NULL, :version_key,
-                            'poll', :command_id, :pipeline_run_id, CURRENT_TIMESTAMP,
+                            :source, :command_id, :pipeline_run_id, CURRENT_TIMESTAMP,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                         ON CONFLICT (paperless_document_id, version_key)
@@ -284,6 +334,7 @@ def _persist_observation_and_run(
                         "version_key": dedupe_key,
                         "command_id": command_id,
                         "pipeline_run_id": int(existing["id"]),
+                        "source": source,
                     },
                 )
                 return None
@@ -307,9 +358,9 @@ def _persist_observation_and_run(
                     reprocess_requested, reprocess_reason, reprocess_mode,
                     created_at, updated_at
                 ) VALUES (
-                    NULL, NULL, 'document', :status, 'single_document', 'poll',
+                    NULL, NULL, 'document', :status, 'single_document', :source,
                     'temporal', :workflow_id, :paperless_document_id,
-                    :modified, :dedupe_key, CAST('["poll"]' AS json),
+                    :modified, :dedupe_key, CAST(:coalesced_sources AS json),
                     :phase, :message, CURRENT_TIMESTAMP,
                     :error_type, :error,
                     :force, :reprocess_reason, :reprocess_mode,
@@ -329,8 +380,10 @@ def _persist_observation_and_run(
                 "error_type": None if gate_open else "embedding_index_not_ready",
                 "error": None if gate_open else "Waiting for embedding index to complete.",
                 "force": force,
-                "reprocess_reason": "forced_poll_reconciliation" if force else None,
-                "reprocess_mode": "poll_force" if force else None,
+                "source": source,
+                "coalesced_sources": json.dumps([source], separators=(",", ":")),
+                "reprocess_reason": resolved_reprocess_reason,
+                "reprocess_mode": resolved_reprocess_mode,
             },
         )
         run = (
@@ -391,7 +444,7 @@ def _persist_observation_and_run(
                     source, source_command_id, pipeline_run_id, observed_at, created_at, updated_at
                 ) VALUES (
                     :paperless_document_id, :modified, NULL, :version_key,
-                    'poll', :command_id, :pipeline_run_id, CURRENT_TIMESTAMP,
+                    :source, :command_id, :pipeline_run_id, CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
                 ON CONFLICT (paperless_document_id, version_key)
@@ -408,6 +461,7 @@ def _persist_observation_and_run(
                 "version_key": dedupe_key,
                 "command_id": command_id,
                 "pipeline_run_id": pipeline_run_id,
+                "source": source,
             },
         )
         if run["orchestration_driver"] != "temporal" or not gate_open:
@@ -464,6 +518,40 @@ async def discover_inbox_documents(request: PollWorkflowRequest) -> PollDiscover
     return PollDiscoveryResult(request.command_id, len(documents), skipped, starts, "succeeded")
 
 
+@activity.defn(name="archibot.discover_reindex_documents")
+async def discover_reindex_documents(request: PollWorkflowRequest) -> PollDiscoveryResult:
+    """Create forced document generations for every Paperless document after reindex."""
+    limit = await asyncio.to_thread(_load_reindex_command, request.command_id)
+
+    paperless = PaperlessClient()
+    try:
+        documents = await _await_with_heartbeats(
+            paperless.list_all_documents(limit=limit),
+            {"command_id": request.command_id},
+        )
+    finally:
+        await paperless.aclose()
+
+    starts: list[DocumentWorkflowStart] = []
+    skipped = 0
+    for document in documents:
+        start = await asyncio.to_thread(
+            _persist_observation_and_run,
+            command_id=request.command_id,
+            paperless_document_id=int(document.id),
+            modified=_modified_value(document.modified),
+            force=True,
+            source="reindex",
+            reprocess_reason="full_reindex",
+            reprocess_mode="full_document_pipeline",
+        )
+        if start is None:
+            skipped += 1
+        else:
+            starts.append(start)
+    return PollDiscoveryResult(request.command_id, len(documents), skipped, starts, "succeeded")
+
+
 @activity.defn(name="archibot.finish_poll_discovery")
 async def finish_poll_discovery(result: PollWorkflowResult) -> PollWorkflowResult:
     await asyncio.to_thread(_finish_poll_discovery, result)
@@ -509,6 +597,77 @@ def _finish_poll_discovery(result: PollWorkflowResult) -> None:
                     separators=(",", ":"),
                 ),
             },
+        )
+
+
+@activity.defn(name="archibot.finish_reindex_discovery")
+async def finish_reindex_discovery(result: PollWorkflowResult) -> PollWorkflowResult:
+    await asyncio.to_thread(_finish_reindex_discovery, result)
+    return result
+
+
+def _finish_reindex_discovery(result: PollWorkflowResult) -> None:
+    with engine().begin() as connection:
+        updated = connection.execute(
+            sql_text(
+                """
+                UPDATE commands
+                SET status = CAST(:status AS character varying), finished_at = CURRENT_TIMESTAMP,
+                    error = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :command_id AND type = 'reindex'
+                  AND payload->>'orchestration_driver' = 'temporal'
+                """
+            ),
+            {"command_id": result.command_id, "status": result.status},
+        )
+        if updated.rowcount != 1:
+            raise RuntimeError(f"Temporal reindex command {result.command_id} is missing")
+        connection.execute(
+            sql_text(
+                """
+                INSERT INTO pipeline_events (
+                    command_id, event_type, level, message, payload, created_at
+                ) VALUES (
+                    :command_id, 'reindex.document_rescan.completed', 'info',
+                    'Full document rescan was queued after embedding rebuild.',
+                    CAST(:payload AS json), CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "command_id": result.command_id,
+                "payload": json.dumps(
+                    {
+                        "documents_seen": result.documents_seen,
+                        "documents_started": result.documents_started,
+                        "documents_skipped": result.documents_skipped,
+                    },
+                    separators=(",", ":"),
+                ),
+            },
+        )
+
+
+@activity.defn(name="archibot.fail_reindex_discovery")
+async def fail_reindex_discovery(command_id: int) -> None:
+    await asyncio.to_thread(_fail_reindex_discovery, command_id)
+
+
+def _fail_reindex_discovery(command_id: int) -> None:
+    with engine().begin() as connection:
+        connection.execute(
+            sql_text(
+                """
+                UPDATE commands
+                SET status = 'failed_permanent', finished_at = CURRENT_TIMESTAMP,
+                    error = 'Full document rescan exhausted its retries.',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = :command_id AND type = 'reindex'
+                  AND payload->>'orchestration_driver' = 'temporal'
+                  AND status NOT IN ('succeeded', 'skipped')
+                """
+            ),
+            {"command_id": command_id},
         )
 
 

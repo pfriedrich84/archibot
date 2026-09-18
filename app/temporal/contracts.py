@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class EmbeddingWorkflowRequest:
     command_id: int
     configuration: ModelPhaseConfiguration | None = None
+    rescan_all: bool = False
 
 
 @dataclass(frozen=True)

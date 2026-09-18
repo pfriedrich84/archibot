@@ -47,7 +47,10 @@ class TemporalWorkflowDispatcher
                 intentKey: $intentKey,
                 workflowId: $workflowId,
                 workflowType: self::EMBEDDING_WORKFLOW,
-                payload: ['command_id' => $command->id],
+                payload: [
+                    'command_id' => $command->id,
+                    'rescan_all' => $command->type === Command::TYPE_REINDEX,
+                ],
             );
 
             return Command::query()->findOrFail($command->id);

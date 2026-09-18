@@ -151,7 +151,7 @@ Admin dashboard controls:
 
 - **Start embedding build** / **Resume embedding build** creates a durable `embedding_index_build` command for recovery pickup.
 - **Mark embedding index stale** sets durable state to `stale`, closing the document-processing gate.
-- **Start reindex** also marks the embedding index stale and creates a durable `reindex` command.
+- **Start reindex** marks the embedding index stale, rebuilds the trusted context index, then starts a forced full document workflow generation for every Paperless document. The command is complete once all document workflows are queued; their resulting suggestions remain in the normal Review Queue.
 
 Gate-closed discoveries reserve the stable document workflow identity. A successful
 embedding generation releases those reservations through idempotent outbox start and signal

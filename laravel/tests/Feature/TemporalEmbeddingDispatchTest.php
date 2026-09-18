@@ -35,6 +35,8 @@ class TemporalEmbeddingDispatchTest extends TestCase
             'workflow_type' => TemporalWorkflowDispatcher::EMBEDDING_WORKFLOW,
             'status' => TemporalOutboxIntent::STATUS_PENDING,
         ]);
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertFalse((bool) $intent->payload['rescan_all']);
         Queue::assertNothingPushed();
     }
 
@@ -50,6 +52,8 @@ class TemporalEmbeddingDispatchTest extends TestCase
         $this->assertDatabaseHas('temporal_outbox_intents', [
             'workflow_id' => "archibot/embedding-index/{$command->id}",
         ]);
+        $intent = TemporalOutboxIntent::query()->firstOrFail();
+        $this->assertTrue((bool) $intent->payload['rescan_all']);
         Queue::assertNothingPushed();
     }
 

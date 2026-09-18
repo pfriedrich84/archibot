@@ -48,7 +48,7 @@ Confirmed allowlisted flows:
 - document pipeline;
 - review commit;
 - poll reconciliation;
-- reindex command, currently implemented as an embedding-index rebuild rather than full reindex parity;
+- full reindex command, which rebuilds the trusted embedding index and then force-reprocesses every Paperless document through its stable Temporal document workflow;
 - OCR reindex;
 - PostgreSQL-owned entity approval decision application;
 - Paperless webhook handling.
@@ -79,7 +79,7 @@ Repository CI validates the Python and Laravel suites, frontend gates, clean Doc
 
 ## Remaining product follow-ups
 
-- Complete full Reindex behavior and finite actor/process timeout policy in separately reviewed slices.
+- Complete finite actor/process timeout policy in a separately reviewed slice.
 - Keep disabled redesign tracks contained until their explicit approval gates pass.
 - Exercise deployment-specific upgrade, backup, rollback, scheduler timing and Paperless integration before a stable release.
 

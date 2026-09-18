@@ -30,7 +30,9 @@ def test_default_classification_prompts_require_defensive_tags():
     judge_prompt = load_default_prompt("classify_judge")
 
     for prompt in (classify_prompt, judge_prompt):
-        assert "OCR-Steuerungs-Tag darf niemals vorgeschlagen werden" in prompt
+        assert "OCR-Steuerungs-Tag" in prompt
+        assert "Posteingang-Tag und alle seine Unter-Tags" in prompt
+        assert "niemals vorgeschlagen werden" in prompt
         assert "mindestens 80 confidence" in prompt
         assert "Obergrenze, kein Ziel" in prompt
 
@@ -222,7 +224,10 @@ class TestBuildUserPrompt:
 
         assert "Tags: Finanzen, Wohnung" in prompt
         assert "Tags: Finanzen, Strom" not in prompt
-        assert "OCR-Steuerungs-Tag (niemals vorschlagen): Strom" in prompt
+        assert (
+            "OCR-/Posteingang-Steuerungs-Tags und deren Unter-Tags "
+            "(niemals vorschlagen): Strom" in prompt
+        )
 
     def test_prompt_includes_blacklists_and_dynamic_tag_limit(
         self,
@@ -349,6 +354,30 @@ class TestNormalizationHelpers:
         assert norm.tags[0].confidence == 100
         assert norm.confidence == 0
         assert len(norm.reasoning) == 500
+
+    def test_prompt_hides_inbox_tag_descendants(self, monkeypatch):
+        monkeypatch.setattr("app.pipeline.tag_policy.settings.paperless_inbox_tag_id", 10)
+        tags = [
+            PaperlessEntity(id=10, name="Inbox"),
+            PaperlessEntity(id=11, name="Inbox child", parent=10),
+            PaperlessEntity(id=12, name="Nested child", parent=11),
+            PaperlessEntity(id=13, name="Business"),
+        ]
+
+        prompt = build_user_prompt(
+            PaperlessDocument(id=1, title="Doc", content="x"),
+            [],
+            [],
+            [],
+            [],
+            tags,
+            num_ctx=8192,
+        )
+
+        available_section = prompt.split("# Technische Tags", 1)[0]
+        assert "Tags: Business" in available_section
+        assert "Inbox child" not in available_section
+        assert "Nested child" not in available_section
 
     def test_normalize_drops_reserved_ocr_tag(self):
         target = PaperlessDocument(id=1, title="Doc", content="x")

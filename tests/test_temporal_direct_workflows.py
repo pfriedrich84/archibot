@@ -115,6 +115,53 @@ async def test_embedding_generation_runs_directly(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_full_reindex_starts_forced_workflow_for_every_document(monkeypatch):
+    child_calls = []
+
+    async def execute(activity_fn, argument, **_kwargs):
+        if activity_fn is workflows.load_model_phase_configuration:
+            return _configuration()
+        if activity_fn is workflows.prepare_embedding_generation:
+            return PreparedEmbeddingBuild(9, 44, [])
+        if activity_fn is workflows.finish_embedding_generation:
+            return EmbeddingWorkflowResult(9, 44, 0, 0, 0, "complete")
+        if activity_fn is workflows.discover_reindex_documents:
+            return PollDiscoveryResult(
+                9,
+                1,
+                0,
+                [DocumentWorkflowStart(12, "archibot/document/261", 261, True)],
+                "succeeded",
+            )
+        if activity_fn is workflows.finish_reindex_discovery:
+            assert argument == PollWorkflowResult(9, 1, 1, 0, "succeeded")
+            return argument
+        raise AssertionError(activity_fn)
+
+    async def start_child(_workflow, payload, **kwargs):
+        child_calls.append((payload, kwargs))
+
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
+    monkeypatch.setattr(workflows.workflow, "start_child_workflow", start_child)
+
+    result = await workflows.EmbeddingIndexWorkflow().run(
+        EmbeddingWorkflowRequest(9, rescan_all=True)
+    )
+
+    assert result.status == "complete"
+    assert child_calls == [
+        (
+            DocumentWorkflowRequest(12, "archibot/document/261", 261),
+            {
+                "id": "archibot/document/261",
+                "parent_close_policy": workflow.ParentClosePolicy.ABANDON,
+                "id_reuse_policy": WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
 async def test_poll_starts_direct_document_workflow_payload(monkeypatch):
     child_calls = []
 

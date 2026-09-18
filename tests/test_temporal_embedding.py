@@ -174,6 +174,8 @@ async def test_empty_generation_finishes_as_complete_zero_of_zero(monkeypatch):
     assert result.embedded == 0
     assert calls[0][1]["status"] == "complete"
     assert calls[1][1]["status"] == "succeeded"
+    assert "WHEN type = 'reindex'" in calls[1][0]
+    assert "THEN 'running'" in calls[1][0]
 
 
 def test_progress_projection_fails_when_command_bound_build_is_missing(monkeypatch):
