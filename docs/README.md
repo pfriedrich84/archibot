@@ -15,6 +15,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 ## Developer
 
 - [`developer/architecture.md`](developer/architecture.md) — Architektur, Datenfluss, Komponenten.
+- [`architecture/archify.md`](architecture/archify.md) — generierte Archify-/Mermaid-Diagramme fuer Systemkontext, Paperless-Integration und Dokument-Lebenszyklus.
 - [`developer/cli.md`](developer/cli.md) — CLI-Kommandos fuer Pipeline, Reindex, Reset.
 - [`developer/mcp.md`](developer/mcp.md) — dormant MCP-Integrationspunkt, Auth und Rueckkehrkriterien fuer derzeit deaktivierte Registrierungen.
 - [`decisions/`](decisions/) — Architecture Decision Records.
@@ -23,7 +24,7 @@ Die Dokumentation ist nach Zielgruppe gruppiert.
 
 - [`implementation-plan-event-driven-archibot.md`](implementation-plan-event-driven-archibot.md) — historischer Migrationsplan; aktuelle ADRs und Architektur-Dokumente ersetzen veraltete Transport-, Runtime-Ownership-, Backend- und Write-Authorization-Vorgaben.
 - [`implementation-plan-security-architecture-hardening.md`](implementation-plan-security-architecture-hardening.md) — abgeschlossener Implementierungsnachweis fuer Security, Runtime-Ownership, Backend-Retirement und UX.
-- [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization.
+- [`architecture/`](architecture/) — Detailkonzepte fuer Webhooks, Polling, Progress, Retry, Recovery, Observability und Authorization; [`architecture/archify.md`](architecture/archify.md) wird aus [`.archify/diagrams.json`](../.archify/diagrams.json) generiert.
 - [`decisions/`](decisions/) — akzeptierte Architekturentscheidungen.
 - [`governance/repository-governance.md`](governance/repository-governance.md) — Repository-Governance fuer den Umbau.
 - [`governance/trust-boundaries.md`](governance/trust-boundaries.md) — Runtime-, CI-, Tooling- und Integrationsgrenzen.

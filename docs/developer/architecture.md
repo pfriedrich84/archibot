@@ -2,6 +2,8 @@
 
 Gesamtueberblick ueber den Aufbau und die Datenflussrichtung von ArchiBot.
 
+Ergaenzende, aus Archify-Quelldaten generierte Mermaid-Diagramme liegen unter [`../architecture/archify.md`](../architecture/archify.md); Quelle ist [`.archify/diagrams.json`](../../.archify/diagrams.json).
+
 ## System-Kontext
 
 ```
