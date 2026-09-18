@@ -1,0 +1,133 @@
+{
+  "title": "ArchiBot Archify-Diagramme",
+  "description": "Archify-Quelle fuer Mermaid-Diagramme zur Systemarchitektur mit Paperless-NGX und zum Lebenszyklus von Paperless-Dokumenten.",
+  "diagrams": [
+    {
+      "id": "system-context",
+      "title": "Systemkontext mit Paperless-NGX",
+      "kind": "flowchart",
+      "direction": "LR",
+      "summary": "Zeigt die produktiven Systemgrenzen: Browser, Paperless-NGX, ArchiBot, PostgreSQL/pgvector, Temporal und AI Provider.",
+      "body": [
+        "browser[Browser / Operator] -->|HTTP 8088| laravel[ArchiBot Laravel + Svelte]",
+        "paperless[Paperless-NGX] -->|Webhook POST /api/webhooks/paperless| laravel",
+        "laravel -->|Paperless REST API, User-Token| paperless",
+        "laravel -->|Business State, Projektionen, Audit| appdb[(PostgreSQL + pgvector)]",
+        "laravel -->|Transaktionale Workflow-Intents| appdb",
+        "relay[Python Temporal Outbox Relay] -->|liest pending Intents| appdb",
+        "relay -->|Signal-With-Start / Signals| temporal[Privater Temporal Service]",
+        "worker[Python Temporal Worker] -->|Workflows + Activities| temporal",
+        "worker -->|Dokumente lesen / Metadaten nach Review patchen| paperless",
+        "worker -->|Embeddings, Review Suggestions, Events| appdb",
+        "worker -->|LLM, Embeddings, optional OCR/Judge| ai[Ollama- oder OpenAI-kompatibler AI Provider]",
+        "temporal -->|Execution History| temporaldb[(Temporal PostgreSQL)]"
+      ]
+    },
+    {
+      "id": "runtime-ownership",
+      "title": "Runtime-Ownership und Datenhaltung",
+      "kind": "flowchart",
+      "direction": "TB",
+      "summary": "Trennt die Verantwortlichkeiten von Laravel, Python, Temporal, ArchiBot-PostgreSQL und Temporal-Persistenz.",
+      "body": [
+        "subgraph Laravel[Laravel / Svelte]",
+        "  setup[Setup, Login, Settings]",
+        "  review[Review UI und berechtigte Entscheidungen]",
+        "  ingress[Webhook-Ingress und Admin-Kommandos]",
+        "end",
+        "subgraph Python[Python Runtime]",
+        "  relay[Outbox Relay]",
+        "  workflows[Temporal Workflows und Activities]",
+        "  processing[OCR, Embeddings, Klassifikation, Judge, Commit]",
+        "end",
+        "subgraph State[Persistenz]",
+        "  appdb[(ArchiBot PostgreSQL + pgvector)]",
+        "  temporaldb[(Temporal Persistence)]",
+        "end",
+        "ingress -->|Webhook Deliveries, Pipeline Runs, Commands| appdb",
+        "review -->|Review Suggestion Status + Temporal Intent| appdb",
+        "relay -->|idempotente Zustellung| workflows",
+        "workflows -->|Timer, Retry, Heartbeat, Recovery| temporal[Temporal Service]",
+        "temporal --> temporaldb",
+        "processing -->|Business-Projektionen und Events| appdb",
+        "setup -->|Runtime Config Export| appdb"
+      ]
+    },
+    {
+      "id": "ingress-coordination",
+      "title": "Webhook-, Poll- und Force-Reprocess-Koordination",
+      "kind": "flowchart",
+      "direction": "TB",
+      "summary": "Alle produktiven Starts reservieren dieselbe stabile Dokument-Workflow-ID und laufen durch deduplizierte Pipeline-Start-Logik.",
+      "body": [
+        "paperless_event[Paperless create/process Webhook] --> normalize[Laravel normalisiert und persistiert Webhook Delivery]",
+        "temporal_poll[Temporal Poll-Reconciliation] --> observe[Globale Document Observation]",
+        "manual[Admin Force Reprocess / Maintenance] --> intent[Autorisierter Command oder Review Intent]",
+        "normalize --> start[Pipeline Start Gate + Dedupe Key]",
+        "observe --> marker{Review Suggestion existiert?}",
+        "marker -->|ja, automatischer Poll| skip[Ueberspringen: Klassifikationsmarker vorhanden]",
+        "marker -->|nein oder force| start",
+        "intent --> start",
+        "start --> index{Embedding-Index fuer Modell komplett?}",
+        "index -->|nein| blocked[Workflow-ID reserviert, Run blocked bis Index ready]",
+        "index -->|ja| outbox[Temporal Outbox Intent]",
+        "blocked --> recovery[Recovery gibt Start nach kompletter Generation frei]",
+        "recovery --> outbox",
+        "outbox --> document_workflow[DocumentWorkflow archibot/document/{paperless_document_id}]"
+      ]
+    },
+    {
+      "id": "document-lifecycle",
+      "title": "Lebenszyklus eines Paperless-Dokuments",
+      "kind": "stateDiagram-v2",
+      "summary": "Fachliche Stationen von Paperless-Inbox ueber Temporal-Verarbeitung, manuelle Review und Paperless-PATCH nach Annahme.",
+      "body": [
+        "[*] --> PaperlessInbox: Dokument hochgeladen / Inbox-Tag gesetzt",
+        "PaperlessInbox --> PipelineReserved: Webhook, Poll oder Force-Reprocess",
+        "PipelineReserved --> WaitingForIndex: Embedding-Index unvollstaendig",
+        "WaitingForIndex --> DocumentWorkflow: Index-Generation complete",
+        "PipelineReserved --> DocumentWorkflow: Index ready",
+        "DocumentWorkflow --> OcrGate: Provider, Rollenmodell und Tags einfrieren",
+        "OcrGate --> TargetEmbedding: OCR aus oder lokal korrigiert",
+        "TargetEmbedding --> Classification: Trusted Context aus Nicht-Inbox-Dokumenten",
+        "Classification --> Judge: optional bei niedriger Confidence und Kontext",
+        "Classification --> ReviewSuggestion: Judge deaktiviert oder skipped",
+        "Judge --> ReviewSuggestion: agree, corrected oder error",
+        "ReviewSuggestion --> WaitingForReview: pending Review ist Klassifikationsmarker",
+        "WaitingForReview --> Rejected: berechtigt abgelehnt",
+        "WaitingForReview --> Superseded: Force-Reprocess erzeugt neue Pipeline-Generation",
+        "Superseded --> DocumentWorkflow: Continue-As-New, gleiche Workflow-ID",
+        "WaitingForReview --> ReviewCommit: berechtigt angenommen",
+        "ReviewCommit --> PaperlessUpdated: PATCH erlaubter Metadatenfelder",
+        "PaperlessUpdated --> [*]",
+        "Rejected --> [*]"
+      ]
+    },
+    {
+      "id": "review-commit-sequence",
+      "title": "Manueller Review-Commit zu Paperless",
+      "kind": "sequenceDiagram",
+      "summary": "Der Commit-Pfad schreibt Paperless erst nach berechtigter manueller Annahme und bleibt idempotent.",
+      "body": [
+        "participant U as Berechtigter Nutzer",
+        "participant L as Laravel Review UI",
+        "participant DB as ArchiBot PostgreSQL",
+        "participant R as Python Outbox Relay",
+        "participant T as Temporal Workflow",
+        "participant W as Python Activity",
+        "participant P as Paperless-NGX",
+        "U->>L: Vorschlag annehmen oder editieren",
+        "L->>P: Live-Berechtigung und aktuelle Metadaten pruefen",
+        "L->>DB: Review-Status + review_decision_v2 Intent atomar speichern",
+        "R->>DB: Pending Intent laden und claimen",
+        "R->>T: stabiles Signal an DocumentWorkflow oder ReviewCommitWorkflow",
+        "T->>W: Commit-Activity mit review_suggestion_id starten",
+        "W->>DB: Review Suggestion und Versionsdaten laden",
+        "W->>P: PATCH nur Titel, Datum, Korrespondent, Typ, Speicherpfad, Tags",
+        "P-->>W: Erfolg oder bereits passende Metadaten",
+        "W->>DB: Projektion, Events und terminalen Status schreiben",
+        "T-->>R: Workflow-Fortschritt / Abschluss"
+      ]
+    }
+  ]
+}

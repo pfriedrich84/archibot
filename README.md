@@ -137,6 +137,7 @@ Weitere Optionen (selbst bauen, lokale Entwicklung): **[docs/user/installation.m
 | **[MCP Server](./docs/developer/mcp.md)** | Dormanter Integrationspunkt und Rueckkehrkriterien fuer derzeit deaktivierte Tools/Resources |
 | **[Deployment](./docs/user/deployment.md)** | Dockhand, Reverse Proxy, Backup |
 | **[Architektur](./docs/developer/architecture.md)** | Datenfluss-Diagramme und System-Kontext |
+| **[Archify-Diagramme](./docs/architecture/archify.md)** | Generierte Mermaid-Diagramme fuer Paperless-Integration und Dokument-Lebenszyklus |
 | **[Webhooks](./docs/user/webhooks.md)** | Sofortige Verarbeitung statt Polling |
 | **[Paperless-Auth](./docs/user/paperless-auth.md)** | Anmeldung, Token-Kontext und Sicherheitsmodell |
 | **[Agent Instructions](./AGENTS.md)** | Tool-neutrale Hinweise fuer Coding-Agents |
