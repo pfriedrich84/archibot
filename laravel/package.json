@@ -21,7 +21,7 @@
         "@tailwindcss/vite": "^4.3.3",
         "@testing-library/svelte": "^5.4.2",
         "@types/node": "^22.20.1",
-        "concurrently": "^9.2.4",
+        "concurrently": "^9.2.5",
         "eslint": "^9.39.5",
         "eslint-config-prettier": "^10.0.1",
         "eslint-import-resolver-typescript": "^4.4.5",
